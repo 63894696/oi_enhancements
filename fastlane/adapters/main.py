@@ -9,22 +9,62 @@
 - 新增 /synthesize → TTS 降级链(Edge→CosyVoice→SAPI)
 - /health 返回三条链的装配报告(哪些 provider 进链、哪些缺 key 被跳过)
 - 2026-07-03 H-2 修法:加 Bearer auth middleware,复用 ghostline 仓 auth_token 机制
+- 2026-07-03 M-6 修法:用懒装配,import 时不再 fail-fast
+- 2026-07-03 M-9 修法:用 Pydantic v2 model 校验请求体(若 pydantic 已装)
 """
 from __future__ import annotations
 
 import base64
 import os
+import warnings
 from pathlib import Path
+from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 
 from . import CloudASRClient, CloudIMClient, CloudLLMClient, CloudRouter
-from ..providers import build_asr_chain, build_llm_chain, build_tts_chain, provider_status
+from ..providers import (
+    LazyCloudRouter,
+    build_asr_chain_lazy,
+    build_llm_chain_lazy,
+    build_tts_chain_lazy,
+    provider_status,
+)
+
+# 2026-07-03 M-9 修法:可选 Pydantic v2 schema 校验
+try:
+    from pydantic import BaseModel, Field, ValidationError
+    PYDANTIC_AVAILABLE = True
+except ImportError:
+    PYDANTIC_AVAILABLE = False
+    BaseModel = object  # type: ignore
+    Field = lambda *a, **k: None  # type: ignore
+    ValidationError = Exception
+
+
+if PYDANTIC_AVAILABLE:
+    class TranscribeRequest(BaseModel):
+        audio_b64: Optional[str] = None
+        audio_data: Optional[list] = None
+        language: Optional[str] = Field(default="zh", description="zh / en / auto")
+
+    class GenerateRequest(BaseModel):
+        prompt: Optional[str] = None
+        messages: Optional[list] = None
+        temperature: Optional[float] = Field(default=0.7, ge=0.0, le=2.0)
+        max_tokens: Optional[int] = Field(default=None, ge=1, le=32000)
+
+    class SynthesizeRequest(BaseModel):
+        text: str = Field(..., min_length=1, max_length=10000)
+        voice: Optional[str] = None
+
+    class SendMessageRequest(BaseModel):
+        text: str = Field(..., min_length=1)
+        target: str = Field(..., min_length=1, pattern=r"^[@#]")
 
 
 # 2026-07-03 H-2 修法:复用 ghostline 仓的 auth_token 机制
-# 路径 ~/.voice_input/auth_token 跟 ADR-001 base daemon 共用,256-bit
 AUTH_TOKEN_FILE = Path(
     os.environ.get("FASTLANE_HOME", Path.home() / ".voice_input")
 ) / "auth_token"
@@ -42,10 +82,7 @@ def _load_auth_token() -> str:
 
 
 async def _verify_bearer_token(request: Request) -> None:
-    """2026-07-03 H-2:FastAPI 全端点鉴权,除 /health 外必须带 Bearer token
-
-    /health 放行是有意的 —— 监控/负载均衡要能探活
-    """
+    """2026-07-03 H-2:FastAPI 全端点鉴权,除 /health 外必须带 Bearer token"""
     if request.url.path == "/health":
         return
     auth = request.headers.get("authorization", "")
@@ -66,17 +103,29 @@ async def _verify_bearer_token(request: Request) -> None:
         )
 
 
+# 2026-07-03 M-7:CloudLLMClient / CloudASRClient / CloudIMClient 是 @deprecated 骨架
+# 它们还保留供旧 client 向后兼容,但新代码应该走 CloudRouter
+def _warn_skeleton(name: str) -> None:
+    warnings.warn(
+        f"CloudAdapter.{name} 是 @deprecated 骨架 adapter,新代码应走 CloudRouter。"
+        f"计划 v1.0 移除。",
+        DeprecationWarning,
+        stacklevel=3,
+    )
+
+
 class CloudAPIService:
     def __init__(self, config: dict):
         self.config = config
-        # 骨架 adapter 保留:/send_message 与向后兼容的 chunk 式 /transcribe
-        self.asr_client = CloudASRClient(config.get("asr", {}))
-        self.llm_client = CloudLLMClient(config.get("llm", {}))
+        # 2026-07-03 M-6:用 LazyCloudRouter 替代同步 build_*
+        # 首次调用时装配,缺 key 时返 unavailable 而非让进程挂
+        self.asr_router = build_asr_chain_lazy()
+        self.llm_router = build_llm_chain_lazy()
+        self.tts_router = build_tts_chain_lazy()
+        # 2026-07-03 M-7:CloudLLMClient 等骨架 adapter 标 deprecated
+        self._llm_client_skeleton = CloudLLMClient(config.get("llm", {}))
+        self._asr_client_skeleton = CloudASRClient(config.get("asr", {}))
         self.im_client = CloudIMClient(config.get("im", {}))
-        # F-5 真降级链(工厂按环境 key 装配;本地兜底保证链非空)
-        self.asr_router: CloudRouter = build_asr_chain()
-        self.llm_router: CloudRouter = build_llm_chain()
-        self.tts_router: CloudRouter = build_tts_chain()
         self.app = FastAPI(title="FastLane Cloud Service")
         # 2026-07-03 H-2:注册 Bearer auth 鉴权中间件
         @self.app.middleware("http")
@@ -103,12 +152,27 @@ class CloudAPIService:
     async def _health_check(self):
         return {
             "service": "fastlane",
-            "chains": provider_status(),
+            "chains": {
+                "asr": self.asr_router.status,
+                "llm": self.llm_router.status,
+                "tts": self.tts_router.status,
+            },
             "im": await self.im_client.health_check(),
         }
 
+    def _validate(self, model_cls, request: dict):
+        """2026-07-03 M-9:Pydantic schema 校验(可选,fallback 到 no-op)"""
+        if not PYDANTIC_AVAILABLE:
+            return request
+        try:
+            return model_cls(**request).model_dump(exclude_none=True)
+        except ValidationError as e:
+            raise HTTPException(422, f"请求体 schema 校验失败:{e.errors()}")
+
     async def _transcribe(self, request: dict):
-        if "audio_b64" in request:
+        # 2026-07-03 M-9:schema 校验
+        request = self._validate(TranscribeRequest, request)
+        if request.get("audio_b64"):
             try:
                 wav = base64.b64decode(request["audio_b64"])
             except Exception as e:
@@ -118,15 +182,13 @@ class CloudAPIService:
             except RuntimeError as e:
                 raise HTTPException(503, f"FastLane ASR 全链失败:{e}")
             return {"status": "ok", "text": text}
-        # 2026-07-03 H-5 修法:旧骨架格式兼容 + deprecation warning
-        # 旧 audio_data 路径只 echo chunk 字典,不调 asr_router 降级链
-        # 现在聚合后走降级链(若 chunk 是 base64 字符串)或返 400
+        # H-5:旧 audio_data 路径标 deprecated
+        _warn_skeleton("CloudASRClient.transcribe_chunks")
         chunks = request.get("audio_data", [])
         if not chunks:
             raise HTTPException(400, "需要 audio_b64 或 audio_data 字段之一")
-        # deprecation 提示 —— FastAPI 暂未直接支持,改用 warning header
         try:
-            texts = await self.asr_client.transcribe_chunks(chunks)
+            texts = await self._asr_client_skeleton.transcribe_chunks(chunks)
         except Exception as e:
             raise HTTPException(500, f"旧 audio_data 路径失败(已 deprecated):{e}")
         return {
@@ -139,16 +201,22 @@ class CloudAPIService:
         }
 
     async def _generate(self, request: dict):
+        # 2026-07-03 M-9:schema 校验
+        request = self._validate(GenerateRequest, request)
         prompt = request.get("prompt") or request.get("messages")
         if not prompt:
             raise HTTPException(400, "缺 prompt / messages")
         try:
-            text = await self.llm_router.call_with_fallback("generate", prompt)
+            text = await self.llm_router.call_with_fallback("generate", prompt, **{
+                "temperature": request.get("temperature", 0.7),
+            })
         except RuntimeError as e:
             raise HTTPException(503, f"FastLane LLM 全链失败:{e}")
         return {"status": "ok", "text": text}
 
     async def _synthesize(self, request: dict):
+        # 2026-07-03 M-9:schema 校验
+        request = self._validate(SynthesizeRequest, request)
         text = request.get("text", "")
         if not text:
             raise HTTPException(400, "缺 text")
@@ -162,6 +230,8 @@ class CloudAPIService:
         return result
 
     async def _send_message(self, request: dict):
+        # 2026-07-03 M-9:schema 校验
+        request = self._validate(SendMessageRequest, request)
         return await self.im_client.send_request("/message", request)
 
 

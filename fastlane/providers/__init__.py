@@ -18,9 +18,13 @@
 - factory     按环境变量装配三条降级链
 """
 from .factory import (  # noqa: F401
+    LazyCloudRouter,
     ProviderNotConfigured,
     build_asr_chain,
+    build_asr_chain_lazy,
     build_llm_chain,
+    build_llm_chain_lazy,
     build_tts_chain,
+    build_tts_chain_lazy,
     provider_status,
 )

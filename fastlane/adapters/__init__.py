@@ -91,7 +91,10 @@ class CloudAdapter:
 # ============================================================
 
 class CloudASRClient(CloudAdapter):
-    """云端 ASR 客户端:WebSocket 流式识别,实时转录"""
+    """云端 ASR 客户端:WebSocket 流式识别,实时转录
+
+    2026-07-03 M-7:标记 @deprecated,新代码应走 CloudRouter(真降级链)
+    """
 
     async def stream_process(self, data_stream) -> asyncio.Queue:
         """处理语音流式数据,返回转录结果队列"""
@@ -101,14 +104,34 @@ class CloudASRClient(CloudAdapter):
         return queue
 
     async def transcribe_chunks(self, chunks: List[Dict[str, Any]]) -> List[str]:
-        """REST 风格:一批 chunk → 文本列表(供 main.py /transcribe,可 JSON 序列化)"""
+        """REST 风格:一批 chunk → 文本列表(供 main.py /transcribe,可 JSON 序列化)
+
+        2026-07-03 M-7:标 deprecated,新代码应走 asr_router.call_with_fallback
+        """
+        import warnings
+        warnings.warn(
+            "CloudASRClient.transcribe_chunks 是 @deprecated 骨架接口,新代码应走 CloudRouter。"
+            "计划 v1.0 移除。",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return [c.get("text", "") for c in chunks]
 
 
 class CloudLLMClient(CloudAdapter):
-    """云端 LLM 客户端:文本生成 / 对话"""
+    """云端 LLM 客户端:文本生成 / 对话
+
+    2026-07-03 M-7:标记 @deprecated,新代码应走 llm_router.call_with_fallback
+    """
 
     async def send_request(self, endpoint: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        import warnings
+        warnings.warn(
+            "CloudLLMClient.send_request 是 @deprecated 骨架接口,新代码应走 llm_router.call_with_fallback。"
+            "计划 v1.0 移除。",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return {
             "status": "ok",
             "generated_text": payload.get("prompt", ""),
