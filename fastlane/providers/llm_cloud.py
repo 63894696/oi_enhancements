@@ -43,14 +43,19 @@ class OpenAICompatLLM(CloudAdapter):
             "stream": False,
         }
         headers = {"Authorization": f"Bearer {self.api_key}"}
-        async with tls13_client(timeout_s=self.config.get("timeout_s", 90)) as client:
+        # 2026-07-03 H-7:传 endpoint 让 tls13_client 按 host 策略(SiliconFlow 走 TLS 1.2)
+        async with tls13_client(timeout_s=self.config.get("timeout_s", 90), endpoint=self.endpoint) as client:
             r = await client.post(self.endpoint, json=payload, headers=headers)
             r.raise_for_status()
             data = r.json()
         try:
-            return data["choices"][0]["message"]["content"]
+            text = data["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as e:
             raise RuntimeError(f"{self.name} 响应解析失败:{str(data)[:200]}") from e
+        # 2026-07-03 H-8:云端 LLM 空 content 必须抛错,让 CloudRouter 降级
+        if not text or not text.strip():
+            raise RuntimeError(f"{self.name} 空 content(响应:{str(data)[:200]})")
+        return text
 
 
 def qwen_llm(**overrides: Any) -> OpenAICompatLLM:

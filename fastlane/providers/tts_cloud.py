@@ -7,7 +7,7 @@ Edge/CosyVoice 返回音频字节(mp3),SAPI 直接本机播放(played=True)。
 from __future__ import annotations
 
 import base64
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from ..adapters import CloudAdapter
 from .base import ProviderNotConfigured, require_env, tls13_client
@@ -46,7 +46,10 @@ class EdgeTTSProvider(CloudAdapter):
 
 
 class CosyVoiceTTS(CloudAdapter):
-    """BAILIAN CosyVoice(DashScope,付费 token,声音质量高)"""
+    """BAILIAN CosyVoice(DashScope,付费 token,声音质量高)
+
+    2026-07-03 H-7 修法:synthesize 调用 tls13_client 必须传 endpoint
+    """
 
     ENDPOINT = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
 
@@ -65,7 +68,7 @@ class CosyVoiceTTS(CloudAdapter):
             "input": {"text": text, "voice": self.voice},
         }
         headers = {"Authorization": f"Bearer {self.api_key}"}
-        async with tls13_client(timeout_s=60) as client:
+        async with tls13_client(timeout_s=60, endpoint=self.endpoint) as client:
             r = await client.post(self.endpoint, json=payload, headers=headers)
             r.raise_for_status()
             data = r.json()
@@ -73,11 +76,13 @@ class CosyVoiceTTS(CloudAdapter):
         url = audio_info.get("url", "")
         b64 = audio_info.get("data", "")
         if b64:
+            decoded = base64.b64decode(b64)
+            if not decoded:
+                raise RuntimeError("CosyVoice b64 返回空音频")
             return {"status": "ok", "provider": self.name,
-                    "audio": base64.b64decode(b64), "played": False}
+                    "audio": decoded, "played": False}
         if url:
             # 2026-07-03 H-6 修法:CosyVoice 返回 url 字段时,先 enforce_https + 域名白名单
-            # 防止 API 响应被污染返回内网地址(SSRF)
             from urllib.parse import urlparse
 
             from ..adapters import enforce_https
@@ -88,23 +93,19 @@ class CosyVoiceTTS(CloudAdapter):
                 raise RuntimeError(f"CosyVoice URL 拒绝(F-6 明文 HTTP 违规):{e}")
 
             host = (urlparse(safe_url).hostname or "").lower()
-            # 2026-07-03 H-6:CosyVoice 音频 URL 必须来自 DashScope 域名(防止 SSRF)
-            _allowed_hosts = frozenset({
-                "dashscope.aliyuncs.com",
-                "dashscope-result.aliyuncs.com",  # CosyVoice 真返回的域名
-                "oss-*.aliyuncs.com",  # OSS 对象存储
-            })
-            if not (
+            _allowed_hosts_conditions = (
                 host == "dashscope.aliyuncs.com"
                 or host == "dashscope-result.aliyuncs.com"
                 or (host.startswith("oss-") and host.endswith(".aliyuncs.com"))
-            ):
+            )
+            if not _allowed_hosts_conditions:
                 raise RuntimeError(
                     f"CosyVoice URL host 不在白名单:{host}(必须 DashScope 域名)。"
                     f"防 SSRF 拒绝。"
                 )
 
-            async with tls13_client(timeout_s=60) as client:
+            # 2026-07-03 H-7:GET URL 也传 endpoint
+            async with tls13_client(timeout_s=60, endpoint=safe_url) as client:
                 audio = (await client.get(safe_url)).content
             if not audio:
                 raise RuntimeError(f"CosyVoice URL 返回空音频:{safe_url}")
@@ -113,24 +114,32 @@ class CosyVoiceTTS(CloudAdapter):
 
 
 class SAPILocalTTS(CloudAdapter):
-    """本地兜底:调 ADR-001 tts daemon /synthesize(SAPI,直接本机播放)"""
+    """本地兜底:调 ADR-001 tts daemon /synthesize(SAPI,直接本机播放)
+
+    2026-07-03 M-8 续:auth_token 缓存 + mtime 检查
+    """
 
     def __init__(self, config: Dict[str, Any] | None = None):
         cfg = dict(config or {})
         cfg.setdefault("name", "sapi-local")
         cfg.setdefault("endpoint", "http://127.0.0.1:8732/synthesize")
         super().__init__(cfg)
-        self.auth_token = cfg.get("auth_token", "")
+        self._cached_token: Optional[str] = cfg.get("auth_token") or None
+        self._token_mtime: Optional[float] = None
+        self._token_path = Path.home() / ".voice_input" / "auth_token"
 
     def _load_token(self) -> str:
-        if self.auth_token:
-            return self.auth_token
-        from pathlib import Path
-
-        f = Path.home() / ".voice_input" / "auth_token"
-        if f.exists():
-            return f.read_text(encoding="utf-8").strip()
-        raise ProviderNotConfigured("本地 voice_input auth_token 不存在")
+        if self._cached_token and self._token_path.exists():
+            mtime = self._token_path.stat().st_mtime
+            if self._token_mtime is None or mtime != self._token_mtime:
+                self._cached_token = self._token_path.read_text(encoding="utf-8").strip()
+                self._token_mtime = mtime
+        elif not self._cached_token:
+            if not self._token_path.exists():
+                raise ProviderNotConfigured("本地 voice_input auth_token 不存在")
+            self._cached_token = self._token_path.read_text(encoding="utf-8").strip()
+            self._token_mtime = self._token_path.stat().st_mtime
+        return self._cached_token
 
     async def synthesize(self, text: str) -> Dict[str, Any]:
         import httpx

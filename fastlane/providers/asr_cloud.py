@@ -59,6 +59,8 @@ class DoubaoFlashASR(CloudAdapter):
     需要火山「语音技术」控制台的 App Key + Access Key(与 ARK_API_KEY 不同体系):
         DOUBAO_ASR_APP_KEY / DOUBAO_ASR_ACCESS_KEY
     未配置 → ProviderNotConfigured → 工厂跳过(不进降级链)。
+
+    2026-07-03 H-7 修法:transcribe_wav 调用 tls13_client 必须传 endpoint(统一修法)
     """
 
     ENDPOINT = "https://openspeech.bytedance.com/api/v3/auc/bigmodel/recognize/flash"
@@ -85,7 +87,8 @@ class DoubaoFlashASR(CloudAdapter):
             "audio": {"format": "wav", "data": base64.b64encode(wav_bytes).decode()},
             "request": {"model_name": "bigmodel"},
         }
-        async with tls13_client(timeout_s=60) as client:
+        # 2026-07-03 H-7:传 endpoint 让 tls13_client 按 host 策略
+        async with tls13_client(timeout_s=60, endpoint=self.endpoint) as client:
             r = await client.post(self.endpoint, json=payload, headers=headers)
             r.raise_for_status()
             data = r.json()
@@ -96,7 +99,11 @@ class DoubaoFlashASR(CloudAdapter):
 
 
 class QwenASR(CloudAdapter):
-    """阿里 DashScope qwen-audio-asr(BAILIAN_API_KEY,base64 data URI 一次调用)"""
+    """阿里 DashScope qwen-audio-asr(BAILIAN_API_KEY,base64 data URI 一次调用)
+
+    2026-07-03 H-7 修法:transcribe_wav 调用 tls13_client 必须传 endpoint
+    2026-07-03 H-8 修法:空 content / 解析失败 抛错(让 CloudRouter 降级)
+    """
 
     ENDPOINT = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
 
@@ -115,7 +122,7 @@ class QwenASR(CloudAdapter):
             "input": {"messages": [{"role": "user", "content": [{"audio": data_uri}]}]},
         }
         headers = {"Authorization": f"Bearer {self.api_key}"}
-        async with tls13_client(timeout_s=60) as client:
+        async with tls13_client(timeout_s=60, endpoint=self.endpoint) as client:
             r = await client.post(self.endpoint, json=payload, headers=headers)
             r.raise_for_status()
             data = r.json()
@@ -125,6 +132,7 @@ class QwenASR(CloudAdapter):
         except (KeyError, IndexError, TypeError) as e:
             raise RuntimeError(f"Qwen ASR 响应解析失败:{str(data)[:200]}") from e
         if not text:
+            # 2026-07-03 H-8:云端空 content 必须抛错,让 CloudRouter 降级
             raise RuntimeError("Qwen ASR 空结果")
         return text
 
@@ -133,6 +141,9 @@ class SiliconFlowASR(CloudAdapter):
     """SiliconFlow OpenAI 兼容 /audio/transcriptions(SenseVoice 云端版)
 
     与本地 SenseVoice 同模型不同部署 —— 云端快、本地零外发,正好一对。
+
+    2026-07-03 H-7 修法:transcribe_wav 调用 tls13_client 必须传 endpoint,
+    否则 SiliconFlow TLS 1.3 不兼容问题(H-1)修法未生效
     """
 
     ENDPOINT = "https://api.siliconflow.cn/v1/audio/transcriptions"
@@ -149,7 +160,8 @@ class SiliconFlowASR(CloudAdapter):
         headers = {"Authorization": f"Bearer {self.api_key}"}
         files = {"file": ("audio.wav", wav_bytes, "audio/wav")}
         data = {"model": self.model}
-        async with tls13_client(timeout_s=60) as client:
+        # 2026-07-03 H-7:传 endpoint,让 tls13_client 走 TLS 1.2 降级
+        async with tls13_client(timeout_s=60, endpoint=self.endpoint) as client:
             r = await client.post(self.endpoint, headers=headers, files=files, data=data)
             r.raise_for_status()
             out = r.json()
