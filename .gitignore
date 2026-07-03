@@ -42,6 +42,18 @@ env/
 vendor/peekaboo/__pycache__/
 vendor/voice_input/__pycache__/
 
+# Explore / OI scratch cache
+vendor/.memory/
+*.oi_summary*
+*.oi_fact*
+
+# voice_input/ — separate standalone git repo (15 commits, v1.3.2 = d723c76)
+# Tracked in its own C:/Users/Administrator/voice_input/.git, NOT in this repo
+# Per user decision 2026-07-03: vendor/voice_input/ is the original spec
+# document from the early solo-dev phase; voice_input/ (root) has the live code.
+# See INVENTORY-2026-07-03.md § 6 / § 7 for relation.
+voice_input/
+
 # Editor / OS
 .vscode/
 .idea/
