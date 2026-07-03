@@ -8,15 +8,62 @@
 - /generate → LLM 降级链(Qwen-Max→DeepSeek→StepFun→Ollama)
 - 新增 /synthesize → TTS 降级链(Edge→CosyVoice→SAPI)
 - /health 返回三条链的装配报告(哪些 provider 进链、哪些缺 key 被跳过)
+- 2026-07-03 H-2 修法:加 Bearer auth middleware,复用 ghostline 仓 auth_token 机制
 """
 from __future__ import annotations
 
 import base64
+import os
+from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 
 from . import CloudASRClient, CloudIMClient, CloudLLMClient, CloudRouter
 from ..providers import build_asr_chain, build_llm_chain, build_tts_chain, provider_status
+
+
+# 2026-07-03 H-2 修法:复用 ghostline 仓的 auth_token 机制
+# 路径 ~/.voice_input/auth_token 跟 ADR-001 base daemon 共用,256-bit
+AUTH_TOKEN_FILE = Path(
+    os.environ.get("FASTLANE_HOME", Path.home() / ".voice_input")
+) / "auth_token"
+
+
+def _load_auth_token() -> str:
+    """读 auth_token(跟 ghostline 仓 / voice_input 仓共用同一份文件)"""
+    try:
+        return AUTH_TOKEN_FILE.read_text(encoding="utf-8").strip()
+    except OSError as e:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"FastLane auth_token 不存在:{AUTH_TOKEN_FILE}(运行 base daemon 启动或手动生成)。{e}",
+        )
+
+
+async def _verify_bearer_token(request: Request) -> None:
+    """2026-07-03 H-2:FastAPI 全端点鉴权,除 /health 外必须带 Bearer token
+
+    /health 放行是有意的 —— 监控/负载均衡要能探活
+    """
+    if request.url.path == "/health":
+        return
+    auth = request.headers.get("authorization", "")
+    expected_prefix = "Bearer "
+    if not auth.startswith(expected_prefix):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="FastLane 鉴权:缺 Authorization: Bearer <token> header",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    provided = auth[len(expected_prefix):].strip()
+    expected = _load_auth_token()
+    if not provided or provided != expected:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="FastLane 鉴权:token 不匹配",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 
 class CloudAPIService:
@@ -31,6 +78,19 @@ class CloudAPIService:
         self.llm_router: CloudRouter = build_llm_chain()
         self.tts_router: CloudRouter = build_tts_chain()
         self.app = FastAPI(title="FastLane Cloud Service")
+        # 2026-07-03 H-2:注册 Bearer auth 鉴权中间件
+        @self.app.middleware("http")
+        async def auth_middleware(request: Request, call_next):
+            try:
+                await _verify_bearer_token(request)
+            except HTTPException as e:
+                return JSONResponse(
+                    status_code=e.status_code,
+                    content={"detail": e.detail},
+                    headers=e.headers or {},
+                )
+            return await call_next(request)
+
         self._setup_routes()
 
     def _setup_routes(self):

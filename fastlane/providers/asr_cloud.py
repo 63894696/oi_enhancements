@@ -153,4 +153,11 @@ class LocalSenseVoiceASR(CloudAdapter):
         async with httpx.AsyncClient(timeout=60) as client:
             r = await client.post(self.endpoint, json=payload, headers=headers)
             r.raise_for_status()
-            return r.json().get("text", "")
+            data = r.json()
+        # 2026-07-03 H-4 修法:本地兜底空字符串必须抛错(让 CloudRouter 降级)
+        text = data.get("text", "")
+        if not text:
+            raise RuntimeError(
+                f"本地 SenseVoice ASR 空结果(text=''),daemon 响应:{str(data)[:200]}"
+            )
+        return text

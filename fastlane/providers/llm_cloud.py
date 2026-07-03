@@ -107,4 +107,12 @@ class OllamaLocalLLMAdapter(CloudAdapter):
         async with httpx.AsyncClient(timeout=self.config.get("timeout_s", 120)) as client:
             r = await client.post(self.endpoint, json=payload)
             r.raise_for_status()
-            return r.json().get("message", {}).get("content", "")
+            data = r.json()
+        # 2026-07-03 H-4 修法:本地兜底空字符串必须抛错(让 CloudRouter 降级)
+        # 之前 r.json().get("message", {}).get("content", "") 空结果被当成功
+        text = (data.get("message") or {}).get("content", "")
+        if not text:
+            raise RuntimeError(
+                f"本地 Ollama LLM 空结果(content=''),响应:{str(data)[:200]}"
+            )
+        return text

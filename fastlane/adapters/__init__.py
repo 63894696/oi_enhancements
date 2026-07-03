@@ -117,13 +117,106 @@ class CloudLLMClient(CloudAdapter):
 
 
 class CloudIMClient(CloudAdapter):
-    """云端 IM 客户端:即时消息发送"""
+    """云端 IM 客户端:即时消息发送
+
+    2026-07-03 H-3 修法:之前是纯 stub 假成功(`return {"status": "sent"}`)。
+    现在接 ghostline 仓 SimpleXCLIAdapter 真实发 IM(走 simplex-chat CLI 单次模式)。
+    配置来源:im.cli_path / im.smp_server / im.enabled(跟 ghostline 仓同字段名)
+    """
+
+    def __init__(self, config: Dict[str, Any]):
+        super().__init__(config)
+        self._simplex = None  # 懒加载,首次 send 才实例化
+        self._init_error: Optional[str] = None
+        # 预读配置,如果 enabled=False 或 cli_path 空,记下原因供 health_check 报告
+        self._enabled = bool(config.get("enabled", False))
+        self._cli_path = config.get("cli_path", "").strip()
+        self._smp_server = config.get("smp_server", "").strip()
+
+    def _get_simplex(self):
+        """懒加载 ghostline 仓 SimpleXCLIAdapter(跨仓 import)
+
+        2026-07-03 H-3 修法:用 sys.path 注入 ghostline 仓 src/ + voice_input_ghostline.im.simplex 作为 module
+        """
+        if self._simplex is not None or self._init_error is not None:
+            if self._init_error:
+                raise RuntimeError(self._init_error)
+            return self._simplex
+        if not self._enabled:
+            self._init_error = "IM 未启用(im.enabled=false)"
+            raise RuntimeError(self._init_error)
+        if not self._cli_path:
+            self._init_error = "im.cli_path 未配置"
+            raise RuntimeError(self._init_error)
+        try:
+            # 跨仓 import:把 ghostline 仓 src/ 加到 sys.path,然后 import 整个 voice_input_ghostline.im.simplex package
+            import importlib
+            import sys
+            from pathlib import Path
+            ghostline_src = Path("C:/Users/Administrator/voice_input_ghostline/src")
+            if not (ghostline_src / "voice_input_ghostline").exists():
+                self._init_error = f"ghostline 仓 src/voice_input_ghostline/ 不存在:{ghostline_src}"
+                raise RuntimeError(self._init_error)
+            ghostline_src_s = str(ghostline_src)
+            if ghostline_src_s not in sys.path:
+                sys.path.insert(0, ghostline_src_s)
+            simplex_mod = importlib.import_module("voice_input_ghostline.im.simplex")
+            self._simplex = simplex_mod.SimpleXCLIAdapter(self._cli_path)
+            return self._simplex
+        except Exception as e:
+            self._init_error = f"SimpleXCLIAdapter 初始化失败:{e}"
+            raise RuntimeError(self._init_error)
+
+    async def health_check(self) -> Dict[str, Any]:
+        """2026-07-03 H-3:真实探活(simplex /users),而不是 echo"""
+        if not self._enabled:
+            return {"status": "disabled", "adapter": self.name, "reason": "im.enabled=false"}
+        if not self._cli_path:
+            return {"status": "unavailable", "adapter": self.name, "reason": "im.cli_path 未配置"}
+        try:
+            simplex = self._get_simplex()
+            available = simplex.is_available()
+            return {
+                "status": "ok" if available else "unavailable",
+                "adapter": self.name,
+                "backend": "simplex",
+                "cli_path": self._cli_path,
+                "reason": None if available else "simplex-chat 探活失败",
+            }
+        except RuntimeError as e:
+            return {"status": "unavailable", "adapter": self.name, "reason": str(e)}
 
     async def send_request(self, endpoint: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """2026-07-03 H-3:真发 IM(走 ghostline 仓 SimpleXCLIAdapter)
+
+        payload 字段:text(str) + target(str,@联系人/#群)
+        """
+        text = payload.get("text", "").strip()
+        target = payload.get("target", "").strip()
+        if not text:
+            return {"status": "fail", "error": "payload.text 不能为空"}
+        if not target or target[0] not in ("@", "#"):
+            return {"status": "fail", "error": f"payload.target 需以 @(联系人)或 #(群)开头:{target!r}"}
+        try:
+            simplex = self._get_simplex()
+        except RuntimeError as e:
+            return {"status": "fail", "error": str(e)}
+        # SimpleXCLIAdapter.send 是同步方法,run_in_executor 异步化
+        import asyncio
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(None, simplex.send, text, target)
+        # result 形如 {"status": "ok"/"fail", "target": ..., "detail": ...}
+        if result.get("status") == "ok":
+            return {
+                "status": "sent",
+                "target": target,
+                "backend": "simplex",
+                "detail": result.get("detail"),
+            }
         return {
-            "status": "sent",
-            "message_id": "12345",
-            "content": payload.get("text", ""),
+            "status": "fail",
+            "target": target,
+            "error": result.get("error", "simplex 发送失败"),
         }
 
 
