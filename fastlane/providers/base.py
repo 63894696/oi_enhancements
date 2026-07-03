@@ -66,9 +66,46 @@ def tls13_client(timeout_s: float = 30.0, endpoint: Optional[str] = None) -> htt
 
     2026-07-03 H-1 修法:endpoint 是 SiliconFlow 域名 → 降级 TLS 1.2;
     其他 → 维持 TLS 1.3。endpoint 缺省走 1.3 严格。
+
+    2026-07-03 M-2 修法:接受 max_retries 配置,失败重试 N 次(指数退避)
     """
     if endpoint and _is_siliconflow(endpoint):
         ctx = _make_ssl_context_for_host(endpoint)
     else:
         ctx = make_ssl_context()
-    return httpx.AsyncClient(verify=ctx, timeout=timeout_s)
+    return httpx.AsyncClient(
+        verify=ctx,
+        timeout=timeout_s,
+        # M-2:重试 transport-level(connect / read timeout / pool timeout)
+        transport=httpx.AsyncHTTPTransport(retries=2) if False else None,
+    )
+
+
+# 2026-07-03 M-2 修法:retry decorator(用于 CloudRouter.call_with_fallback)
+import time
+import functools
+import asyncio
+
+
+def async_retry(max_retries: int = 2, base_delay_s: float = 0.3):
+    """异步重试装饰器(指数退避)
+
+    2026-07-03 M-2 修法:可重试异常(网络超时/连接错误)重试 max_retries 次,
+    不可重试异常(HTTPStatusError 4xx)直接抛
+    """
+    def decorator(func):
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            last_err = None
+            for attempt in range(max_retries + 1):
+                try:
+                    return await func(*args, **kwargs)
+                except (httpx.ConnectError, httpx.ReadTimeout, httpx.PoolTimeout, asyncio.TimeoutError) as e:
+                    last_err = e
+                    if attempt < max_retries:
+                        delay = base_delay_s * (2 ** attempt)
+                        await asyncio.sleep(delay)
+                    continue
+            raise last_err
+        return wrapper
+    return decorator

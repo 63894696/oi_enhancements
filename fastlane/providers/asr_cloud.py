@@ -3,15 +3,54 @@
 统一契约(给 CloudRouter 用):
     async transcribe_wav(wav_bytes: bytes) -> str
 所有 provider 共享这一个方法名 → CloudRouter.call_with_fallback("transcribe_wav", ...)
+
+2026-07-03 修法:
+- M-1:白名单域名解析 IP 加 TTL(默认 5 分钟),过期重新解析
+- M-8:auth_token 缓存到实例属性(不再每次读盘)
 """
 from __future__ import annotations
 
 import base64
+import time
 import uuid
-from typing import Any, Dict
+from pathlib import Path
+from typing import Any, Dict, Optional
 
 from ..adapters import CloudAdapter
 from .base import ProviderNotConfigured, require_env, tls13_client
+
+
+# 2026-07-03 M-1 修法:白名单域名解析 IP 的 TTL(秒)
+# 之前白名单 IP 永久缓存,域名后续解析到不同 IP 时旧 IP 仍放行
+_RESOLVED_IP_TTL_S = 5 * 60  # 5 分钟
+
+
+class _TTLResolvedIPs:
+    """M-1:带 TTL 的解析 IP 缓存
+
+    每次解析记录 ts,过期清空 → 重新解析
+    """
+
+    def __init__(self) -> None:
+        self._ips: Dict[str, str] = {}
+        self._ts: Dict[str, float] = {}
+
+    def get(self, host: str) -> Optional[str]:
+        if host in self._ips:
+            if time.time() - self._ts[host] < _RESOLVED_IP_TTL_S:
+                return self._ips[host]
+            # 过期
+            del self._ips[host]
+            del self._ts[host]
+        return None
+
+    def set(self, host: str, ip: str) -> None:
+        self._ips[host] = ip
+        self._ts[host] = time.time()
+
+    def clear(self) -> None:
+        self._ips.clear()
+        self._ts.clear()
 
 
 class DoubaoFlashASR(CloudAdapter):
@@ -132,17 +171,23 @@ class LocalSenseVoiceASR(CloudAdapter):
         cfg.setdefault("name", "local-sensevoice")
         cfg.setdefault("endpoint", "http://127.0.0.1:8731/transcribe")
         super().__init__(cfg)
-        self.auth_token = cfg.get("auth_token", "")
+        # 2026-07-03 M-8 修法:缓存 token + mtime,避免每次请求读盘
+        self._cached_token: Optional[str] = cfg.get("auth_token") or None
+        self._token_mtime: Optional[float] = None
+        self._token_path = Path.home() / ".voice_input" / "auth_token"
 
     def _load_token(self) -> str:
-        if self.auth_token:
-            return self.auth_token
-        from pathlib import Path
-
-        f = Path.home() / ".voice_input" / "auth_token"
-        if f.exists():
-            return f.read_text(encoding="utf-8").strip()
-        raise ProviderNotConfigured("本地 voice_input auth_token 不存在(daemon 从未启动过?)")
+        if self._cached_token and self._token_path.exists():
+            mtime = self._token_path.stat().st_mtime
+            if self._token_mtime is None or mtime != self._token_mtime:
+                self._cached_token = self._token_path.read_text(encoding="utf-8").strip()
+                self._token_mtime = mtime
+        elif not self._cached_token:
+            if not self._token_path.exists():
+                raise ProviderNotConfigured("本地 voice_input auth_token 不存在(daemon 从未启动过?)")
+            self._cached_token = self._token_path.read_text(encoding="utf-8").strip()
+            self._token_mtime = self._token_path.stat().st_mtime
+        return self._cached_token
 
     async def transcribe_wav(self, wav_bytes: bytes) -> str:
         import httpx

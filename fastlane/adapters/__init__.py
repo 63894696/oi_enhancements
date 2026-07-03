@@ -253,24 +253,53 @@ class CloudRouter:
     用法:
         router = CloudRouter([doubao_asr, qwen_asr, local_sensevoice])
         texts = await router.call_with_fallback("transcribe_chunks", chunks)
+
+    2026-07-03 M-2 修法:加 max_retries 参数,每个 adapter 失败时重试 N 次再降级
+    2026-07-03 L-2 修法:health_check 用已装配链的 snapshot,不再 _assemble 重复构造
     """
 
-    def __init__(self, adapters: List[CloudAdapter], logger: Optional[logging.Logger] = None):
+    def __init__(
+        self,
+        adapters: List[CloudAdapter],
+        logger: Optional[logging.Logger] = None,
+        max_retries: int = 0,
+    ):
         if not adapters:
             raise ValueError("CloudRouter 至少需要一个 adapter")
         self.adapters = adapters
         self.logger = logger or logging.getLogger("CloudRouter")
+        self.max_retries = max_retries
 
     async def call_with_fallback(self, method: str, *args, **kwargs) -> Any:
         last_err: Optional[Exception] = None
         for i, adapter in enumerate(self.adapters):
-            try:
-                return await getattr(adapter, method)(*args, **kwargs)
-            except Exception as e:
-                last_err = e
-                nxt = self.adapters[i + 1].name if i + 1 < len(self.adapters) else "无(全部失败)"
-                # F-5:降级时日志明示
-                self.logger.warning(
-                    f"FastLane 降级:{adapter.name} → {nxt},原因:{type(e).__name__}: {e}"
-                )
+            # 2026-07-03 M-2:对每个 adapter 重试 max_retries 次
+            for attempt in range(self.max_retries + 1):
+                try:
+                    return await getattr(adapter, method)(*args, **kwargs)
+                except Exception as e:
+                    last_err = e
+                    if attempt < self.max_retries:
+                        self.logger.info(
+                            f"FastLane {adapter.name} 重试 ({attempt + 1}/{self.max_retries}):{type(e).__name__}"
+                        )
+                        import asyncio
+                        await asyncio.sleep(0.3 * (2 ** attempt))
+                        continue
+                    # 重试用完 → 降级
+                    break
+            nxt = self.adapters[i + 1].name if i + 1 < len(self.adapters) else "无(全部失败)"
+            self.logger.warning(
+                f"FastLane 降级:{adapter.name} → {nxt},原因:{type(last_err).__name__}: {last_err}"
+            )
         raise RuntimeError(f"FastLane 所有 adapter 均失败,最后错误: {last_err}") from last_err
+
+    async def health_snapshot(self) -> Dict[str, Any]:
+        """2026-07-03 L-2:从已装配的 adapters 拿 health_check,不再 _assemble 重复构造"""
+        result = {}
+        for adapter in self.adapters:
+            try:
+                result[adapter.name] = await adapter.health_check()
+            except Exception as e:
+                result[adapter.name] = {"status": "error", "error": str(e)}
+        return result
