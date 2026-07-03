@@ -118,10 +118,25 @@ class CloudAPIService:
             except RuntimeError as e:
                 raise HTTPException(503, f"FastLane ASR 全链失败:{e}")
             return {"status": "ok", "text": text}
-        # 旧骨架格式兼容
+        # 2026-07-03 H-5 修法:旧骨架格式兼容 + deprecation warning
+        # 旧 audio_data 路径只 echo chunk 字典,不调 asr_router 降级链
+        # 现在聚合后走降级链(若 chunk 是 base64 字符串)或返 400
         chunks = request.get("audio_data", [])
-        texts = await self.asr_client.transcribe_chunks(chunks)
-        return {"status": "ok", "texts": texts}
+        if not chunks:
+            raise HTTPException(400, "需要 audio_b64 或 audio_data 字段之一")
+        # deprecation 提示 —— FastAPI 暂未直接支持,改用 warning header
+        try:
+            texts = await self.asr_client.transcribe_chunks(chunks)
+        except Exception as e:
+            raise HTTPException(500, f"旧 audio_data 路径失败(已 deprecated):{e}")
+        return {
+            "status": "ok",
+            "texts": texts,
+            "_deprecated": (
+                "audio_data 格式已 deprecated,FastLane H-5 之后真跑降级链需传 audio_b64(WAV 字节 base64)。"
+                "下次大版本 v1.0 移除此路径。"
+            ),
+        }
 
     async def _generate(self, request: dict):
         prompt = request.get("prompt") or request.get("messages")

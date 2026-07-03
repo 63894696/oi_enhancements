@@ -76,8 +76,38 @@ class CosyVoiceTTS(CloudAdapter):
             return {"status": "ok", "provider": self.name,
                     "audio": base64.b64decode(b64), "played": False}
         if url:
+            # 2026-07-03 H-6 修法:CosyVoice 返回 url 字段时,先 enforce_https + 域名白名单
+            # 防止 API 响应被污染返回内网地址(SSRF)
+            from urllib.parse import urlparse
+
+            from ..adapters import enforce_https
+
+            try:
+                safe_url = enforce_https(url)
+            except ValueError as e:
+                raise RuntimeError(f"CosyVoice URL 拒绝(F-6 明文 HTTP 违规):{e}")
+
+            host = (urlparse(safe_url).hostname or "").lower()
+            # 2026-07-03 H-6:CosyVoice 音频 URL 必须来自 DashScope 域名(防止 SSRF)
+            _allowed_hosts = frozenset({
+                "dashscope.aliyuncs.com",
+                "dashscope-result.aliyuncs.com",  # CosyVoice 真返回的域名
+                "oss-*.aliyuncs.com",  # OSS 对象存储
+            })
+            if not (
+                host == "dashscope.aliyuncs.com"
+                or host == "dashscope-result.aliyuncs.com"
+                or (host.startswith("oss-") and host.endswith(".aliyuncs.com"))
+            ):
+                raise RuntimeError(
+                    f"CosyVoice URL host 不在白名单:{host}(必须 DashScope 域名)。"
+                    f"防 SSRF 拒绝。"
+                )
+
             async with tls13_client(timeout_s=60) as client:
-                audio = (await client.get(url)).content
+                audio = (await client.get(safe_url)).content
+            if not audio:
+                raise RuntimeError(f"CosyVoice URL 返回空音频:{safe_url}")
             return {"status": "ok", "provider": self.name, "audio": audio, "played": False}
         raise RuntimeError(f"CosyVoice 无音频输出:{str(data)[:200]}")
 
