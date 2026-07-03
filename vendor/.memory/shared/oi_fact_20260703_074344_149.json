@@ -1,0 +1,17 @@
+{
+  "id": "oi_fact_20260703_074344_149",
+  "agent": "oi",
+  "title": "project-test",
+  "content": "C:/test/project 路径",
+  "type": "fact",
+  "tags": [
+    "project"
+  ],
+  "source_url": "",
+  "metadata": {
+    "layer": "L1"
+  },
+  "created_at": "2026-07-03T07:43:44.149972",
+  "accessed_at": "2026-07-03T07:43:44.149972",
+  "access_count": 0
+}

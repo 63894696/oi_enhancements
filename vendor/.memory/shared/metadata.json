@@ -1,0 +1,52 @@
+{
+  "created": "2026-07-01T21:44:54.983773",
+  "agents": {
+    "pecky": {
+      "count": 0
+    },
+    "news": {
+      "count": 0
+    },
+    "code": {
+      "count": 0
+    },
+    "creative": {
+      "count": 0
+    },
+    "legal": {
+      "count": 0
+    },
+    "finance": {
+      "count": 0
+    },
+    "tech": {
+      "count": 0
+    },
+    "oi": {
+      "count": 93
+    }
+  },
+  "types": {
+    "article": {
+      "count": 0
+    },
+    "research": {
+      "count": 0
+    },
+    "code": {
+      "count": 0
+    },
+    "idea": {
+      "count": 0
+    },
+    "fact": {
+      "count": 24
+    },
+    "note": {
+      "count": 12
+    },
+    "summary": {
+      "count": 57
+    }
+  }
+}

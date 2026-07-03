@@ -1,0 +1,17 @@
+{
+  "id": "oi_summary_20260703_080457_836",
+  "agent": "oi",
+  "title": "router_init",
+  "content": "动态路由器已初始化",
+  "type": "summary",
+  "tags": [
+    "dynamic_router"
+  ],
+  "source_url": "",
+  "metadata": {
+    "layer": "L3"
+  },
+  "created_at": "2026-07-03T08:04:57.836248",
+  "accessed_at": "2026-07-03T08:04:57.836248",
+  "access_count": 0
+}

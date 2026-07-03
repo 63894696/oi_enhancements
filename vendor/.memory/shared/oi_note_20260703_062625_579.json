@@ -1,0 +1,17 @@
+{
+  "id": "oi_note_20260703_062625_579",
+  "agent": "oi",
+  "title": "task-panel-bug",
+  "content": "切 team 时 panel 丢失,根因 COLUMN_LAYOUT",
+  "type": "note",
+  "tags": [
+    "bug"
+  ],
+  "source_url": "",
+  "metadata": {
+    "layer": "L2"
+  },
+  "created_at": "2026-07-03T06:26:25.579994",
+  "accessed_at": "2026-07-03T06:26:25.579994",
+  "access_count": 0
+}

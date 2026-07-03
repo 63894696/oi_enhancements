@@ -1,0 +1,18 @@
+{
+  "id": "oi_summary_20260703_104518_152",
+  "agent": "oi",
+  "title": "asr/final",
+  "content": "测试文本2",
+  "type": "summary",
+  "tags": [
+    "asr",
+    "final"
+  ],
+  "source_url": "",
+  "metadata": {
+    "layer": "L3"
+  },
+  "created_at": "2026-07-03T10:45:18.152425",
+  "accessed_at": "2026-07-03T10:45:18.152425",
+  "access_count": 0
+}

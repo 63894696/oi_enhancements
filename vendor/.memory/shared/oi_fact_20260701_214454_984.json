@@ -1,0 +1,17 @@
+{
+  "id": "oi_fact_20260701_214454_984",
+  "agent": "oi",
+  "title": "user:zrk",
+  "content": "用户偏好中文,直接不啰嗦",
+  "type": "fact",
+  "tags": [
+    "preference"
+  ],
+  "source_url": "",
+  "metadata": {
+    "layer": "L0"
+  },
+  "created_at": "2026-07-01T21:44:54.984750",
+  "accessed_at": "2026-07-01T21:44:54.984750",
+  "access_count": 0
+}

@@ -1,0 +1,17 @@
+{
+  "id": "oi_fact_20260703_074344_147",
+  "agent": "oi",
+  "title": "user-test",
+  "content": "测试用户偏好中文",
+  "type": "fact",
+  "tags": [
+    "preference"
+  ],
+  "source_url": "",
+  "metadata": {
+    "layer": "L0"
+  },
+  "created_at": "2026-07-03T07:43:44.147974",
+  "accessed_at": "2026-07-03T07:43:44.147974",
+  "access_count": 0
+}
