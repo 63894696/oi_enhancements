@@ -128,13 +128,15 @@ class CloudAPIService:
         self.im_client = CloudIMClient(config.get("im", {}))
         self.app = FastAPI(title="FastLane Cloud Service")
         # 2026-07-03 H-2:注册 Bearer auth 鉴权中间件
+        # 2026-07-04 修法:中间件捕 HTTPException 时必须传 status_code,
+        # 否则 FastAPI 默认 503,导致 401 错返 503
         @self.app.middleware("http")
         async def auth_middleware(request: Request, call_next):
             try:
                 await _verify_bearer_token(request)
             except HTTPException as e:
                 return JSONResponse(
-                    status_code=e.status_code,
+                    status_code=e.status_code,  # 2026-07-04 修法:显式传 401 不是 503
                     content={"detail": e.detail},
                     headers=e.headers or {},
                 )
@@ -232,7 +234,14 @@ class CloudAPIService:
     async def _send_message(self, request: dict):
         # 2026-07-03 M-9:schema 校验
         request = self._validate(SendMessageRequest, request)
-        return await self.im_client.send_request("/message", request)
+        # 2026-07-04 L-7 修法:IM 失败时返 502(下游服务失败),不是 200
+        result = await self.im_client.send_request("/message", request)
+        if result.get("status") != "sent":
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"FastLane IM 发送失败:{result.get('error', 'unknown')}",
+            )
+        return result
 
 
 # 导出 FastAPI app 对象
