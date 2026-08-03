@@ -7,6 +7,19 @@
 - SQLite WAL 模式,跨进程安全
 - 每个 OI chat() 自动 store 一次,下次自动 recall 注入 system prompt
 
+v0.24 新增:
+- namespace 字段(backward compatible ALTER TABLE)
+- auto_promote():防 L0 永不退位 + L2/L3 高频条目自动升 L1
+- _decay_score():recall 排序时乘时间衰减(半衰期 7 天)
+
+v0.26 新增:
+- quality_score 字段: 记忆质量权重(0-1)，参与 decay_score 计算
+- decay_score 改为: quality_score * access_count * exp(-0.1 * age_days)
+- status / depends_on_json / priority 3 列(backward compatible ALTER)
+- store/recall/list_by_layer 加 status 过滤
+- get_by_id / update_status / append_to_content 方法
+- stats() 加 by_status 字段
+
 API:
     from oi_memory import OIMemory
     mem = OIMemory()
@@ -16,13 +29,14 @@ API:
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import sqlite3
 import threading
 import time
 from contextlib import contextmanager
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from pathlib import Path
 from typing import Iterable
 
@@ -39,6 +53,12 @@ LAYER_DESC = {
     "L2": "on-demand — 短期工作记忆(任务上下文、最近工具调用)",
     "L3": "deep-search — 历史对话快照(全文 recall 检索)",
 }
+
+# v0.25:task queue 状态机
+TASK_STATUSES = ("pending", "running", "done", "blocked", "cancelled")
+TASK_DEFAULT_STATUS = "pending"
+TASK_NAMESPACE_PREFIX = "tasks"  # task 记忆的 namespace
+TASK_TITLE_PREFIX = "task:"  # 跟现有 task:panel-bug 约定一致
 
 # 中文 + 英文 token 切分
 _TOKEN_RE = re.compile(r"[A-Za-z0-9_]+|[一-鿿]+")
@@ -67,9 +87,20 @@ class Memory:
     tags: list[str]
     created_at: float
     access_count: int
+    namespace: str = ""  # v0.24:namespace 字段,backward compatible(默认空字符串)
+    # v0.25:task queue 支撑字段
+    status: str = ""  # 空字符串=非 task;否则 = pending/running/done/blocked/cancelled
+    depends_on: list[int] = field(default_factory=list)  # 依赖的 task_id 列表
+    priority: int = 0  # task 优先级,数字越大越优先(默认 0)
+    quality_score: float = 1.0  # v0.26: 记忆质量权重(0-1)，参与 decay_score
+    owner_agent: str = ""  # v0.44 P1-5: 拥有者 agent id(空=全局共享)
 
     def to_dict(self):
-        return {**asdict(self), "tags_json": json.dumps(self.tags, ensure_ascii=False)}
+        return {
+            **asdict(self),
+            "tags_json": json.dumps(self.tags, ensure_ascii=False),
+            "depends_on_json": json.dumps(self.depends_on),
+        }
 
 
 class OIMemory:
@@ -95,12 +126,34 @@ class OIMemory:
                     created_at REAL NOT NULL,
                     last_access REAL,
                     access_count INTEGER NOT NULL DEFAULT 0,
-                    token_freq TEXT NOT NULL DEFAULT ''
+                    token_freq TEXT NOT NULL DEFAULT '',
+                    namespace TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT '',
+                    depends_on_json TEXT NOT NULL DEFAULT '[]',
+                    priority INTEGER NOT NULL DEFAULT 0
                 )
                 """
             )
+            # v0.24 + v0.25:backward compatible ALTER(老 DB 没新列时补)——必须先于对应索引
+            for alter_sql in [
+                "ALTER TABLE memories ADD COLUMN namespace TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE memories ADD COLUMN status TEXT NOT NULL DEFAULT ''",
+                "ALTER TABLE memories ADD COLUMN depends_on_json TEXT NOT NULL DEFAULT '[]'",
+                "ALTER TABLE memories ADD COLUMN priority INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE memories ADD COLUMN quality_score REAL NOT NULL DEFAULT 1.0",
+                # v0.44 P1-5:per-agent 记忆隔离 — 拥有者 agent id(空=全局共享)
+                "ALTER TABLE memories ADD COLUMN owner_agent TEXT NOT NULL DEFAULT ''",
+            ]:
+                try:
+                    c.execute(alter_sql)
+                except sqlite3.OperationalError:
+                    pass  # 列已存在
             c.execute("CREATE INDEX IF NOT EXISTS idx_memories_layer ON memories(layer)")
             c.execute("CREATE INDEX IF NOT EXISTS idx_memories_created ON memories(created_at DESC)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_memories_namespace ON memories(namespace)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_memories_status ON memories(status)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_memories_namespace_status ON memories(namespace, status)")
+            c.execute("CREATE INDEX IF NOT EXISTS idx_memories_owner ON memories(owner_agent)")
             c.commit()
 
     @contextmanager
@@ -123,28 +176,42 @@ class OIMemory:
         content: str = "",
         tags: list[str] | None = None,
         dedupe_title: bool = True,
+        namespace: str = "",  # v0.24:optional namespace 字段
+        status: str = "",  # v0.25:task 状态(空字符串=非 task)
+        depends_on: list[int] | None = None,  # v0.25:task 依赖的 task_id 列表
+        priority: int = 0,  # v0.25:task 优先级
+        quality_score: float = 1.0,  # v0.26:记忆质量权重
+        owner_agent: str = "",  # v0.44 P1-5:拥有者 agent id(空=全局共享,所有 agent 可见)
     ) -> int:
         if layer not in LAYERS:
             raise ValueError(f"layer 必须是 {LAYERS} 之一,got {layer!r}")
+        if status and status not in TASK_STATUSES:
+            raise ValueError(f"status 必须是 {TASK_STATUSES} 之一,got {status!r}")
         tags = tags or []
+        depends_on_json = json.dumps(depends_on or [])
         tf = self._token_freq(content + " " + title)
         with self._lock, self._conn() as c:
-            # 去重:同一 layer + title 存在则更新 content
+            # 去重:同一 layer + title + namespace 存在则更新 content + task 字段
             if dedupe_title:
                 row = c.execute(
-                    "SELECT id FROM memories WHERE layer=? AND title=?",
-                    (layer, title),
+                    "SELECT id FROM memories WHERE layer=? AND title=? AND namespace=?",
+                    (layer, title, namespace),
                 ).fetchone()
                 if row:
                     c.execute(
-                        "UPDATE memories SET content=?, tags_json=?, token_freq=?, created_at=? WHERE id=?",
-                        (content, json.dumps(tags, ensure_ascii=False), tf, time.time(), row["id"]),
+                        """UPDATE memories SET content=?, tags_json=?, token_freq=?, created_at=?,
+                              status=?, depends_on_json=?, priority=?, quality_score=?, owner_agent=? WHERE id=?""",
+                        (content, json.dumps(tags, ensure_ascii=False), tf, time.time(),
+                         status, depends_on_json, priority, quality_score, owner_agent, row["id"]),
                     )
                     c.commit()
                     return int(row["id"])
             cur = c.execute(
-                "INSERT INTO memories(layer, title, content, tags_json, created_at, token_freq) VALUES (?,?,?,?,?,?)",
-                (layer, title, content, json.dumps(tags, ensure_ascii=False), time.time(), tf),
+                """INSERT INTO memories(layer, title, content, tags_json, created_at, token_freq,
+                       namespace, status, depends_on_json, priority, quality_score, owner_agent)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (layer, title, content, json.dumps(tags, ensure_ascii=False), time.time(), tf,
+                 namespace, status, depends_on_json, priority, quality_score, owner_agent),
             )
             c.commit()
             return int(cur.lastrowid)
@@ -156,18 +223,39 @@ class OIMemory:
         n: int = 5,
         layers: Iterable[str] = ("L0", "L1", "L2", "L3"),
         min_score: float = 0.05,
+        namespace: str | None = None,  # v0.24:None = 全部, str = 过滤
+        status: str | None = None,  # v0.25:None = 不过滤, str = 只返该 status 的条目
+        visible_to: str | None = None,  # v0.44 P1-5:调用方 agent id;None=不过滤(向后兼容)
     ) -> list[Memory]:
-        """按 query 关键词 overlap 算分,返回 top-N memory"""
+        """按 query 关键词 overlap 算分,返回 top-N memory
+
+        v0.24:排序时乘 decay_score(半衰期 7 天)防老条目霸榜
+        v0.25:加 status 过滤(task queue 用)
+        v0.44 P1-5:visible_to 访问控制 — 传入 agent id 时,
+                   只能看到 全局共享(owner_agent='') + 自己拥有(owner_agent=visible_to) 的记忆,
+                   防 Federation 多 agent 互相偷看(B 报告确认的真实泄露面)。
+        """
         if not query.strip():
             return []
         q_tokens = tokenize(query)
         if not q_tokens:
             return []
         layers = tuple(layers)
+        where_clauses = [f"layer IN ({','.join('?' * len(layers))})"]
+        params: list = list(layers)
+        if namespace is not None:
+            where_clauses.append("namespace=?")
+            params.append(namespace)
+        if status is not None:
+            where_clauses.append("status=?")
+            params.append(status)
+        if visible_to is not None:
+            where_clauses.append("(owner_agent='' OR owner_agent=?)")
+            params.append(visible_to)
         with self._lock, self._conn() as c:
             rows = c.execute(
-                f"SELECT * FROM memories WHERE layer IN ({','.join('?' * len(layers))})",
-                layers,
+                f"SELECT * FROM memories WHERE {' AND '.join(where_clauses)}",
+                params,
             ).fetchall()
 
         scored: list[tuple[float, Memory]] = []
@@ -177,16 +265,11 @@ class OIMemory:
             if not mem_tokens:
                 continue
             overlap = q_tokens & mem_tokens
-            # score = |overlap| / sqrt(|q| * |mem|),即 cosine-like 但无嵌入
-            score = len(overlap) / ((len(q_tokens) ** 0.5) * (len(mem_tokens) ** 0.5))
-            if score >= min_score:
-                scored.append((score, Memory(
-                    id=row["id"], layer=row["layer"], title=row["title"],
-                    content=row["content"],
-                    tags=json.loads(row["tags_json"] or "[]"),
-                    created_at=row["created_at"],
-                    access_count=row["access_count"],
-                )))
+            base_score = len(overlap) / ((len(q_tokens) ** 0.5) * (len(mem_tokens) ** 0.5))
+            qs = row["quality_score"] if row["quality_score"] is not None else 1.0
+            final_score = base_score * self._decay_score(row["access_count"], row["last_access"], qs)
+            if base_score >= min_score:
+                scored.append((final_score, self._row_to_memory(row)))
         scored.sort(key=lambda x: (-x[0], -x[1].created_at))
         hits = [m for _, m in scored[:n]]
         # 更新 access_count(异步,不阻塞返回)
@@ -200,17 +283,168 @@ class OIMemory:
                 c.commit()
         return hits
 
-    def list_by_layer(self, layer: str, limit: int = 20) -> list[Memory]:
+    def list_by_layer(
+        self,
+        layer: str,
+        limit: int = 20,
+        namespace: str | None = None,
+        status: str | None = None,  # v0.25:task 过滤
+        visible_to: str | None = None,  # v0.44 P1-5:调用方 agent id;None=不过滤
+    ) -> list[Memory]:
+        """列出某 layer 的记忆(默认按 created_at DESC)
+
+        v0.24:可选 namespace 过滤
+        v0.25:可选 status 过滤(task queue 用)
+        v0.44 P1-5:可选 visible_to 访问控制(全局共享 + 自己拥有)
+        """
+        where_clauses = ["layer=?"]
+        params: list = [layer]
+        if namespace is not None:
+            where_clauses.append("namespace=?")
+            params.append(namespace)
+        if status is not None:
+            where_clauses.append("status=?")
+            params.append(status)
+        if visible_to is not None:
+            where_clauses.append("(owner_agent='' OR owner_agent=?)")
+            params.append(visible_to)
+        params.append(limit)
         with self._lock, self._conn() as c:
             rows = c.execute(
-                "SELECT * FROM memories WHERE layer=? ORDER BY created_at DESC LIMIT ?",
-                (layer, limit),
+                f"SELECT * FROM memories WHERE {' AND '.join(where_clauses)} ORDER BY created_at DESC LIMIT ?",
+                params,
             ).fetchall()
-        return [Memory(
-            id=r["id"], layer=r["layer"], title=r["title"], content=r["content"],
-            tags=json.loads(r["tags_json"] or "[]"),
-            created_at=r["created_at"], access_count=r["access_count"],
-        ) for r in rows]
+        return [self._row_to_memory(r) for r in rows]
+
+    # ---------- v0.25:task queue 辅助方法 ----------
+    def _row_to_memory(self, row) -> Memory:
+        """从 sqlite3.Row 转 Memory dataclass,共享给 recall/list_by_layer/get_by_id"""
+        return Memory(
+            id=row["id"], layer=row["layer"], title=row["title"], content=row["content"],
+            tags=json.loads(row["tags_json"] or "[]"),
+            created_at=row["created_at"], access_count=row["access_count"],
+            namespace=row["namespace"] or "",
+            status=row["status"] or "",
+            depends_on=json.loads(row["depends_on_json"] or "[]"),
+            priority=row["priority"] or 0,
+            quality_score=row["quality_score"] if row["quality_score"] is not None else 1.0,
+            owner_agent=row["owner_agent"] if "owner_agent" in row.keys() else "",
+        )
+
+    def get_by_id(self, memory_id: int) -> Memory | None:
+        """按 id 取记忆(task_queue 检查 depends_on 用)"""
+        with self._lock, self._conn() as c:
+            row = c.execute("SELECT * FROM memories WHERE id=?", (memory_id,)).fetchone()
+        if not row:
+            return None
+        return self._row_to_memory(row)
+
+    def update_status(self, memory_id: int, status: str):
+        """更新 status(task_queue 状态机用)"""
+        if status not in TASK_STATUSES:
+            raise ValueError(f"status 必须是 {TASK_STATUSES} 之一,got {status!r}")
+        with self._lock, self._conn() as c:
+            c.execute("UPDATE memories SET status=? WHERE id=?", (status, memory_id))
+            c.commit()
+
+    def append_to_content(self, memory_id: int, suffix: str):
+        """追加内容到 content(mark_done 时记录 result 用)"""
+        with self._lock, self._conn() as c:
+            row = c.execute("SELECT content FROM memories WHERE id=?", (memory_id,)).fetchone()
+            if not row:
+                return False
+            new_content = (row["content"] + "\n\n" + suffix) if row["content"] else suffix
+            c.execute(
+                "UPDATE memories SET content=?, last_access=? WHERE id=?",
+                (new_content, time.time(), memory_id),
+            )
+            c.commit()
+            return True
+
+    # ---------- v0.24 tier 自动迁移 + decay ----------
+    def _decay_score(
+        self,
+        access_count: int,
+        last_access: float | None,
+        quality_score: float = 1.0,
+    ) -> float:
+        """访问次数 × 质量 × 时间衰减因子(防老条目霸榜)
+
+        公式:score = quality_score * access_count * exp(-0.1 * age_days)
+        半衰期 ≈ 7 天(0.1 = ln(2) / 7)
+        v0.26: 加入 quality_score 权重，低质量条目衰减更快
+        """
+        if access_count <= 0:
+            return 0.0
+        if not last_access:
+            return quality_score * float(access_count)  # 从未被访问的不衰减
+        age_days = (time.time() - last_access) / 86400.0
+        decay = math.exp(-0.1 * age_days)
+        return quality_score * access_count * decay
+
+    def auto_promote(
+        self,
+        threshold_access_count: int = 50,
+        max_age_hours: float = 168.0,  # 7 天
+        dry_run: bool = False,
+    ) -> dict:
+        """v0.24:自动 tier 迁移,防 L0 永不退位
+
+        规则:
+        - L2/L3 → L1:access_count >= threshold 且 last_access 在 max_age_hours 内(高频 + 最近活跃)
+        - L0 → L1:last_access 超 max_age_hours(冷记忆自动退位)或 access_count 远高于阈值(霸榜自动降级)
+        - L1 → L2:last_access 超 max_age_hours × 2(essential 也可能 stale)
+
+        Returns:
+            {"promoted_to_l1": N, "demoted_from_l0": M, "demoted_from_l1": K, "dry_run": bool}
+        """
+        cutoff = time.time() - max_age_hours * 3600.0
+        stale_cutoff = time.time() - (max_age_hours * 2) * 3600.0
+        result = {"promoted_to_l1": 0, "demoted_from_l0": 0, "demoted_from_l1": 0, "dry_run": dry_run}
+
+        with self._lock, self._conn() as c:
+            # L2/L3 → L1(高频 + 最近)
+            cur = c.execute(
+                """
+                UPDATE memories SET layer = 'L1'
+                WHERE layer IN ('L2', 'L3')
+                  AND access_count >= ?
+                  AND last_access >= ?
+                """,
+                (threshold_access_count, cutoff),
+            )
+            result["promoted_to_l1"] = cur.rowcount
+
+            # L0 → L1(冷记忆退位 + 霸榜降级)
+            cur = c.execute(
+                """
+                UPDATE memories SET layer = 'L1'
+                WHERE layer = 'L0'
+                  AND (last_access < ? OR (last_access IS NOT NULL AND access_count >= ? * 3))
+                """,
+                (cutoff, threshold_access_count),
+            )
+            result["demoted_from_l0"] = cur.rowcount
+
+            # L1 → L2(essential 长期未访问)
+            cur = c.execute(
+                """
+                UPDATE memories SET layer = 'L2'
+                WHERE layer = 'L1'
+                  AND last_access IS NOT NULL
+                  AND last_access < ?
+                """,
+                (stale_cutoff,),
+            )
+            result["demoted_from_l1"] = cur.rowcount
+
+            if not dry_run:
+                c.commit()
+            else:
+                # dry_run:rollback(但 SQLite 没有跨语句 savepoint,直接不开 commit)
+                pass
+
+        return result
 
     def stats(self) -> dict:
         with self._lock, self._conn() as c:
@@ -219,12 +453,18 @@ class OIMemory:
                 layer: c.execute("SELECT COUNT(*) FROM memories WHERE layer=?", (layer,)).fetchone()[0]
                 for layer in LAYERS
             }
+            # v0.25:by_status(task queue 状态分布)
+            by_status = {
+                s: c.execute("SELECT COUNT(*) FROM memories WHERE status=?", (s,)).fetchone()[0]
+                for s in TASK_STATUSES
+            }
             top_accessed = c.execute(
                 "SELECT title, layer, access_count FROM memories ORDER BY access_count DESC LIMIT 5"
             ).fetchall()
         return {
             "total": total,
             "by_layer": by_layer,
+            "by_status": by_status,
             "top_accessed": [dict(r) for r in top_accessed],
             "db_path": str(self.db_path),
         }

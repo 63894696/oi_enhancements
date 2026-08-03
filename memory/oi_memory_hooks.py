@@ -81,6 +81,10 @@ def install(interpreter, agent_name: str = "oi", recall_n: int = 5, max_recall_c
     装完之后:
       - 每次 chat() 开始前,自动按 task 内容 recall → 注入 system message
       - 每次 chat() 结束后,自动把 user/task 和 assistant 回复存到 L3
+
+    P1 per-agent 隔离:`agent_name` 同时承担两个角色——pre_chat recall 的
+    `visible_to`(只召回全局共享 + 本 agent 私有)与 post_chat store 的
+    `owner_agent`(写入的 L3 快照归属本 agent)。
     """
     mem = get_memory()
 
@@ -101,7 +105,8 @@ def install(interpreter, agent_name: str = "oi", recall_n: int = 5, max_recall_c
         original_task = args[0] if args else kwargs.get("message") or kwargs.get("task") or ""
         task = original_task
         if isinstance(task, str) and task.strip():
-            hits = mem.recall(task, n=recall_n)
+            # P1 per-agent 隔离:传入 agent_name,只召回 全局共享(owner_agent='') + 本 agent 私有 的记忆
+            hits = mem.recall(task, n=recall_n, visible_to=agent_name)
             if hits:
                 ctx = _format_hits_for_prompt(hits)
                 if len(ctx) > max_recall_chars:
@@ -124,11 +129,13 @@ def install(interpreter, agent_name: str = "oi", recall_n: int = 5, max_recall_c
             if original_task and response_text:
                 title = original_task[:80].replace("\n", " ")
                 body = f"USER TASK:\n{original_task[:1500]}\n\nASSISTANT:\n{response_text[:3000]}"
+                # P1 per-agent 隔离:写入 owner_agent,该条只对本 agent + 全局可见
                 mem.store(
                     layer="L3",
                     title=f"{agent_name}:{title}",
                     content=body,
                     tags=["oi-chat", agent_name],
+                    owner_agent=agent_name,
                 )
         except Exception:
             pass  # post_chat 失败不能阻塞主流程
