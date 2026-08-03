@@ -72,3 +72,11 @@ $RECYCLE.BIN/
 *.db
 logs/
 *.jsonl
+
+# Local ops generated artifacts (regenerable from ops_dashboard.py)
+ops_dashboard.html
+# Session scratch: backend logs / shell launchers / screenshots (not for repo)
+*.err
+_run_*_backend.bat
+_*_test.png
+_phone_*.png
