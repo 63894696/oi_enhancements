@@ -1,0 +1,5 @@
+# SecureDM 壳自定义命令的 app 默认权限。
+# build.rs 在 AppManifest 里声明了 pick_file/pick_folder,这里把它们放开。
+# identifier 前缀 "app:" 由 tauri-build 对 __app__ 包自动加,故这里写裸 allow- 名。
+[default]
+permissions = ["allow-pick-file", "allow-pick-folder"]

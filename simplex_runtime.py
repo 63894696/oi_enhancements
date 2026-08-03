@@ -28,14 +28,19 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
-# 默认自建 SMP 服务器(VPS,postgres 后端;见 simplex-selfhosted-server-2026-07-19)
+# 默认自建 SMP 服务器(VPS,postgres 后端;见 simplex-selfhosted-server-2026-07-19)。
+# 2026-08-03 域名化:smp.babelspan.com:5223(灰云)。服务器证书已重签为 v3+SAN
+# (DNS:smp.babelspan.com + IP:192.220.14.165,同 CA,SPKI/指纹不变),故域名与
+# 裸 IP 两种连接都过 TLS 校验。此前重签出 v1 无 SAN 证书 → 新 broker 连接报
+# LeafNotV3(errorAgent),旧队列连接还能用,造成 contacts 正常但 create_invite 失败。
 DEFAULT_SMP_SERVER = (
-    "smp://JL3cUrxYU15qFNtHnsFNUfeZR0l3iP-CH7Jd3SrlLjk=@192.220.14.165:5223"
+    "smp://JL3cUrxYU15qFNtHnsFNUfeZR0l3iP-CH7Jd3SrlLjk=@smp.babelspan.com:5223"
 )
 # 默认自建 XFTP 服务器(文件分片存储;同 VPS 8443)。文件发送必须配它,
 # 否则 libsimplex 默认走公共 XFTP,自建内网下分片不互通 → 接收方拉不到。
+# 同 8-03:xftp.babelspan.com:8443,证书 v3+SAN(DNS + IP),指纹不变。
 DEFAULT_XFTP_SERVER = (
-    "xftp://aVv9lQsIp3xNEyBWBjg_bQKlRl-fQ13xirC9EIVYark=@192.220.14.165:8443"
+    "xftp://aVv9lQsIp3xNEyBWBjg_bQKlRl-fQ13xirC9EIVYark=@xftp.babelspan.com:8443"
 )
 
 # 默认身份数据库位置(与 policy_engine 同区,落在 aureon 数据目录)
@@ -164,7 +169,14 @@ class SimplexRuntime:
 
     async def _boot(self) -> None:
         """在 actor 线程内初始化 client 并常驻接收循环。"""
+        import os as _os
+
         from simplex_chat import Client, Profile, SqliteDb
+
+        # 聊天记录口令加密:用户在 UI 设口令并解锁后,web 层把派生密钥放进
+        # DM_DB_KEY;此处注入 SqliteDb.encryption_key,libsimplex 据此开 SQLCipher
+        # 加密库。未设口令则为 None,保持明文(向后兼容现有库)。
+        _db_key = _os.environ.get("DM_DB_KEY") or None
 
         # 文件下载前置:libsimplex 的接收/上传 worker 需要 temp/files 目录,
         # 而 Python 客户端 start_chat 只发裸 /_start,从不设这两个目录(Haskell
@@ -193,7 +205,7 @@ class SimplexRuntime:
 
         client = Client(
             profile=Profile(display_name=self._display_name),
-            db=SqliteDb(file_prefix=self._db_prefix),
+            db=SqliteDb(file_prefix=self._db_prefix, encryption_key=_db_key),
             log_contacts=True,
         )
         await client.__aenter__()
@@ -419,15 +431,67 @@ class SimplexRuntime:
     def wait_contact_ready(self, contact_id: int, timeout: float = 60.0) -> bool:
         return self._submit(self._a_wait_contact_ready(contact_id, timeout), timeout=timeout + 15)
 
-    async def _a_create_invitation(self) -> str:
+    async def _a_create_invitation(self, incognito: bool = False) -> str:
         api = self._require_client().api
         user = await api.api_get_active_user()
         if not user:
             raise RuntimeError("无 active user")
-        return await api.api_create_link(user["userId"])
+        from simplex_chat.types import _commands as CC  # 延迟 import,与文件头风格一致
+        from simplex_chat import core as _sc_core
 
-    def create_invitation(self) -> str:
-        return self._submit(self._a_create_invitation())
+        # 不走 api_create_link:它把非 invitation 响应吞成 ChatCommandError('error creating link'),
+        # 丢掉内层 agentError 根因。直接发 APIAddContact 拿原始响应;若 send_chat_cmd 直接抛
+        # ChatAPIError(如 errorAgent),把 chat_error 内层原样透出便于诊断。
+        try:
+            r = await api.send_chat_cmd(
+                CC.APIAddContact_cmd_string({"userId": user["userId"], "incognito": incognito})
+            )
+        except _sc_core.ChatAPIError as e:
+            raise RuntimeError(f"APIAddContact ChatAPIError: {e.chat_error!r}") from e
+        if r.get("type") == "invitation":
+            link = r["connLinkInvitation"]
+            return link.get("connShortLink") or link["connFullLink"]
+        # 提取内层 errorAgent.agentError / errorStore / error,原样透出
+        detail = r.get("chatError") or r
+        raise RuntimeError(f"APIAddContact 未返回 invitation: {detail!r}")
+
+    def create_invitation(self, incognito: bool = False) -> str:
+        return self._submit(self._a_create_invitation(incognito))
+
+    async def _a_create_user_address(self) -> str:
+        """长期有效的用户地址(可多人扫码/反复使用,适合公共场合二维码)。
+        与一次性 APIAddContact 不同:地址创建后可被任意多人连接,直到主动删除。
+        地址已存在时直接回显现有地址(幂等),不报错。"""
+        api = self._require_client().api
+        user = await api.api_get_active_user()
+        if not user:
+            raise RuntimeError("无 active user")
+
+        def _link(d: Any) -> str:
+            # CreatedConnLink 平铺 connShortLink/connFullLink;
+            # UserContactLink 嵌 connLinkContact{connShortLink,connFullLink}
+            if isinstance(d, dict):
+                inner = d.get("connLinkContact") if isinstance(d.get("connLinkContact"), dict) else d
+                return inner.get("connShortLink") or inner.get("connFullLink") or str(d)
+            return str(d)
+
+        # 先看是否已有地址:有就直接回显(重复创建会 errorStore)
+        try:
+            existing = await api.api_get_user_address(user["userId"])
+        except Exception:  # noqa: BLE001
+            existing = None
+        if existing:
+            return _link(existing)
+        try:
+            r = await api.api_create_user_address(user["userId"])
+        except Exception as e:  # noqa: BLE001
+            # ChatCommandError 常带底层 chat_error(errorStore/errorAgent),原样透出便于诊断
+            inner = getattr(e, "chat_error", None) or getattr(e, "args", None) or e
+            raise RuntimeError(f"创建用户地址失败: {inner!r}") from e
+        return _link(r)
+
+    def create_user_address(self) -> str:
+        return self._submit(self._a_create_user_address())
 
     async def _a_accept(self, link: str, timeout: float) -> dict[str, Any]:
         client = self._require_client()

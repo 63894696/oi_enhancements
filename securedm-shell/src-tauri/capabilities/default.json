@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "SecureDM 壳默认能力:放开核心默认命令(含自定义 pick_file/pick_folder)给本地与远程源。",
+  "windows": ["main"],
+  "local": true,
+  "remote": {
+    "urls": ["http://127.0.0.1:18801", "http://127.0.0.1:18802", "http://localhost:18801", "http://localhost:18802"]
+  },
+  "permissions": ["core:default", "default"]
+}
