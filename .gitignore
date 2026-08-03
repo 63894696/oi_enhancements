@@ -67,3 +67,8 @@ $RECYCLE.BIN/
 *.log
 *.tmp
 *.bak
+
+# App data / runtime artifacts
+*.db
+logs/
+*.jsonl
