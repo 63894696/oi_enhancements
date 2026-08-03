@@ -449,6 +449,47 @@ class SimplexRuntime:
     def send_message(self, contact_id: int, text: str) -> dict[str, Any]:
         return self._submit(self._a_send(contact_id, text))
 
+    async def _a_send_ttl(
+        self, contact_id: int, text: str, ttl: int
+    ) -> dict[str, Any]:
+        """发阅后即焚消息(SimpleX 协议级 ttl,秒)。到点双方客户端各自删除。
+
+        实现:经 CC.APISendMessages_cmd_string 传 ttl 字段,拼出
+        `/_send @<id> ttl=N json [...]`。高层 api_send_messages 不暴露 ttl,
+        故此处直接构造 APISendMessages dict 走 send_chat_cmd —— 复用现成的命令
+        构造函数,不手拼裸命令字符串(避免格式漂移)。
+        """
+        api = self._require_client().api
+        from simplex_chat.types import _commands as CC  # 延迟 import,与文件头风格一致
+
+        send_ref = {"chatType": "direct", "chatId": contact_id}
+        msg = {"msgContent": {"type": "text", "text": text}, "mentions": {}}
+        cmd = CC.APISendMessages_cmd_string(
+            {
+                "sendRef": send_ref,
+                "composedMessages": [msg],
+                "liveMessage": False,
+                "ttl": int(ttl),
+            }
+        )
+        r = await api.send_chat_cmd(cmd)
+        if r.get("type") != "newChatItems":
+            raise RuntimeError(f"阅后即焚发送失败:{r!r}")
+        return {
+            "sent_items": len(r.get("chatItems", [])),
+            "contact_id": contact_id,
+            "text": text,
+            "ttl": int(ttl),
+        }
+
+    def send_message_ttl(
+        self, contact_id: int, text: str, ttl: int
+    ) -> dict[str, Any]:
+        """同步封装:发 ttl 秒的阅后即焚消息。ttl<=0 视为非法(退化为普通消息应走 send_message)。"""
+        if ttl <= 0:
+            raise ValueError("ttl 必须为正整数秒;普通消息请用 send_message")
+        return self._submit(self._a_send_ttl(contact_id, text, ttl))
+
     async def _a_delete_contact(self, contact_id: int) -> dict[str, Any]:
         """删除联系人(断开并移除连接)。用于清理测试期残留的重复连接。
         SimpleX API 命令: /_delete @<contactId>。"""
