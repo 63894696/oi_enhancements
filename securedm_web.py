@@ -2387,9 +2387,12 @@ def api_status() -> dict[str, Any]:
         return _ok({"running": False})
     st_ = rt.status()
     contacts = rt.list_contacts()
+    # 右上角"命名.信令✔"/窗口标题取 runtime 当前显示名(_display_name,改 ID 实时更新),
+    # 不用 st_.active_user(SimpleX profile,setup 后改名不同步),否则右上角停在启动身份。
+    current_name = (rt._display_name or st_.get("active_user") or "")
     return _ok({
         "running": True,
-        "active_user": st_.get("active_user"),
+        "active_user": current_name,
         "server": st_.get("smp_server"),
         "contacts": contacts,
     })
@@ -2705,8 +2708,11 @@ def api_receive_file(file_id: int) -> dict[str, Any]:
                 shutil.copy2(saved, dest)
                 shown = str(dest)
                 r.setdefault("output", {})["copied_to"] = str(dest)
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as e:  # noqa: BLE001
+                # 下载本体已成功,仅自定义目录复制失败 —— 不 raise,但要可见
+                r.setdefault("output", {})["copy_error"] = f"{type(e).__name__}: {e}"
+                note = f"(自定义目录复制失败: {e}; 文件仍在默认目录 {saved})"
+                r["diagnosable"] = (r.get("diagnosable", "") + " " + note).strip()
         r.setdefault("output", {})["display_path"] = shown
     return r
 
@@ -3052,7 +3058,9 @@ async function openChat(ct, isRefresh){
 function fileCard(ct,f){
   const d=document.createElement('div');d.className='fmsg';
   d.innerHTML='<div class="fname">📎 '+esc(f.file_name||'文件')+'</div>';
-  const vb=document.createElement('span');vb.className='vbadge pending';vb.textContent='…';d.appendChild(vb);
+  // 渲染时文件尚未下载,绝不 verify(否则在下载目录匹配到旧同名/同 hash 文件会误报"校验失败");
+  // 先挂中性徽标"下载后校验",只在下载成功后(onclick 内)才真正 verifyBadge。
+  const vb=document.createElement('span');vb.className='vbadge pending';vb.textContent='下载后校验';d.appendChild(vb);
   const btn=document.createElement('button');btn.textContent='下载';d.appendChild(btn);
   btn.onclick=async()=>{
     btn.disabled=true;btn.textContent='下载中…';
@@ -3065,15 +3073,20 @@ function fileCard(ct,f){
       loc.textContent='已存到 '+(rr.output.display_path||rr.output.saved_path);
       d.appendChild(loc);
     }
-    verifyBadge(ct,f.file_name,vb);
+    if(rr.ok) verifyBadge(ct,f.file_name,vb);
   };
-  verifyBadge(ct,f.file_name,vb);
   return d;
 }
 async function verifyBadge(ct,fname,el){
   el.className='vbadge pending';el.textContent='校验中…';
   const v=await api('/dm/api/verify_file?contact='+encodeURIComponent(ct.contact_id)+'&file_name='+encodeURIComponent(fname));
-  if(v.ok&&v.output&&v.output.verified){el.className='vbadge ok';el.textContent='✓ 已验证来自 '+(v.output.sender||'对方');}
+  const sender='✓ 已验证来自 '+(v.output&&v.output.sender||'对方');
+  if(v.ok&&v.output&&v.output.verified){
+    // 已验真:若带 ℹ 合法换钥提示,作为中性说明附带(标题),不当作告警公钥变更。
+    el.className='vbadge ok';el.textContent=sender;
+    if(v.output.alert) el.title=v.output.alert;
+  }
+  else if(v.ok&&v.output&&v.output.alert){el.className='vbadge bad';el.textContent='⚠ 公钥变更';el.title=v.output.alert;}
   else if(v.ok&&v.output){el.className='vbadge bad';el.textContent='✗ 校验失败';el.title=v.diagnosable||'';}
   else{el.className='vbadge pending';el.textContent='无签名';el.title=(v.diagnosable||v.error||'');}
 }
@@ -3164,6 +3177,7 @@ async function saveIdentity(){
   const r=await api('/dm/api/set_identity',{method:'POST',body:JSON.stringify({name})});
   m.style.color=r.ok?'var(--ok)':'var(--bad)';
   m.textContent=r.ok?('已改为「'+name+'」(对方刷新后可见)'):('失败:'+(r.error||'')+(r.diagnosable||''));
+  if(r.ok){refresh();}  // 改名成功立即刷新右上角标签(否则要等下次轮询才变,看起来像没生效)
 }
 async function setDbPassword(){
   const pwd=document.getElementById('dbPwd').value;
