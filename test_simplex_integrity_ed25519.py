@@ -38,7 +38,7 @@ def _mk_rt(db_prefix: str, texts: list[str] | None = None, display: str = "me"):
     rt._file_download_dir = str(Path(db_prefix).parent / "downloads")
     rt.resolve_contact.side_effect = lambda c: {"contact_id": 7, "display_name": str(c)}
     rt.status.return_value = {"active_user": display}
-    rt.chat_items.side_effect = lambda cid, limit=60: [{"text": t} for t in (texts or [])]
+    rt.chat_items.side_effect = lambda cid, limit=60: [{"text": t, "dir": "them"} for t in (texts or [])]
     return rt
 
 
@@ -170,7 +170,7 @@ class TestEd25519SignVerify(unittest.TestCase):
         return f"{si._MANIFEST_PREFIX}file {json.dumps(manifest, ensure_ascii=False)}"
 
     def _run_verify(self, texts: list[str]):
-        self.rt.chat_items.side_effect = lambda cid, limit=60: [{"text": t} for t in texts]
+        self.rt.chat_items.side_effect = lambda cid, limit=60: [{"text": t, "dir": "them"} for t in texts]
         with mock.patch.object(si, "_runtime", return_value=self.rt):
             return si.simplex_verify_received_file("peer", str(self.fpath), timeout=0.1)
 
@@ -222,7 +222,7 @@ class TestEd25519SignVerify(unittest.TestCase):
         payload = _payload("payload.bin", self.digest, self.size, self.sender)
         sig = base64.b64encode(self.peer_priv.sign(payload.encode())).decode()
         m = self._manifest(sig)
-        rt2.chat_items.side_effect = lambda cid, limit=60: [{"text": self._file_msg(m)}]
+        rt2.chat_items.side_effect = lambda cid, limit=60: [{"text": self._file_msg(m), "dir": "them"}]
         with mock.patch.object(si, "_runtime", return_value=rt2):
             r = si.simplex_verify_received_file("peer", str(self.fpath), timeout=0.1)
         self.assertFalse(r["ok"])
@@ -238,7 +238,7 @@ class TestEd25519SignVerify(unittest.TestCase):
         payload = _payload("payload.bin", self.digest, self.size, self.sender)
         sig = base64.b64encode(self.peer_priv.sign(payload.encode())).decode()
         m = self._manifest(sig)
-        rt3.chat_items.side_effect = lambda cid, limit=60: [{"text": trust}, {"text": self._file_msg(m)}]
+        rt3.chat_items.side_effect = lambda cid, limit=60: [{"text": trust, "dir": "them"}, {"text": self._file_msg(m), "dir": "them"}]
         with mock.patch.object(si, "_runtime", return_value=rt3):
             r = si.simplex_verify_received_file("peer", str(self.fpath), timeout=0.1)
         self.assertTrue(r["ok"], r)
@@ -261,7 +261,7 @@ class TestEd25519SignVerify(unittest.TestCase):
         payload = _payload("payload.bin", self.digest, self.size, self.sender)
         sig = base64.b64encode(new_priv.sign(payload.encode())).decode()
         m = self._manifest(sig, pub=new_pub)
-        rt.chat_items.side_effect = lambda cid, limit=60: [{"text": trust}, {"text": self._file_msg(m)}]
+        rt.chat_items.side_effect = lambda cid, limit=60: [{"text": trust, "dir": "them"}, {"text": self._file_msg(m), "dir": "them"}]
         with mock.patch.object(si, "_runtime", return_value=rt):
             r = si.simplex_verify_received_file("peer", str(self.fpath), timeout=0.1)
         self.assertTrue(r["ok"], r)
@@ -269,6 +269,47 @@ class TestEd25519SignVerify(unittest.TestCase):
         self.assertTrue(r["output"]["verified"], r)
         # 换绑已生效:固定钥更新为新钥
         self.assertEqual(si._pubkey_for(rt, 7), new_pub)
+
+    def test_own_echo_trust_not_consumed_as_peer_key(self):
+        """回归:同一对话里本端自己发出的 trust 公告(dir="me")绝不能被当作对方公钥消费。
+
+        真实 bug("两窗口交换发文件都来自 bob"):verify 用 chat_items 取回**双向**消息,
+        旧代码对每条 trust 都消费,本端自己的回声(dir=me)也进 pin。bob 的公告 id 更靠后
+        → 覆盖 oiagent 的钥 → oiagent 侧把 bob 的钥钉成"对方公钥",两侧 pin 都是 bob 的钥,
+        manifest 又恰好用它签 → 双向 verify 都"通过"且 sender=bob。
+        修复:只消费 dir=="them" 的 trust/manifest。本测试:them(对方钥) + me(自己回声)
+        同会话,且 me 排后(最易被误钉的次序)—— pin 必须是对方钥,verify 必须 verified=True
+        且 sender 为对方。"""
+        rt = _mk_rt(str(self.root / "db" / "echo_simplex"))
+        # 本端自己的身份钥(回声里携带,绝不能进 pin)
+        own_priv = Ed25519PrivateKey.generate()
+        own_pub = base64.b64encode(own_priv.public_key().public_bytes_raw()).decode()
+        own_echo = f"{si._MANIFEST_PREFIX}trust " + json.dumps(
+            {"v": 1, "algorithm": "Ed25519", "pubkey": own_pub,
+             "fp": hashlib.sha256(base64.b64decode(own_pub)).hexdigest()[:16], "identity": "me-self"})
+        # 对方(peer)的 trust + 用对方钥签的 manifest
+        peer_trust = f"{si._MANIFEST_PREFIX}trust " + json.dumps(
+            {"v": 1, "algorithm": "Ed25519", "pubkey": self.peer_pub_b64,
+             "fp": hashlib.sha256(base64.b64decode(self.peer_pub_b64)).hexdigest()[:16],
+             "identity": self.sender})
+        payload = _payload("payload.bin", self.digest, self.size, self.sender)
+        sig = base64.b64encode(self.peer_priv.sign(payload.encode())).decode()
+        m = self._manifest(sig)
+        # dir=me 的自己回声排在 dir=them 之后(按 ts 升序,旧代码会被它覆盖)
+        rt.chat_items.side_effect = lambda cid, limit=60: [
+            {"text": peer_trust, "dir": "them"},
+            {"text": self._file_msg(m), "dir": "them"},
+            {"text": own_echo, "dir": "me"},
+        ]
+        # 预清 pin,模拟首次
+        with mock.patch.object(si, "_runtime", return_value=rt):
+            r = si.simplex_verify_received_file("peer", str(self.fpath), timeout=0.1)
+        self.assertTrue(r["ok"], r)
+        self.assertTrue(r["output"]["verified"], r)
+        self.assertEqual(r["output"]["sender"], self.sender, r)
+        # pin 必须是对方钥,而非自己的回声钥
+        self.assertEqual(si._pubkey_for(rt, 7), self.peer_pub_b64)
+        self.assertNotEqual(si._pubkey_for(rt, 7), own_pub)
 
     def test_old_hmac_manifest_backward_compatible(self):
         """旧 HMAC manifest(algorithm="HMAC-SHA256")仍按旧 _trust_key_for 路径验(红线 4)。"""

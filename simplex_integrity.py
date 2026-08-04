@@ -474,9 +474,14 @@ def simplex_verify_received_file(contact: str, path: str, timeout: float = 20.0)
         # 不能走 chat_texts(api_get_chats 是"会话列表"查询,每会话只带最新一条)——
         # 否则同会话的 trust 公钥消息(早于 file manifest)会被漏掉,被动消费永远拿不到公钥。
         try:
-            texts = [it.get("text", "") for it in rt.chat_items(cid, limit=60)]
+            items = rt.chat_items(cid, limit=60)
         except Exception:  # noqa: BLE001
-            texts = []
+            items = []
+        # 只取对方(dir=="them")的消息:本窗口自己发出的 trust 公告(dir=="me")也会在
+        # 同一对话里,若一并消费,会把"自己的身份钥"错钉成"对方公钥"——这正是
+        # "两窗口交换发文件都来自 bob"的根因(oiagent 把 bob 的钥钉成了对方公钥)。
+        # manifest 同样只认对方发的,自己的回声不算。
+        texts = [it.get("text", "") for it in items if it.get("dir") == "them"]
         # 先扫描本轮 trust 公告(不立即消费),拿到"对方经 E2E 公告的公钥"集合。
         # 用于区分合法换钥(对方换设备/重新生成身份钥,经 E2E 通道公告新钥)
         # 与中间人换绑(manifest 塞陌生钥、无对应 trust 公告)—— 攻击者无法伪造该联系人的 trust。
