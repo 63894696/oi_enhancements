@@ -32,6 +32,7 @@ import simplex_tools as st  # noqa: E402
 import simplex_files as sf  # noqa: E402
 import simplex_integrity as si  # noqa: E402
 import simplex_a2h as sa  # noqa: E402
+import simplex_totp as stotp  # noqa: E402
 from simplex_runtime import SimplexRuntime  # noqa: E402
 
 DM_HOST = os.environ.get("DM_HOST", "127.0.0.1")
@@ -2475,11 +2476,13 @@ def api_db_set_password(password: str) -> dict[str, Any]:
         os.chmod(kp, 0o600)
     except Exception:  # noqa: BLE001
         pass
+    _rt()._db_key = key.hex()  # 内存注入(不落 env);下次 _boot 以加密库打开
     return _ok({"encrypted": True}, diagnosable="口令已设置。重启后会要求输入口令解锁聊天记录;请务必记牢,丢失无法恢复。")
 
 
-def api_db_unlock(password: str) -> dict[str, Any]:
-    """用口令解锁:校验口令是否匹配已存密钥。匹配则把密钥注入进程环境并允许启动。"""
+def api_db_unlock(password: str, totp_code: str = "") -> dict[str, Any]:
+    """用口令解锁:校验口令是否匹配已存密钥;启用 2FA 时还需 TOTP 码。
+    匹配则把密钥注入【进程内存】(rt._db_key,不落 env)并(按需)以加密库重启 runtime。"""
     import hashlib
     kp = _db_key_path()
     if not kp.exists():
@@ -2488,8 +2491,119 @@ def api_db_unlock(password: str) -> dict[str, Any]:
     key = hashlib.scrypt((password or "").encode("utf-8"), salt=bytes.fromhex(salt_hex), n=16384, r=8, p=1, dklen=32)
     if key.hex() != key_hex:
         return _err("口令错误", "口令不对,无法解锁聊天记录。")
-    os.environ["DM_DB_KEY"] = key_hex  # 供 runtime start 注入 SqliteDb.encryption_key
-    return _ok({"unlocked": True}, diagnosable="已解锁,正在打开聊天记录…")
+    # 2FA:已启用 TOTP 则必须再过一道动态码(口令=知识 + TOTP=持有)
+    if api_2fa_status()["output"].get("totp_enabled"):
+        if not totp_code:
+            return _err("需要动态码", "已启用 2FA,请再输入验证器 App 显示的 6 位动态码。")
+        if not stotp.verify_totp(_totp_read_secret() or "", totp_code):
+            return _err("动态码错误", "6 位动态码不对或已过期,请对照验证器 App 重输。")
+    rt = _rt()
+    rt._db_key = key_hex  # 进程内存注入(不落 env;清内存即锁死自身)
+    # 若 runtime 已在跑(之前以空 key 打不开加密库而启动失败/或明文库),以新 key 重启到加密库
+    if rt._thread and rt._thread.is_alive():
+        try:
+            rt.shutdown()
+        except Exception:  # noqa: BLE001
+            pass
+    args: dict[str, Any] = {"display_name": DM_IDENTITY}
+    if DM_DB_PREFIX:
+        args["db_prefix"] = DM_DB_PREFIX
+    r = st.call_tool("simplex_setup", args)
+    if not r.get("ok"):
+        return _err("解锁成功但打开加密库失败", r.get("diagnosable", r.get("error", "")))
+    return _ok({"unlocked": True}, diagnosable="已解锁,聊天记录已加密打开。")
+
+
+def api_db_lock_status() -> dict[str, Any]:
+    """密码门状态:页面加载据此决定先弹口令框还是直接进对话页。
+
+    needs_unlock = 设了口令但本进程尚无内存密钥(每次重启后端后都需要重新解锁)。
+    first_run   = 库文件尚不存在(全新实例)→ 前端据此弹「首启设口令」页。
+    """
+    rt = _rt()
+    has_password = _db_key_path().exists()
+    running = rt._thread is not None and rt._thread.is_alive()
+    prefix = DM_DB_PREFIX or str(Path.home() / ".local" / "share" / "aureon" / "simplex" / f"{DM_IDENTITY}_simplex")
+    db_exists = any(Path(prefix).parent.glob(Path(prefix).name + "*"))
+    return _ok({
+        "has_password": has_password,
+        "needs_unlock": has_password and rt._db_key is None,
+        "running": running,
+        "first_run": not db_exists,
+        "totp_enabled": api_2fa_status()["output"].get("totp_enabled", False),
+    })
+
+
+# ── 2FA(TOTP,知识+持有)─────────────────────────────────────────────
+def _totp_secret_path() -> Path:
+    prefix = DM_DB_PREFIX or str(Path.home() / ".local" / "share" / "aureon" / "simplex" / f"{DM_IDENTITY}_simplex")
+    return Path(prefix).parent / (Path(prefix).name + ".totp")
+
+
+def _totp_enabled_path() -> Path:
+    return _totp_secret_path().with_name(_totp_secret_path().name + ".enabled")
+
+
+def _totp_read_secret() -> str | None:
+    p = _totp_secret_path()
+    if not p.exists():
+        return None
+    try:
+        return p.read_text(encoding="utf-8").strip() or None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def api_2fa_status() -> dict[str, Any]:
+    return _ok({"totp_enabled": _totp_enabled_path().exists() and _totp_read_secret() is not None,
+                "totp_provisioned": _totp_read_secret() is not None})
+
+
+def api_2fa_setup() -> dict[str, Any]:
+    """生成 TOTP 共享密钥并落盘(0600,未启用态),返回密钥+otpauth URI 供扫码/手输。"""
+    if not _db_key_path().exists():
+        return _err("先设口令", "2FA 是在口令之上再加一道动态码;请先设置聊天记录口令。")
+    secret = stotp.generate_secret()
+    p = _totp_secret_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(secret, encoding="utf-8")
+    try:
+        os.chmod(p, 0o600)
+    except Exception:  # noqa: BLE001
+        pass
+    uri = stotp.totp_uri(secret, account=DM_IDENTITY)
+    return _ok({"secret": secret, "otpauth_uri": uri}, secret=secret, otpauth_uri=uri,
+               diagnosable="用验证器 App(Google Authenticator / 2FAS 等)扫码或手输密钥,然后输入它显示的 6 位码完成启用。")
+
+
+def api_2fa_enable(code: str) -> dict[str, Any]:
+    """验证一次动态码通过后正式启用 2FA。"""
+    secret = _totp_read_secret()
+    if not secret:
+        return _err("未生成密钥", "请先点「生成 2FA 密钥」。")
+    if not stotp.verify_totp(secret, code):
+        return _err("动态码错误", "6 位动态码不对或已过期,请对照验证器 App 重输。")
+    _totp_enabled_path().write_text("1", encoding="utf-8")
+    try:
+        os.chmod(_totp_enabled_path(), 0o600)
+    except Exception:  # noqa: BLE001
+        pass
+    return _ok({"totp_enabled": True}, diagnosable="2FA 已启用。今后解锁需口令 + 动态码。")
+
+
+def api_2fa_disable(code: str) -> dict[str, Any]:
+    """验证动态码通过后关闭 2FA 并删除密钥。"""
+    secret = _totp_read_secret()
+    if not secret:
+        return _err("未启用", "当前未配置 2FA。")
+    if not stotp.verify_totp(secret, code):
+        return _err("动态码错误", "6 位动态码不对,无法关闭 2FA。")
+    for p in (_totp_secret_path(), _totp_enabled_path()):
+        try:
+            p.unlink(missing_ok=True)
+        except Exception:  # noqa: BLE001
+            pass
+    return _ok({"totp_enabled": False}, diagnosable="2FA 已关闭,解锁只需口令。")
 
 
 def api_db_change_password(old_password: str, new_password: str) -> dict[str, Any]:
@@ -2520,7 +2634,8 @@ def api_db_change_password(old_password: str, new_password: str) -> dict[str, An
         os.chmod(kp, 0o600)
     except Exception:  # noqa: BLE001
         pass
-    os.environ["DM_DB_KEY"] = new_key.hex()
+    os.environ["DM_DB_KEY"] = new_key.hex()  # 兼容旧路径;进程内存优先
+    _rt()._db_key = new_key.hex()
     return _ok({"changed": True}, diagnosable="口令已变更。下次启动用新口令解锁;请务必记牢新口令。")
 
 
@@ -2543,6 +2658,7 @@ def api_new_user_id() -> dict[str, Any]:
         except Exception:  # noqa: BLE001
             pass
         os.environ.pop("DM_DB_KEY", None)  # 清掉旧密钥,新库不带口令
+        rt._db_key = None  # 同步清进程内存密钥
         # 归档旧库文件(同目录,prefix 开头的那几个 SQLite 文件)
         parent = Path(prefix).parent
         base = Path(prefix).name
@@ -2961,8 +3077,49 @@ _PAGE = r"""<!DOCTYPE html>
     <div><button onclick="changeDbPassword()">变更口令</button></div>
   </div>
   <div id="dbMsg" style="font-size:12px;color:var(--dim);margin-top:4px"></div>
+  <hr style="border:none;border-top:1px solid var(--line);margin:16px 0">
+  <div style="margin:0 0 6px;font-size:13px;color:var(--dim)">两步验证(2FA) <span id="tfaState" style="color:var(--warn)"></span></div>
+  <div style="font-size:12px;color:var(--dim);margin-bottom:8px">在口令之上再加一道动态码(口令=你知道的 + 验证器=你持有的)。用 Google Authenticator / 2FAS 等扫码或手输密钥。</div>
+  <div id="tfaOffRow" style="display:none;flex-direction:column;gap:8px">
+    <div><button onclick="tfaSetup()">生成 2FA 密钥</button></div>
+    <div id="tfaQrWrap" style="display:none;flex-direction:column;gap:8px">
+      <div style="display:flex;justify-content:center"><canvas id="tfaQr" width="200" height="200" style="background:#fff;border-radius:8px;padding:6px"></canvas></div>
+      <div style="font-size:12px;color:var(--dim)">或手输密钥:<code id="tfaSecret" style="user-select:all;color:var(--txt)"></code></div>
+      <div style="display:flex;gap:8px"><input id="tfaCodeEnable" placeholder="输入 App 显示的 6 位码" maxlength="6" style="flex:1;background:#0d0f13;border:1px solid #2a2e38;color:var(--txt);border-radius:8px;padding:8px;font-size:13px"><button onclick="tfaEnable()">启用</button></div>
+    </div>
+  </div>
+  <div id="tfaOnRow" style="display:none;flex-direction:column;gap:8px">
+    <div style="font-size:12px;color:var(--ok)">已启用:解锁需口令 + 动态码</div>
+    <div style="display:flex;gap:8px"><input id="tfaCodeDisable" placeholder="输入 6 位码以关闭" maxlength="6" style="flex:1;background:#0d0f13;border:1px solid #2a2e38;color:var(--txt);border-radius:8px;padding:8px;font-size:13px"><button onclick="tfaDisable()" style="background:#3a3e48">关闭 2FA</button></div>
+  </div>
+  <div id="tfaMsg" style="font-size:12px;color:var(--dim);margin-top:4px"></div>
   <div style="margin-top:16px;text-align:right"><button onclick="closeSettings()" style="background:#3a3e48">关闭</button></div>
 </div></div>
+<div id="lockGate" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:999;align-items:center;justify-content:center">
+  <div class="box" style="max-width:400px;width:92%">
+    <b style="font-size:16px">🔒 聊天记录已加密</b>
+    <div style="font-size:12px;color:var(--dim);margin:8px 0 12px">输入口令解锁;启用 2FA 的话还需验证器 6 位动态码。</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <input id="gatePwd" type="password" placeholder="口令" onkeydown="if(event.key==='Enter')gateUnlock()" style="background:#0d0f13;border:1px solid #2a2e38;color:var(--txt);border-radius:8px;padding:10px;font-size:14px">
+      <input id="gateTotp" placeholder="2FA 动态码(如已启用)" maxlength="6" onkeydown="if(event.key==='Enter')gateUnlock()" style="display:none;background:#0d0f13;border:1px solid #2a2e38;color:var(--txt);border-radius:8px;padding:10px;font-size:14px">
+      <div><button onclick="gateUnlock()" style="width:100%;padding:10px">解锁</button></div>
+      <div id="gateMsg" style="font-size:12px;color:var(--bad);min-height:16px"></div>
+      <div style="font-size:12px;color:var(--dim)">忘记口令?<a href="javascript:void(0)" onclick="gateForgot()" style="color:var(--warn)">新建用户ID</a>(原聊天记录将无法查看)</div>
+    </div>
+  </div>
+</div>
+<div id="firstRunGate" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:999;align-items:center;justify-content:center">
+  <div class="box" style="max-width:420px;width:92%">
+    <b style="font-size:16px">🔐 首次启动 · 给聊天记录加把锁</b>
+    <div style="font-size:12px;color:var(--dim);margin:8px 0 12px">建议现在设一个口令:聊天记录库将用 SQLCipher 加密落盘,每次启动需口令解锁。<b style="color:var(--warn)">跳过 = 聊天记录以明文存盘</b>(官方 SimpleX 也是这套取舍)。</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <input id="frPwd" type="password" placeholder="设置口令(≥4 位)" style="background:#0d0f13;border:1px solid #2a2e38;color:var(--txt);border-radius:8px;padding:10px;font-size:14px">
+      <input id="frPwd2" type="password" placeholder="再输一遍确认" style="background:#0d0f13;border:1px solid #2a2e38;color:var(--txt);border-radius:8px;padding:10px;font-size:14px">
+      <div style="display:flex;gap:8px"><button onclick="frSetPassword()" style="flex:1;padding:10px">设口令并加密</button><button onclick="frSkip()" style="background:#3a3e48;padding:10px">跳过(明文)</button></div>
+      <div id="frMsg" style="font-size:12px;color:var(--bad);min-height:16px"></div>
+    </div>
+  </div>
+</div>
 <script>
 const TOKEN=(()=>{const q=new URLSearchParams(location.search).get('token');if(q){localStorage.setItem('dm_token',q);history.replaceState({},'',location.pathname);return q;}return localStorage.getItem('dm_token')||'';})();
 // WS server 地址由服务端注入(电脑 LAN IP,手机经 WiFi 可达;本机访问时服务端填 127.0.0.1)
@@ -3168,6 +3325,7 @@ async function openSettings(){
   document.getElementById('dbState').textContent=enc?'(已设口令)':'(未加密)';
   document.getElementById('dbSetRow').style.display=enc?'none':'flex';
   document.getElementById('dbUnlockRow').style.display=enc?'flex':'none';
+  tfaStatusRefresh();
 }
 function closeSettings(){document.getElementById('settingsModal').style.display='none';}
 async function saveIdentity(){
@@ -3884,8 +4042,106 @@ function startWsListener(){
   });
 }
 document.getElementById('in').addEventListener('keydown',e=>{if(e.key==='Enter')sendMsg();});
-refresh();setInterval(()=>{if(cur)openChat(cur,true);else loadContacts();pollA2H();},5000);
-startWsListener();
+// ── 启动密码门(批次A2)────────────────────────────────────────────
+// 页面加载先查 db_lock_status:
+//   needs_unlock(设了口令但本进程没内存密钥)→ 全屏口令门,验过才进对话页。
+//   first_run(库文件不存在 + 未设口令)→ 首启设口令页(可跳过,跳过=明文落盘)。
+// 门挡在前面:不解锁就不跑 refresh()/startWsListener(),联系人/消息根本不加载体。
+async function bootGate(){
+  const r=await api('/dm/api/db_lock_status',{method:'POST',body:'{}'});
+  const o=(r.ok&&r.output)||{};
+  if(o.needs_unlock){
+    document.getElementById('gateTotp').style.display=o.totp_enabled?'block':'none';
+    document.getElementById('lockGate').style.display='flex';
+    setTimeout(()=>document.getElementById('gatePwd').focus(),50);
+    return false;
+  }
+  if(o.first_run&&!o.has_password){
+    document.getElementById('firstRunGate').style.display='flex';
+    setTimeout(()=>document.getElementById('frPwd').focus(),50);
+    return false;
+  }
+  return true;
+}
+async function gateUnlock(){
+  const pwd=document.getElementById('gatePwd').value;
+  const totp=document.getElementById('gateTotp').value.trim();
+  const m=document.getElementById('gateMsg');
+  const r=await api('/dm/api/db_unlock',{method:'POST',body:JSON.stringify({password:pwd,totp_code:totp})});
+  if(r.ok){document.getElementById('lockGate').style.display='none';enterApp();}
+  else{m.textContent='✗ '+(r.error||'解锁失败')+(r.diagnosable?(' — '+r.diagnosable):'');}
+}
+async function gateForgot(){
+  if(!confirm('新建用户ID将放弃当前加密的聊天记录(无法查看),并以全新身份重新开始。\n\n确定继续?'))return;
+  if(!confirm('再次确认:原聊天记录将无法恢复。仍要新建用户ID?'))return;
+  const r=await api('/dm/api/new_user_id',{method:'POST',body:'{}'});
+  const m=document.getElementById('gateMsg');
+  if(r.ok){document.getElementById('lockGate').style.display='none';enterApp();}
+  else{m.textContent='失败:'+(r.error||'')+(r.diagnosable||'');}
+}
+async function frSetPassword(){
+  const p1=document.getElementById('frPwd').value,p2=document.getElementById('frPwd2').value;
+  const m=document.getElementById('frMsg');
+  if(p1.length<4){m.textContent='口令至少 4 位';return;}
+  if(p1!==p2){m.textContent='两次输入不一致,请重输';return;}
+  const r=await api('/dm/api/db_set_password',{method:'POST',body:JSON.stringify({password:p1})});
+  if(r.ok){document.getElementById('firstRunGate').style.display='none';enterApp();}
+  else{m.textContent='失败:'+(r.error||'')+(r.diagnosable||'');}
+}
+function frSkip(){
+  if(!confirm('跳过设口令 = 聊天记录以明文存盘(任何能读到本机文件的人都能看)。\n\n确定跳过?'))return;
+  document.getElementById('firstRunGate').style.display='none';enterApp();
+}
+let _appEntered=false;
+function enterApp(){
+  if(_appEntered)return;_appEntered=true;
+  refresh();setInterval(()=>{if(cur)openChat(cur,true);else loadContacts();pollA2H();},5000);
+  startWsListener();
+}
+// ── 2FA 设置(设置面板内)──────────────────────────────────────────
+async function tfaStatusRefresh(){
+  const r=await api('/dm/api/2fa_status',{method:'POST',body:'{}'});
+  const en=r.ok&&r.output&&r.output.totp_enabled;
+  document.getElementById('tfaState').textContent=en?'(已启用)':'(未启用)';
+  document.getElementById('tfaOffRow').style.display=en?'none':'flex';
+  document.getElementById('tfaOnRow').style.display=en?'flex':'none';
+  if(en)document.getElementById('tfaQrWrap').style.display='none';
+}
+async function tfaSetup(){
+  const m=document.getElementById('tfaMsg');
+  const r=await api('/dm/api/2fa_setup',{method:'POST',body:'{}'});
+  if(!r.ok){m.style.color='var(--bad)';m.textContent='失败:'+(r.error||'')+(r.diagnosable||'');return;}
+  m.style.color='var(--dim)';m.textContent=r.diagnosable||'';
+  document.getElementById('tfaSecret').textContent=r.output.secret;
+  document.getElementById('tfaQrWrap').style.display='flex';
+  renderTotpQr(r.output.otpauth_uri);
+}
+// 独立的 TOTP 二维码渲染(复用 qrcode lib,画布为 tfaQr;renderInviteQr 写死了 invite 画布不能复用)
+function renderTotpQr(text){
+  const cv=document.getElementById('tfaQr');
+  try{
+    const qr=qrcode(0,'M');qr.addData(text);qr.make();
+    const n=qr.getModuleCount(),qz=2,cell=200/(n+2*qz),ctx=cv.getContext('2d');
+    ctx.fillStyle='#ffffff';ctx.fillRect(0,0,200,200);ctx.fillStyle='#000000';
+    for(let r=0;r<n;r++)for(let c=0;c<n;c++)if(qr.isDark(r,c))ctx.fillRect(Math.round((c+qz)*cell),Math.round((r+qz)*cell),Math.ceil(cell),Math.ceil(cell));
+  }catch(e){/* 二维码失败不阻断,手输密钥仍可用 */}
+async function tfaEnable(){
+  const code=document.getElementById('tfaCodeEnable').value.trim();
+  const m=document.getElementById('tfaMsg');
+  const r=await api('/dm/api/2fa_enable',{method:'POST',body:JSON.stringify({code})});
+  m.style.color=r.ok?'var(--ok)':'var(--bad)';
+  m.textContent=r.ok?(r.diagnosable||'已启用'):('失败:'+(r.error||'')+(r.diagnosable||''));
+  if(r.ok)tfaStatusRefresh();
+}
+async function tfaDisable(){
+  const code=document.getElementById('tfaCodeDisable').value.trim();
+  const m=document.getElementById('tfaMsg');
+  const r=await api('/dm/api/2fa_disable',{method:'POST',body:JSON.stringify({code})});
+  m.style.color=r.ok?'var(--ok)':'var(--bad)';
+  m.textContent=r.ok?(r.diagnosable||'已关闭'):('失败:'+(r.error||'')+(r.diagnosable||''));
+  if(r.ok)tfaStatusRefresh();
+}
+(async()=>{ if(await bootGate()) enterApp(); })();
 
 // ─── 媒体权限预热(Bug 2):把"系统授权弹窗"从"接听瞬间"提前到"来电之前" ───
 // 浏览器策略:getUserMedia 必须由用户手势触发,页面加载即调会被静默拒绝并可能污染权限状态。
@@ -3927,6 +4183,13 @@ class DMHandler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
+    def _locked_gate_active(self) -> bool:
+        """密码门是否激活(设了口令但本进程尚未解锁)。单独成方法便于测试 hook。"""
+        try:
+            return bool(api_db_lock_status()["output"].get("needs_unlock"))
+        except Exception:  # noqa: BLE001
+            return False
+
     def _auth(self) -> bool:
         if not _ACCESS_TOKEN:
             return True
@@ -3960,6 +4223,10 @@ class DMHandler(BaseHTTPRequestHandler):
             return self._html(_render_page())
         if not self._auth():
             return self._json({"ok": False, "error": "unauthorized"}, 401)
+        # 密码门同样挡 GET:status/contacts/history 都是读消息数据的接口
+        if self._locked_gate_active():
+            return self._json({"ok": False, "error": "locked",
+                               "diagnosable": "聊天记录已加密,请先在密码门解锁。"}, 423)
         if path == "/dm/api/status":
             return self._json(api_status())
         if path == "/dm/api/contacts":
@@ -4004,14 +4271,29 @@ class DMHandler(BaseHTTPRequestHandler):
             return self._json(api_set_identity(str(req.get("name", ""))))
         if path == "/dm/api/db_password_status":
             return self._json(api_db_password_status())
+        if path == "/dm/api/db_lock_status":
+            return self._json(api_db_lock_status())
         if path == "/dm/api/db_set_password":
             return self._json(api_db_set_password(str(req.get("password", ""))))
         if path == "/dm/api/db_unlock":
-            return self._json(api_db_unlock(str(req.get("password", ""))))
+            return self._json(api_db_unlock(str(req.get("password", "")), str(req.get("totp_code", ""))))
         if path == "/dm/api/db_change_password":
             return self._json(api_db_change_password(str(req.get("old_password", "")), str(req.get("new_password", ""))))
         if path == "/dm/api/new_user_id":
             return self._json(api_new_user_id())
+        if path == "/dm/api/2fa_status":
+            return self._json(api_2fa_status())
+        if path == "/dm/api/2fa_setup":
+            return self._json(api_2fa_setup())
+        if path == "/dm/api/2fa_enable":
+            return self._json(api_2fa_enable(str(req.get("code", ""))))
+        if path == "/dm/api/2fa_disable":
+            return self._json(api_2fa_disable(str(req.get("code", ""))))
+        # ── 启动密码门:设了口令但本进程尚未解锁时,只放行解锁/状态/逃生类 API ──
+        # 白名单外的 API 一律拒绝,防止未解锁就读取联系人/消息。
+        if self._locked_gate_active():
+            return self._json({"ok": False, "error": "locked",
+                               "diagnosable": "聊天记录已加密,请先在密码门解锁。"}, 423)
         if path == "/dm/api/create_address":
             return self._json(api_create_address())
         if path == "/dm/api/accept_invite":
