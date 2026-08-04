@@ -115,6 +115,9 @@ class SimplexRuntime:
         self._smp_server: str = DEFAULT_SMP_SERVER
         self._display_name: str = "oiagent"
         self._db_prefix: str = str(_DEFAULT_DB_DIR / "oiagent_simplex")
+        # DB 加密密钥(进程内存,不落 env)。解锁后由 web 层写入;_boot 优先消费它,
+        # 其次才回退 env(兼容外部脚本/旧路径)。清内存即"锁死自身",无 env 被同机读取的坑。
+        self._db_key: Optional[str] = None
 
     # ------------------------------------------------------------------ #
     # 单例
@@ -174,9 +177,10 @@ class SimplexRuntime:
         from simplex_chat import Client, Profile, SqliteDb
 
         # 聊天记录口令加密:用户在 UI 设口令并解锁后,web 层把派生密钥放进
-        # DM_DB_KEY;此处注入 SqliteDb.encryption_key,libsimplex 据此开 SQLCipher
-        # 加密库。未设口令则为 None,保持明文(向后兼容现有库)。
-        _db_key = _os.environ.get("DM_DB_KEY") or None
+        # 本实例内存(self._db_key,不落 env);此处注入 SqliteDb.encryption_key,
+        # libsimplex 据此开 SQLCipher 加密库。env 仅作兼容回退(外部脚本/旧路径)。
+        # 未设口令则为 None,保持明文(向后兼容现有库)。
+        _db_key = self._db_key or _os.environ.get("DM_DB_KEY") or None
 
         # 文件下载前置:libsimplex 的接收/上传 worker 需要 temp/files 目录,
         # 而 Python 客户端 start_chat 只发裸 /_start,从不设这两个目录(Haskell
