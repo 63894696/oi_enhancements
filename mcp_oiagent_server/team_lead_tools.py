@@ -325,7 +325,7 @@ async def _race_one(model_spec: str, prompt: str, timeout_s: int) -> dict:
                 body = json.dumps({
                     "model": model_id,
                     "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 1,
+                    "max_tokens": 4096,
                     "stream": False,
                 }).encode()
                 req = urllib.request.Request(
@@ -340,6 +340,11 @@ async def _race_one(model_spec: str, prompt: str, timeout_s: int) -> dict:
                 with urllib.request.urlopen(req, timeout=timeout_s) as resp:
                     data = json.loads(resp.read())
                     content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    if not content:
+                        for ch in data.get("choices", [{}]):
+                            content = ch.get("message", {}).get("content", "")
+                            if content:
+                                break
                     return {"ok": True, "result": content, "raw": data}
 
             elif protocol == "anthropic":
@@ -347,7 +352,7 @@ async def _race_one(model_spec: str, prompt: str, timeout_s: int) -> dict:
                 body = json.dumps({
                     "model": model_id,
                     "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 1,
+                    "max_tokens": 4096,
                 }).encode()
                 req = urllib.request.Request(
                     url,
@@ -389,7 +394,7 @@ async def _race_one(model_spec: str, prompt: str, timeout_s: int) -> dict:
             "elapsed_ms": int(elapsed * 1000),
         }
         if result.get("ok"):
-            out["result"] = (result.get("result") or "")[:200]
+            out["result"] = result.get("result") or ""
             # 只在 debug 模式下保留 raw(会很大)
             # out["raw"] = result.get("raw")
         else:
@@ -405,26 +410,50 @@ async def _race_one(model_spec: str, prompt: str, timeout_s: int) -> dict:
 
 
 async def _race_async(prompt: str, models: list[str], timeout_s: int, concurrency: int) -> dict:
-    """并发跑多个模型,先返回的赢"""
+    """并发跑多个模型,先返回的赢
+
+    空结果剔除 + 次优补位:
+      - winner 必须是 ok=True 且 result 非空
+      - 每次一批完成时先看这批里有没有合格结果;有则取首个合格为 winner,其余 pending 取消
+      - 该批全空则继续等下一批(次优补位),不提前取消
+      - 全部跑完仍无合格 → winner=None(附带全部结果供诊断)
+    """
     sem = asyncio.Semaphore(concurrency)
+
+    def _valid(r: dict) -> bool:
+        return bool(r and r.get("ok") and (r.get("result") or "").strip())
 
     async def gated(model):
         async with sem:
             return await _race_one(model, prompt, timeout_s)
 
     tasks = [asyncio.create_task(gated(m)) for m in models]
-    # 等待第一个完成
-    done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-    winner = list(done)[0].result() if done else None
+    pending = set(tasks)
+    done_results: list[dict] = []
 
-    # 取消 pending
+    winner: dict | None = None
+    while pending and winner is None:
+        done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+        for t in done:
+            try:
+                r = t.result()
+            except asyncio.CancelledError:
+                r = {"model": "?", "ok": False, "error": "cancelled", "elapsed_ms": 0}
+            except Exception as e:  # 防御:task 内部意外抛错不拖垮整个 race
+                r = {"model": "?", "ok": False, "error": f"task raised: {e}", "elapsed_ms": 0}
+            done_results.append(r)
+            if winner is None and _valid(r):
+                winner = r
+        # 本批无合格 → 继续等 pending(次优补位)
+
     for t in pending:
         t.cancel()
 
     return {
         "winner": winner,
-        "losers_count": len(pending),
+        "losers_count": len(done_results) - (1 if winner else 0),
         "total_models": len(models),
+        "all_results": done_results,
     }
 
 
