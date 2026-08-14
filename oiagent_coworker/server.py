@@ -1,4 +1,4 @@
-"""openwork HTTP server:token 校验 + 白名单路由 + 仅 127.0.0.1。
+"""Prisir 工坊(PrisirWork)HTTP server:token 校验 + 白名单路由 + 仅 127.0.0.1。
 
 红线①:只监听回环(config.ensure_loopback 硬校验)。
 红线③:只路由 endpoints 注册表里的端点,其余 404。
@@ -98,7 +98,7 @@ def run(host: str = config.HOST, port: int | None = None, token: str | None = No
     port = port if port is not None else config.get_port()
     token = token if token is not None else config.load_or_create_token()
     srv = make_server(host, port, token)
-    print(f"openwork(oiagent-coworker)就绪: http://{host}:{port}  (token 已加载, {len(endpoints.catalog())} 个白名单端点)")
+    print(f"Prisir 工坊(oiagent-coworker)就绪: http://{host}:{port}  (token 已加载, {len(endpoints.catalog())} 个白名单端点)")
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

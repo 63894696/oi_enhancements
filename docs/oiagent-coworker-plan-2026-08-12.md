@@ -1,4 +1,4 @@
-# oiagent-coworker(openwork)方案 — 本地常驻协作组件 · 2026-08-12
+# oiagent-coworker(Prisir 工坊(PrisirWork))方案 — 本地常驻协作组件 · 2026-08-12
 
 > 定位:智能整合包里的**本地常驻进程**。浏览器扩展(MV3,沙箱内)做不了的两件事,由它在本地做:
 > ① **托管本地 CLI 进程**(首个:Electrum daemon → M7c 钱包);② **跨 tab 多步 web 自动化**(对标 Perplexity Computer,但走白名单 + 确认,不通用放任)。
@@ -24,7 +24,7 @@
 └──────────────┬─────────────────────────┘
                │ 仅 127.0.0.1 + X-OI-Token
 ┌──────────────▼─────────────────────────┐
-│ openwork(coworker 本地常驻)            │
+│ Prisir 工坊(PrisirWork)(coworker 本地常驻)            │
 │  ├─ wallet 子系统:起/连 Electrum daemon │
 │  │    electrum daemon -w <wallet> → JSON-RPC │
 │  ├─ web_auto 子系统:CDP 驱动已开浏览器   │
@@ -37,8 +37,8 @@
         └─────────────┘
 ```
 
-- **形态**:Python 包 `oiagent_coworker`(新建,与 `agent_shell/` 并列),`python -m oiagent_coworker` 起;整合包负责装 Electrum + 自启 openwork。
-- **新手零命令行**:openwork 自带 Electrum 的部署与 daemon 生命周期管理(起、崩溃重启、wallet 路径、rpcport 固定)。
+- **形态**:Python 包 `oiagent_coworker`(新建,与 `agent_shell/` 并列),`python -m oiagent_coworker` 起;整合包负责装 Electrum + 自启 Prisir 工坊(PrisirWork)。
+- **新手零命令行**:Prisir 工坊(PrisirWork) 自带 Electrum 的部署与 daemon 生命周期管理(起、崩溃重启、wallet 路径、rpcport 固定)。
 
 ## 2. 本地安全红线(与扩展 M7a §5.0.2 同源,不可删)
 
@@ -94,7 +94,7 @@ async function coworker(ep, body) {
 
 ## 5. 分期
 
-- **CW-1(骨架)**:openwork HTTP server + token 校验 + endpoint 白名单框架 + `/wallet/status` 只读打通(连一个 testnet Electrum)。
+- **CW-1(骨架)**:Prisir 工坊(PrisirWork) HTTP server + token 校验 + endpoint 白名单框架 + `/wallet/status` 只读打通(连一个 testnet Electrum)。
 - **CW-2(钱包)**:receive/payto/history,接扩展 L3 确认;testnet/regtest E2E,严禁主网真钱。
 - **CW-3(跨 tab)**:CDP 接浏览器,tabs/step/run;先做 1 个只读 recipe(跨 tab 收集信息),再开放带确认的写操作。
 

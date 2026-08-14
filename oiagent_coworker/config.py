@@ -73,4 +73,4 @@ def get_port() -> int:
 def ensure_loopback(host: str) -> None:
     """红线①硬校验:只允许 127.0.0.1 / localhost。否则拒起。"""
     if host not in ("127.0.0.1", "localhost", "::1"):
-        raise SystemExit(f"红线:openwork 只能监听 127.0.0.1,拒绝绑定 {host!r}")
+        raise SystemExit(f"红线:Prisir 工坊(PrisirWork)只能监听 127.0.0.1,拒绝绑定 {host!r}")
