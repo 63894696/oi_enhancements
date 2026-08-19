@@ -9,7 +9,9 @@ TOKEN = "p0test_" + "a" * 56  # 测试 token,固定便于逐个用例带/不带/
 BASE = f"http://127.0.0.1:{PORT}"
 
 cfg = os.path.join(tempfile.mkdtemp(prefix="oi_p0_"), "work.json")
-env = dict(os.environ, PRISIR_WORK_CONFIG=cfg, PRISIR_WORK_PORT=str(PORT))
+oi_home = tempfile.mkdtemp(prefix="oi_p0home_")  # F3 隔离 OI_HOME,team 测试不污染真库
+env = dict(os.environ, PRISIR_WORK_CONFIG=cfg, PRISIR_WORK_PORT=str(PORT),
+           PRISIR_WORK_OI_HOME=oi_home)
 
 # 起 Prisir 工坊(token 由 config 生成;但我们想固定 token 做断言 → 先写配置)
 os.makedirs(os.path.dirname(cfg), exist_ok=True)
@@ -73,6 +75,17 @@ res["cap_search_付款"]     = req("/cap/search", token=TOKEN, method="POST", bo
 res["cap_exec_payto"]      = req("/cap/execute", token=TOKEN, method="POST",
                                  body={"id": "wallet.payto", "args": {"address": "tb1qx", "amount": 0.1}})  # 期望经门面,L3 标注
 
+# F3 oiagent 团队协作:派单(L1)+ 查状态(L0),OI_HOME 已隔离
+res["team_submit_无token"] = req("/team/submit", method="POST", body={"title": "x"})             # 期望 401
+res["team_submit"]         = req("/team/submit", token=TOKEN, method="POST",
+                                 body={"title": "p0 测试派单", "content": "验证 F3"})            # 期望 200 + task_id
+res["team_submit_空题"]    = req("/team/submit", token=TOKEN, method="POST", body={"title": ""}) # 期望 ok=False title_required
+res["team_list_无token"]   = req("/team/list", method="POST", body={})                           # 期望 401
+res["team_list_ready"]     = req("/team/list", token=TOKEN, method="POST", body={"status": "ready"})  # 期望 200 含刚派的单
+res["cap_search_派单"]     = req("/cap/search", token=TOKEN, method="POST", body={"query": "派单"}) # 期望命中 team.submit L1
+res["cap_exec_team_list"]  = req("/cap/execute", token=TOKEN, method="POST",
+                                 body={"id": "team.list", "args": {"status": "ready"}})          # 期望经门面跑通
+
 # 只监听 127.0.0.1:本机非回环地址应连不上
 ext_ip = None
 try:
@@ -128,6 +141,22 @@ checks = {
   "cap/execute wallet.payto 带 L3 标注": res["cap_exec_payto"][0] == 200 and
       res["cap_exec_payto"][1].get("capability") == "wallet.payto" and
       res["cap_exec_payto"][1].get("risk") == "L3",
+  # F3 oiagent 团队协作
+  "team/submit 无 token 401": res["team_submit_无token"][0] == 401,
+  "team/submit 派单成功返回 task_id": res["team_submit"][0] == 200 and
+      res["team_submit"][1].get("ok") is True and
+      isinstance(res["team_submit"][1].get("task_id"), int),
+  "team/submit 空题被拒": res["team_submit_空题"][1].get("ok") is False and
+      res["team_submit_空题"][1].get("error") == "title_required",
+  "team/list 无 token 401": res["team_list_无token"][0] == 401,
+  "team/list ready 含刚派的单": res["team_list_ready"][0] == 200 and any(
+      t.get("title", "").endswith("p0 测试派单") for t in res["team_list_ready"][1].get("tasks", [])),
+  "cap/search 派单命中 team.submit L1": res["cap_search_派单"][0] == 200 and any(
+      c.get("id") == "team.submit" and c.get("risk") == "L1"
+      for c in res["cap_search_派单"][1].get("capabilities", [])),
+  "cap/execute team.list 跑通": res["cap_exec_team_list"][0] == 200 and
+      res["cap_exec_team_list"][1].get("capability") == "team.list" and
+      res["cap_exec_team_list"][1].get("result", {}).get("ok") is True,
 }
 print("逐项:", json.dumps(checks, ensure_ascii=False, indent=2))
 print("wallet/status 实回:", json.dumps(res["wallet_对token"][1], ensure_ascii=False))

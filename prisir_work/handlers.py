@@ -7,7 +7,7 @@
 """
 from __future__ import annotations
 
-from . import __version__, capability, endpoints, wallet
+from . import __version__, capability, endpoints, team, wallet
 
 
 @endpoints.register("/health", method="GET", risk="L0", auth=False)
@@ -49,6 +49,31 @@ def _wallet_payto(body: dict):
         address=body.get("address", ""), amount=body.get("amount", 0),
         memo=body.get("memo", ""), passphrase=body.get("passphrase", ""),
         confirm=bool(body.get("confirm")), txid=body.get("txid", ""),
+    ), 200
+
+
+# ---------------------------------------------------------------------------
+# F3 oiagent 团队协作:派单(L1)+ 查状态(L0),路由到根目录 task_queue
+# ---------------------------------------------------------------------------
+
+@endpoints.register("/team/submit", method="POST", risk="L1", auth=True)
+def _team_submit(body: dict):
+    """派单进 oiagent 队列。content 写「改动文件: ...」+ namespace=tasks-code 走主会话认领。"""
+    body = body if isinstance(body, dict) else {}
+    return team.submit(
+        title=body.get("title", ""), content=body.get("content", ""),
+        priority=body.get("priority", 0), depends_on=body.get("depends_on"),
+        namespace=body.get("namespace", "tasks"),
+    ), 200
+
+
+@endpoints.register("/team/list", method="POST", risk="L0", auth=True)
+def _team_list(body: dict):
+    """查状态:ready(可调度)/blocked(待决策)/其他 status。只读。"""
+    body = body if isinstance(body, dict) else {}
+    return team.list_tasks(
+        status=body.get("status", "ready"), limit=body.get("limit", 10),
+        namespace=body.get("namespace", "tasks"),
     ), 200
 
 
@@ -124,4 +149,17 @@ capability.register_capability(
     keywords=("钱包", "付款", "转账", "支付", "wallet", "pay", "send", "transfer"),
     confirm=("L3 付款:agent 先构造未签名交易给你看(收款方/金额/备注),"
              "你确认并输入钱包口令后才签名广播。授权权永远在你;testnet/regtest only。"),
+)
+capability.register_capability(
+    "team.submit", title="派单进 oiagent 协作队列(改代码走主会话认领/文本走 consumer)",
+    endpoint="/team/submit", method="POST", risk="L1", auth=True,
+    keywords=("派单", "任务", "协作", "团队", "team", "task", "dispatch", "submit"),
+    confirm=("L1 派单:把任务提交进 oiagent 队列等待认领执行。"
+             "content 写「改动文件: ...」+ namespace=tasks-code 走主会话认领落盘;"
+             "纯文本派 tasks 走 consumer。执行结果可经 team.list 查。"),
+)
+capability.register_capability(
+    "team.list", title="查 oiagent 协作队列状态(ready 可调度 / blocked 待决策)",
+    endpoint="/team/list", method="POST", risk="L0", auth=True,
+    keywords=("队列", "状态", "任务", "进度", "team", "queue", "status", "list"),
 )
