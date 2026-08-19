@@ -1,3 +1,6 @@
 /target/
 /ort_bin/
 _test_16k.wav
+_play*.log
+_cap*.log
+_*.py.tmp

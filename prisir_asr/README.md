@@ -53,3 +53,39 @@ language: 0=auto 1=zh 2=en 3=ja 4=ko;textnorm: 14=带标点+数字规整(with_it
 
 轨 A 离线预生成字幕:WASAPI loopback 听系统音频 → 重采样 16k → 本引擎 → 带时间轴 SRT
 (含加速静音)。本 crate 的 `transcribe_pcm` 直接复用。
+
+---
+
+# P1 轨 A 离线预生成字幕原型(2026-08-19 已跑通)
+
+`subtitle_gen.py`:soundcard WASAPI loopback 听系统音频 → silero-vad 切句 →
+Rust DLL(`transcribe_pcm`)→ 带时间轴 SRT + sidecar 元数据,存 `~/Downloads/PrisirSubtitles/`。
+
+```bash
+# 终端1:先起听写(等打印"引擎就绪")
+python subtitle_gen.py --dur 65 --speed 1.0 --title 视频名 --url <URL> --speaker USB
+# 终端2:引擎就绪后播放视频/音频(经声卡)
+```
+
+**实测(60s 关雎,USB 声卡 loopback)**:9 条字幕,全诗覆盖,标点正确(textnorm=14),
+时间轴 0–60s 单调递增无漂移。识别与 P0 一致。
+
+**关键坑(留给后续)**:
+1. **时间轴漂移根因**:`silero_vad.VADIterator` 返回的 `start`/`end` 是**绝对样本数**且含
+   `speech_pad`(默认 30ms)回退,指到当前 chunk **之前**。直接 `total+pos+ev['start']` 会错位漂移。
+   **修法**:钳制在 `[当前块起点, 当前块起点+chunk]`(见 `capture_and_transcribe`)。
+2. **采集帧数是准的**(实测 record 读到的样本=真实时长,无丢帧);`data discontinuity` 只是
+   播放/采集时钟微小偏移的告警,可 `warnings.filterwarnings("ignore")`。漂移别赖采集,先查 VAD 语义。
+3. **能量门控**消幻听:RMS<0.01 的静音段不过 ASR(否则出 "Yeah."/"没." 碎片);
+   纯英文短碎片(≤12字符无中文)也丢弃(中文视频 VAD 误触发)。
+4. **先加载模型+VAD 再开始采集**(`"引擎就绪"` 日志),避免错过音频开头。
+5. **加速静音**:`--speed 2.0` 时按加速比回标时间轴(`start/end *= speed`)。
+   P1 播放器未加速实测,2x 链路由 P2 接管(浏览器控制 `<video>.playbackRate` + 静音)。
+6. **soundcard loopback**:`sc.get_microphone(扬声器名, include_loopback=True).recorder(...)`,
+   48k stereo → `resample_poly(÷3)` → 16k mono。
+
+**P1 红线遵守**:轨 A 只听系统音频输出(合法听写,不碰 DRM 视频内容);纯本地零外发;
+复用 P0 Rust 引擎不重写识别。
+
+**下一步 P2**:翻译插件"字幕"按钮加"加载本地字幕"(读 `~/Downloads/PrisirSubtitles/*.srt` +
+L0 URL/ID 配对),ASR 字幕引擎注册进 `engines.js` 总线(默认 SenseVoice 兜底)。
