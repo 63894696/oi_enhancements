@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>SecureDM 群聊</title>
+<link rel="stylesheet" href="assets/guohua-theme.css">
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:var(--gh-paper);color:var(--gh-ink);font:16px/1.5 var(--gh-font)}
+  #app{height:100vh;height:100dvh;display:flex;flex-direction:column;max-width:760px;margin:0 auto;background:var(--gh-paper)}
+  header{padding:11px 14px;border-bottom:1px solid var(--gh-line);display:flex;align-items:center;gap:9px;background:var(--gh-paper-2)}
+  header .dot{width:9px;height:9px;border-radius:50%;background:var(--gh-seal)}
+  header .dot.on{background:var(--gh-green-deep)}
+  header h1{font-size:16px;margin:0;font-weight:600;color:var(--gh-ink)}
+  header .who{margin-left:auto;font-size:12px;color:var(--gh-ink-faint);text-align:right}
+  header .who b{color:var(--gh-ink)}
+  #membersBtn,#inviteBtn,#roomsBtn,#leaveBtn{background:var(--gh-paper-3);border:none;color:var(--gh-ink);padding:6px 11px;border-radius:8px;font-size:13px;cursor:pointer}
+  #roomTitle .epoch{font-size:11px;color:var(--gh-green-deep);background:var(--gh-paper-3);border:1px solid var(--gh-line);padding:1px 6px;border-radius:6px;margin-left:6px;vertical-align:2px}
+  /* 房间抽屉 */
+  #roomsDrawer{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;z-index:10}
+  #roomsDrawer.open{display:block}
+  #roomsDrawer .panel{position:absolute;left:0;top:0;bottom:0;width:74%;max-width:300px;background:var(--gh-paper-2);padding:16px;overflow-y:auto;box-shadow:4px 0 18px rgba(0,0,0,.4)}
+  #roomsDrawer h2{font-size:15px;margin:0 0 12px;color:var(--gh-ink)}
+  .ritem{display:flex;align-items:center;gap:8px;padding:10px 8px;border-bottom:1px solid var(--gh-line);cursor:pointer;border-radius:8px}
+  .ritem:hover{background:var(--gh-paper-3)}
+  .ritem.cur{background:var(--gh-paper-3);border-left:3px solid var(--gh-green-deep)}
+  .ritem .rn{flex:1;font-size:14px;color:var(--gh-ink)}
+  .ritem .rt{font-size:11px;color:var(--gh-ink-faint)}
+  .ritem .lk{font-size:11px}
+  .m .lock{font-size:11px;margin-right:3px}
+  /* 消息区 */
+  #msgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:9px;-webkit-overflow-scrolling:touch;background:var(--gh-paper)}
+  .m{max-width:82%;padding:9px 13px;border-radius:15px;font-size:15px;line-height:1.45;white-space:pre-wrap;word-break:break-word;box-shadow:var(--gh-shadow)}
+  .m .nm{font-size:12px;font-weight:600;margin-bottom:3px;display:flex;align-items:center;gap:5px}
+  .m .av{width:16px;height:16px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:10px;color:#fff;flex:none}
+  .m .vf{font-size:10px;opacity:.75;margin-left:auto}
+  .m .vf.ok{color:var(--gh-green-deep)}.m .vf.bad{color:var(--gh-seal)}
+  .m.me{align-self:flex-end;background:var(--gh-green-deep);color:var(--gh-user-fg);border-bottom-right-radius:4px}
+  .m.me .nm{color:rgba(255,255,255,.85)}
+  .m.them{align-self:flex-start;background:var(--gh-surface);border-bottom-left-radius:4px;border-left:3px solid var(--uc,var(--gh-line))}
+  .m.bot{align-self:flex-start;background:var(--gh-agent-bg);border:1px solid var(--gh-line);border-bottom-left-radius:4px}
+  .m.bot .nm{color:var(--gh-green-deep)}
+  .sys{align-self:center;font-size:12px;color:var(--gh-ink-faint);padding:2px 0}
+  /* 输入区 */
+  #composer{display:flex;gap:8px;padding:11px 12px;border-top:1px solid var(--gh-line);background:var(--gh-paper-2)}
+  #in{flex:1;background:var(--gh-paper);border:1px solid var(--gh-line);color:var(--gh-ink);border-radius:20px;padding:11px 15px;outline:none;font-size:16px}
+  #in:focus{border-color:var(--gh-focus)}
+  #send{background:var(--gh-green-deep);border:none;color:var(--gh-user-fg);padding:0 19px;border-radius:20px;cursor:pointer;font-weight:600;font-size:15px}
+  #botBtn{background:var(--gh-paper-3);border:none;color:var(--gh-green-deep);padding:0 14px;border-radius:20px;cursor:pointer;font-size:14px}
+  /* 成员抽屉 */
+  #drawer{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;z-index:10}
+  #drawer.open{display:block}
+  #drawer .panel{position:absolute;right:0;top:0;bottom:0;width:78%;max-width:320px;background:var(--gh-paper-2);padding:16px;overflow-y:auto;box-shadow:-4px 0 18px rgba(0,0,0,.4)}
+  #drawer h2{font-size:15px;margin:0 0 12px;color:var(--gh-ink)}
+  .mem{display:flex;align-items:center;gap:9px;padding:9px 6px;border-bottom:1px solid var(--gh-line)}
+  .mem .av{width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:13px;color:#fff;flex:none}
+  .mem .nm{flex:1;font-size:14px;color:var(--gh-ink)}
+  .mem .tag{font-size:11px;color:var(--gh-ink-faint)}
+  .mem .on{width:8px;height:8px;border-radius:50%;background:var(--gh-green-deep)}
+  .mem .off{width:8px;height:8px;border-radius:50%;background:var(--gh-line)}
+  .badge{font-size:10px;background:var(--gh-paper-3);color:var(--gh-green-deep);padding:2px 6px;border-radius:6px}
+  #setup{position:fixed;inset:0;background:var(--gh-paper);display:flex;align-items:center;justify-content:center;z-index:20;padding:22px}
+  #setup .box{width:100%;max-width:380px}
+  #setup h2{font-size:19px;margin:0 0 6px;color:var(--gh-ink)}
+  #setup p{color:var(--gh-ink-faint);font-size:13px;margin:0 0 16px}
+  #setup input{width:100%;background:var(--gh-paper);border:1px solid var(--gh-line);color:var(--gh-ink);border-radius:10px;padding:13px 14px;font-size:16px;outline:none;margin-bottom:12px}
+  #setup button{width:100%;background:var(--gh-green-deep);border:none;color:var(--gh-user-fg);padding:13px;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer}
+  /* 链接安全检查面板 */
+  #linkCheckModal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;z-index:30;align-items:center;justify-content:center}
+  #linkCheckModal.open{display:flex}
+  #linkCheckPanel{background:var(--gh-paper-2);border-radius:var(--gh-radius-lg);padding:16px;max-width:400px;width:90%;box-shadow:var(--gh-shadow)}
+  #linkCheckPanel h3{margin:0 0 12px;color:var(--gh-ink)}
+  #linkCheckUrl{font-family:monospace;word-break:break-all;margin-bottom:12px}
+  #linkCheckResult{margin-bottom:16px;display:flex;align-items:center;gap:8px}
+  #linkCheckResult.safe{color:var(--gh-green-deep)}
+  #linkCheckResult.warning{color:var(--gh-gold)}
+  #linkCheckResult.danger{color:var(--gh-seal)}
+  #linkCheckActions{display:flex;gap:8px;justify-content:flex-end}
+  #linkCheckActions button{padding:8px 12px;border-radius:var(--gh-radius);cursor:pointer}
+  #linkCheckOpen{background:var(--gh-green-deep);color:var(--gh-user-fg);border:none}
+  #linkCheckCopy{background:var(--gh-paper-3);color:var(--gh-ink);border:none}
+  #linkCheckCancel{background:none;color:var(--gh-ink-faint);border:none}
+  #linkCheckWhitelist{background:none;color:var(--gh-ink-faint);border:none;font-size:12px}
+</style>
+</head>
+<body class="gh-backdrop">
+<div id="setup">
+  <div class="box">
+    <h2>进入群聊</h2>
+    <p>端到端身份在你的设备本地生成(Ed25519 密钥对),不上传。撞名没关系,身份 = 密钥指纹,不靠名字。</p>
+    <input id="roomIn" placeholder="房间名(如 lobby)" value="lobby" autocomplete="off">
+    <input id="nameIn" placeholder="你的显示名(可重名)" autocomplete="off">
+    <div id="setupErr" style="color:var(--gh-seal);font-size:13px;margin:0 0 10px;display:none"></div>
+    <button id="joinBtn">生成身份并加入</button>
+  </div>
+</div>
+
+<div id="app" style="display:none">
+  <header>
+    <span class="dot" id="livedot"></span>
+    <button id="roomsBtn" title="我的房间">房间</button>
+    <h1 id="roomTitle">群聊</h1>
+    <button id="leaveBtn" title="离开房间">离开</button>
+    <button id="membersBtn">成员</button>
+    <button id="inviteBtn" title="生成邀请链接">邀请</button>
+    <span class="who" id="whoBox"></span>
+  </header>
+  <div id="msgs"></div>
+  <div id="composer">
+    <button id="botBtn" title="@群助手">🤖</button>
+    <input id="in" placeholder="发消息…(🤖 呼叫群机器人)" autocomplete="off">
+    <button id="send">发送</button>
+  </div>
+</div>
+
+<div id="drawer"><div class="panel">
+  <h2>成员 <span id="memCount"></span></h2>
+  <div id="memList"></div>
+</div></div>
+
+<div id="roomsDrawer"><div class="panel">
+  <h2>我的房间</h2>
+  <div id="roomList"></div>
+</div></div>
+
+<div id="linkCheckModal">
+  <div id="linkCheckPanel">
+    <h3>链接安全检查</h3>
+    <div id="linkCheckUrl"></div>
+    <div id="linkCheckResult"></div>
+    <div id="linkCheckActions">
+      <button id="linkCheckOpen">打开</button>
+      <button id="linkCheckCopy">复制链接</button>
+      <button id="linkCheckCancel">取消</button>
+      <button id="linkCheckWhitelist">不再提示此域名</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* 3.B 群聊 Web 前端:Ed25519 密钥对即身份(WebCrypto),user_id=公钥指纹。
+   连 VPS 中继 wss://signal.dreamproject.qzz.io/chat。撞名靠 user_id 派生颜色+字母消歧。
+   验签在浏览器做(WebCrypto verify),服务器只定序转发不知明文(v1 明文房间)。 */
+// relay 地址:优先 URL ?relay=(本地测试 ws://127.0.0.1:18811),默认 VPS。
+// 这样本地起 relay 验证 / 连线上 VPS 都无需改码,只改 URL。
+const WS_URL=(()=>{const r=new URLSearchParams(location.search).get('relay');
+  if(r)return r; return 'wss://signal.dreamproject.qzz.io/chat';})();
+// token:优先 URL ?token=(注入并清掉 query),退回 localStorage(与 SecureDM 共用 dm_token 信任根)
+const TOKEN=(()=>{const q=new URLSearchParams(location.search).get('token');
+  if(q){localStorage.setItem('dm_token',q);history.replaceState({},'',location.pathname);return q;}
+  return localStorage.getItem('dm_token')||'';})();
+
+// ── 工具 ─────────────────────────────────────────────────────────────── //
+const $ = id => document.getElementById(id);
+const enc = new TextEncoder(), dec = new TextDecoder();
+function b64(buf){return btoa(String.fromCharCode(...new Uint8Array(buf)));}
+function b64d(s){return Uint8Array.from(atob(s),c=>c.charCodeAt(0));}
+function b64url16(buf){return b64(buf).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'').slice(0,16);}
+function canonical(o){return JSON.stringify(o, Object.keys(o).sort());}
+// canonical 需与 Python sort_keys+separators 一致:递归排序
+function canon(o){
+  if(Array.isArray(o)) return '['+o.map(canon).join(',')+']';
+  if(o&&typeof o==='object') return '{'+Object.keys(o).sort().map(k=>JSON.stringify(k)+':'+canon(o[k])).join(',')+'}'; 
+  return JSON.stringify(o);
+}
+// user_id 派生确定性颜色+首字母(3.B 撞名消歧)
+function colorOf(uid){let h=0;for(const c of uid)h=(h*31+c.charCodeAt(0))>>>0;return `hsl(${h%360},62%,52%)`;}
+function letterOf(name){return (name||'?').trim().charAt(0).toUpperCase()||'?';}
+
+// URL 检测与安全处理
+const URL_REGEX = /https?:\/\/[^\s\u00A0<>"']+/gi;
+const MALICIOUS_DOMAINS = ['evil.com', 'phishing.site'];
+function isHttps(url) { return url.startsWith('https://'); }
+function extractDomain(url) {
+  try { return new URL(url).hostname.replace(/^www\./, ''); }
+  catch { return ''; }
+}
+function isSuspicious(displayText, actualUrl) {
+  const displayDomain = extractDomain(displayText);
+  const actualDomain = extractDomain(actualUrl);
+  return displayDomain && actualDomain && displayDomain !== actualDomain;
+}
+function isWhitelisted(domain) {
+  const whitelist = JSON.parse(localStorage.getItem('linkWhitelist')||'[]');
+  return whitelist.includes(domain);
+}
+function whitelistDomain(domain) {
+  const whitelist = JSON.parse(localStorage.getItem('linkWhitelist')||'[]');
+  if (!whitelist.includes(domain)) {
+    whitelist.push(domain);
+    localStorage.setItem('linkWhitelist', JSON.stringify(whitelist));
+  }
+}
+
+// ── 身份(WebCrypto Ed25519,localStorage 持久) ────────────────────────── //
+let ID=null; // {priv, pub, pubRaw, user_id}
+async function loadOrCreateIdentity(){
+  const saved=localStorage.getItem('chatroom_id_jwk');
+  if(saved){
+    try{
+      const jwk=JSON.parse(saved);
+      const priv=await crypto.subtle.importKey('jwk',jwk,{name:'Ed25519'},true,['sign']);
+      const pub=await crypto.subtle.importKey('jwk',{...jwk,priv:undefined,d:undefined,key_ops:['verify'],ext:true},{name:'Ed25519'},true,['verify']);
+      return await makeId(priv,pub);
+    }catch(e){ console.warn('身份恢复失败,重新生成',e); }
+  }
+  const kp=await crypto.subtle.generateKey({name:'Ed25519'},true,['sign','verify']);
+  const jwk=await crypto.subtle.exportKey('jwk',kp.privateKey);
+  localStorage.setItem('chatroom_id_jwk',JSON.stringify(jwk));
+  return await makeId(kp.privateKey,kp.publicKey);
+}
+async function makeId(priv,pub){
+  const pubRaw=await crypto.subtle.exportKey('raw',pub);
+  const digest=await crypto.subtle.digest('SHA-256',pubRaw);
+  return {priv,pub,pubRaw,user_id:b64url16(digest)};
+}
+async function signPayload(obj){
+  const sig=await crypto.subtle.sign({name:'Ed25519'},ID.priv,enc.encode(canon(obj)));
+  return b64(sig);
+}
+async function verifyPayload(pubB64,obj,sigB64){
+  try{
+    const pub=await crypto.subtle.importKey('raw',b64d(pubB64),{name:'Ed25519'},false,['verify']);
+    return await crypto.subtle.verify({name:'Ed25519'},pub,b64d(sigB64),enc.encode(canon(obj)));
+  }catch(e){return false;}
+}
+
+// ── 群聊状态 ─────────────────────────────────────────────────────────── //
+let ws=null, room='', myName='', lastSeq=0, members={}, reconnectTimer=null;
+let pendingInvite='';   // 邀请链接带来的 invite secret,join 时带上,用后不落盘
+let myInvite='';        // 房主侧持有的 invite 值(仅 owner 生成邀请链接用)
+window._isOwner=false;  // 房主标记(joined.owner 精确判定,P4 起不再是启发式)
+let myX25519=null;      // 本端 E2E 逐人分发密钥对(CryptoKeyPair)
+let switching=false;    // 切房中(抑制 onclose 自动重连旧房)
+const msgIds=new Set();
+
+// ── 我的房间列表(localStorage chatroom_rooms)──────────────────────────── //
+function loadRooms(){try{return JSON.parse(localStorage.getItem('chatroom_rooms')||'[]');}catch(e){return[];}}
+function saveRooms(list){localStorage.setItem('chatroom_rooms',JSON.stringify(list));}
+function upsertRoom(r){
+  const list=loadRooms();
+  const ent=list.find(x=>x.room===r)||{room:r,epoch:-1,lastTs:0,hasKey:false};
+  ent.lastTs=Date.now();
+  try{const rk=window.RoomKeys&&RoomKeys[r];ent.epoch=rk?rk.curEpoch:-1;ent.hasKey=!!(rk&&rk.curEpoch>=0);}catch(e){}
+  const i=list.indexOf(ent);if(i<0)list.push(ent);
+  saveRooms(list);return ent;
+}
+function renderRooms(){
+  const list=loadRooms().sort((a,b)=>b.lastTs-a.lastTs);
+  $('roomList').innerHTML=list.length?list.map(x=>{
+    const cur=x.room===room;
+    return `<div class="ritem${cur?' cur':''}" data-room="${esc(x.room)}">
+      <span class="rn">${esc(x.room)}</span>
+      <span class="lk">${x.hasKey?'🔒':''}</span>
+      <span class="rt">${x.epoch>=0?'e'+x.epoch:''}</span></div>`;
+  }).join(''):'<div class="rt" style="padding:8px">还没有加入过房间</div>';
+  $('roomList').querySelectorAll('.ritem').forEach(el=>{
+    el.onclick=()=>{const r=el.getAttribute('data-room');if(r&&r!==room)switchRoom(r);$('roomsDrawer').classList.remove('open');};
+  });
+}
+function switchRoom(newRoom){
+  // 离开当前房 → 换房重 join。房间钥账本 window.RoomKeys 按房名隔离,切回仍可解历史。
+  if(ws&&ws.readyState===1){switching=true;try{ws.send(JSON.stringify({type:'leave',room,user_id:ID.user_id}));}catch(e){}
+    try{ws.close();}catch(e){}switching=false;}
+  room=newRoom;msgIds.clear();$('msgs').innerHTML='';lastSeq=0;members={};window._isOwner=false;
+  $('roomTitle').innerHTML='群聊 · '+esc(room);upsertRoom(room);connect();
+}
+function refreshEpochBadge(){
+  const ent=window.RoomKeys&&RoomKeys[room];
+  const ep=ent&&ent.curEpoch>=0?ent.curEpoch:null;
+  $('roomTitle').innerHTML='群聊 · '+esc(room)+(ep!==null?`<span class="epoch">E2E e${ep}</span>`:'');
+}
+
+function setLive(on){$('livedot').className='dot'+(on?' on':'');}
+function sys(t){addMsg({sys:true,text:t});}
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+
+function linkify(text) {
+  // 先转义整个文本
+  let safeText = esc(text);
+  // 再匹配 URL 并替换为链接
+  return safeText.replace(URL_REGEX, url => {
+    const domain = extractDomain(url);
+    const isMalicious = MALICIOUS_DOMAINS.includes(domain) || !isHttps(url);
+    return `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer" data-domain="${esc(domain)}" data-malicious="${isMalicious}">${esc(url)}</a>`;
+  });
+}
+
+function addMsg(m){
+  const box=$('msgs');
+  const nearBottom = box.scrollTop+box.clientHeight>=box.scrollHeight-60;
+  if(m.sys){
+    const d=document.createElement('div');d.className='sys';d.textContent=m.text;box.appendChild(d);
+  }else{
+    if(m.seq&&msgIds.has(m.seq))return; msgIds.add(m.seq);
+    const mine=m.user_id===ID.user_id;
+    const isBot=m.user_id===getBotUid()||m.is_bot||isFromBot(m);
+    const d=document.createElement('div');
+    d.className='m '+(mine?'me':(m.body&&m.body.kind==='bot'?'bot':'them'));
+    const uc=colorOf(m.user_id);
+    if(!mine&&d.className.indexOf('them')>=0)d.style.setProperty('--uc',uc);
+    const nm=mine?'我':(m.display_name||m.user_id);
+    const vb=m.verified===true?'<span class="vf ok" title="签名已验证">✓</span>':(m.verified===false?'<span class="vf bad" title="签名验证失败">✗</span>':'');
+    let txt;
+    if(m.body&&m.body.kind==='ctext'){
+      txt=m.decryptOk?`<span class="lock" title="端到端加密">🔒</span>${linkify(m.decrypted)}`
+                     :'<span class="lock">🔒</span><i style="opacity:.7">[加密消息,无钥]</i>';
+    }else{
+      txt=linkify(m.body&&m.body.text!==undefined?m.body.text:JSON.stringify(m.body));
+    }
+    d.innerHTML=`<div class="nm"><span class="av" style="background:${uc}">${letterOf(nm)}</span>${esc(nm)}${m.body&&m.body.kind==='bot'?' <span class="badge">BOT</span>':''}<span class="vf">${vb}</span></div>${txt}`;
+    box.appendChild(d);
+    // 绑定链接点击事件
+    d.querySelectorAll('a').forEach(a => {
+      a.onclick = (e) => {
+        e.preventDefault();
+        const url = a.getAttribute('href');
+        const domain = a.getAttribute('data-domain');
+        const isMalicious = a.getAttribute('data-malicious') === 'true';
+        showLinkCheck(url, domain, isMalicious);
+      };
+    });
+  }
+  if(nearBottom)box.scrollTop=box.scrollHeight;
+}
+
+function showLinkCheck(url, domain, isMalicious) {
+  const modal = $('linkCheckModal');
+  const panel = $('linkCheckPanel');
+  const urlEl = $('linkCheckUrl');
+  const resultEl = $('linkCheckResult');
+  
+  urlEl.textContent = url;
+  
+  if (isWhitelisted(domain)) {
+    // 白名单域名直接打开
+    window.open(url, '_blank');
+    return;
+  }
+  
+  if (isMalicious) {
+    resultEl.innerHTML = '🔴 危险: 此链接可能不安全';
+    resultEl.className = 'danger';
+  } else if (!isHttps(url)) {
+    resultEl.innerHTML = '🟡 警告: 此链接未使用 HTTPS';
+    resultEl.className = 'warning';
+  } else {
+    resultEl.innerHTML = '🟢 安全: 此链接看起来安全';
+    resultEl.className = 'safe';
+  }
+  
+  // 绑定按钮事件
+  $('linkCheckOpen').onclick = () => {
+    window.open(url, '_blank');
+    modal.classList.remove('open');
+  };
+  $('linkCheckCopy').onclick = () => {
+    navigator.clipboard.writeText(url);
+    modal.classList.remove('open');
+  };
+  $('linkCheckCancel').onclick = () => {
+    modal.classList.remove('open');
+  };
+  $('linkCheckWhitelist').onclick = () => {
+    whitelistDomain(domain);
+    modal.classList.remove('open');
+  };
+  
+  modal.classList.add('open');
+}
+
+function isFromBot(m){const b=Object.values(members).find(x=>x.is_bot&&x.user_id===m.user_id);return !!b;}
+function getBotUid(){const b=Object.values(members).find(x=>x.is_bot);return b?b.user_id:null;}
+
+function renderMembers(){
+  const list=Object.values(members);
+  $('memCount').textContent=`(${list.length})`;
+  $('memList').innerHTML=list.map(m=>{
+    const uc=colorOf(m.user_id);
+    return `<div class="mem"><span class="av" style="background:${uc}">${letterOf(m.display_name)}</span>
+      <span class="nm">${esc(m.display_name)}${m.is_bot?' <span class="badge">BOT</span>':''}${m.user_id===ID.user_id?' <span class="tag">(我)</span>':''}</span>
+      <span class="${m.online?'on':'off'}"></span></div>`;
+  }).join('');
+}
+
+// ── 收发 ─────────────────────────────────────────────────────────────── //
+async function sendChat(text){
+  if(!text||!ws||ws.readyState!==1)return;
+  // @bot → mentions 填机器人 user_id
+  const mentions=[];const bu=getBotUid();
+  if(bu&&/@bot|@群助手/i.test(text))mentions.push(bu);
+  // 有房间钥 → E2E 密文(AES-256-GCM,suite=2);无钥 → 明文(向后兼容)
+  let body=null;
+  try{
+    const key=window.GroupE2E&&GroupE2E.getRoomKey(room);
+    if(key){
+      const e=await GroupE2E.sealMsg(key,text);
+      body={kind:'ctext',suite:2,epoch:(RoomKeys[room]||{}).curEpoch,room,nonce:e.nonce,ct:e.ct};
+    }
+  }catch(e){/* 无钥 → 明文 */}
+  if(!body)body={kind:'text',text};
+  const sig=await signPayload({room,body,user_id:ID.user_id});
+  ws.send(JSON.stringify({type:'post',room,user_id:ID.user_id,display_name:myName,body,mentions,
+    pubkey:b64(ID.pubRaw),sig}));
+}
+
+// 成员的 suite=2 X25519 公钥:优先独立字段 e2e_x25519(b64 raw32);
+// 兼容旧 JSON 打包 e2e_pub(b64(json({"x"/"x25519":..})))与裸 b64(raw32)。失败 → null。
+function e2ePubX25519(m){
+  if(!m)return null;
+  if(m.e2e_x25519)return m.e2e_x25519;
+  const e2ePubB64=m.e2e_pub;
+  if(!e2ePubB64)return null;
+  try{
+    const raw=b64d(e2ePubB64);
+    const obj=JSON.parse(new TextDecoder().decode(raw));
+    if(obj&&typeof obj==='object'&&(obj.x||obj.x25519))return obj.x||obj.x25519;
+  }catch(e){
+    try{const raw=b64d(e2ePubB64);if(raw.length===32)return e2ePubB64;}catch(_){ }
+  }
+  return null;
+}
+
+// 房主逐人分发:对新 epoch 钥,给每个有 X25519 pub 的成员 wrap + 定向 post(不含自己,自己的钥已在本地登记)
+async function distributeRoomKey(epoch,keyBytes,targets){
+  for(const uid of targets){
+    const pub=e2ePubX25519(members[uid]);
+    if(!pub||uid===ID.user_id)continue;
+    try{
+      const w=await GroupE2E.wrapRoomKey(pub,keyBytes);
+      const body={kind:'key-dist',suite:2,epoch,room,to_user_id:uid,eph:w.eph,nonce:w.nonce,ct:w.ct};
+      const sig=await signPayload({room,body,user_id:ID.user_id});
+      ws.send(JSON.stringify({type:'post',room,user_id:ID.user_id,display_name:myName,body,mentions:[],
+        to_user_id:uid,pubkey:b64(ID.pubRaw),sig}));
+    }catch(e){console.warn('wrap for',uid,'failed',e);}
+  }
+}
+// 成员离开 → 房主自动轮换:epoch+1 新钥,只发给剩余成员(前向保密)
+async function rotateRoomKey(){
+  if(!window.GroupE2E||!ws||ws.readyState!==1)return;
+  const ent=RoomKeys[room];if(!ent||ent.curEpoch<0)return; // 本房未启用 E2E 不轮换
+  const newEpoch=ent.curEpoch+1;
+  const key=crypto.getRandomValues(new Uint8Array(32));
+  GroupE2E.setRoomKey(room,newEpoch,key);
+  refreshEpochBadge();
+  const targets=Object.keys(members).filter(u=>u!==ID.user_id&&e2ePubX25519(members[u]));
+  await distributeRoomKey(newEpoch,key,targets);
+  sys(`已轮换房间钥(epoch=${newEpoch})`);
+}
+
+async function handleMsg(m){
+  lastSeq=Math.max(lastSeq,m.seq||0);
+  // 防冒充:pubkey 指纹必须 = 声称 user_id,再验签
+  let verified=false;
+  if(m.pubkey&&m.sig){
+    const digest=await crypto.subtle.digest('SHA-256',b64d(m.pubkey));
+    if(b64url16(digest)===m.user_id){
+      verified=await verifyPayload(m.pubkey,{room,body:m.body,user_id:m.user_id},m.sig);
+    }
+  }
+  m.verified=verified;
+  const b=m.body||{};
+  // 逐人分发的房间钥:只认领定向给自己的,按 suite 分派
+  if(b.kind==='key-dist'&&(!b.to_user_id||b.to_user_id===ID.user_id)){
+    if(b.suite===2&&myX25519){
+      try{
+        const key=await GroupE2E.unwrapRoomKey(myX25519,b.eph,b.nonce,b.ct);
+        GroupE2E.setRoomKey(b.room||room,b.epoch,key);
+        if((b.room||room)===room){refreshEpochBadge();upsertRoom(room);sys(`收到房间钥(epoch=${b.epoch})`);}
+      }catch(e){console.warn('unwrap key-dist failed',e);}
+    }else if(b.suite===1){
+      // suite=1 为 conduit(X25519+ML-KEM+XChaCha20,带身份签名),Web 端无法解;
+      // 预期:纯 Rust 房 Web 不参与分发,或房主优先发 suite=2(有 x25519 公告时)
+      console.warn('收到 suite=1 key-dist(conduit 调制),Web 端无法解,已忽略');
+    }
+    return; // key-dist 不作为聊天消息上屏
+  }
+  // 密文消息:按 body.epoch 取钥解密,无钥显示占位
+  if(b.kind==='ctext'){
+    try{
+      const key=GroupE2E.getRoomKey(b.room||room,b.epoch);
+      m.decrypted=await GroupE2E.openMsg(key,b.nonce,b.ct);
+      m.decryptOk=true;
+    }catch(e){m.decrypted=null;m.decryptOk=false;}
+  }
+  addMsg(m);
+}
+
+function connect(){
+  if(ws&&(ws.readyState===0||ws.readyState===1))return;
+  ws=new WebSocket(WS_URL);
+  ws.onopen=async()=>{
+    if(!myX25519&&window.GroupE2E){try{myX25519=await GroupE2E.genX25519();}catch(e){console.warn('X25519 不可用,E2E 分发禁用',e);}}
+    const j={type:'join',room,user_id:ID.user_id,display_name:myName,
+      token:TOKEN,is_bot:false,pubkey:b64(ID.pubRaw)};
+    if(myX25519){
+      // 与 Python 端 chatroom_client 对齐:suite=2 X25519 pub 走独立字段 e2e_x25519
+      // (b64 raw32,44 字符;不挤 e2e_pub —— 那是 suite=1 conduit pub 的位置)
+      j.e2e_x25519=await GroupE2E.exportPub(myX25519);
+      j.suites=[2];
+    }
+    if(pendingInvite)j.invite=pendingInvite; // 带邀请密钥(不显示、不入 history)
+    ws.send(JSON.stringify(j));
+  };
+  ws.onmessage=async ev=>{
+    let m;try{m=JSON.parse(ev.data);}catch(e){return;}
+    const t=m.type;
+    if(t==='joined'){
+      setLive(true);lastSeq=m.last_seq||0;
+      members={};(m.members||[]).forEach(x=>members[x.user_id]=x);
+      // 房主精确判定:relay joined 回 owner 字段(P4 起替换启发式)
+      window._isOwner=m.owner===ID.user_id;
+      upsertRoom(room);refreshEpochBadge();
+      renderMembers();sys(`已加入 ${room}(序号到 #${lastSeq}${window._isOwner?',我是房主':''})`);
+      ws.send(JSON.stringify({type:'read',room,since_seq:lastSeq}));
+    }else if(t==='msg'){await handleMsg(m);}
+    else if(t==='history'){for(const x of m.msgs||[])await handleMsg(x);}
+    else if(t==='member-joined'||t==='member-online'){members[m.user_id]={user_id:m.user_id,display_name:m.display_name,is_bot:m.is_bot,online:true,e2e_pub:m.e2e_pub,e2e_x25519:m.e2e_x25519,suites:m.suites};renderMembers();sys(`${m.display_name} 上线`);}
+    else if(t==='member-offline'){if(members[m.user_id])members[m.user_id].online=false;renderMembers();sys(`${m.display_name} 离线`);}
+    else if(t==='member-left'){delete members[m.user_id];renderMembers();sys(`${m.display_name} 已离开`);
+      if(window._isOwner)rotateRoomKey(); // 房主:成员离开自动轮换(前向保密)
+    }
+    else if(t==='members'){members={};(m.members||[]).forEach(x=>members[x.user_id]=x);renderMembers();}
+    else if(t==='invite-set'){sys('邀请密钥已设置');}
+    else if(t==='invite-revoked'){myInvite='';sys('邀请密钥已吊销(房间转为开放)');}
+    else if(t==='error'){
+      if(m.error==='invite-required'){
+        // 被门禁拒绝:回到 setup 屏提示
+        $('setupErr').textContent='此房间需要邀请密钥';$('setupErr').style.display='block';
+        $('setup').style.display='flex';$('app').style.display='none';
+        $('joinBtn').textContent='生成身份并加入';$('joinBtn').disabled=false;
+      }else sys('错误: '+m.error);
+    }
+  };
+  ws.onclose=()=>{setLive(false);if(switching)return;sys('连接断开,3s 后重连…');clearTimeout(reconnectTimer);reconnectTimer=setTimeout(connect,3000);};
+  ws.onerror=()=>{};
+}
+
+// ── 离开房间 ─────────────────────────────────────────────────────────── //
+async function leaveRoom() {
+  if (!confirm('离开后将无法解密本房新消息,确定?')) return;
+  
+  if (ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({type:'leave',room,user_id:ID.user_id}));
+    try { ws.close(); } catch(e) {}
+  }
+  
+  // 清空本地房间钥
+  if (window.RoomKeys && RoomKeys[room]) {
+    delete RoomKeys[room];
+  }
+  
+  // 从房间列表移除
+  const rooms = loadRooms().filter(r => r.room !== room);
+  saveRooms(rooms);
+  
+  // 返回 setup 屏
+  $('app').style.display = 'none';
+  $('setup').style.display = 'flex';
+  $('setupErr').style.display = 'none';
+}
+
+// ── 启动 ─────────────────────────────────────────────────────────────── //
+$('joinBtn').onclick=async()=>{
+  room=$('roomIn').value.trim()||'lobby';
+  myName=$('nameIn').value.trim()||('用户'+Math.floor(Math.random()*900+100));
+  $('joinBtn').textContent='生成身份中…';$('joinBtn').disabled=true;
+  ID=await loadOrCreateIdentity();
+  localStorage.setItem('chatroom_name',myName);
+  upsertRoom(room);
+  $('setup').style.display='none';$('app').style.display='flex';
+  $('roomTitle').textContent='群聊 · '+room;refreshEpochBadge();
+  $('whoBox').innerHTML=`<b>${esc(myName)}</b><br>${ID.user_id.slice(0,8)}…`;
+  connect();
+};
+$('send').onclick=()=>{const v=$('in').value.trim();if(v){sendChat(v);$('in').value='';}};
+$('in').addEventListener('keydown',e=>{if(e.key==='Enter')$('send').click();});
+$('botBtn').onclick=()=>{$('in').value='@bot ';$('in').focus();};
+$('membersBtn').onclick=()=>{renderMembers();$('drawer').classList.add('open');};
+$('drawer').onclick=e=>{if(e.target===$('drawer'))$('drawer').classList.remove('open');};
+$('roomsBtn').onclick=()=>{upsertRoom(room);renderRooms();$('roomsDrawer').classList.add('open');};
+$('roomsDrawer').onclick=e=>{if(e.target===$('roomsDrawer'))$('roomsDrawer').classList.remove('open');};
+$('leaveBtn').onclick=leaveRoom;
+
+// ── 邀请(fragment 邀请链接)────────────────────────────────────────────── //
+// 链接形态: ?room=<id>&invite=<secret>#k=<房间钥b64>
+//   - query 部分(room/invite)经 WS join 的 invite 字段上行给 relay 过门禁;
+//   - fragment 的 #k= 房间钥只在本地 GroupE2E.setRoomKey 登记,绝不上行进任何 WS 消息。
+$('inviteBtn').onclick=async()=>{
+  if(!window._isOwner){sys('仅房主可生成邀请');return;}
+  // 房主首次生成:随机 16B invite 并 set-invite 给 relay(值不回显)
+  if(!myInvite){
+    myInvite=b64(crypto.getRandomValues(new Uint8Array(16)));
+    if(ws&&ws.readyState===1)ws.send(JSON.stringify({type:'set-invite',room,user_id:ID.user_id,invite:myInvite}));
+  }
+  let url=location.origin+location.pathname+'?room='+encodeURIComponent(room)+'&invite='+encodeURIComponent(myInvite);
+  try{ // 若本房已启用 E2E,把房间钥放 fragment(不上行)
+    const k=window.GroupE2E&&GroupE2E.getRoomKey(room);
+    if(k)url+='#k='+encodeURIComponent(b64(k));
+  }catch(e){/* 未启用 E2E:只给 ?room=&invite= */}
+  try{await navigator.clipboard.writeText(url);sys('邀请链接已复制到剪贴板');}
+  catch(e){prompt('复制邀请链接:',url);}
+};
+
+// ── 启动解析邀请链接 ──────────────────────────────────────────────────── //
+(function(){
+  const q=new URLSearchParams(location.search);
+  const r=q.get('room'),inv=q.get('invite');
+  if(r)$('roomIn').value=r;
+  if(inv)pendingInvite=inv;
+  // fragment 房间钥:本地登记后立即清掉 hash(防泄露到 Referer/历史)
+  const hm=location.hash.match(/[#&]k=([^&]+)/);
+  if(hm&&r&&window.GroupE2E){
+    try{
+      const keyBytes=b64d(decodeURIComponent(hm[1]));
+      if(keyBytes.length===32)GroupE2E.setRoomKey(r,0,keyBytes);
+    }catch(e){console.warn('房间钥 fragment 解析失败',e);}
+  }
+  if(location.hash)history.replaceState({},'',location.pathname+location.search);
+})();
+// 记住上次的房间/名字(若邀请链接已预填房间则不覆盖)
+if(!pendingInvite||!new URLSearchParams(location.search).get('room'))
+  $('roomIn').value=localStorage.getItem('chatroom_room')||'lobby';
+$('nameIn').value=localStorage.getItem('chatroom_name')||'';
+$('roomIn').addEventListener('change',()=>localStorage.setItem('chatroom_room',$('roomIn').value.trim()));
+</script>
+<script>
+// ── GroupE2E 群聊 E2E 模块(形态3:AES-256-GCM 房间钥 + X25519 逐对分发,纯密码学层) ──
+// 与 Python 端 securedm_groupchat_e2e.py 同协议;P3/P4 才接 relay 收发。
+(function(){
+const _b64 = (typeof b64==='function')?b64:(buf)=>btoa(String.fromCharCode(...new Uint8Array(buf)));
+const _b64d = (typeof b64d==='function')?b64d:(s)=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+const _enc=new TextEncoder(),_dec=new TextDecoder();
+const HKDF_INFO='securedm-roomkey-v1';
+
+async function genX25519(){
+  try{
+    return await crypto.subtle.generateKey({name:'ECDH',namedCurve:'X25519'},true,['deriveBits']);
+  }catch(e){
+    throw new Error('GroupE2E: 当前浏览器不支持 WebCrypto X25519(需 Chrome/Edge 新版): '+e.message);
+  }
+}
+async function exportPub(kp){return _b64(await crypto.subtle.exportKey('raw',kp.publicKey));}
+async function importPub(b64s){
+  return crypto.subtle.importKey('raw',_b64d(b64s),{name:'ECDH',namedCurve:'X25519'},false,[]);
+}
+async function _hkdf(shared,salt){
+  const ikm=await crypto.subtle.importKey('raw',shared,'HKDF',false,['deriveKey']);
+  return crypto.subtle.deriveKey(
+    {name:'HKDF',hash:'SHA-256',salt:salt||new Uint8Array(32),info:_enc.encode(HKDF_INFO)},
+    ikm,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+}
+async function wrapRoomKey(theirPubB64,keyBytes){
+  // 临时 X25519 对 -> ECDH -> HKDF-SHA256(info=HKDF_INFO) -> AES-GCM 包房间钥
+  const eph=await genX25519();
+  const theirPub=await importPub(theirPubB64);
+  const shared=await crypto.subtle.deriveBits({name:'ECDH',public:theirPub},eph.privateKey,256);
+  const wrapKey=await _hkdf(shared);
+  const nonce=crypto.getRandomValues(new Uint8Array(12));
+  const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv:nonce},wrapKey,keyBytes);
+  return {eph:await exportPub(eph),nonce:_b64(nonce),ct:_b64(ct)};
+}
+async function unwrapRoomKey(myKp,ephB64,nonceB64,ctB64){
+  const ephPub=await importPub(ephB64);
+  const shared=await crypto.subtle.deriveBits({name:'ECDH',public:ephPub},myKp.privateKey,256);
+  const wrapKey=await _hkdf(shared);
+  const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:_b64d(nonceB64)},wrapKey,_b64d(ctB64));
+  return new Uint8Array(pt); // 32B 房间钥
+}
+async function _importAes(keyBytes){
+  return crypto.subtle.importKey('raw',keyBytes,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+}
+async function sealMsg(roomKeyBytes,plaintext){
+  const key=await _importAes(roomKeyBytes);
+  const nonce=crypto.getRandomValues(new Uint8Array(12));
+  const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv:nonce},key,_enc.encode(plaintext));
+  return {nonce:_b64(nonce),ct:_b64(ct)};
+}
+async function openMsg(roomKeyBytes,nonceB64,ctB64){
+  const key=await _importAes(roomKeyBytes);
+  const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:_b64d(nonceB64)},key,_b64d(ctB64));
+  return _dec.decode(pt);
+}
+// 房间钥账本:{room:{curEpoch,keys:{epoch:Uint8Array}}},旧钥缓存解历史
+window.RoomKeys=window.RoomKeys||{};
+function setRoomKey(room,epoch,keyBytes){
+  const ent=window.RoomKeys[room]=window.RoomKeys[room]||{curEpoch:-1,keys:{}};
+  ent.keys[epoch]=keyBytes;
+  if(epoch>ent.curEpoch)ent.curEpoch=epoch;
+}
+function getRoomKey(room,epoch){
+  const ent=window.RoomKeys[room];
+  if(!ent)throw new Error('GroupE2E: no room key for '+room);
+  const k=ent.keys[epoch===undefined?ent.curEpoch:epoch];
+  if(!k)throw new Error('GroupE2E: no key for '+room+' epoch '+(epoch===undefined?ent.curEpoch:epoch));
+  return k;
+}
+window.GroupE2E={genX25519,exportPub,importPub,wrapRoomKey,unwrapRoomKey,sealMsg,openMsg,setRoomKey,getRoomKey};
+// 顶部自检:A 用 B 的公钥 wrap 一把随机房间钥,B unwrap 解回应相等
+(async()=>{
+  try{
+    const a=await genX25519(),b=await genX25519();
+    const key=crypto.getRandomValues(new Uint8Array(32));
+    const w=await wrapRoomKey(await exportPub(b),key);
+    const back=await unwrapRoomKey(b,w.eph,w.nonce,w.ct);
+    const eq=key.length===back.length&&key.every((v,i)=>v===back[i]);
+    if(!eq)throw new Error('unwrap mismatch');
+    const m=await sealMsg(back,'你好群聊');
+    if(await openMsg(key,m.nonce,m.ct)!=='你好群聊')throw new Error('msg mismatch');
+    console.log('GroupE2E OK');
+  }catch(e){console.warn('GroupE2E selftest failed:',e.message);}
+})();
+})();
+</script>
+</body>
+</html>

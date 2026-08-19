@@ -1,0 +1,35 @@
+[package]
+name = "crypto-conduit"
+version = "0.1.0"
+edition = "2021"
+description = "Capability-04: portable E2E encryption overlay (crypto conduit). Independent second layer, IM-agnostic. See Documents/oiagent-os-integration/capability-04-e2e-overlay.md"
+license = "MIT"
+
+# rlib  -> 供 Rust 内部测试/未来 Rust 调用方
+# cdylib -> C ABI FFI,绑 Python(daemon)/Go(IM端)
+[lib]
+name = "crypto_conduit"
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+# 密码学套件:刻意与 SimpleX 底层(sntrup761/NTRU)不同族
+# 代际对齐:digest 0.11 / rand_core 0.10 / kem 0.3
+x25519-dalek = { version = "3", features = ["static_secrets"] }   # 经典 DH(混合的一半)
+ml-kem = "0.3"                                                   # ML-KEM-768(FIPS 203,与NTRU不同格族)
+ed25519-dalek = { version = "3", features = ["rand_core"] }      # 身份密钥签名
+chacha20poly1305 = { version = "0.11", features = ["alloc"] }    # XChaCha20-Poly1305
+hkdf = "0.13"                                                    # KDF 链棘轮(digest 0.11)
+sha2 = "0.11"                                                    # HKDF-SHA256(digest 0.11)
+getrandom = "0.4"                                                # 熵源 SysRng + rand_core re-export
+rand_core = "0.10"                                               # RNG traits(UnwrapErr/CryptoRng)
+zeroize = { version = "1", features = ["derive"] }               # 密钥材料用后清零(记忆隔离纪律)
+thiserror = "2"
+
+[dev-dependencies]
+# §15 L1 编译期探针:用于 assert_impl_serde 占位 + Identity 不 derive Serialize 反向断言
+serde = { version = "1", features = ["derive"] }
+
+[profile.release]
+# FFI 安全:符号不外泄过多,但仍保留导出
+lto = true
+opt-level = 3
