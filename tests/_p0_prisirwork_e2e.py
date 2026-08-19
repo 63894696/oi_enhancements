@@ -8,27 +8,32 @@ PORT = 12450
 TOKEN = "p0test_" + "a" * 56  # 测试 token,固定便于逐个用例带/不带/带错
 BASE = f"http://127.0.0.1:{PORT}"
 
-cfg = os.path.join(tempfile.mkdtemp(prefix="oi_p0_"), "coworker.json")
-env = dict(os.environ, OI_COWORKER_CONFIG=cfg, OI_COWORKER_PORT=str(PORT))
+cfg = os.path.join(tempfile.mkdtemp(prefix="oi_p0_"), "work.json")
+env = dict(os.environ, PRISIR_WORK_CONFIG=cfg, PRISIR_WORK_PORT=str(PORT))
 
 # 起 Prisir 工坊(token 由 config 生成;但我们想固定 token 做断言 → 先写配置)
 os.makedirs(os.path.dirname(cfg), exist_ok=True)
 json.dump({"token": TOKEN, "port": PORT}, open(cfg, "w"))
-proc = subprocess.Popen([sys.executable, "-m", "oiagent_coworker", str(PORT)], env=env,
+proc = subprocess.Popen([sys.executable, "-m", "prisir_work", str(PORT)], env=env,
                         cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 
-def req(path, token=None, method="GET"):
+def req(path, token=None, method="GET", body=None):
     r = urllib.request.Request(BASE + path, method=method)
     if token is not None:
         r.add_header("X-OI-Token", token)
+    if body is not None:
+        data = json.dumps(body).encode("utf-8")
+        r.add_header("Content-Type", "application/json")
+        r.add_header("Content-Length", str(len(data)))
+        r.data = data
     try:
         with urllib.request.urlopen(r, timeout=5) as resp:
             return resp.status, json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
-        try: body = json.loads(e.read().decode())
-        except Exception: body = {}
-        return e.code, body
+        try: body2 = json.loads(e.read().decode())
+        except Exception: body2 = {}
+        return e.code, body2
 
 # 等服务起来
 up = False
@@ -47,6 +52,15 @@ res["wallet_错token"] = req("/wallet/status", token="wrong")# 期望 401
 res["wallet_对token"] = req("/wallet/status", token=TOKEN)  # 期望 200 + daemon unavailable(未装 electrum)
 res["白名单外"]      = req("/admin/shell", token=TOKEN)      # 期望 404
 res["白名单外2"]     = req("/wallet/payto", token=TOKEN, method="POST")  # 未登记 → 404(即使带对 token)
+
+# F1 能力门面:search/execute 两入口
+res["cap_search_无token"] = req("/cap/search", method="POST", body={"query": ""})                 # 期望 401
+res["cap_search_钱包"]    = req("/cap/search", token=TOKEN, method="POST", body={"query": "钱包"}) # 期望 200 命中 wallet.status
+res["cap_search_空"]      = req("/cap/search", token=TOKEN, method="POST", body={"query": ""})     # 期望 200 全量
+res["cap_exec_无token"]   = req("/cap/execute", method="POST", body={"id": "wallet.status"})       # 期望 401
+res["cap_exec_未知能力"]  = req("/cap/execute", token=TOKEN, method="POST", body={"id": "nope.x"}) # 期望 404
+res["cap_exec_health"]    = req("/cap/execute", token=TOKEN, method="POST", body={"id": "system.health"})  # 期望 200 经门面跑通
+res["cap_exec_wallet"]    = req("/cap/execute", token=TOKEN, method="POST", body={"id": "wallet.status"})  # 期望 200 路由到端点
 
 # 只监听 127.0.0.1:本机非回环地址应连不上
 ext_ip = None
@@ -75,6 +89,19 @@ checks = {
   "白名单外 404": res["白名单外"][0] == 404,
   "未登记端点(payto)404": res["白名单外2"][0] == 404,
   "只监听 127.0.0.1": (loopback_only is True),
+  # F1 能力门面
+  "cap/search 无 token 401": res["cap_search_无token"][0] == 401,
+  "cap/search 命中钱包能力": res["cap_search_钱包"][0] == 200 and any(
+      c.get("id") == "wallet.status" for c in res["cap_search_钱包"][1].get("capabilities", [])),
+  "cap/search 空 query 返回全量": res["cap_search_空"][0] == 200 and
+      len(res["cap_search_空"][1].get("capabilities", [])) >= 2,
+  "cap/execute 无 token 401": res["cap_exec_无token"][0] == 401,
+  "cap/execute 未知能力 404": res["cap_exec_未知能力"][0] == 404 and
+      res["cap_exec_未知能力"][1].get("error") == "unknown_capability",
+  "cap/execute system.health 跑通": res["cap_exec_health"][0] == 200 and
+      res["cap_exec_health"][1].get("capability") == "system.health",
+  "cap/execute wallet.status 路由到端点": res["cap_exec_wallet"][0] == 200 and
+      res["cap_exec_wallet"][1].get("result", {}).get("daemon") == "unavailable",
 }
 print("逐项:", json.dumps(checks, ensure_ascii=False, indent=2))
 print("wallet/status 实回:", json.dumps(res["wallet_对token"][1], ensure_ascii=False))
