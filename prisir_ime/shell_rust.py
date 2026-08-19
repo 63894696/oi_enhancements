@@ -12,6 +12,15 @@ import ctypes, json, os, sys, time, threading
 from ctypes import wintypes
 import tkinter as tk
 
+try:
+    import lingxi_hotkeys as HK
+    C = HK.COLORS
+except Exception:  # 配置层缺失时兜底,壳仍能跑
+    C = {"bg": "#0f172a", "bg2": "#1e293b", "border": "#334155",
+         "text": "#e2e8f0", "text_dim": "#94a3b8", "gold": "#e8b458",
+         "ready": "#3fbf7f", "recording": "#2ee06a", "busy": "#e8b23c",
+         "error": "#e05252"}
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_DB = r"C:\Users\Administrator\voice_input\lingxi_ime\backend\ciku.db"
 DLL = os.path.join(HERE, "target", "release", "prisir_ime.dll")
@@ -24,6 +33,12 @@ WM_SYSKEYDOWN = 0x0104
 VK_BACK, VK_RETURN, VK_ESCAPE, VK_SPACE = 0x08, 0x0D, 0x1B, 0x20
 VK_0, VK_9, VK_RCONTROL = 0x30, 0x39, 0xA3
 
+# 候选窗扩展样式:WS_EX_NOACTIVATE = 鼠标点选不抢前台焦点。
+# 缺了它,点候选词时焦点切到候选窗,SendInput 的字会上屏进候选窗自己而不是目标应用。
+GWL_EXSTYLE = -20
+WS_EX_NOACTIVATE = 0x08000000
+WS_EX_TOOLWINDOW = 0x00000080
+
 
 def log(msg):
     try:
@@ -31,6 +46,21 @@ def log(msg):
             f.write(f"{time.strftime('%H:%M:%S')} {msg}\n")
     except Exception:
         pass
+
+
+def _crash_hook(exc_type, exc, tb):
+    """未捕获异常兜底:写栈到日志,避免无声闪退。"""
+    import traceback
+    log("[CRASH] " + "".join(traceback.format_exception(exc_type, exc, tb)))
+
+
+def _thread_crash_hook(args):
+    import traceback
+    log("[THREAD-CRASH] " + "".join(traceback.format_exception(args.exc_type, args.exc_value, args.exc_traceback)))
+
+
+sys.excepthook = _crash_hook
+threading.excepthook = _thread_crash_hook
 
 
 # ---------- Rust 引擎封装(ctypes) ----------
@@ -81,31 +111,49 @@ class GUITHREADINFO(ctypes.Structure):
 
 
 def caret_position():
+    # 取前台窗口所属线程的 caret(传 0=本线程拿不到目标应用光标,会退化成固定坐标)。
     u = ctypes.windll.user32
     gui = GUITHREADINFO()
     gui.cbSize = ctypes.sizeof(GUITHREADINFO)
-    u.GetGUIThreadInfo(0, ctypes.byref(gui))
-    if gui.hwndCaret:
-        left, top, right, bottom = gui.rcCaret
-        pt = wintypes.POINT(left, bottom)
-        u.ClientToScreen(gui.hwndCaret, ctypes.byref(pt))
-        return pt.x, pt.y
-    return 0, 0
+    hwnd = u.GetForegroundWindow()
+    tid = u.GetWindowThreadProcessId(hwnd, None)
+    try:
+        if tid and u.GetGUIThreadInfo(tid, ctypes.byref(gui)) and gui.hwndCaret:
+            left, top, right, bottom = gui.rcCaret
+            pt = wintypes.POINT(left, bottom)
+            u.ClientToScreen(gui.hwndCaret, ctypes.byref(pt))
+            if pt.x or pt.y:
+                return pt.x, pt.y
+    except Exception:
+        pass
+    # 兜底:鼠标位置偏下(不挡文字)
+    pt = wintypes.POINT()
+    u.GetCursorPos(ctypes.byref(pt))
+    return pt.x, pt.y + 24
 
 
 # ---------- SendInput Unicode 上屏 ----------
-class KEYBDINPUT(ctypes.Structure):
-    _fields_ = [("wVk", wintypes.WORD), ("wScan", wintypes.WORD),
-                ("dwFlags", wintypes.DWORD), ("time", wintypes.DWORD),
-                ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong))]
-
-
-class _INP(ctypes.Union):
-    _fields_ = [("ki", KEYBDINPUT)]
-
-
+# 64位 Windows INPUT 结构体:type(4)+填充(4)+union(32,最大是 MOUSEINPUT)=40 字节。
+# ctypes 自动布局常算出 32(union 对齐错),SendInput 校验 cbSize 不符 → err=87 整批拒收。
+# 手工铺平布局,强制 sizeof=40。
 class INPUT(ctypes.Structure):
-    _fields_ = [("type", wintypes.DWORD), ("_input", _INP)]
+    _fields_ = [("type", wintypes.DWORD),
+                ("_pad0", wintypes.DWORD),                # 对齐 union 到偏移 8
+                ("wVk", wintypes.WORD), ("wScan", wintypes.WORD),
+                ("dwFlags", wintypes.DWORD), ("time", wintypes.DWORD),
+                ("dwExtraInfo", ctypes.c_ulonglong),      # ULONG_PTR
+                ("_pad1", ctypes.c_byte * 8)]             # 补齐到 40(MOUSEINPUT 大小)
+
+
+def _make_kinput(scan, flags):
+    i = INPUT()
+    i.type = 1  # INPUT_KEYBOARD
+    i.wVk = 0
+    i.wScan = scan
+    i.dwFlags = flags
+    i.time = 0
+    i.dwExtraInfo = 0
+    return i
 
 
 def send_unicode(text):
@@ -113,17 +161,39 @@ def send_unicode(text):
     KEYEVENTF_UNICODE, KEYEVENTF_KEYUP = 0x0004, 0x0002
     arr = []
     for ch in text:
-        for flags in (KEYEVENTF_UNICODE, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP):
-            i = INPUT()
-            i.type = 1
-            i._input.ki.wVk = 0
-            i._input.ki.wScan = ord(ch)
-            i._input.ki.dwFlags = flags
-            i._input.ki.time = 0
-            i._input.ki.dwExtraInfo = None
-            arr.append(i)
+        arr.append(_make_kinput(ord(ch), KEYEVENTF_UNICODE))
+        arr.append(_make_kinput(ord(ch), KEYEVENTF_UNICODE | KEYEVENTF_KEYUP))
     n = len(arr)
-    u.SendInput(n, (INPUT * n)(*arr), ctypes.sizeof(INPUT))
+    bufsz = ctypes.sizeof(INPUT)
+    sent = u.SendInput(n, (INPUT * n)(*arr), bufsz)
+    if sent != n:
+        err = ctypes.windll.kernel32.GetLastError()
+        log(f"[send][ERR] unicode {text!r} sent={sent}/{n} sizeof={bufsz} err={err}")
+    else:
+        log(f"[send] unicode {text!r} events={n} sent={sent} sizeof={bufsz}")
+
+
+def _set_no_activate(win):
+    """给候选窗加 WS_EX_NOACTIVATE:点选候选不把前台焦点抢到自己。
+    HWND 是 64 位指针,必须显式 argtypes,否则 ctypes 默认 c_int 截断。"""
+    u = ctypes.windll.user32
+    u.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
+    u.GetWindowLongW.restype = ctypes.c_long
+    u.SetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_long]
+    u.SetWindowLongW.restype = ctypes.c_long
+    u.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND,
+                               ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.UINT]
+    try:
+        hwnd = int(win.frame(), 16)  # toplevel 的外层 HWND(十六进制字符串)
+    except Exception:
+        hwnd = win.winfo_id()
+    old = u.GetWindowLongW(hwnd, GWL_EXSTYLE)
+    new = old | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW
+    if new != old:
+        u.SetWindowLongW(hwnd, GWL_EXSTYLE, new)
+        # NOMOVE|NOSIZE|NOZORDER|NOACTIVATE|FRAMECHANGED 让样式立刻生效
+        u.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0004 | 0x0010 | 0x0020)
+    log(f"[win] hwnd={hwnd:#x} exstyle {old:#x} -> {new:#x}")
 
 
 class KBDLLHOOKSTRUCT(ctypes.Structure):
@@ -134,7 +204,7 @@ class KBDLLHOOKSTRUCT(ctypes.Structure):
 
 # ---------- 输入法主程序 ----------
 class PrisirShellIME:
-    def __init__(self, db_path, build_index=True):
+    def __init__(self, db_path, build_index=True, no_tray=False):
         self.engine = RustIMEEngine(db_path, build_index)
         self._root = None
         self._input = ""
@@ -146,65 +216,78 @@ class PrisirShellIME:
         self._win = None
         self._labels = []
         self._smart = ""
+        self._no_tray = no_tray
+        self._traywin = None
+        self._status_lbl = None
+        self._drag_pos = None
 
     def start(self):
         self._root = tk.Tk()
         self._root.withdraw()
+        # Tk 回调异常兜底(候选窗/上屏里的异常默认打 stderr,可能拖垮主循环)
+        self._root.report_callback_exception = lambda et, ev, tb: _crash_hook(et, ev, tb)
         self._tray()
         if not self._install_hook():
             print("[ERROR] 键盘钩子安装失败")
             return
-        threading.Thread(target=self._toggle_hotkey, daemon=True).start()
         print(f"[OK] Prisir IME 测试壳已启动 (引擎加载 {self.engine.load_ms:.0f}ms)")
         print("     右Ctrl 切换激活;打字出候选;数字/空格选词;回车上屏原文;Esc 取消")
         self._root.mainloop()
 
-    def _tray(self):
-        try:
-            import pystray
-            from PIL import Image, ImageDraw
-            img = Image.new("RGB", (64, 64), "#0e1420")
-            d = ImageDraw.Draw(img)
-            d.ellipse([8, 8, 56, 56], fill="#3d7bff")
-            d.text((22, 18), "P", fill="#0e1420")
-            menu = pystray.Menu(pystray.MenuItem("退出", self._quit))
-            self._trayicon = pystray.Icon("prisir_ime_shell", img, "Prisir IME 测试壳", menu)
-            threading.Thread(target=self._trayicon.run, daemon=True).start()
-        except Exception as e:
-            log(f"[WARN] tray: {e}")
-
-    def _quit(self, *_):
-        try:
-            if self._trayicon:
-                self._trayicon.stop()
-        except Exception:
-            pass
-        self._root.after(0, self._root.quit)
-
-    def _toggle_hotkey(self):
-        u = ctypes.windll.user32
-        was = False
-        while True:
-            try:
-                down = (u.GetAsyncKeyState(VK_RCONTROL) & 0x8000) != 0
-                if down and not was:
-                    was = True
-                    self._root.after(0, self._toggle)
-                elif not down and was:
-                    was = False
-                time.sleep(0.03)
-            except Exception:
-                time.sleep(0.1)
-
     def _toggle(self):
         self._active = not self._active
         log(f"[toggle] active={self._active}")
+        self._set_status(self._active)
         if not self._active:
             self._hide()
             if self._input:
                 self._commit()
 
+    def _tray(self):
+        # pystray 的 win32 消息循环线程与 键盘钩子/Tk 三方并发踩 GIL(PyEval_RestoreThread 崩,
+        # 连右Ctrl都没按就在启动期崩),已确认是 pystray 线程所致。改为纯 Tk 托盘(与 mainloop 同线程)。
+        if self._no_tray:
+            return
+        try:
+            self._build_tk_tray()
+        except Exception as e:
+            log(f"[WARN] tray: {e}")
+
+    def _build_tk_tray(self):
+        # 纯 Tk 状态窗(迷你浮窗当托盘替代):显示激活态,双击退出。单线程,无 GIL 风险。
+        w = tk.Toplevel(self._root)
+        w.title("Prisir IME")
+        w.overrideredirect(True)
+        w.attributes("-topmost", True)
+        w.configure(bg=C["bg"])
+        self._status_lbl = tk.Label(w, text="P·未激活", font=("Microsoft YaHei UI", 9),
+                                    bg=C["bg"], fg=C["text_dim"], padx=8, pady=4)
+        self._status_lbl.pack()
+        w.geometry("+20+760")  # 屏幕左下
+        w.bind("<Double-Button-1>", lambda e: self._quit())
+        self._traywin = w
+
+    def _set_status(self, active):
+        if getattr(self, "_status_lbl", None):
+            try:
+                self._status_lbl.config(text="P·已激活" if active else "P·未激活",
+                                        fg=C["ready"] if active else C["text_dim"])
+            except Exception:
+                pass
+
+    def _quit(self, *_):
+        self._root.after(0, self._root.quit)
+
+    # 架构对齐 lingxi app_debug.py(已验证稳定):
+    #   钩子回调里绝不碰 Tk/引擎,只 queue.put(vk) + return 1 吞键(纯线程安全操作);
+    #   主线程 _pump_keys 每 15ms 从队列取键安全执行。
+    # 之前崩是我误在钩子回调里调 root.after(在错误线程上下文撞 GIL)。queue.put 无此风险。
+    # 吞键后字母/数字不进目标应用 → 无需事后退格/选中清理,首字母残留问题根除。
+    PUMP_MS = 15
+
     def _install_hook(self):
+        import queue
+        self._key_queue = queue.Queue()
         u = ctypes.windll.user32
         k32 = ctypes.windll.kernel32
         k32.GetModuleHandleW.restype = wintypes.HMODULE
@@ -216,10 +299,24 @@ class PrisirShellIME:
         hmod = k32.GetModuleHandleW(None)
 
         def proc(nCode, wParam, lParam):
-            if nCode == 0 and wParam in (WM_KEYDOWN, WM_SYSKEYDOWN) and self._active:
-                kb = ctypes.cast(lParam, ctypes.POINTER(KBDLLHOOKSTRUCT)).contents
-                if self._on_key(kb.vkCode):
-                    return 1
+            # 钩子回调:尽快返回,绝不抛异常、不碰 Tk/引擎/SQLite。只入队 + 吞键。
+            try:
+                if nCode == 0 and wParam in (WM_KEYDOWN, WM_SYSKEYDOWN):
+                    kb = ctypes.cast(lParam, ctypes.POINTER(KBDLLHOOKSTRUCT)).contents
+                    if kb.flags & 0x10:  # LLKHF_INJECTED:合成键(自己 SendInput 的)放行
+                        return u.CallNextHookEx(self._hook, nCode, wParam, lParam)
+                    vk = kb.vkCode
+                    if vk == VK_RCONTROL:
+                        self._key_queue.put(vk)
+                        return 1  # 吞掉右Ctrl,不切窗口焦点
+                    # 任何修饰键(Ctrl/Alt/Shift/Win)按下时一律放行,保组合键(Ctrl+C/V/Space 等)
+                    if self._modifier_down():
+                        return u.CallNextHookEx(self._hook, nCode, wParam, lParam)
+                    if self._active and self._wants_key(vk):
+                        self._key_queue.put(vk)
+                        return 1  # 吞掉,不进目标应用
+            except Exception:
+                pass  # 钩子里静默
             return u.CallNextHookEx(self._hook, nCode, wParam, lParam)
 
         self._hook_proc = HOOKPROC(proc)
@@ -227,31 +324,64 @@ class PrisirShellIME:
         if not self._hook:
             log(f"[ERROR] SetWindowsHookExW: {k32.GetLastError()}")
             return False
+        self._root.after(self.PUMP_MS, self._pump_keys)
         return True
 
-    def _on_key(self, vk):
-        # Tk GUI 操作须回主线程,但钩子需即时返回是否吞键 → 主线程调度 + 立即吞
-        if 0x41 <= vk <= 0x5A:
-            ch = chr(vk).lower()
-            self._root.after(0, self._append, ch)
-            return True
-        if VK_0 + 1 <= vk <= VK_9:
-            idx = vk - VK_0 - 1
-            self._root.after(0, self._pick, idx)
-            return True
-        if vk == VK_SPACE:
-            self._root.after(0, self._pick, 0)
-            return True
-        if vk == VK_RETURN:
-            self._root.after(0, self._commit_raw)
-            return True
-        if vk == VK_BACK:
-            self._root.after(0, self._backspace)
-            return True
-        if vk == VK_ESCAPE:
-            self._root.after(0, self._cancel)
-            return True
+    def _modifier_down(self):
+        # Ctrl(0x11/0xA2/0xA3) Alt(0x12/0xA4/0xA5) Shift(0x10/0xA0/0xA1) Win(0x5B/0x5C)
+        u = ctypes.windll.user32
+        for vk in (0x10, 0x11, 0x12, 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0x5B, 0x5C):
+            if u.GetAsyncKeyState(vk) & 0x8000:
+                return True
         return False
+
+    def _wants_key(self, vk):
+        # 字母始终吞(激活态就是打字)
+        if 0x41 <= vk <= 0x5A:
+            return True
+        # 数字键:有候选才吞(选词),否则放行(正常打数字)
+        if VK_0 + 1 <= vk <= VK_9:
+            return bool(self._cands)
+        # 空格:有候选才吞(上屏首选),否则放行(正常空格)
+        if vk == VK_SPACE:
+            return bool(self._cands)
+        # 回车/退格/Esc:有输入才吞,否则放行
+        if vk in (VK_RETURN, VK_BACK, VK_ESCAPE):
+            return bool(self._input)
+        return False
+
+    def _pump_keys(self):
+        # 主线程泵:从队列取钩子投递的键,在主线程安全执行(可碰 Tk)
+        import queue as _q
+        try:
+            while True:
+                vk = self._key_queue.get_nowait()
+                self._on_press(vk)
+        except _q.Empty:
+            pass
+        except Exception as e:
+            log(f"[pump ERROR] {e}")
+        self._root.after(self.PUMP_MS, self._pump_keys)
+
+    def _on_press(self, vk):
+        # 主线程(泵回调),可直接操作 Tk
+        if vk == VK_RCONTROL:
+            self._toggle()
+            return
+        if not self._active:
+            return
+        if 0x41 <= vk <= 0x5A:
+            self._append(chr(vk).lower())
+        elif VK_0 + 1 <= vk <= VK_9:
+            self._pick(vk - VK_0 - 1)
+        elif vk == VK_SPACE:
+            self._pick(0)
+        elif vk == VK_RETURN:
+            self._commit_raw()
+        elif vk == VK_BACK:
+            self._backspace()
+        elif vk == VK_ESCAPE:
+            self._cancel()
 
     # ---- 主线程状态操作 ----
     def _append(self, ch):
@@ -268,6 +398,7 @@ class PrisirShellIME:
         self._hide()
 
     def _commit_raw(self):
+        # 上屏原拼音(回车)。吞键模式字母未进屏,直接发
         if self._input:
             send_unicode(self._input)
         self._cancel()
@@ -275,9 +406,18 @@ class PrisirShellIME:
     def _pick(self, idx):
         if 0 <= idx < len(self._cands):
             word = self._cands[idx]
-            self.engine.learn(self._input, word)
+            inp = self._input
+            # 学习写库放后台线程:不挡上屏
+            threading.Thread(target=self._learn_safe, args=(inp, word), daemon=True).start()
+            # 吞键模式:字母未进屏,直接发中文上屏
             send_unicode(word)
             self._cancel()
+
+    def _learn_safe(self, inp, word):
+        try:
+            self.engine.learn(inp, word)
+        except Exception as e:
+            log(f"[WARN] learn: {e}")
 
     def _commit(self):
         if self._cands:
@@ -307,35 +447,68 @@ class PrisirShellIME:
         if not self._input or not self._cands:
             self._hide()
             return
-        x, y = caret_position()
-        if x == 0 and y == 0:
-            x, y = 200, 200
         if self._win is None:
             self._win = tk.Toplevel(self._root)
             self._win.overrideredirect(True)
             self._win.attributes("-topmost", True)
-            self._win.configure(bg="#0e1420")
+            self._win.configure(bg=C["bg"])
             self._py = tk.Label(self._win, text="", font=("Microsoft YaHei UI", 10),
-                                bg="#0e1420", fg="#5aa2ff", anchor="w", padx=8, pady=1)
+                                bg=C["bg2"], fg=C["gold"], anchor="w", padx=8, pady=1)
             self._py.pack(side=tk.TOP, fill=tk.X)
-            row = tk.Frame(self._win, bg="#0e1420")
+            # 拼音行可拖动整个候选窗
+            self._py.bind("<Button-1>", self._drag_start)
+            self._py.bind("<B1-Motion>", self._drag_move)
+            self._py.config(cursor="fleur")
+            row = tk.Frame(self._win, bg=C["bg"])
             row.pack(side=tk.TOP, fill=tk.X)
             self._labels = []
             for i in range(9):
                 lbl = tk.Label(row, text="", font=("Microsoft YaHei UI", 13),
-                               bg="#0e1420", fg="#9aa4ae", anchor="w", padx=6, pady=3)
+                               bg=C["bg"], fg=C["text_dim"], anchor="w", padx=6, pady=3)
                 lbl.pack(side=tk.LEFT)
+                # 鼠标点选:点击第 i 个候选直接上屏。候选窗带 NOACTIVATE,点击不抢焦点。
+                lbl.bind("<Button-1>", lambda e, i=i: self._pick(i))
+                lbl.bind("<Enter>", lambda e, i=i: self._hover(i, True))
+                lbl.bind("<Leave>", lambda e, i=i: self._hover(i, False))
+                lbl.config(cursor="hand2")
                 self._labels.append(lbl)
+            # 窗口先映射才能拿到有效 HWND,再加 NOACTIVATE 扩展样式
+            self._win.update_idletasks()
+            _set_no_activate(self._win)
         self._py.config(text=self._input + ("  ⇒ " + self._smart if self._smart else ""))
         for i, lbl in enumerate(self._labels):
             if i < len(self._cands):
                 cur = i == self._sel
                 lbl.config(text=(f"{i+1}.{self._cands[i]}" if cur else f"{i+1} {self._cands[i]}"),
-                           fg="#ffd27a" if cur else "#9aa4ae")
+                           fg=C["gold"] if cur else C["text_dim"])
             else:
                 lbl.config(text="")
-        self._win.geometry(f"+{x}+{y + 22}")
+        # 位置:用户拖动过就保持(_drag_pos),否则跟随光标
+        if getattr(self, "_drag_pos", None):
+            x, y = self._drag_pos
+        else:
+            x, y = caret_position()
+            y += 6
+        self._win.geometry(f"+{x}+{y}")
         self._win.deiconify()
+
+    # 候选窗拖拽:按住拼音行拖动,记住位置
+    def _drag_start(self, e):
+        self._drag_ox, self._drag_oy = e.x, e.y
+
+    def _hover(self, i, on):
+        # 鼠标悬停高亮(不改动 _sel,避免与键盘数字选词状态互相干扰)
+        if on and i < len(self._cands):
+            self._labels[i].config(fg=C["gold"])
+        elif i < len(self._labels):
+            cur = i == self._sel
+            self._labels[i].config(fg=C["gold"] if cur else C["text_dim"])
+
+    def _drag_move(self, e):
+        x = self._win.winfo_x() + e.x - self._drag_ox
+        y = self._win.winfo_y() + e.y - self._drag_oy
+        self._win.geometry(f"+{x}+{y}")
+        self._drag_pos = (x, y)
 
     def _hide(self):
         if self._win:
@@ -345,12 +518,15 @@ class PrisirShellIME:
 def main():
     db = DEFAULT_DB
     build_index = True
+    no_tray = False
     args = sys.argv[1:]
     if "--no-index" in args:
         build_index = False
+    if "--no-tray" in args:
+        no_tray = True
     if "--db" in args:
         db = args[args.index("--db") + 1]
-    PrisirShellIME(db, build_index).start()
+    PrisirShellIME(db, build_index, no_tray).start()
 
 
 if __name__ == "__main__":
