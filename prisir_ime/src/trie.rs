@@ -2,22 +2,31 @@
 //! 启动时把 phrase/pinyin 全量灌进来,每个节点保留权重 top-N 结果,
 //! 前缀查询 = 走到节点直接拿缓存,O(前缀长),避免每次 SQL。
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 const NODE_TOP: usize = 12; // 每节点缓存的 top 结果数(对齐 Python)
 
-#[derive(Default)]
+#[derive(Default, Serialize, Deserialize)]
 struct Node {
     children: HashMap<u8, Node>,
     // (value, weight),按 weight 降序保留 top NODE_TOP
     top: Vec<(String, i64)>,
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct MemoryIndex {
     root: Node,
 }
 
 impl MemoryIndex {
+    // ---- 序列化(索引持久化:第一次建好后存盘,之后启动直接加载) ----
+    pub fn to_bytes(&self) -> Result<Vec<u8>, String> {
+        bincode::serialize(self).map_err(|e| format!("serialize: {e}"))
+    }
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, String> {
+        bincode::deserialize(bytes).map_err(|e| format!("deserialize: {e}"))
+    }
     pub fn new() -> Self {
         MemoryIndex { root: Node::default() }
     }

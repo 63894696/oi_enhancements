@@ -28,7 +28,8 @@ fn get<'a>(handle: *mut c_void) -> Option<&'a ImeEngine> {
     Some(unsafe { &*(handle as *const ImeEngine) })
 }
 
-/// 加载词库,返回 opaque 句柄(失败返回 null)。build_index!=0 时同时构建内存 Trie 索引。
+/// 加载词库,返回 opaque 句柄(失败返回 null)。build_index!=0 时加载内存 Trie 索引:
+/// 优先读 `<db>.idx` 持久化缓存(指纹对上则秒开),否则首次构建并落盘,之后启动直接加载。
 #[no_mangle]
 pub extern "C" fn prisir_ime_load(db_path: *const c_char, build_index: i32) -> *mut c_void {
     let Some(path) = cstr(db_path) else {
@@ -39,7 +40,8 @@ pub extern "C" fn prisir_ime_load(db_path: *const c_char, build_index: i32) -> *
         Err(_) => return std::ptr::null_mut(),
     };
     if build_index != 0 {
-        let _ = engine.build_memory_index();
+        let (_ok, src) = engine.load_or_build_index(path);
+        eprintln!("[prisir_ime] index source: {src}");
     }
     Box::into_raw(Box::new(engine)) as *mut c_void
 }

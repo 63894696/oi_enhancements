@@ -5,6 +5,37 @@ use crate::db::CikuDb;
 use crate::syllable::Syllables;
 use crate::trie::MemoryIndex;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
+/// 索引缓存格式版本:序列化结构变更时 +1,旧缓存自动失效重建。
+const INDEX_CACHE_VERSION: u32 = 1;
+
+/// 索引缓存头部(自描述,校验用)。后接 bincode 序列化的 MemoryIndex。
+#[derive(serde::Serialize, serde::Deserialize)]
+struct IndexHeader {
+    magic: [u8; 4], // b"PIXC"
+    version: u32,
+    db_len: u64,
+    db_mtime_secs: u64,
+}
+
+/// 词库指纹:文件大小 + mtime。变了即认为词库更新,缓存失效重建。
+fn db_fingerprint(db_path: &str) -> Option<(u64, u64)> {
+    let md = std::fs::metadata(db_path).ok()?;
+    let mtime = md
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_secs();
+    Some((md.len(), mtime))
+}
+
+/// 缓存文件路径:与词库同目录,`<name>.idx`。
+fn cache_path_for(db_path: &str) -> PathBuf {
+    let p = Path::new(db_path);
+    p.with_extension("idx")
+}
 
 /// (候选词, 权重)
 pub type Candidate = (String, i64);
@@ -63,8 +94,15 @@ impl ImeEngine {
 
     /// 构建内存索引(一次性灌 phrase+pinyin 全量)。失败保留 None 走 SQLite。
     pub fn build_memory_index(&mut self) -> Result<(), String> {
-        let phrase = self.db.all_phrase_rows().map_err(|e| format!("phrase: {e}"))?;
-        let pinyin = self.db.all_single_char_rows().map_err(|e| format!("pinyin: {e}"))?;
+        let mem = Self::rebuild_index(&self.db)?;
+        self.mem = Some(mem);
+        Ok(())
+    }
+
+    /// 从 DB 全量重建内存索引(不落盘)。
+    fn rebuild_index(db: &CikuDb) -> Result<MemoryIndex, String> {
+        let phrase = db.all_phrase_rows().map_err(|e| format!("phrase: {e}"))?;
+        let pinyin = db.all_single_char_rows().map_err(|e| format!("pinyin: {e}"))?;
         let mut mem = MemoryIndex::new();
         for (key, value, weight) in &phrase {
             mem.insert(key, value, *weight);
@@ -72,8 +110,76 @@ impl ImeEngine {
         for (key, value, weight) in &pinyin {
             mem.insert(key, value, *weight);
         }
-        self.mem = Some(mem);
-        Ok(())
+        Ok(mem)
+    }
+
+    /// 加载或构建内存索引(索引持久化:第一次建好后存盘,之后启动直接反序列化)。
+    ///
+    /// 流程:读 `<db>.idx` 缓存,校验 指纹(词库大小+mtime)+格式版本,对上则直接用;
+    /// 否则从 DB 重建并(原子写)落盘。任何一步失败都回退到纯 SQLite(mem=None),不影响功能。
+    /// 返回 (是否走内存索引, 来源描述) 供日志/诊断。
+    pub fn load_or_build_index(&mut self, db_path: &str) -> (bool, &'static str) {
+        match self.try_load_cached(db_path) {
+            Some(mem) => {
+                self.mem = Some(mem);
+                (true, "cache")
+            }
+            None => match Self::rebuild_index(&self.db) {
+                Ok(mem) => {
+                    let _ = Self::save_cached(db_path, &mem); // 落盘失败不影响使用
+                    self.mem = Some(mem);
+                    (true, "rebuilt")
+                }
+                Err(_) => {
+                    self.mem = None;
+                    (false, "sqlite-fallback")
+                }
+            },
+        }
+    }
+
+    /// 尝试从缓存加载内存索引;缓存缺失/损坏/词库已变 返回 None。
+    fn try_load_cached(&self, db_path: &str) -> Option<MemoryIndex> {
+        let cache = cache_path_for(db_path);
+        let bytes = std::fs::read(&cache).ok()?;
+        let (db_len, db_mtime) = db_fingerprint(db_path)?;
+        // 头部定长解码(bincode 对定长结构是定长的),先解析头部校验再解 body。
+        let header_len = bincode::serialized_size(&IndexHeader {
+            magic: *b"PIXC",
+            version: 0,
+            db_len: 0,
+            db_mtime_secs: 0,
+        })
+        .ok()? as usize;
+        if bytes.len() < header_len {
+            return None;
+        }
+        let header: IndexHeader = bincode::deserialize(&bytes[..header_len]).ok()?;
+        if header.magic != *b"PIXC"
+            || header.version != INDEX_CACHE_VERSION
+            || header.db_len != db_len
+            || header.db_mtime_secs != db_mtime
+        {
+            return None; // 词库变了或版本不符 → 触发重建
+        }
+        MemoryIndex::from_bytes(&bytes[header_len..]).ok()
+    }
+
+    /// 原子写缓存(先写临时文件再 rename,避免中途崩溃留半个坏文件)。
+    fn save_cached(db_path: &str, mem: &MemoryIndex) -> Result<(), String> {
+        let cache = cache_path_for(db_path);
+        let (db_len, db_mtime) = db_fingerprint(db_path).ok_or("db stat")?;
+        let header = IndexHeader {
+            magic: *b"PIXC",
+            version: INDEX_CACHE_VERSION,
+            db_len,
+            db_mtime_secs: db_mtime,
+        };
+        let mut bytes = bincode::serialize(&header).map_err(|e| e.to_string())?;
+        bytes.extend_from_slice(&mem.to_bytes()?);
+        let af = atomicwrites::AtomicFile::new(&cache, atomicwrites::OverwriteBehavior::AllowOverwrite);
+        af.write(|f| std::io::Write::write_all(f, &bytes))
+            .map_err(|e| format!("atomic write: {e}"))
     }
 
     pub fn set_fuzzy_rules(&mut self, rules: Vec<&'static str>) {
