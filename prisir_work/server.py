@@ -10,7 +10,7 @@ import hmac
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import __version__, config, endpoints
+from . import __version__, audit, config, endpoints
 
 
 def _check_token(presented: str, expected: str) -> bool:
@@ -21,7 +21,7 @@ def _check_token(presented: str, expected: str) -> bool:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = f"oiagent-coworker/{__version__}"
+    server_version = f"prisir-work/{__version__}"
     # 由 run() 注入
     token: str = ""
 
@@ -74,6 +74,8 @@ class Handler(BaseHTTPRequestHandler):
             payload, status = entry["handler"](body)
         except Exception as e:  # 兜底:不让单端点异常拖垮常驻进程
             return self._send({"ok": False, "error": "internal", "detail": type(e).__name__}, 500)
+        # F5 审计:L1+ 端点留痕(只记元信息,不记 body/口令/token)
+        audit.record(path, method, entry.get("risk", "L0"), bool(payload.get("ok", True)), status)
         self._send(payload, status)
 
     def do_GET(self):
@@ -98,7 +100,7 @@ def run(host: str = config.HOST, port: int | None = None, token: str | None = No
     port = port if port is not None else config.get_port()
     token = token if token is not None else config.load_or_create_token()
     srv = make_server(host, port, token)
-    print(f"Prisir 工坊(oiagent-coworker)就绪: http://{host}:{port}  (token 已加载, {len(endpoints.catalog())} 个白名单端点)")
+    print(f"Prisir 工坊(prisir-work)就绪: http://{host}:{port}  (token 已加载, {len(endpoints.catalog())} 个白名单端点)")
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

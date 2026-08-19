@@ -10,8 +10,9 @@ BASE = f"http://127.0.0.1:{PORT}"
 
 cfg = os.path.join(tempfile.mkdtemp(prefix="oi_p0_"), "work.json")
 oi_home = tempfile.mkdtemp(prefix="oi_p0home_")  # F3 隔离 OI_HOME,team 测试不污染真库
+audit_file = os.path.join(tempfile.mkdtemp(prefix="oi_p0aud_"), "audit.jsonl")  # F5 隔离审计
 env = dict(os.environ, PRISIR_WORK_CONFIG=cfg, PRISIR_WORK_PORT=str(PORT),
-           PRISIR_WORK_OI_HOME=oi_home)
+           PRISIR_WORK_OI_HOME=oi_home, PRISIR_WORK_AUDIT=audit_file)
 
 # 起 Prisir 工坊(token 由 config 生成;但我们想固定 token 做断言 → 先写配置)
 os.makedirs(os.path.dirname(cfg), exist_ok=True)
@@ -158,6 +159,22 @@ checks = {
       res["cap_exec_team_list"][1].get("capability") == "team.list" and
       res["cap_exec_team_list"][1].get("result", {}).get("ok") is True,
 }
+
+# F5 审计:L1+ 端点已留痕,L0 只读不记,且审计行不含口令/token
+audit_events = []
+if os.path.exists(audit_file):
+    for line in open(audit_file, encoding="utf-8"):
+        line = line.strip()
+        if line:
+            audit_events.append(json.loads(line))
+audited_eps = {e.get("endpoint") for e in audit_events}
+audit_blob = json.dumps(audit_events, ensure_ascii=False)
+checks["F5 审计:L1 team/submit 已留痕"] = "/team/submit" in audited_eps
+checks["F5 审计:L3 wallet/payto 已留痕"] = "/wallet/payto" in audited_eps
+checks["F5 审计:L0 只读不留痕(health/status)"] = "/health" not in audited_eps and "/wallet/status" not in audited_eps
+checks["F5 审计:不含 token"] = TOKEN not in audit_blob
+checks["F5 审计:事件含 risk+ok+ts"] = all(
+    ("risk" in e and "ok" in e and "ts" in e) for e in audit_events) and len(audit_events) > 0
 print("逐项:", json.dumps(checks, ensure_ascii=False, indent=2))
 print("wallet/status 实回:", json.dumps(res["wallet_对token"][1], ensure_ascii=False))
 if loopback_only is None:
