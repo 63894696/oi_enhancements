@@ -143,7 +143,7 @@ def render(stats: dict, smp: dict) -> str:
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
-  body{{font-family:system-ui,'Microsoft YaHei',sans-serif;margin:0;background:#0f1115;color:#e6e6e6}}
+  body{{font-family:system-ui,'Microsoft YaHei',sans-serif;margin:0;background:#0f172a;color:#e6e6e6}}
   header{{padding:18px 24px;background:#171a21;border-bottom:1px solid #262b36}}
   header h1{{margin:0;font-size:20px}}
   header .sub{{color:#8a93a6;font-size:12px;margin-top:4px}}
@@ -162,7 +162,7 @@ def render(stats: dict, smp: dict) -> str:
   canvas{{max-height:320px}}
   .note{{background:#1c1305;border:1px solid #4a3a12;color:#e8c56a;border-radius:8px;
          padding:10px 14px;font-size:13px;margin-bottom:16px}}
-  code{{background:#0b0d11;padding:2px 6px;border-radius:4px;font-size:12px}}
+  code{{background:#1e293b;padding:2px 6px;border-radius:4px;font-size:12px}}
   ul{{line-height:1.9}}
 </style>
 </head>

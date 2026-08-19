@@ -1,73 +1,192 @@
-"""securedm_web.py — Agent-First OS 阶段 3.A SecureDM 自研 1:1 IM 端(L4)
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SecureDM · 加密私信</title>
+<style>
+  :root{--bg:#0f172a;--panel:#1e293b;--line:#334155;--txt:#e2e8f0;--dim:#94a3b8;--acc:#4c8dff;--ok:#3fb27f;--warn:#e0a34a;--bad:#e06a6a;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.5 -apple-system,"Segoe UI",Roboto,"Microsoft YaHei",sans-serif;height:100vh;display:flex;flex-direction:column}
+  header{padding:11px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+  header .dot{width:9px;height:9px;border-radius:50%;background:var(--ok)}
+  header h1{font-size:16px;margin:0;font-weight:600}
+  header .st{margin-left:auto;font-size:12px;color:var(--dim)}
+  #main{flex:1;display:flex;min-height:0}
+  #contacts{width:250px;border-right:1px solid var(--line);overflow-y:auto;display:flex;flex-direction:column}
+  #contacts .hd{padding:12px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+  #contacts .hd b{font-size:14px}
+  #contacts .hd button{background:var(--acc);border:none;color:#fff;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:12px}
+  #contacts .hd2{padding:8px 10px;border-bottom:1px solid var(--line);display:flex;gap:6px;flex-wrap:wrap}
+  #contacts .hd2 button{background:var(--panel);border:1px solid #334155;color:var(--txt);padding:6px 9px;border-radius:7px;cursor:pointer;font-size:12px;flex:1;min-width:64px;white-space:nowrap}
+  #contacts .hd2 button:hover{border-color:var(--acc);color:var(--acc)}
+  .citem{padding:11px 12px;border-bottom:1px solid #1e293b;cursor:pointer}
+  .citem:hover{background:#273549}
+  .citem.active{background:#334155}
+  .citem .nm{font-weight:600;font-size:14px}
+  .citem .pv{font-size:12px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #chat{flex:1;display:flex;flex-direction:column;min-width:0}
+  #msgs{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:6px}
+  /* IM 布局惯例(参照 WeChat/iMessage/WhatsApp 调研):
+     我=右侧+品牌色,对方=左侧+中性色;气泡角在发送方一侧收平;系统消息居中灰色小字。
+     位置+颜色+形状三重区分,不单靠颜色(色盲/暗色模式友好)。 */
+  .m{max-width:78%;padding:9px 13px;font-size:15px;line-height:1.4;white-space:pre-wrap;word-break:break-word;box-shadow:0 1px 2px rgba(0,0,0,.28)}
+  /* 我:右侧,品牌蓝,右下角收平(LTR 发送方侧) */
+  .m.me{align-self:flex-end;background:linear-gradient(135deg,#3b82d6,#2b6cb0);color:#fff;border-radius:18px 18px 4px 18px}
+  /* 对方:左侧,中性深灰 + 左边框,左下角收平 */
+  .m.them{align-self:flex-start;background:#334155;color:#e6e8ec;border-left:3px solid #475569;border-radius:18px 18px 18px 4px}
+  /* 系统/签名清单:居中、灰小字、无气泡感 */
+  .m.manifest{align-self:center;background:rgba(255,255,255,.05);border:1px dashed #475569;font-size:12px;color:var(--dim);border-radius:8px;max-width:88%}
+  .vbadge{display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:3px 9px;border-radius:11px;margin-top:5px}
+  .vbadge.ok{background:#14532d;color:var(--ok);border:1px solid var(--ok)}
+  .vbadge.bad{background:#7f1d1d;color:var(--bad);border:1px solid var(--bad)}
+  .vbadge.pending{background:#334155;color:var(--dim)}
+  .fmsg{align-self:flex-start;background:#1e293b;padding:10px 12px;border-radius:11px;border:1px solid #334155}
+  .fmsg .fname{font-weight:600}
+  .fmsg button{background:var(--acc);border:none;color:#fff;padding:5px 12px;border-radius:7px;cursor:pointer;font-size:12px;margin-top:6px}
+  .sys{align-self:center;font-size:12px;color:var(--dim)}
+  #composer{display:flex;gap:9px;padding:13px 16px;border-top:1px solid var(--line)}
+  #in{flex:1;background:var(--panel);border:1px solid #334155;color:var(--txt);border-radius:9px;padding:10px 12px;outline:none}
+  #in:focus{border-color:var(--acc)}
+  #composer button{background:var(--acc);border:none;color:#fff;padding:0 17px;border-radius:9px;cursor:pointer;font-weight:600}
+  #empty{flex:1;display:flex;align-items:center;justify-content:center;color:var(--dim);flex-direction:column;gap:10px}
+  #inviteModal,#acceptModal,#settingsModal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center}
+  #inviteModal .box,#acceptModal .box,#settingsModal .box{background:var(--panel);padding:20px;border-radius:12px;max-width:560px;width:90%}
+  #inviteModal textarea,#acceptModal textarea{width:100%;height:90px;background:#1e293b;color:var(--txt);border:1px solid #334155;border-radius:8px;padding:8px;font-size:12px}
+  #inviteModal button,#acceptModal button{margin-top:10px;background:var(--acc);border:none;color:#fff;padding:7px 14px;border-radius:8px;cursor:pointer}
+</style>
+</head>
+<body>
+<header><span class="dot" id="livedot"></span><h1>SecureDM 加密私信</h1><span class="st" id="status">…</span></header>
+<div id="compatBanner" style="background:#3a3a10;border-bottom:1px solid #6b5d1f;color:#e8d98a;font-size:12.5px;padding:6px 12px;display:flex;align-items:center;gap:10px">
+  <span style="flex:1">⚠ 与 <b>SimpleX 官方客户端</b> 目前仅互通<b>文字消息</b>;语音/视频/屏幕共享/文件互传/群聊需在<b>本应用两端</b>之间进行。请对方也用本应用(分享本程序)。</span>
+  <span onclick="document.getElementById('compatBanner').style.display='none'" style="cursor:pointer;color:#8a7c4a;padding:0 4px" title="关闭提示">✕</span>
+</div>
+<div id="main">
+  <div id="contacts">
+    <div class="hd"><b>联系人</b></div>
+    <div class="hd2">
+      <button onclick="newInvite()" title="生成邀请链接/二维码发给对方">+ 邀请</button>
+      <button onclick="acceptInvite()" title="粘贴对方给你的链接建立联系">+ 添加</button>
+      <button onclick="delContact()" title="删除选中的联系人" style="color:var(--bad)">🗑 删除</button>
+      <button onclick="openSettings()" title="设置:自定义 ID / 聊天记录口令加密">⚙ 设置</button>
+    </div>
+    <div id="clist"></div>
+  </div>
+  <div id="chat">
+    <div id="msgs"><div id="empty"><div>选择左侧联系人开始加密对话</div><div style="font-size:12px">+ 邀请 = 生成链接发给对方;+ 添加 = 粘贴对方给你的链接</div></div></div>
+    <div id="composer">
+      <select id="ttlSel" title="阅后即焚:到点双方客户端协议级自毁(防不住对方截图/拍照)" style="background:var(--panel);border:1px solid var(--line);color:var(--dim);border-radius:8px;padding:0 6px;font-size:12px">
+        <option value="0">不过期</option>
+        <option value="10">10秒焚</option>
+        <option value="60">1分钟焚</option>
+        <option value="300">5分钟焚</option>
+        <option value="3600">1小时焚</option>
+      </select>
+      <input id="in" placeholder="发 E2E 加密消息…" disabled>
+      <button id="send" onclick="sendMsg()">发送</button>
+      <button id="attachBtn" title="发送文件" onclick="toggleAttach()">📎</button>
+      <button id="callBtn" title="语音通话" onclick="startCall(false)">📞</button>
+      <button id="videoBtn" title="视频通话" onclick="startCall(true)">📹</button>
+    </div>
+    <div id="callPanel" style="display:none;padding:10px 14px;border-top:1px solid var(--line);background:#1e293b">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <video id="remoteVideo" autoplay playsinline style="width:280px;background:#000;border-radius:8px"></video>
+        <video id="localVideo" autoplay playsinline muted style="width:120px;background:#000;border-radius:8px"></video>
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <div id="callStatus" style="font-size:13px;color:var(--dim)">呼叫中…</div>
+          <div style="display:flex;gap:7px">
+            <button onclick="toggleMic()" id="micBtn" style="background:#3a3f4b;border:none;color:#fff;padding:6px 12px;border-radius:7px;cursor:pointer">🎤 静音</button>
+            <button onclick="toggleCam()" id="camBtn" style="background:#3a3f4b;border:none;color:#fff;padding:6px 12px;border-radius:7px;cursor:pointer">📷 关视频</button>
+            <button onclick="switchCamera()" id="switchCamBtn" title="切换前后摄像头" style="background:#3a3f4b;border:none;color:#fff;padding:6px 12px;border-radius:7px;cursor:pointer">🔄 切换摄像头</button>
+            <button onclick="shareScreen()" id="screenBtn" style="background:#3a3f4b;border:none;color:#fff;padding:6px 12px;border-radius:7px;cursor:pointer">🖥️ 共享屏幕</button>
+            <button onclick="endCall()" style="background:var(--bad);border:none;color:#fff;padding:6px 12px;border-radius:7px;cursor:pointer">挂断</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="attach" style="display:none;padding:9px 16px;border-top:1px solid var(--line);gap:8px;align-items:center;flex-wrap:wrap">
+      <button onclick="pickFile()" title="打开文件夹选择要发送的文件" style="background:var(--panel);border:1px solid var(--acc);color:var(--acc);padding:7px 12px;border-radius:8px;cursor:pointer">📁 选文件</button>
+      <input id="fpath" placeholder="文件绝对路径(或点「选文件」)" style="flex:1;min-width:180px;background:var(--panel);border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px 10px">
+      <input type="file" id="filePickFallback" style="display:none" onchange="onFallbackPick(this)">
+      <label title="勾选后自动建立签名信任并附签名清单,对方能看到「✓ 已验证来自 你」;无需再去联系人区点钥匙" style="font-size:13px;color:var(--dim);display:flex;align-items:center;gap:4px"><input type="checkbox" id="fsigned" checked>签名发送</label>
+      <button onclick="sendFile()" style="background:var(--acc);border:none;color:#fff;padding:7px 14px;border-radius:8px;cursor:pointer">发文件</button>
+      <div style="width:100%;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--dim)">
+        <span>下载到:</span><span id="dlDir" style="color:var(--txt)">…</span>
+        <button onclick="pickDownloadDir()" title="自定义下载保存目录(桌面壳)" style="background:var(--panel);border:1px solid #334155;color:var(--dim);padding:3px 9px;border-radius:6px;cursor:pointer;font-size:12px">改目录</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="inviteModal"><div class="box"><b id="inviteTitle">一次性邀请链接</b><div style="font-size:12px;color:var(--dim);margin:6px 0" id="inviteDesc">发给对方,在其 SimpleX/SecureDM 里"通过链接连接"接受即建立 E2E 联系</div><div style="display:flex;gap:14px;font-size:12.5px;color:var(--dim);margin-bottom:8px;flex-wrap:wrap"><label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="invKind" value="once" checked onchange="genInvite()">一次性(私聊)</label><label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="invKind" value="anon" onchange="genInvite()">匿名一次性</label><label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="invKind" value="long" onchange="genInvite()">长期有效(公共二维码)</label></div><textarea id="inviteLink" readonly></textarea><div style="display:flex;justify-content:center;margin:10px 0"><canvas id="inviteQr" width="240" height="240" style="background:#fff;border-radius:8px;padding:6px"></canvas></div><div id="inviteQrMsg" style="display:none;font-size:12px;color:var(--warn);text-align:center;margin-bottom:8px">链接过长,请复制粘贴</div><button onclick="copyInvite()">复制</button> <button onclick="closeInvite()">关闭</button></div></div>
+<div id="acceptModal"><div class="box"><b>添加联系人</b><div style="font-size:12px;color:var(--dim);margin:6px 0">粘贴对方发给你的一次性邀请链接(对方点「+ 邀请」生成的)</div><textarea id="acceptLink" placeholder="粘贴邀请链接,例如 simplex://… 或 https://simplex.chat/invitation#…"></textarea><button id="acceptGoBtn" onclick="doAccept()">连接</button> <button onclick="closeAccept()" style="background:#475569">取消</button></div></div>
+<div id="settingsModal"><div class="box"><b>设置</b>
+  <div style="margin:14px 0 6px;font-size:13px;color:var(--dim)">自定义 ID(显示名)</div>
+  <div style="display:flex;gap:8px"><input id="idName" placeholder="你的显示名(对方看到)" style="flex:1;background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px"><button onclick="saveIdentity()">保存</button></div>
+  <div id="idMsg" style="font-size:12px;color:var(--dim);margin-top:4px"></div>
+  <hr style="border:none;border-top:1px solid var(--line);margin:16px 0">
+  <div style="margin:0 0 6px;font-size:13px;color:var(--dim)">聊天记录口令加密 <span id="dbState" style="color:var(--warn)"></span></div>
+  <div style="font-size:12px;color:var(--dim);margin-bottom:8px">设口令后,聊天记录库以 SQLCipher 加密;每次启动需输入口令解锁,口令错进不去(同官方)。请务必记牢,丢失无法恢复。</div>
+  <div id="dbSetRow" style="display:flex;flex-direction:column;gap:8px">
+    <input id="dbPwd" type="password" placeholder="设置口令(≥4 位)" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px">
+    <input id="dbPwd2" type="password" placeholder="再输一遍确认(防首次打错)" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px">
+    <div><button onclick="setDbPassword()">设置口令</button></div>
+  </div>
+  <div id="dbUnlockRow" style="display:none;flex-direction:column;gap:8px">
+    <div style="display:flex;gap:8px"><input id="dbPwdUnlock" type="password" placeholder="输入口令解锁" style="flex:1;background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px"><button onclick="unlockDb()">解锁</button></div>
+    <div style="font-size:12px;color:var(--dim)">忘记口令?<a href="javascript:void(0)" onclick="forgotPassword()" style="color:var(--warn)">新建用户ID</a>(原聊天记录将无法查看)</div>
+    <hr style="border:none;border-top:1px solid var(--line);margin:10px 0">
+    <div style="font-size:12px;color:var(--dim)">变更口令(需先验证旧口令):</div>
+    <input id="dbPwdOld" type="password" placeholder="旧口令" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px">
+    <input id="dbPwdNew" type="password" placeholder="新口令(≥4 位)" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px">
+    <input id="dbPwdNew2" type="password" placeholder="再输一遍新口令" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px">
+    <div><button onclick="changeDbPassword()">变更口令</button></div>
+  </div>
+  <div id="dbMsg" style="font-size:12px;color:var(--dim);margin-top:4px"></div>
+  <hr style="border:none;border-top:1px solid var(--line);margin:16px 0">
+  <div style="margin:0 0 6px;font-size:13px;color:var(--dim)">两步验证(2FA) <span id="tfaState" style="color:var(--warn)"></span></div>
+  <div style="font-size:12px;color:var(--dim);margin-bottom:8px">在口令之上再加一道动态码(口令=你知道的 + 验证器=你持有的)。用 Google Authenticator / 2FAS 等扫码或手输密钥。</div>
+  <div id="tfaOffRow" style="display:none;flex-direction:column;gap:8px">
+    <div><button onclick="tfaSetup()">生成 2FA 密钥</button></div>
+    <div id="tfaQrWrap" style="display:none;flex-direction:column;gap:8px">
+      <div style="display:flex;justify-content:center"><canvas id="tfaQr" width="200" height="200" style="background:#fff;border-radius:8px;padding:6px"></canvas></div>
+      <div style="font-size:12px;color:var(--dim)">或手输密钥:<code id="tfaSecret" style="user-select:all;color:var(--txt)"></code></div>
+      <div style="display:flex;gap:8px"><input id="tfaCodeEnable" placeholder="输入 App 显示的 6 位码" maxlength="6" style="flex:1;background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px"><button onclick="tfaEnable()">启用</button></div>
+    </div>
+  </div>
+  <div id="tfaOnRow" style="display:none;flex-direction:column;gap:8px">
+    <div style="font-size:12px;color:var(--ok)">已启用:解锁需口令 + 动态码</div>
+    <div style="display:flex;gap:8px"><input id="tfaCodeDisable" placeholder="输入 6 位码以关闭" maxlength="6" style="flex:1;background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px"><button onclick="tfaDisable()" style="background:#475569">关闭 2FA</button></div>
+  </div>
+  <div id="tfaMsg" style="font-size:12px;color:var(--dim);margin-top:4px"></div>
+  <div style="margin-top:16px;text-align:right"><button onclick="closeSettings()" style="background:#475569">关闭</button></div>
+</div></div>
+<div id="lockGate" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:999;align-items:center;justify-content:center">
+  <div class="box" style="max-width:400px;width:92%">
+    <b style="font-size:16px">🔒 聊天记录已加密</b>
+    <div style="font-size:12px;color:var(--dim);margin:8px 0 12px">输入口令解锁;启用 2FA 的话还需验证器 6 位动态码。</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <input id="gatePwd" type="password" placeholder="口令" onkeydown="if(event.key==='Enter')gateUnlock()" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:10px;font-size:14px">
+      <input id="gateTotp" placeholder="2FA 动态码(如已启用)" maxlength="6" onkeydown="if(event.key==='Enter')gateUnlock()" style="display:none;background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:10px;font-size:14px">
+      <div><button onclick="gateUnlock()" style="width:100%;padding:10px">解锁</button></div>
+      <div id="gateMsg" style="font-size:12px;color:var(--bad);min-height:16px"></div>
+      <div style="font-size:12px;color:var(--dim)">忘记口令?<a href="javascript:void(0)" onclick="gateForgot()" style="color:var(--warn)">新建用户ID</a>(原聊天记录将无法查看)</div>
+    </div>
+  </div>
+</div>
+<div id="firstRunGate" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:999;align-items:center;justify-content:center">
+  <div class="box" style="max-width:420px;width:92%">
+    <b style="font-size:16px">🔐 首次启动 · 给聊天记录加把锁</b>
+    <div style="font-size:12px;color:var(--dim);margin:8px 0 12px">建议现在设一个口令:聊天记录库将用 SQLCipher 加密落盘,每次启动需口令解锁。<b style="color:var(--warn)">跳过 = 聊天记录以明文存盘</b>(官方 SimpleX 也是这套取舍)。</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <input id="frPwd" type="password" placeholder="设置口令(≥4 位)" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:10px;font-size:14px">
+      <input id="frPwd2" type="password" placeholder="再输一遍确认" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:10px;font-size:14px">
+      <div style="display:flex;gap:8px"><button onclick="frSetPassword()" style="flex:1;padding:10px">设口令并加密</button><button onclick="frSkip()" style="background:#475569;padding:10px">跳过(明文)</button></div>
+      <div id="frMsg" style="font-size:12px;color:var(--bad);min-height:16px"></div>
+    </div>
+  </div>
+</div>
+<script>
 
-架构 §3.A:SimpleX 协议自有前端,1:1 E2E 加密私信。复用 simplex_runtime/tools/integrity,
-做成"联系人列表 + 会话窗"的 IM 形态,交互仍只有对话/确认(架构 §7.4)。
-
-与 l4_web 的关系:l4_web 是"人↔agent 对话反馈窗"(走 daemon 工具循环);SecureDM 是
-"人↔人 / 人↔agent 的 1:1 私信端",直接驱动 simplex_runtime(不经 daemon ask)。
-
-核心功能:
-  - 联系人列表(simplex_list_contacts)+ 新建邀请(simplex_create_invitation 生成链接给人)
-  - 会话窗:读消息(chat_texts 持久历史)+ 发消息(simplex_send_message)
-  - 文件消息:列出待下载文件(simplex_list_incoming_files)+ 下载(simplex_receive_file)
-  - **签名验证标**:收到的文件若带有效签名清单,显示"✓ 已验证来自 X"(simplex_verify_file_by_manifest);
-    验证失败醒目提示。发送方可选 simplex_send_file_signed 发签名文件。
-  - token 认证(与 l4_web 同一信任根文件)。
-"""
-
-from __future__ import annotations
-
-import json
-import os
-import sys
-import threading
-import time
-import urllib.parse
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
-from typing import Any
-
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import simplex_tools as st  # noqa: E402
-import simplex_files as sf  # noqa: E402
-import simplex_integrity as si  # noqa: E402
-import simplex_a2h as sa  # noqa: E402
-import simplex_totp as stotp  # noqa: E402
-from simplex_runtime import SimplexRuntime  # noqa: E402
-
-DM_HOST = os.environ.get("DM_HOST", "127.0.0.1")
-DM_PORT = int(os.environ.get("DM_PORT", "18801"))
-# 实例身份(多实例部署时区分):DM_IDENTITY=显示名,DM_DB=该实例独立的 simplex 数据目录前缀
-DM_IDENTITY = os.environ.get("DM_IDENTITY", "oiagent")
-DM_DB_PREFIX = os.environ.get("DM_DB_PREFIX", "")
-_TOKEN_FILE = Path.home() / ".local" / "share" / "aureon" / "l4_token"
-
-
-def _token() -> str:
-    try:
-        if _TOKEN_FILE.exists():
-            return _TOKEN_FILE.read_text(encoding="utf-8").strip()
-    except Exception:  # noqa: BLE001
-        pass
-    return os.environ.get("L4_TOKEN", "")
-
-
-_ACCESS_TOKEN = _token()
-
-
-def _ok(o, **e):
-    return {"ok": True, "output": o, **e}
-
-
-# ────────────────────────────────────────────────────────────────────── #
-# QR Code Generator for JavaScript — 内联进 _PAGE 的离线 QR 库
-# 来源: Kazuhiko Arase <qrcode-generator> v1.4.4 (单文件零依赖)
-#   https://github.com/kazuhikoarase/qrcode-generator (js/qrcode.js)
-# License: MIT (http://www.opensource.org/licenses/mit-license.php)
-# Copyright (c) 2009 Kazuhiko Arase。'QR Code' 为 DENSO WAVE 注册商标。
-# 全文内联,无任何外部 script/img/fetch,符合 SecureDM 离线匿名约束。
-# ────────────────────────────────────────────────────────────────────── #
-_QRCODE_LIB = r"""
 //---------------------------------------------------------------------
 //
 // QR Code Generator for JavaScript
@@ -2366,850 +2485,8 @@ var qrcode = function() {
     return qrcode;
 }));
 
-"""
 
-
-def _err(r, d="", **e):
-    return {"ok": False, "error": r, "diagnosable": d, **e}
-
-
-def _rt() -> SimplexRuntime:
-    return SimplexRuntime.instance()
-
-
-# ────────────────────────────────────────────────────────────────────── #
-# 后端 API 实现
-# ────────────────────────────────────────────────────────────────────── #
-
-def api_status() -> dict[str, Any]:
-    rt = _rt()
-    running = rt._thread is not None and rt._thread.is_alive()
-    if not running:
-        return _ok({"running": False})
-    st_ = rt.status()
-    contacts = rt.list_contacts()
-    # 右上角"命名.信令✔"/窗口标题取 runtime 当前显示名(_display_name,改 ID 实时更新),
-    # 不用 st_.active_user(SimpleX profile,setup 后改名不同步),否则右上角停在启动身份。
-    current_name = (rt._display_name or st_.get("active_user") or "")
-    return _ok({
-        "running": True,
-        "active_user": current_name,
-        "server": st_.get("smp_server"),
-        "contacts": contacts,
-    })
-
-
-def api_setup(display_name: str = "") -> dict[str, Any]:
-    rt = _rt()
-    if rt._thread and rt._thread.is_alive():
-        return _ok({"running": True, "note": "已在运行"})
-    name = display_name or DM_IDENTITY
-    args: dict[str, Any] = {"display_name": name}
-    if DM_DB_PREFIX:
-        args["db_prefix"] = DM_DB_PREFIX
-    r = st.call_tool("simplex_setup", args)
-    return r
-
-
-def api_create_invite() -> dict[str, Any]:
-    return st.call_tool("simplex_create_invitation", {})
-
-
-def api_get_identity() -> dict[str, Any]:
-    """返回当前身份显示名(自定义 ID)。"""
-    rt = _rt()
-    if not (rt._thread and rt._thread.is_alive()):
-        return _err("runtime 未启动", "先 setup")
-    try:
-        stt = rt.status()
-        name = stt.get("active_user") or rt._display_name
-    except Exception:  # noqa: BLE001
-        name = rt._display_name
-    return _ok({"display_name": name}, display_name=name)
-
-
-def api_set_identity(new_name: str) -> dict[str, Any]:
-    """改自己的显示名(自定义 ID)。对方端需要刷新/重连后看到新名。"""
-    new_name = (new_name or "").strip()
-    if not new_name:
-        return _err("名为空", "填一个非空的显示名。")
-    if len(new_name) > 48:
-        return _err("名太长", "显示名建议 ≤48 字符。")
-    rt = _rt()
-    if not (rt._thread and rt._thread.is_alive()):
-        return _err("runtime 未启动", "先 setup")
-    try:
-        rt.update_display_name(new_name)
-        return _ok({"display_name": new_name}, display_name=new_name, diagnosable="已改名;对方端刷新后显示新名。")
-    except Exception as e:  # noqa: BLE001
-        return _err("改名失败", f"{e!r}")
-
-
-def _db_key_path() -> Path:
-    prefix = DM_DB_PREFIX or str(Path.home() / ".local" / "share" / "aureon" / "simplex" / f"{DM_IDENTITY}_simplex")
-    return Path(prefix).parent / (Path(prefix).name + ".key")
-
-
-def api_db_password_status() -> dict[str, Any]:
-    """是否已设聊天记录口令(密钥文件是否已生成)。"""
-    return _ok({"encrypted": _db_key_path().exists()}, encrypted=_db_key_path().exists())
-
-
-def _db_migrate_plaintext_to_encrypted(key_hex: str) -> dict[str, Any]:
-    """把【已存在的明文 simplex 库】原地迁移为 SQLCipher 加密库(sqlcipher_export)。
-
-    背景:用户可能先在明文库里聊过、再设口令。若不迁移,库里已有明文数据 + 又写了
-    key 文件,下次解锁时 libsimplex 拿密钥去开明文库 → ChatInitError(任务 #6 的坑)。
-    此处对已存在的明文 *_agent.db / *_chat.db 逐个做 sqlcipher_export 原地加密。
-    明文备份仅在【迁移途中失败】时用于回滚;全部迁移成功后立即删除,不留明文副本
-    (避免明文落盘被窃/被杀软误报)。回滚窗口 = 迁移期间;迁完即不可回滚(已加密)。
-
-    返回 {"migrated": [文件名...]};无明文库可迁时 migrated 为空列表(正常)。
-    任一库迁移失败立即返回 _err,且已迁的库会被回滚成明文,保证不半成品。
-    """
-    import shutil
-    import time
-    from sqlcipher3 import dbapi2 as _sqlcipher
-
-    prefix = DM_DB_PREFIX or str(Path.home() / ".local" / "share" / "aureon" / "simplex" / f"{DM_IDENTITY}_simplex")
-    parent = Path(prefix).parent
-    base = Path(prefix).name
-    ts = time.strftime("%Y%m%d-%H%M%S")
-
-    # 先停 runtime 释放 db 文件句柄(若活着)
-    rt = _rt()
-    try:
-        if rt._thread and rt._thread.is_alive():
-            rt.shutdown()
-    except Exception:  # noqa: BLE001
-        pass
-
-    targets = []
-    for f in sorted(parent.glob(base + "_*.db")):
-        try:
-            if open(f, "rb").read(8).startswith(b"SQLite"):
-                targets.append(f)  # 仅迁明文库;已是加密库的跳过
-        except Exception:  # noqa: BLE001
-            pass
-    if not targets:
-        return {"migrated": []}
-
-    migrated: list[str] = []
-    done: list[tuple[Path, Path]] = []  # (原库, 明文备份) 供回滚
-    try:
-        for f in targets:
-            enc = f.with_name(f.name + ".enc")
-            bak = f.with_name(f.name + f".pre-encrypt-{ts}")
-            conn = _sqlcipher.connect(str(f))          # 明文库,无 key
-            # simplex 用 PRAGMA key='<hex>'(passphrase 形式),sqlcipher_export 保持同参
-            enc_fwd = str(enc).replace(os.sep, "/")
-            conn.execute("ATTACH DATABASE '%s' AS encrypted KEY '%s'" % (enc_fwd, key_hex))
-            conn.execute("SELECT sqlcipher_export('encrypted')")
-            conn.execute("DETACH DATABASE encrypted")
-            conn.close()
-            shutil.move(str(f), str(bak))              # 明文 → 备份
-            shutil.move(str(enc), str(f))              # 加密库 → 原位
-            done.append((f, bak))
-            migrated.append(f.name)
-    except Exception as e:  # noqa: BLE001
-        # 回滚:已替换的库恢复成明文备份,删半成品 enc
-        for orig, bak in done:
-            try:
-                if bak.exists():
-                    shutil.move(str(bak), str(orig))
-            except Exception:  # noqa: BLE001
-                pass
-        for f in targets:
-            try:
-                enc = f.with_name(f.name + ".enc")
-                if enc.exists():
-                    enc.unlink()
-            except Exception:  # noqa: BLE001
-                pass
-        return _err("明文库加密迁移失败", f"{e!r}。已回滚为明文库,口令未生效;可重试或检查磁盘/权限。")
-    # 全部迁移成功:立即删除明文备份,不留明文副本(防窃取/防杀软误报)。
-    # 删除失败仅记诊断,不影响已完成的加密迁移。
-    for _orig, bak in done:
-        try:
-            if bak.exists():
-                bak.unlink()
-        except Exception:  # noqa: BLE001
-            pass
-    return {"migrated": migrated}
-
-
-def api_db_set_password(password: str) -> dict[str, Any]:
-    """设置聊天记录口令:生成 DB 加密密钥(口令派生),下次启动需输入口令解锁。
-    对已存在的明文库,先用 sqlcipher_export 原地迁移为加密库(见 _db_migrate_*),
-    避免"明文库 + key 文件 → 解锁 ChatInitError"的不一致(任务 #6/#8)。"""
-    import hashlib
-    import secrets
-    password = password or ""
-    if len(password) < 4:
-        return _err("口令太短", "口令至少 4 位。")
-    kp = _db_key_path()
-    if kp.exists():
-        return _err("已设过口令", "该身份已设口令。要改口令请先验证旧口令(改密功能后续)。")
-    # 口令派生 DB 密钥:scrypt(口令, 随机 salt) → 32B hex;文件 0600 存 salt+hash
-    salt = secrets.token_bytes(16)
-    key = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=16384, r=8, p=1, dklen=32)
-    key_hex = key.hex()
-    # 先迁移已存在的明文库(失败则整体中止,不落 key 文件,保持明文可用状态)
-    mig = _db_migrate_plaintext_to_encrypted(key_hex)
-    if isinstance(mig, dict) and mig.get("ok") is False:
-        return mig
-    kp.parent.mkdir(parents=True, exist_ok=True)
-    kp.write_text(salt.hex() + ":" + key_hex, encoding="utf-8")
-    try:
-        os.chmod(kp, 0o600)
-    except Exception:  # noqa: BLE001
-        pass
-    _rt()._db_key = key_hex  # 内存注入(不落 env);下次 _boot 以加密库打开
-    moved = mig.get("migrated") if isinstance(mig, dict) else []
-    extra = ("已把现有明文聊天记录加密迁移(%s)。" % "、".join(moved)) if moved else ""
-    return _ok({"encrypted": True, "migrated": moved}, diagnosable="口令已设置。" + extra + "重启后会要求输入口令解锁聊天记录;请务必记牢,丢失无法恢复。")
-
-
-def api_db_unlock(password: str, totp_code: str = "") -> dict[str, Any]:
-    """用口令解锁:校验口令是否匹配已存密钥;启用 2FA 时还需 TOTP 码。
-    匹配则把密钥注入【进程内存】(rt._db_key,不落 env)并(按需)以加密库重启 runtime。"""
-    import hashlib
-    kp = _db_key_path()
-    if not kp.exists():
-        return _err("未设口令", "该身份未设口令,无需解锁。")
-    salt_hex, key_hex = kp.read_text(encoding="utf-8").strip().split(":")
-    key = hashlib.scrypt((password or "").encode("utf-8"), salt=bytes.fromhex(salt_hex), n=16384, r=8, p=1, dklen=32)
-    if key.hex() != key_hex:
-        return _err("口令错误", "口令不对,无法解锁聊天记录。")
-    # 2FA:已启用 TOTP 则必须再过一道动态码(口令=知识 + TOTP=持有)
-    if api_2fa_status()["output"].get("totp_enabled"):
-        if not totp_code:
-            return _err("需要动态码", "已启用 2FA,请再输入验证器 App 显示的 6 位动态码。")
-        if not stotp.verify_totp(_totp_read_secret() or "", totp_code):
-            return _err("动态码错误", "6 位动态码不对或已过期,请对照验证器 App 重输。")
-    rt = _rt()
-    rt._db_key = key_hex  # 进程内存注入(不落 env;清内存即锁死自身)
-    # 若 runtime 已在跑(之前以空 key 打不开加密库而启动失败/或明文库),以新 key 重启到加密库
-    if rt._thread and rt._thread.is_alive():
-        try:
-            rt.shutdown()
-        except Exception:  # noqa: BLE001
-            pass
-    args: dict[str, Any] = {"display_name": DM_IDENTITY}
-    if DM_DB_PREFIX:
-        args["db_prefix"] = DM_DB_PREFIX
-    r = st.call_tool("simplex_setup", args)
-    if not r.get("ok"):
-        return _err("解锁成功但打开加密库失败", r.get("diagnosable", r.get("error", "")))
-    return _ok({"unlocked": True}, diagnosable="已解锁,聊天记录已加密打开。")
-
-
-def api_db_lock_status() -> dict[str, Any]:
-    """密码门状态:页面加载据此决定先弹口令框还是直接进对话页。
-
-    needs_unlock = 设了口令但本进程尚无内存密钥(每次重启后端后都需要重新解锁)。
-    first_run   = 库文件尚不存在(全新实例)→ 前端据此弹「首启设口令」页。
-    """
-    rt = _rt()
-    has_password = _db_key_path().exists()
-    running = rt._thread is not None and rt._thread.is_alive()
-    prefix = DM_DB_PREFIX or str(Path.home() / ".local" / "share" / "aureon" / "simplex" / f"{DM_IDENTITY}_simplex")
-    db_exists = any(Path(prefix).parent.glob(Path(prefix).name + "*"))
-    return _ok({
-        "has_password": has_password,
-        "needs_unlock": has_password and rt._db_key is None,
-        "running": running,
-        "first_run": not db_exists,
-        "totp_enabled": api_2fa_status()["output"].get("totp_enabled", False),
-    })
-
-
-# ── 2FA(TOTP,知识+持有)─────────────────────────────────────────────
-def _totp_secret_path() -> Path:
-    prefix = DM_DB_PREFIX or str(Path.home() / ".local" / "share" / "aureon" / "simplex" / f"{DM_IDENTITY}_simplex")
-    return Path(prefix).parent / (Path(prefix).name + ".totp")
-
-
-def _totp_enabled_path() -> Path:
-    return _totp_secret_path().with_name(_totp_secret_path().name + ".enabled")
-
-
-def _totp_read_secret() -> str | None:
-    p = _totp_secret_path()
-    if not p.exists():
-        return None
-    try:
-        return p.read_text(encoding="utf-8").strip() or None
-    except Exception:  # noqa: BLE001
-        return None
-
-
-def api_2fa_status() -> dict[str, Any]:
-    return _ok({"totp_enabled": _totp_enabled_path().exists() and _totp_read_secret() is not None,
-                "totp_provisioned": _totp_read_secret() is not None})
-
-
-def api_2fa_setup() -> dict[str, Any]:
-    """生成 TOTP 共享密钥并落盘(0600,未启用态),返回密钥+otpauth URI 供扫码/手输。"""
-    if not _db_key_path().exists():
-        return _err("先设口令", "2FA 是在口令之上再加一道动态码;请先设置聊天记录口令。")
-    secret = stotp.generate_secret()
-    p = _totp_secret_path()
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(secret, encoding="utf-8")
-    try:
-        os.chmod(p, 0o600)
-    except Exception:  # noqa: BLE001
-        pass
-    uri = stotp.totp_uri(secret, account=DM_IDENTITY)
-    return _ok({"secret": secret, "otpauth_uri": uri}, secret=secret, otpauth_uri=uri,
-               diagnosable="用验证器 App(Google Authenticator / 2FAS 等)扫码或手输密钥,然后输入它显示的 6 位码完成启用。")
-
-
-def api_2fa_enable(code: str) -> dict[str, Any]:
-    """验证一次动态码通过后正式启用 2FA。"""
-    secret = _totp_read_secret()
-    if not secret:
-        return _err("未生成密钥", "请先点「生成 2FA 密钥」。")
-    if not stotp.verify_totp(secret, code):
-        return _err("动态码错误", "6 位动态码不对或已过期,请对照验证器 App 重输。")
-    _totp_enabled_path().write_text("1", encoding="utf-8")
-    try:
-        os.chmod(_totp_enabled_path(), 0o600)
-    except Exception:  # noqa: BLE001
-        pass
-    return _ok({"totp_enabled": True}, diagnosable="2FA 已启用。今后解锁需口令 + 动态码。")
-
-
-def api_2fa_disable(code: str) -> dict[str, Any]:
-    """验证动态码通过后关闭 2FA 并删除密钥。"""
-    secret = _totp_read_secret()
-    if not secret:
-        return _err("未启用", "当前未配置 2FA。")
-    if not stotp.verify_totp(secret, code):
-        return _err("动态码错误", "6 位动态码不对,无法关闭 2FA。")
-    for p in (_totp_secret_path(), _totp_enabled_path()):
-        try:
-            p.unlink(missing_ok=True)
-        except Exception:  # noqa: BLE001
-            pass
-    return _ok({"totp_enabled": False}, diagnosable="2FA 已关闭,解锁只需口令。")
-
-
-def api_db_change_password(old_password: str, new_password: str) -> dict[str, Any]:
-    """变更口令:先验证旧口令,再写入新口令派生的密钥。
-
-    说明:这是「派生密钥」层面的变更 —— 与首次设口令同一条 scrypt 派生路径,
-    新密钥写回密钥文件并注入环境。真正的 SQLCipher 库 rekey(sqlcipher_export
-    整库迁移)留作后续;当前对「下次启动用新口令派生的密钥」生效。
-    """
-    import hashlib
-    import secrets
-    kp = _db_key_path()
-    if not kp.exists():
-        return _err("未设口令", "该身份未设口令,请直接「设置口令」。")
-    new_password = new_password or ""
-    if len(new_password) < 4:
-        return _err("新口令太短", "新口令至少 4 位。")
-    # 验证旧口令
-    salt_hex, key_hex = kp.read_text(encoding="utf-8").strip().split(":")
-    old_key = hashlib.scrypt((old_password or "").encode("utf-8"), salt=bytes.fromhex(salt_hex), n=16384, r=8, p=1, dklen=32)
-    if old_key.hex() != key_hex:
-        return _err("旧口令错误", "旧口令不对,无法变更。")
-    # 写入新口令派生的密钥
-    new_salt = secrets.token_bytes(16)
-    new_key = hashlib.scrypt(new_password.encode("utf-8"), salt=new_salt, n=16384, r=8, p=1, dklen=32)
-    kp.write_text(new_salt.hex() + ":" + new_key.hex(), encoding="utf-8")
-    try:
-        os.chmod(kp, 0o600)
-    except Exception:  # noqa: BLE001
-        pass
-    os.environ["DM_DB_KEY"] = new_key.hex()  # 兼容旧路径;进程内存优先
-    _rt()._db_key = new_key.hex()
-    return _ok({"changed": True}, diagnosable="口令已变更。下次启动用新口令解锁;请务必记牢新口令。")
-
-
-def api_new_user_id() -> dict[str, Any]:
-    """忘记口令 → 新建用户ID:把打不开的加密库归档到一边,以全新空库重启。
-
-    旧库不删除,改名加 .locked-<时间戳> 后缀保留(万一以后想起口令可手动恢复)。
-    新库不带口令(除非用户再设)。旧聊天记录在新库里不可见 —— 这是用户已接受的取舍。
-    """
-    import shutil
-    kp = _db_key_path()
-    prefix = DM_DB_PREFIX or str(Path.home() / ".local" / "share" / "aureon" / "simplex" / f"{DM_IDENTITY}_simplex")
-    rt = _rt()
-    ts = time.strftime("%Y%m%d-%H%M%S")
-    try:
-        # 停掉当前 runtime(若活着),释放 DB 文件句柄
-        try:
-            if rt._thread and rt._thread.is_alive():
-                rt.shutdown()
-        except Exception:  # noqa: BLE001
-            pass
-        os.environ.pop("DM_DB_KEY", None)  # 清掉旧密钥,新库不带口令
-        rt._db_key = None  # 同步清进程内存密钥
-        # 归档旧库文件(同目录,prefix 开头的那几个 SQLite 文件)
-        parent = Path(prefix).parent
-        base = Path(prefix).name
-        moved = []
-        for f in parent.glob(base + "*"):
-            if f.name == base + ".key":
-                continue  # key 文件单独处理
-            dest = f.with_name(f.name + f".locked-{ts}")
-            try:
-                shutil.move(str(f), str(dest))
-                moved.append(dest.name)
-            except Exception:  # noqa: BLE001
-                pass
-        # 归档 key 文件(否则新库仍被当"已设口令",且旧 key 对新库无意义)
-        if kp.exists():
-            try:
-                shutil.move(str(kp), str(kp.with_name(kp.name + f".locked-{ts}")))
-                moved.append(kp.name + f".locked-{ts}")
-            except Exception:  # noqa: BLE001
-                pass
-    except Exception as e:  # noqa: BLE001
-        return _err("归档旧库失败", f"{e!r}。可手动把 {prefix}* 改名后重启。")
-    # 以同一身份名重开一个全新空库
-    name = DM_IDENTITY
-    args: dict[str, Any] = {"display_name": name}
-    if DM_DB_PREFIX:
-        args["db_prefix"] = DM_DB_PREFIX
-    r = st.call_tool("simplex_setup", args)
-    if not r.get("ok"):
-        return _err("新建用户ID失败(旧库已归档)", r.get("diagnosable", r.get("error", "")))
-    return _ok(
-        {"restarted": True, "archived": moved},
-        diagnosable=f"已新建用户ID(旧库已归档为 .locked-{ts},不会删除)。原聊天记录在新库不可见。",
-    )
-
-
-def api_create_invite_incognito() -> dict[str, Any]:
-    """一次性邀请 + incognito(匿名随机档案,不暴露你的显示名)。"""
-    rt = _rt()
-    if not (rt._thread and rt._thread.is_alive()):
-        return _err("runtime 未启动", "先 setup")
-    try:
-        link = rt.create_invitation(incognito=True)
-        return _ok({"link": link}, link=link, diagnosable="匿名一次性邀请:对方看到的是随机生成的临时档案,不是你的显示名。")
-    except Exception as e:  # noqa: BLE001
-        return _err("生成匿名邀请失败", f"{e!r}")
-
-
-def api_create_address() -> dict[str, Any]:
-    """长期有效的用户地址(公共二维码,可多人反复扫码)。"""
-    rt = _rt()
-    if not (rt._thread and rt._thread.is_alive()):
-        return _err("runtime 未启动", "先 setup")
-    try:
-        link = rt.create_user_address()
-        return _ok({"link": link}, link=link, diagnosable="长期有效地址,可无限次扫码添加;泄露可在官方客户端删除地址。")
-    except Exception as e:  # noqa: BLE001
-        return _err("生成长期地址失败", f"{e!r}")
-
-
-def api_contacts() -> dict[str, Any]:
-    rt = _rt()
-    if not (rt._thread and rt._thread.is_alive()):
-        return _err("runtime 未启动", "先 setup")
-    contacts = rt.list_contacts()
-    # 每个联系人附带未读/最近一条预览
-    out = []
-    for c in contacts:
-        cid = c["contact_id"]
-        try:
-            texts = rt.chat_texts(cid, limit=1)
-            preview = texts[-1][:60] if texts else ""
-        except Exception:  # noqa: BLE001
-            preview = ""
-        out.append({**c, "preview": preview})
-    return _ok(out)
-
-
-def api_delete_contact(contact: str) -> dict[str, Any]:
-    return st.call_tool("simplex_delete_contact", {"contact": contact})
-
-
-def api_history(contact: str, limit: int = 60) -> dict[str, Any]:
-    rt = _rt()
-    if not (rt._thread and rt._thread.is_alive()):
-        return _err("runtime 未启动", "先 setup")
-    resolved = rt.resolve_contact(contact)
-    if resolved is None:
-        return _err(f"没有联系人 {contact}", "先接受邀请")
-    cid = resolved["contact_id"]
-    # 用 chat_items(带方向 me/them + 完整历史),不是 chat_texts(无方向,易只显示一条)
-    items = rt.chat_items(cid, limit=limit)
-    msgs = [{"id": it["id"], "dir": it["dir"], "kind": it["kind"], "text": it["text"], "ts": it["ts"]} for it in items]
-    # 待下载文件邀请
-    files = rt.list_inbox_files(cid)
-    return _ok({"contact": resolved, "messages": msgs, "incoming_files": files})
-
-
-def api_send(contact: str, text: str, ttl: int = 0) -> dict[str, Any]:
-    """发消息;ttl>0 走阅后即焚(协议级自毁,秒),否则普通消息。"""
-    if ttl and int(ttl) > 0:
-        return st.call_tool("simplex_send_message_ttl", {"contact": contact, "text": text, "ttl": int(ttl)})
-    return st.call_tool("simplex_send_message", {"contact": contact, "text": text})
-
-
-# ── 2 人 E2E 通话(轻量信令经 E2E 加密通道,媒体 P2P WebRTC)───────────────
-# 信令 = JSON 消息,前缀 [DMCALL];经 simplex_send_message(已 E2E 加密)传输。
-# 浏览器侧原生 RTCPeerConnection 收发媒体;后端只搬信令,不碰媒体。
-_CALL_PREFIX = "[DMCALL]"
-
-
-def api_call_signal(contact: str, signal: dict) -> dict[str, Any]:
-    """把一条通话信令(offer/answer/ice/end)作为 JSON 消息发给联系人。"""
-    import json as _json
-    payload = _CALL_PREFIX + _json.dumps(signal, ensure_ascii=False)
-    return st.call_tool("simplex_send_message", {"contact": contact, "text": payload})
-
-
-def api_call_poll(contact: str, since_id: int = 0) -> dict[str, Any]:
-    """拉取该联系人最近的通话信令([DMCALL] 前缀的消息)。
-
-    返回 [{id, dir, signal, ts}],id = chat item 的稳定 itemId。
-    **增量按 since_id(消息 id),不是时间戳** —— 时间戳跨时钟比较不可靠
-    (服务器 UTC vs 浏览器本地钟,毫秒/格式不一),曾导致"等待接听无反应"。
-    since_id:只返回 itemId 大于它的信令。"""
-    rt = _rt()
-    if not (rt._thread and rt._thread.is_alive()):
-        return _err("runtime 未启动", "先 setup")
-    resolved = rt.resolve_contact(contact)
-    if resolved is None:
-        return _err(f"没有联系人 {contact}", "先接受邀请")
-    cid = resolved["contact_id"]
-    items = rt.chat_items(cid, limit=60)
-    import json as _json
-    out = []
-    for it in items:
-        t = it.get("text", "")
-        if not t.startswith(_CALL_PREFIX):
-            continue
-        iid = it.get("id") or 0
-        if since_id and iid <= since_id:
-            continue
-        try:
-            sig = _json.loads(t[len(_CALL_PREFIX):])
-        except Exception:  # noqa: BLE001
-            continue
-        out.append({"id": iid, "dir": it["dir"], "signal": sig, "ts": it.get("ts", "")})
-    return _ok(out)
-
-
-def api_receive_file(file_id: int) -> dict[str, Any]:
-    r = sf.call_tool("simplex_receive_file", {"file_id": file_id, "timeout": 60})
-    # 下载成功后:若用户设过自定义保存目录,复制一份过去并在结果里带上可见路径
-    if r.get("ok"):
-        saved = (r.get("output") or {}).get("saved_path") or ""
-        custom = _download_dir_path().read_text(encoding="utf-8").strip() if _download_dir_path().exists() else ""
-        shown = saved
-        if custom and saved and Path(saved).is_file():
-            try:
-                import shutil
-                Path(custom).mkdir(parents=True, exist_ok=True)
-                dest = Path(custom) / Path(saved).name
-                shutil.copy2(saved, dest)
-                shown = str(dest)
-                r.setdefault("output", {})["copied_to"] = str(dest)
-            except Exception as e:  # noqa: BLE001
-                # 下载本体已成功,仅自定义目录复制失败 —— 不 raise,但要可见
-                r.setdefault("output", {})["copy_error"] = f"{type(e).__name__}: {e}"
-                note = f"(自定义目录复制失败: {e}; 文件仍在默认目录 {saved})"
-                r["diagnosable"] = (r.get("diagnosable", "") + " " + note).strip()
-        r.setdefault("output", {})["display_path"] = shown
-    return r
-
-
-def _download_dir_path() -> Path:
-    prefix = DM_DB_PREFIX or str(Path.home() / ".local" / "share" / "aureon" / "simplex" / f"{DM_IDENTITY}_simplex")
-    return Path(prefix).parent / "download_dir.txt"
-
-
-def api_get_download_dir() -> dict[str, Any]:
-    """当前生效的下载保存目录:自定义(若设过)否则默认 simplex 下载目录。"""
-    rt = _rt()
-    default = getattr(rt, "_file_download_dir", "") or str(
-        (Path(DM_DB_PREFIX) if DM_DB_PREFIX else Path.home() / ".local" / "share" / "aureon" / "simplex" / f"{DM_IDENTITY}_simplex").parent
-        / "simplex_files_root" / "downloads"
-    )
-    custom = _download_dir_path().read_text(encoding="utf-8").strip() if _download_dir_path().exists() else ""
-    return _ok({"default": default, "custom": custom, "effective": custom or default})
-
-
-def api_set_download_dir(path: str) -> dict[str, Any]:
-    """设置自定义下载保存目录(壳选文件夹后回填)。空串 = 恢复默认。"""
-    path = (path or "").strip()
-    p = _download_dir_path()
-    if not path:
-        if p.exists():
-            p.unlink()
-        return _ok({"effective": None}, diagnosable="已恢复默认下载目录。")
-    tgt = Path(path).expanduser()
-    try:
-        tgt.mkdir(parents=True, exist_ok=True)
-    except Exception as e:  # noqa: BLE001
-        return _err("目录不可用", f"{e!r}")
-    if not tgt.is_dir():
-        return _err("不是目录", f"{tgt} 不是有效目录。")
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(str(tgt), encoding="utf-8")
-    return _ok({"effective": str(tgt)}, diagnosable=f"下载将保存到 {tgt}(同时在 simplex 目录留底)。")
-
-
-def api_verify_file(contact: str, file_name: str) -> dict[str, Any]:
-    return si.call_tool("simplex_verify_file_by_manifest", {"contact": contact, "file_name": file_name})
-
-
-def api_send_file_signed(contact: str, path: str) -> dict[str, Any]:
-    return si.call_tool("simplex_send_file_signed", {"contact": contact, "path": path})
-
-
-def api_trust_establish(contact: str) -> dict[str, Any]:
-    return si.call_tool("simplex_trust_establish", {"contact": contact})
-
-
-def api_accept_invite(link: str) -> dict[str, Any]:
-    return st.call_tool("simplex_accept_invitation", {"link": link, "timeout": 100})
-
-
-def api_trust_import(contact: str, key: str) -> dict[str, Any]:
-    return si.call_tool("simplex_trust_import", {"contact": contact, "key": key})
-
-
-def api_send_file(contact: str, path: str, signed: bool) -> dict[str, Any]:
-    """发送文件(可选带签名清单)。signed=true 走 simplex_send_file_signed。
-    路径来自壳原生选文件对话框(用户亲手选)→ 先把其目录并入本进程允许范围,
-    否则手填白名单外路径会被 _resolve_sendable 拒。
-    统一签名 UX:signed 且无信任根时自动先 trust_establish(经 E2E 通道交换密钥),
-    不再要求用户去联系人区点隐藏的 🔑 —— 发送即建立信任,一步到位。"""
-    if path:
-        try:
-            sf.register_send_root(path)
-        except Exception:  # noqa: BLE001
-            pass
-    if signed:
-        # 自动建立信任(幂等:已建立则内部快速返回/复用,不会重复打扰对方)
-        tr = si.call_tool("simplex_trust_establish", {"contact": contact})
-        r = si.call_tool("simplex_send_file_signed", {"contact": contact, "path": path})
-        if tr.get("ok") and isinstance(r.get("output"), dict):
-            r["output"]["auto_trust"] = True
-        return r
-    return sf.call_tool("simplex_send_file", {"contact": contact, "path": path})
-
-
-def api_file_info(path: str) -> dict[str, Any]:
-    return si.call_tool("simplex_file_info", {"path": path})
-
-
-def api_a2h_status() -> dict[str, Any]:
-    """A2H 审批状态:approver + 待裁决列表(供 UI 显示审批卡)。"""
-    rt = _rt()
-    pend = sa.call_tool("simplex_a2h_pending", {})
-    return _ok({
-        "approver": rt._a2h_approver_name,
-        "approver_cid": rt._a2h_approver_cid,
-        "pending": pend.get("output", []) if pend.get("ok") else [],
-    })
-
-
-def api_a2h_set_approver(contact: str) -> dict[str, Any]:
-    return sa.call_tool("simplex_a2h_set_approver", {"contact": contact})
-
-
-# ────────────────────────────────────────────────────────────────────── #
-# 嵌入式 IM 界面
-# ────────────────────────────────────────────────────────────────────── #
-
-_PAGE = r"""<!DOCTYPE html>
-<html lang="zh">
-<head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SecureDM · 加密私信</title>
-<style>
-  :root{--bg:#f6f1e7;--panel:#fbf8f1;--line:#d8cfbc;--txt:#2f3a34;--dim:#8a968e;--acc:#4a5c52;--ok:#3fb27f;--warn:#e0a34a;--bad:#b23a30;--gold:#d6b26c;}
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg) url('/dm/assets/guohua_bg_panel.png') center bottom/cover fixed no-repeat;color:var(--txt);font:15px/1.5 -apple-system,"Segoe UI",Roboto,"Microsoft YaHei",sans-serif;height:100vh;display:flex;flex-direction:column}
-  header{padding:11px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;background:rgba(251,248,241,.85);backdrop-filter:blur(6px)}
-  header .dot{width:9px;height:9px;border-radius:50%;background:var(--ok)}
-  header h1{font-size:16px;margin:0;font-weight:600;color:var(--acc)}
-  header .st{margin-left:auto;font-size:12px;color:var(--dim)}
-  #main{flex:1;display:flex;min-height:0}
-  #contacts{width:250px;border-right:1px solid var(--line);overflow-y:auto;display:flex;flex-direction:column;background:rgba(239,232,218,.5)}
-  #contacts .hd{padding:12px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
-  #contacts .hd b{font-size:14px}
-  #contacts .hd button{background:var(--acc);border:none;color:#fbf6ec;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:12px}
-  #contacts .hd2{padding:8px 10px;border-bottom:1px solid var(--line);display:flex;gap:6px;flex-wrap:wrap}
-  #contacts .hd2 button{background:var(--panel);border:1px solid var(--line);color:var(--txt);padding:6px 9px;border-radius:7px;cursor:pointer;font-size:12px;flex:1;min-width:64px;white-space:nowrap}
-  #contacts .hd2 button:hover{border-color:var(--acc);color:var(--acc)}
-  .citem{padding:11px 12px;border-bottom:1px solid var(--line);cursor:pointer}
-  .citem:hover{background:#efe8da}
-  .citem.active{background:#fbf8f1;box-shadow:inset 2px 0 0 var(--acc)}
-  .citem .nm{font-weight:600;font-size:14px}
-  .citem .pv{font-size:12px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  #chat{flex:1;display:flex;flex-direction:column;min-width:0}
-  #msgs{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:6px}
-  /* IM 布局惯例(参照 WeChat/iMessage/WhatsApp 调研):
-     我=右侧+品牌色,对方=左侧+中性色;气泡角在发送方一侧收平;系统消息居中灰色小字。
-     位置+颜色+形状三重区分,不单靠颜色(色盲/暗色模式友好)。 */
-  .m{max-width:78%;padding:9px 13px;font-size:15px;line-height:1.4;white-space:pre-wrap;word-break:break-word;box-shadow:0 1px 3px rgba(74,92,82,.15)}
-  /* 我:右侧,印章红,右下角收平(LTR 发送方侧) */
-  .m.me{align-self:flex-end;background:linear-gradient(135deg,#b23a30,#9c3229);color:#fbf6ec;border-radius:18px 18px 4px 18px}
-  /* 对方:左侧,宣纸面 + 墨绿左边框,左下角收平 */
-  .m.them{align-self:flex-start;background:#fbf8f1;color:#2f3a34;border:1px solid var(--line);border-left:3px solid var(--acc);border-radius:18px 18px 18px 4px}
-  /* 系统/签名清单:居中、灰小字、无气泡感 */
-  .m.manifest{align-self:center;background:rgba(74,92,82,.06);border:1px dashed var(--line);font-size:12px;color:var(--dim);border-radius:8px;max-width:88%}
-  .vbadge{display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:3px 9px;border-radius:11px;margin-top:5px}
-  .vbadge.ok{background:#e3efe6;color:var(--ok);border:1px solid var(--ok)}
-  .vbadge.bad{background:#f3e0de;color:var(--bad);border:1px solid var(--bad)}
-  .vbadge.pending{background:var(--panel);color:var(--dim)}
-  .fmsg{align-self:flex-start;background:var(--panel);padding:10px 12px;border-radius:11px;border:1px solid var(--line)}
-  .fmsg .fname{font-weight:600}
-  .fmsg button{background:var(--acc);border:none;color:#fbf6ec;padding:5px 12px;border-radius:7px;cursor:pointer;font-size:12px;margin-top:6px}
-  .sys{align-self:center;font-size:12px;color:var(--dim)}
-  #composer{display:flex;gap:9px;padding:13px 16px;border-top:1px solid var(--line);background:rgba(251,248,241,.85)}
-  #in{flex:1;background:var(--panel);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:10px 12px;outline:none}
-  #in:focus{border-color:var(--acc)}
-  #composer button{background:var(--acc);border:none;color:#fbf6ec;padding:0 17px;border-radius:9px;cursor:pointer;font-weight:600}
-  #empty{flex:1;display:flex;align-items:center;justify-content:center;color:var(--dim);flex-direction:column;gap:10px}
-  #inviteModal,#acceptModal,#settingsModal{position:fixed;inset:0;background:rgba(47,58,52,.45);display:none;align-items:center;justify-content:center}
-  #inviteModal .box,#acceptModal .box,#settingsModal .box{background:var(--panel);padding:20px;border-radius:12px;max-width:560px;width:90%;border:1px solid var(--line)}
-  #inviteModal textarea,#acceptModal textarea{width:100%;height:90px;background:var(--bg);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:8px;font-size:12px}
-  #inviteModal button,#acceptModal button{margin-top:10px;background:var(--acc);border:none;color:#fbf6ec;padding:7px 14px;border-radius:8px;cursor:pointer}
-</style>
-</head>
-<body>
-<header><span class="dot" id="livedot"></span><h1>SecureDM 加密私信</h1><span class="st" id="status">…</span></header>
-<div id="compatBanner" style="background:#2a2410;border-bottom:1px solid #4a3f18;color:#e8d98a;font-size:12.5px;padding:6px 12px;display:flex;align-items:center;gap:10px">
-  <span style="flex:1">⚠ 与 <b>SimpleX 官方客户端</b> 目前仅互通<b>文字消息</b>;语音/视频/屏幕共享/文件互传/群聊需在<b>本应用两端</b>之间进行。请对方也用本应用(分享本程序)。</span>
-  <span onclick="document.getElementById('compatBanner').style.display='none'" style="cursor:pointer;color:#8a7c4a;padding:0 4px" title="关闭提示">✕</span>
-</div>
-<div id="main">
-  <div id="contacts">
-    <div class="hd"><b>联系人</b></div>
-    <div class="hd2">
-      <button onclick="newInvite()" title="生成邀请链接/二维码发给对方">+ 邀请</button>
-      <button onclick="acceptInvite()" title="粘贴对方给你的链接建立联系">+ 添加</button>
-      <button onclick="delContact()" title="删除选中的联系人" style="color:var(--bad)">🗑 删除</button>
-      <button onclick="openSettings()" title="设置:自定义 ID / 聊天记录口令加密">⚙ 设置</button>
-    </div>
-    <div id="clist"></div>
-  </div>
-  <div id="chat">
-    <div id="msgs"><div id="empty"><div>选择左侧联系人开始加密对话</div><div style="font-size:12px">+ 邀请 = 生成链接发给对方;+ 添加 = 粘贴对方给你的链接</div></div></div>
-    <div id="composer">
-      <select id="ttlSel" title="阅后即焚:到点双方客户端协议级自毁(防不住对方截图/拍照)" style="background:var(--panel);border:1px solid var(--line);color:var(--dim);border-radius:8px;padding:0 6px;font-size:12px">
-        <option value="0">不过期</option>
-        <option value="10">10秒焚</option>
-        <option value="60">1分钟焚</option>
-        <option value="300">5分钟焚</option>
-        <option value="3600">1小时焚</option>
-      </select>
-      <input id="in" placeholder="发 E2E 加密消息…" disabled>
-      <button id="send" onclick="sendMsg()">发送</button>
-      <button id="attachBtn" title="发送文件" onclick="toggleAttach()">📎</button>
-      <button id="callBtn" title="语音通话" onclick="startCall(false)">📞</button>
-      <button id="videoBtn" title="视频通话" onclick="startCall(true)">📹</button>
-    </div>
-    <div id="callPanel" style="display:none;padding:10px 14px;border-top:1px solid var(--line);background:#1e293b">
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-        <video id="remoteVideo" autoplay playsinline style="width:280px;background:#000;border-radius:8px"></video>
-        <video id="localVideo" autoplay playsinline muted style="width:120px;background:#000;border-radius:8px"></video>
-        <div style="display:flex;flex-direction:column;gap:7px">
-          <div id="callStatus" style="font-size:13px;color:var(--dim)">呼叫中…</div>
-          <div style="display:flex;gap:7px">
-            <button onclick="toggleMic()" id="micBtn" style="background:#3a3f4b;border:none;color:#fff;padding:6px 12px;border-radius:7px;cursor:pointer">🎤 静音</button>
-            <button onclick="toggleCam()" id="camBtn" style="background:#3a3f4b;border:none;color:#fff;padding:6px 12px;border-radius:7px;cursor:pointer">📷 关视频</button>
-            <button onclick="switchCamera()" id="switchCamBtn" title="切换前后摄像头" style="background:#3a3f4b;border:none;color:#fff;padding:6px 12px;border-radius:7px;cursor:pointer">🔄 切换摄像头</button>
-            <button onclick="shareScreen()" id="screenBtn" style="background:#3a3f4b;border:none;color:#fff;padding:6px 12px;border-radius:7px;cursor:pointer">🖥️ 共享屏幕</button>
-            <button onclick="endCall()" style="background:var(--bad);border:none;color:#fff;padding:6px 12px;border-radius:7px;cursor:pointer">挂断</button>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div id="attach" style="display:none;padding:9px 16px;border-top:1px solid var(--line);gap:8px;align-items:center;flex-wrap:wrap">
-      <button onclick="pickFile()" title="打开文件夹选择要发送的文件" style="background:var(--panel);border:1px solid var(--acc);color:var(--acc);padding:7px 12px;border-radius:8px;cursor:pointer">📁 选文件</button>
-      <input id="fpath" placeholder="文件绝对路径(或点「选文件」)" style="flex:1;min-width:180px;background:var(--panel);border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px 10px">
-      <input type="file" id="filePickFallback" style="display:none" onchange="onFallbackPick(this)">
-      <label title="勾选后自动建立签名信任并附签名清单,对方能看到「✓ 已验证来自 你」;无需再去联系人区点钥匙" style="font-size:13px;color:var(--dim);display:flex;align-items:center;gap:4px"><input type="checkbox" id="fsigned" checked>签名发送</label>
-      <button onclick="sendFile()" style="background:var(--acc);border:none;color:#fff;padding:7px 14px;border-radius:8px;cursor:pointer">发文件</button>
-      <div style="width:100%;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--dim)">
-        <span>下载到:</span><span id="dlDir" style="color:var(--txt)">…</span>
-        <button onclick="pickDownloadDir()" title="自定义下载保存目录(桌面壳)" style="background:var(--panel);border:1px solid #334155;color:var(--dim);padding:3px 9px;border-radius:6px;cursor:pointer;font-size:12px">改目录</button>
-      </div>
-    </div>
-  </div>
-</div>
-<div id="inviteModal"><div class="box"><b id="inviteTitle">一次性邀请链接</b><div style="font-size:12px;color:var(--dim);margin:6px 0" id="inviteDesc">发给对方,在其 SimpleX/SecureDM 里"通过链接连接"接受即建立 E2E 联系</div><div style="display:flex;gap:14px;font-size:12.5px;color:var(--dim);margin-bottom:8px;flex-wrap:wrap"><label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="invKind" value="once" checked onchange="genInvite()">一次性(私聊)</label><label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="invKind" value="anon" onchange="genInvite()">匿名一次性</label><label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="invKind" value="long" onchange="genInvite()">长期有效(公共二维码)</label></div><textarea id="inviteLink" readonly></textarea><div style="display:flex;justify-content:center;margin:10px 0"><canvas id="inviteQr" width="240" height="240" style="background:#fff;border-radius:8px;padding:6px"></canvas></div><div id="inviteQrMsg" style="display:none;font-size:12px;color:var(--warn);text-align:center;margin-bottom:8px">链接过长,请复制粘贴</div><button onclick="copyInvite()">复制</button> <button onclick="closeInvite()">关闭</button></div></div>
-<div id="acceptModal"><div class="box"><b>添加联系人</b><div style="font-size:12px;color:var(--dim);margin:6px 0">粘贴对方发给你的一次性邀请链接(对方点「+ 邀请」生成的)</div><textarea id="acceptLink" placeholder="粘贴邀请链接,例如 simplex://… 或 https://simplex.chat/invitation#…"></textarea><button id="acceptGoBtn" onclick="doAccept()">连接</button> <button onclick="closeAccept()" style="background:#475569">取消</button></div></div>
-<div id="settingsModal"><div class="box"><b>设置</b>
-  <div style="margin:14px 0 6px;font-size:13px;color:var(--dim)">自定义 ID(显示名)</div>
-  <div style="display:flex;gap:8px"><input id="idName" placeholder="你的显示名(对方看到)" style="flex:1;background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px"><button onclick="saveIdentity()">保存</button></div>
-  <div id="idMsg" style="font-size:12px;color:var(--dim);margin-top:4px"></div>
-  <hr style="border:none;border-top:1px solid var(--line);margin:16px 0">
-  <div style="margin:0 0 6px;font-size:13px;color:var(--dim)">聊天记录口令加密 <span id="dbState" style="color:var(--warn)"></span></div>
-  <div style="font-size:12px;color:var(--dim);margin-bottom:8px">设口令后,聊天记录库以 SQLCipher 加密;每次启动需输入口令解锁,口令错进不去(同官方)。请务必记牢,丢失无法恢复。</div>
-  <div id="dbSetRow" style="display:flex;flex-direction:column;gap:8px">
-    <input id="dbPwd" type="password" placeholder="设置口令(≥4 位)" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px">
-    <input id="dbPwd2" type="password" placeholder="再输一遍确认(防首次打错)" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px">
-    <div><button onclick="setDbPassword()">设置口令</button></div>
-  </div>
-  <div id="dbUnlockRow" style="display:none;flex-direction:column;gap:8px">
-    <div style="display:flex;gap:8px"><input id="dbPwdUnlock" type="password" placeholder="输入口令解锁" style="flex:1;background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px"><button onclick="unlockDb()">解锁</button></div>
-    <div style="font-size:12px;color:var(--dim)">忘记口令?<a href="javascript:void(0)" onclick="forgotPassword()" style="color:var(--warn)">新建用户ID</a>(原聊天记录将无法查看)</div>
-    <hr style="border:none;border-top:1px solid var(--line);margin:10px 0">
-    <div style="font-size:12px;color:var(--dim)">变更口令(需先验证旧口令):</div>
-    <input id="dbPwdOld" type="password" placeholder="旧口令" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px">
-    <input id="dbPwdNew" type="password" placeholder="新口令(≥4 位)" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px">
-    <input id="dbPwdNew2" type="password" placeholder="再输一遍新口令" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px">
-    <div><button onclick="changeDbPassword()">变更口令</button></div>
-  </div>
-  <div id="dbMsg" style="font-size:12px;color:var(--dim);margin-top:4px"></div>
-  <hr style="border:none;border-top:1px solid var(--line);margin:16px 0">
-  <div style="margin:0 0 6px;font-size:13px;color:var(--dim)">两步验证(2FA) <span id="tfaState" style="color:var(--warn)"></span></div>
-  <div style="font-size:12px;color:var(--dim);margin-bottom:8px">在口令之上再加一道动态码(口令=你知道的 + 验证器=你持有的)。用 Google Authenticator / 2FAS 等扫码或手输密钥。</div>
-  <div id="tfaOffRow" style="display:none;flex-direction:column;gap:8px">
-    <div><button onclick="tfaSetup()">生成 2FA 密钥</button></div>
-    <div id="tfaQrWrap" style="display:none;flex-direction:column;gap:8px">
-      <div style="display:flex;justify-content:center"><canvas id="tfaQr" width="200" height="200" style="background:#fff;border-radius:8px;padding:6px"></canvas></div>
-      <div style="font-size:12px;color:var(--dim)">或手输密钥:<code id="tfaSecret" style="user-select:all;color:var(--txt)"></code></div>
-      <div style="display:flex;gap:8px"><input id="tfaCodeEnable" placeholder="输入 App 显示的 6 位码" maxlength="6" style="flex:1;background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px"><button onclick="tfaEnable()">启用</button></div>
-    </div>
-  </div>
-  <div id="tfaOnRow" style="display:none;flex-direction:column;gap:8px">
-    <div style="font-size:12px;color:var(--ok)">已启用:解锁需口令 + 动态码</div>
-    <div style="display:flex;gap:8px"><input id="tfaCodeDisable" placeholder="输入 6 位码以关闭" maxlength="6" style="flex:1;background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px"><button onclick="tfaDisable()" style="background:#475569">关闭 2FA</button></div>
-  </div>
-  <div id="tfaMsg" style="font-size:12px;color:var(--dim);margin-top:4px"></div>
-  <div style="margin-top:16px;text-align:right"><button onclick="closeSettings()" style="background:#475569">关闭</button></div>
-</div></div>
-<div id="lockGate" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:999;align-items:center;justify-content:center">
-  <div class="box" style="max-width:400px;width:92%">
-    <b style="font-size:16px">🔒 聊天记录已加密</b>
-    <div style="font-size:12px;color:var(--dim);margin:8px 0 12px">输入口令解锁;启用 2FA 的话还需验证器 6 位动态码。</div>
-    <div style="display:flex;flex-direction:column;gap:8px">
-      <input id="gatePwd" type="password" placeholder="口令" onkeydown="if(event.key==='Enter')gateUnlock()" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:10px;font-size:14px">
-      <input id="gateTotp" placeholder="2FA 动态码(如已启用)" maxlength="6" onkeydown="if(event.key==='Enter')gateUnlock()" style="display:none;background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:10px;font-size:14px">
-      <div><button onclick="gateUnlock()" style="width:100%;padding:10px">解锁</button></div>
-      <div id="gateMsg" style="font-size:12px;color:var(--bad);min-height:16px"></div>
-      <div style="font-size:12px;color:var(--dim)">忘记口令?<a href="javascript:void(0)" onclick="gateForgot()" style="color:var(--warn)">新建用户ID</a>(原聊天记录将无法查看)</div>
-    </div>
-  </div>
-</div>
-<div id="firstRunGate" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:999;align-items:center;justify-content:center">
-  <div class="box" style="max-width:420px;width:92%">
-    <b style="font-size:16px">🔐 首次启动 · 给聊天记录加把锁</b>
-    <div style="font-size:12px;color:var(--dim);margin:8px 0 12px">建议现在设一个口令:聊天记录库将用 SQLCipher 加密落盘,每次启动需口令解锁。<b style="color:var(--warn)">跳过 = 聊天记录以明文存盘</b>(官方 SimpleX 也是这套取舍)。</div>
-    <div style="display:flex;flex-direction:column;gap:8px">
-      <input id="frPwd" type="password" placeholder="设置口令(≥4 位)" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:10px;font-size:14px">
-      <input id="frPwd2" type="password" placeholder="再输一遍确认" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:10px;font-size:14px">
-      <div style="display:flex;gap:8px"><button onclick="frSetPassword()" style="flex:1;padding:10px">设口令并加密</button><button onclick="frSkip()" style="background:#475569;padding:10px">跳过(明文)</button></div>
-      <div id="frMsg" style="font-size:12px;color:var(--bad);min-height:16px"></div>
-    </div>
-  </div>
-</div>
+</script>
 <script>
 const TOKEN=(()=>{const q=new URLSearchParams(location.search).get('token');if(q){localStorage.setItem('dm_token',q);history.replaceState({},'',location.pathname);return q;}return localStorage.getItem('dm_token')||'';})();
 // WS server 地址由服务端注入(电脑 LAN IP,手机经 WiFi 可达;本机访问时服务端填 127.0.0.1)
@@ -4258,209 +3535,3 @@ async function tfaDisable(){
 })();
 </script>
 </body></html>
-"""
-
-
-def _render_page():
-    """把内联 QR 库作为独立 <script> 块注入到 TOKEN 定义之前。
-
-    纯字符串内联,无任何外部 script/img/fetch,符合 SecureDM 离线约束。
-    """
-    block = "<script>\n" + _QRCODE_LIB + "\n</script>\n<script>"
-    return _PAGE.replace("<script>", block, 1)
-
-
-# ────────────────────────────────────────────────────────────────────── #
-# HTTP 处理
-# ────────────────────────────────────────────────────────────────────── #
-
-class DMHandler(BaseHTTPRequestHandler):
-    def log_message(self, *a):
-        pass
-
-    def _locked_gate_active(self) -> bool:
-        """密码门是否激活(设了口令但本进程尚未解锁)。单独成方法便于测试 hook。"""
-        try:
-            return bool(api_db_lock_status()["output"].get("needs_unlock"))
-        except Exception:  # noqa: BLE001
-            return False
-
-    def _auth(self) -> bool:
-        if not _ACCESS_TOKEN:
-            return True
-        if self.headers.get("X-L4-Token", "") == _ACCESS_TOKEN:
-            return True
-        q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-        return (q.get("token") or [""])[0] == _ACCESS_TOKEN
-
-    def _json(self, o, code=200):
-        b = json.dumps(o, ensure_ascii=False).encode()
-        self.send_response(code)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(b)))
-        self.end_headers()
-        self.wfile.write(b)
-
-    def _html(self, s):
-        b = s.encode()
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(b)))
-        self.end_headers()
-        self.wfile.write(b)
-
-    def _asset(self, name):
-        # 静态主题资源(国画背景等),公开可读(不含敏感数据),免密码门
-        safe = os.path.basename(name)
-        p = Path(__file__).resolve().parent / "assets" / safe
-        if not p.is_file():
-            return self._json({"ok": False, "error": "not found"}, 404)
-        mime = ("image/png" if safe.endswith(".png") else
-                "image/x-icon" if safe.endswith(".ico") else
-                "text/css" if safe.endswith(".css") else "application/octet-stream")
-        data = p.read_bytes()
-        self.send_response(200)
-        self.send_header("Content-Type", mime)
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "max-age=3600")
-        self.end_headers()
-        self.wfile.write(data)
-
-    def do_GET(self):
-        u = urllib.parse.urlparse(self.path)
-        path, q = u.path, urllib.parse.parse_qs(u.query)
-        if path.startswith("/dm/assets/"):
-            return self._asset(path[len("/dm/assets/"):])
-        if path in ("/", "/dm"):
-            if not self._auth():
-                return self._json({"ok": False, "error": "unauthorized"}, 401)
-            return self._html(_render_page())
-        if not self._auth():
-            return self._json({"ok": False, "error": "unauthorized"}, 401)
-        # 密码门同样挡 GET:status/contacts/history 都是读消息数据的接口
-        if self._locked_gate_active():
-            return self._json({"ok": False, "error": "locked",
-                               "diagnosable": "聊天记录已加密,请先在密码门解锁。"}, 423)
-        if path == "/dm/api/status":
-            return self._json(api_status())
-        if path == "/dm/api/contacts":
-            return self._json(api_contacts())
-        if path == "/dm/api/history":
-            return self._json(api_history((q.get("contact") or [""])[0], int((q.get("limit") or [60])[0])))
-        if path == "/dm/api/verify_file":
-            return self._json(api_verify_file((q.get("contact") or [""])[0], (q.get("file_name") or [""])[0]))
-        if path == "/dm/api/a2h_status":
-            return self._json(api_a2h_status())
-        if path == "/dm/api/file_info":
-            return self._json(api_file_info((q.get("path") or [""])[0]))
-        if path == "/dm/api/call_poll":
-            try:
-                sid = int((q.get("since_id") or ["0"])[0])
-            except ValueError:
-                sid = 0
-            return self._json(api_call_poll((q.get("contact") or [""])[0], sid))
-        return self._json({"ok": False, "error": "unknown path"}, 404)
-
-    def do_POST(self):
-        u = urllib.parse.urlparse(self.path)
-        path = u.path
-        if not self._auth():
-            return self._json({"ok": False, "error": "unauthorized"}, 401)
-        try:
-            length = int(self.headers.get("Content-Length", 0))
-            req = json.loads(self.rfile.read(length).decode()) if length else {}
-        except Exception:  # noqa: BLE001
-            return self._json({"ok": False, "error": "invalid json"}, 400)
-        if path == "/dm/api/setup":
-            # 缺省传 ""(不是 "oiagent"):让 api_setup 的 "display_name or DM_IDENTITY" 生效,
-            # 否则硬编码缺省值永远覆盖 DM_IDENTITY,bob 实例被错建成 oiagent。
-            return self._json(api_setup(req.get("display_name", "")))
-        if path == "/dm/api/create_invite":
-            return self._json(api_create_invite())
-        if path == "/dm/api/create_invite_incognito":
-            return self._json(api_create_invite_incognito())
-        if path == "/dm/api/get_identity":
-            return self._json(api_get_identity())
-        if path == "/dm/api/set_identity":
-            return self._json(api_set_identity(str(req.get("name", ""))))
-        if path == "/dm/api/db_password_status":
-            return self._json(api_db_password_status())
-        if path == "/dm/api/db_lock_status":
-            return self._json(api_db_lock_status())
-        if path == "/dm/api/db_set_password":
-            return self._json(api_db_set_password(str(req.get("password", ""))))
-        if path == "/dm/api/db_unlock":
-            return self._json(api_db_unlock(str(req.get("password", "")), str(req.get("totp_code", ""))))
-        if path == "/dm/api/db_change_password":
-            return self._json(api_db_change_password(str(req.get("old_password", "")), str(req.get("new_password", ""))))
-        if path == "/dm/api/new_user_id":
-            return self._json(api_new_user_id())
-        if path == "/dm/api/2fa_status":
-            return self._json(api_2fa_status())
-        if path == "/dm/api/2fa_setup":
-            return self._json(api_2fa_setup())
-        if path == "/dm/api/2fa_enable":
-            return self._json(api_2fa_enable(str(req.get("code", ""))))
-        if path == "/dm/api/2fa_disable":
-            return self._json(api_2fa_disable(str(req.get("code", ""))))
-        # ── 启动密码门:设了口令但本进程尚未解锁时,只放行解锁/状态/逃生类 API ──
-        # 白名单外的 API 一律拒绝,防止未解锁就读取联系人/消息。
-        if self._locked_gate_active():
-            return self._json({"ok": False, "error": "locked",
-                               "diagnosable": "聊天记录已加密,请先在密码门解锁。"}, 423)
-        if path == "/dm/api/create_address":
-            return self._json(api_create_address())
-        if path == "/dm/api/accept_invite":
-            return self._json(api_accept_invite(req.get("link", "")))
-        if path == "/dm/api/delete_contact":
-            return self._json(api_delete_contact(str(req.get("contact", ""))))
-        if path == "/dm/api/send":
-            return self._json(api_send(str(req.get("contact", "")), req.get("text", ""), int(req.get("ttl", 0) or 0)))
-        if path == "/dm/api/receive_file":
-            return self._json(api_receive_file(int(req.get("file_id", 0))))
-        if path == "/dm/api/get_download_dir":
-            return self._json(api_get_download_dir())
-        if path == "/dm/api/set_download_dir":
-            return self._json(api_set_download_dir(str(req.get("path", ""))))
-        if path == "/dm/api/send_file_signed":
-            return self._json(api_send_file_signed(str(req.get("contact", "")), req.get("path", "")))
-        if path == "/dm/api/send_file":
-            return self._json(api_send_file(str(req.get("contact", "")), req.get("path", ""), bool(req.get("signed", False))))
-        if path == "/dm/api/file_info":
-            return self._json(api_file_info(req.get("path", "")))
-        if path == "/dm/api/a2h_status":
-            return self._json(api_a2h_status())
-        if path == "/dm/api/a2h_set_approver":
-            return self._json(api_a2h_set_approver(str(req.get("contact", ""))))
-        if path == "/dm/api/trust_establish":
-            return self._json(api_trust_establish(str(req.get("contact", ""))))
-        if path == "/dm/api/trust_import":
-            return self._json(api_trust_import(str(req.get("contact", "")), req.get("key", "")))
-        if path == "/dm/api/call_signal":
-            return self._json(api_call_signal(str(req.get("contact", "")), req.get("signal", {})))
-        return self._json({"ok": False, "error": "unknown path"}, 404)
-
-
-def run(host: str = DM_HOST, port: int = DM_PORT) -> None:
-    srv = ThreadingHTTPServer((host, port), DMHandler)
-    if _ACCESS_TOKEN:
-        print(f"SecureDM 就绪: http://{host}:{port}/?token={_ACCESS_TOKEN}")
-    else:
-        print(f"SecureDM 就绪: http://{host}:{port}  (token 禁用)")
-    try:
-        srv.serve_forever()
-    except KeyboardInterrupt:
-        srv.shutdown()
-
-
-if __name__ == "__main__":
-    # argv 优先于 env(Windows Start-Process 传 env 常失败,argv 100% 可靠):
-    #   python securedm_web.py <port> [identity] [db_prefix]
-    # 也支持 PORT env 变量(供 preview 工具 autoPort 用)
-    _port_env = os.environ.get("PORT")
-    p = int(sys.argv[1] if len(sys.argv) > 1 else (_port_env if _port_env else DM_PORT))
-    if len(sys.argv) > 2 and sys.argv[2]:
-        DM_IDENTITY = sys.argv[2]
-    if len(sys.argv) > 3 and sys.argv[3]:
-        DM_DB_PREFIX = sys.argv[3]
-    run(port=p)

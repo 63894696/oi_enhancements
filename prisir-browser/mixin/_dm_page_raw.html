@@ -1,0 +1,1235 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SecureDM · 加密私信</title>
+<style>
+  :root{--bg:#f6f1e7;--panel:#fbf8f1;--line:#d8cfbc;--txt:#2f3a34;--dim:#8a968e;--acc:#4a5c52;--ok:#3fb27f;--warn:#e0a34a;--bad:#b23a30;--gold:#d6b26c;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg) url('/dm/assets/guohua_bg_panel.png') center bottom/cover fixed no-repeat;color:var(--txt);font:15px/1.5 -apple-system,"Segoe UI",Roboto,"Microsoft YaHei",sans-serif;height:100vh;display:flex;flex-direction:column}
+  header{padding:11px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;background:rgba(251,248,241,.85);backdrop-filter:blur(6px)}
+  header .dot{width:9px;height:9px;border-radius:50%;background:var(--ok)}
+  header h1{font-size:16px;margin:0;font-weight:600;color:var(--acc)}
+  header .st{margin-left:auto;font-size:12px;color:var(--dim)}
+  #main{flex:1;display:flex;min-height:0}
+  #contacts{width:250px;border-right:1px solid var(--line);overflow-y:auto;display:flex;flex-direction:column;background:rgba(239,232,218,.5)}
+  #contacts .hd{padding:12px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+  #contacts .hd b{font-size:14px}
+  #contacts .hd button{background:var(--acc);border:none;color:#fbf6ec;padding:5px 10px;border-radius:7px;cursor:pointer;font-size:12px}
+  #contacts .hd2{padding:8px 10px;border-bottom:1px solid var(--line);display:flex;gap:6px;flex-wrap:wrap}
+  #contacts .hd2 button{background:var(--panel);border:1px solid var(--line);color:var(--txt);padding:6px 9px;border-radius:7px;cursor:pointer;font-size:12px;flex:1;min-width:64px;white-space:nowrap}
+  #contacts .hd2 button:hover{border-color:var(--acc);color:var(--acc)}
+  .citem{padding:11px 12px;border-bottom:1px solid var(--line);cursor:pointer}
+  .citem:hover{background:#efe8da}
+  .citem.active{background:#fbf8f1;box-shadow:inset 2px 0 0 var(--acc)}
+  .citem .nm{font-weight:600;font-size:14px}
+  .citem .pv{font-size:12px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #chat{flex:1;display:flex;flex-direction:column;min-width:0}
+  #msgs{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:6px}
+  /* IM 布局惯例(参照 WeChat/iMessage/WhatsApp 调研):
+     我=右侧+品牌色,对方=左侧+中性色;气泡角在发送方一侧收平;系统消息居中灰色小字。
+     位置+颜色+形状三重区分,不单靠颜色(色盲/暗色模式友好)。 */
+  .m{max-width:78%;padding:9px 13px;font-size:15px;line-height:1.4;white-space:pre-wrap;word-break:break-word;box-shadow:0 1px 3px rgba(74,92,82,.15)}
+  /* 我:右侧,印章红,右下角收平(LTR 发送方侧) */
+  .m.me{align-self:flex-end;background:linear-gradient(135deg,#b23a30,#9c3229);color:#fbf6ec;border-radius:18px 18px 4px 18px}
+  /* 对方:左侧,宣纸面 + 墨绿左边框,左下角收平 */
+  .m.them{align-self:flex-start;background:#fbf8f1;color:#2f3a34;border:1px solid var(--line);border-left:3px solid var(--acc);border-radius:18px 18px 18px 4px}
+  /* 系统/签名清单:居中、灰小字、无气泡感 */
+  .m.manifest{align-self:center;background:rgba(74,92,82,.06);border:1px dashed var(--line);font-size:12px;color:var(--dim);border-radius:8px;max-width:88%}
+  .vbadge{display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:3px 9px;border-radius:11px;margin-top:5px}
+  .vbadge.ok{background:#e3efe6;color:var(--ok);border:1px solid var(--ok)}
+  .vbadge.bad{background:#f3e0de;color:var(--bad);border:1px solid var(--bad)}
+  .vbadge.pending{background:var(--panel);color:var(--dim)}
+  .fmsg{align-self:flex-start;background:var(--panel);padding:10px 12px;border-radius:11px;border:1px solid var(--line)}
+  .fmsg .fname{font-weight:600}
+  .fmsg button{background:var(--acc);border:none;color:#fbf6ec;padding:5px 12px;border-radius:7px;cursor:pointer;font-size:12px;margin-top:6px}
+  .sys{align-self:center;font-size:12px;color:var(--dim)}
+  #composer{display:flex;gap:9px;padding:13px 16px;border-top:1px solid var(--line);background:rgba(251,248,241,.85)}
+  #in{flex:1;background:var(--panel);border:1px solid var(--line);color:var(--txt);border-radius:9px;padding:10px 12px;outline:none}
+  #in:focus{border-color:var(--acc)}
+  #composer button{background:var(--acc);border:none;color:#fbf6ec;padding:0 17px;border-radius:9px;cursor:pointer;font-weight:600}
+  #empty{flex:1;display:flex;align-items:center;justify-content:center;color:var(--dim);flex-direction:column;gap:10px}
+  #inviteModal,#acceptModal,#settingsModal{position:fixed;inset:0;background:rgba(47,58,52,.45);display:none;align-items:center;justify-content:center}
+  #inviteModal .box,#acceptModal .box,#settingsModal .box{background:var(--panel);padding:20px;border-radius:12px;max-width:560px;width:90%;border:1px solid var(--line)}
+  #inviteModal textarea,#acceptModal textarea{width:100%;height:90px;background:var(--bg);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:8px;font-size:12px}
+  #inviteModal button,#acceptModal button{margin-top:10px;background:var(--acc);border:none;color:#fbf6ec;padding:7px 14px;border-radius:8px;cursor:pointer}
+</style>
+</head>
+<body>
+<header><span class="dot" id="livedot"></span><h1>SecureDM 加密私信</h1><span class="st" id="status">…</span></header>
+<div id="compatBanner" style="background:#2a2410;border-bottom:1px solid #4a3f18;color:#e8d98a;font-size:12.5px;padding:6px 12px;display:flex;align-items:center;gap:10px">
+  <span style="flex:1">⚠ 与 <b>SimpleX 官方客户端</b> 目前仅互通<b>文字消息</b>;语音/视频/屏幕共享/文件互传/群聊需在<b>本应用两端</b>之间进行。请对方也用本应用(分享本程序)。</span>
+  <span onclick="document.getElementById('compatBanner').style.display='none'" style="cursor:pointer;color:#8a7c4a;padding:0 4px" title="关闭提示">✕</span>
+</div>
+<div id="main">
+  <div id="contacts">
+    <div class="hd"><b>联系人</b></div>
+    <div class="hd2">
+      <button onclick="newInvite()" title="生成邀请链接/二维码发给对方">+ 邀请</button>
+      <button onclick="acceptInvite()" title="粘贴对方给你的链接建立联系">+ 添加</button>
+      <button onclick="delContact()" title="删除选中的联系人" style="color:var(--bad)">🗑 删除</button>
+      <button onclick="openSettings()" title="设置:自定义 ID / 聊天记录口令加密">⚙ 设置</button>
+    </div>
+    <div id="clist"></div>
+  </div>
+  <div id="chat">
+    <div id="msgs"><div id="empty"><div>选择左侧联系人开始加密对话</div><div style="font-size:12px">+ 邀请 = 生成链接发给对方;+ 添加 = 粘贴对方给你的链接</div></div></div>
+    <div id="composer">
+      <select id="ttlSel" title="阅后即焚:到点双方客户端协议级自毁(防不住对方截图/拍照)" style="background:var(--panel);border:1px solid var(--line);color:var(--dim);border-radius:8px;padding:0 6px;font-size:12px">
+        <option value="0">不过期</option>
+        <option value="10">10秒焚</option>
+        <option value="60">1分钟焚</option>
+        <option value="300">5分钟焚</option>
+        <option value="3600">1小时焚</option>
+      </select>
+      <input id="in" placeholder="发 E2E 加密消息…" disabled>
+      <button id="send" onclick="sendMsg()">发送</button>
+      <button id="attachBtn" title="发送文件" onclick="toggleAttach()">📎</button>
+      <button id="callBtn" title="语音通话" onclick="startCall(false)">📞</button>
+      <button id="videoBtn" title="视频通话" onclick="startCall(true)">📹</button>
+    </div>
+    <div id="callPanel" style="display:none;padding:10px 14px;border-top:1px solid var(--line);background:#1e293b">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <video id="remoteVideo" autoplay playsinline style="width:280px;background:#000;border-radius:8px"></video>
+        <video id="localVideo" autoplay playsinline muted style="width:120px;background:#000;border-radius:8px"></video>
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <div id="callStatus" style="font-size:13px;color:var(--dim)">呼叫中…</div>
+          <div style="display:flex;gap:7px">
+            <button onclick="toggleMic()" id="micBtn" style="background:#3a3f4b;border:none;color:#fff;padding:6px 12px;border-radius:7px;cursor:pointer">🎤 静音</button>
+            <button onclick="toggleCam()" id="camBtn" style="background:#3a3f4b;border:none;color:#fff;padding:6px 12px;border-radius:7px;cursor:pointer">📷 关视频</button>
+            <button onclick="switchCamera()" id="switchCamBtn" title="切换前后摄像头" style="background:#3a3f4b;border:none;color:#fff;padding:6px 12px;border-radius:7px;cursor:pointer">🔄 切换摄像头</button>
+            <button onclick="shareScreen()" id="screenBtn" style="background:#3a3f4b;border:none;color:#fff;padding:6px 12px;border-radius:7px;cursor:pointer">🖥️ 共享屏幕</button>
+            <button onclick="endCall()" style="background:var(--bad);border:none;color:#fff;padding:6px 12px;border-radius:7px;cursor:pointer">挂断</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="attach" style="display:none;padding:9px 16px;border-top:1px solid var(--line);gap:8px;align-items:center;flex-wrap:wrap">
+      <button onclick="pickFile()" title="打开文件夹选择要发送的文件" style="background:var(--panel);border:1px solid var(--acc);color:var(--acc);padding:7px 12px;border-radius:8px;cursor:pointer">📁 选文件</button>
+      <input id="fpath" placeholder="文件绝对路径(或点「选文件」)" style="flex:1;min-width:180px;background:var(--panel);border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px 10px">
+      <input type="file" id="filePickFallback" style="display:none" onchange="onFallbackPick(this)">
+      <label title="勾选后自动建立签名信任并附签名清单,对方能看到「✓ 已验证来自 你」;无需再去联系人区点钥匙" style="font-size:13px;color:var(--dim);display:flex;align-items:center;gap:4px"><input type="checkbox" id="fsigned" checked>签名发送</label>
+      <button onclick="sendFile()" style="background:var(--acc);border:none;color:#fff;padding:7px 14px;border-radius:8px;cursor:pointer">发文件</button>
+      <div style="width:100%;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--dim)">
+        <span>下载到:</span><span id="dlDir" style="color:var(--txt)">…</span>
+        <button onclick="pickDownloadDir()" title="自定义下载保存目录(桌面壳)" style="background:var(--panel);border:1px solid #334155;color:var(--dim);padding:3px 9px;border-radius:6px;cursor:pointer;font-size:12px">改目录</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="inviteModal"><div class="box"><b id="inviteTitle">一次性邀请链接</b><div style="font-size:12px;color:var(--dim);margin:6px 0" id="inviteDesc">发给对方,在其 SimpleX/SecureDM 里"通过链接连接"接受即建立 E2E 联系</div><div style="display:flex;gap:14px;font-size:12.5px;color:var(--dim);margin-bottom:8px;flex-wrap:wrap"><label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="invKind" value="once" checked onchange="genInvite()">一次性(私聊)</label><label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="invKind" value="anon" onchange="genInvite()">匿名一次性</label><label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="invKind" value="long" onchange="genInvite()">长期有效(公共二维码)</label></div><textarea id="inviteLink" readonly></textarea><div style="display:flex;justify-content:center;margin:10px 0"><canvas id="inviteQr" width="240" height="240" style="background:#fff;border-radius:8px;padding:6px"></canvas></div><div id="inviteQrMsg" style="display:none;font-size:12px;color:var(--warn);text-align:center;margin-bottom:8px">链接过长,请复制粘贴</div><button onclick="copyInvite()">复制</button> <button onclick="closeInvite()">关闭</button></div></div>
+<div id="acceptModal"><div class="box"><b>添加联系人</b><div style="font-size:12px;color:var(--dim);margin:6px 0">粘贴对方发给你的一次性邀请链接(对方点「+ 邀请」生成的)</div><textarea id="acceptLink" placeholder="粘贴邀请链接,例如 simplex://… 或 https://simplex.chat/invitation#…"></textarea><button id="acceptGoBtn" onclick="doAccept()">连接</button> <button onclick="closeAccept()" style="background:#475569">取消</button></div></div>
+<div id="settingsModal"><div class="box"><b>设置</b>
+  <div style="margin:14px 0 6px;font-size:13px;color:var(--dim)">自定义 ID(显示名)</div>
+  <div style="display:flex;gap:8px"><input id="idName" placeholder="你的显示名(对方看到)" style="flex:1;background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px"><button onclick="saveIdentity()">保存</button></div>
+  <div id="idMsg" style="font-size:12px;color:var(--dim);margin-top:4px"></div>
+  <hr style="border:none;border-top:1px solid var(--line);margin:16px 0">
+  <div style="margin:0 0 6px;font-size:13px;color:var(--dim)">聊天记录口令加密 <span id="dbState" style="color:var(--warn)"></span></div>
+  <div style="font-size:12px;color:var(--dim);margin-bottom:8px">设口令后,聊天记录库以 SQLCipher 加密;每次启动需输入口令解锁,口令错进不去(同官方)。请务必记牢,丢失无法恢复。</div>
+  <div id="dbSetRow" style="display:flex;flex-direction:column;gap:8px">
+    <input id="dbPwd" type="password" placeholder="设置口令(≥4 位)" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px">
+    <input id="dbPwd2" type="password" placeholder="再输一遍确认(防首次打错)" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px">
+    <div><button onclick="setDbPassword()">设置口令</button></div>
+  </div>
+  <div id="dbUnlockRow" style="display:none;flex-direction:column;gap:8px">
+    <div style="display:flex;gap:8px"><input id="dbPwdUnlock" type="password" placeholder="输入口令解锁" style="flex:1;background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px"><button onclick="unlockDb()">解锁</button></div>
+    <div style="font-size:12px;color:var(--dim)">忘记口令?<a href="javascript:void(0)" onclick="forgotPassword()" style="color:var(--warn)">新建用户ID</a>(原聊天记录将无法查看)</div>
+    <hr style="border:none;border-top:1px solid var(--line);margin:10px 0">
+    <div style="font-size:12px;color:var(--dim)">变更口令(需先验证旧口令):</div>
+    <input id="dbPwdOld" type="password" placeholder="旧口令" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px">
+    <input id="dbPwdNew" type="password" placeholder="新口令(≥4 位)" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px">
+    <input id="dbPwdNew2" type="password" placeholder="再输一遍新口令" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px">
+    <div><button onclick="changeDbPassword()">变更口令</button></div>
+  </div>
+  <div id="dbMsg" style="font-size:12px;color:var(--dim);margin-top:4px"></div>
+  <hr style="border:none;border-top:1px solid var(--line);margin:16px 0">
+  <div style="margin:0 0 6px;font-size:13px;color:var(--dim)">两步验证(2FA) <span id="tfaState" style="color:var(--warn)"></span></div>
+  <div style="font-size:12px;color:var(--dim);margin-bottom:8px">在口令之上再加一道动态码(口令=你知道的 + 验证器=你持有的)。用 Google Authenticator / 2FAS 等扫码或手输密钥。</div>
+  <div id="tfaOffRow" style="display:none;flex-direction:column;gap:8px">
+    <div><button onclick="tfaSetup()">生成 2FA 密钥</button></div>
+    <div id="tfaQrWrap" style="display:none;flex-direction:column;gap:8px">
+      <div style="display:flex;justify-content:center"><canvas id="tfaQr" width="200" height="200" style="background:#fff;border-radius:8px;padding:6px"></canvas></div>
+      <div style="font-size:12px;color:var(--dim)">或手输密钥:<code id="tfaSecret" style="user-select:all;color:var(--txt)"></code></div>
+      <div style="display:flex;gap:8px"><input id="tfaCodeEnable" placeholder="输入 App 显示的 6 位码" maxlength="6" style="flex:1;background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px"><button onclick="tfaEnable()">启用</button></div>
+    </div>
+  </div>
+  <div id="tfaOnRow" style="display:none;flex-direction:column;gap:8px">
+    <div style="font-size:12px;color:var(--ok)">已启用:解锁需口令 + 动态码</div>
+    <div style="display:flex;gap:8px"><input id="tfaCodeDisable" placeholder="输入 6 位码以关闭" maxlength="6" style="flex:1;background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px"><button onclick="tfaDisable()" style="background:#475569">关闭 2FA</button></div>
+  </div>
+  <div id="tfaMsg" style="font-size:12px;color:var(--dim);margin-top:4px"></div>
+  <div style="margin-top:16px;text-align:right"><button onclick="closeSettings()" style="background:#475569">关闭</button></div>
+</div></div>
+<div id="lockGate" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:999;align-items:center;justify-content:center">
+  <div class="box" style="max-width:400px;width:92%">
+    <b style="font-size:16px">🔒 聊天记录已加密</b>
+    <div style="font-size:12px;color:var(--dim);margin:8px 0 12px">输入口令解锁;启用 2FA 的话还需验证器 6 位动态码。</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <input id="gatePwd" type="password" placeholder="口令" onkeydown="if(event.key==='Enter')gateUnlock()" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:10px;font-size:14px">
+      <input id="gateTotp" placeholder="2FA 动态码(如已启用)" maxlength="6" onkeydown="if(event.key==='Enter')gateUnlock()" style="display:none;background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:10px;font-size:14px">
+      <div><button onclick="gateUnlock()" style="width:100%;padding:10px">解锁</button></div>
+      <div id="gateMsg" style="font-size:12px;color:var(--bad);min-height:16px"></div>
+      <div style="font-size:12px;color:var(--dim)">忘记口令?<a href="javascript:void(0)" onclick="gateForgot()" style="color:var(--warn)">新建用户ID</a>(原聊天记录将无法查看)</div>
+    </div>
+  </div>
+</div>
+<div id="firstRunGate" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:999;align-items:center;justify-content:center">
+  <div class="box" style="max-width:420px;width:92%">
+    <b style="font-size:16px">🔐 首次启动 · 给聊天记录加把锁</b>
+    <div style="font-size:12px;color:var(--dim);margin:8px 0 12px">建议现在设一个口令:聊天记录库将用 SQLCipher 加密落盘,每次启动需口令解锁。<b style="color:var(--warn)">跳过 = 聊天记录以明文存盘</b>(官方 SimpleX 也是这套取舍)。</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <input id="frPwd" type="password" placeholder="设置口令(≥4 位)" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:10px;font-size:14px">
+      <input id="frPwd2" type="password" placeholder="再输一遍确认" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:10px;font-size:14px">
+      <div style="display:flex;gap:8px"><button onclick="frSetPassword()" style="flex:1;padding:10px">设口令并加密</button><button onclick="frSkip()" style="background:#475569;padding:10px">跳过(明文)</button></div>
+      <div id="frMsg" style="font-size:12px;color:var(--bad);min-height:16px"></div>
+    </div>
+  </div>
+</div>
+<script>
+const TOKEN=(()=>{const q=new URLSearchParams(location.search).get('token');if(q){localStorage.setItem('dm_token',q);history.replaceState({},'',location.pathname);return q;}return localStorage.getItem('dm_token')||'';})();
+// WS server 地址由服务端注入(电脑 LAN IP,手机经 WiFi 可达;本机访问时服务端填 127.0.0.1)
+const __WS_HOST__ = '__WS_HOST_VALUE__';
+const H=(e)=>{const h=Object.assign({},e||{});if(TOKEN)h['X-L4-Token']=TOKEN;return h;};
+let cur=null;
+function esc(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+function setSt(t,ok){document.getElementById('status').textContent=t;document.getElementById('livedot').style.background=ok===false?'var(--bad)':'var(--ok)';}
+async function api(path,opts){const r=await fetch(path,Object.assign({headers:H({'Content-Type':'application/json'})},opts||{}));return r.json();}
+
+async function refresh(){
+  const s=await api('/dm/api/status');
+  if(!s.ok){setSt('错误',false);return;}
+  if(!s.output.running){setSt('未初始化 — 点击启动',false);
+    document.getElementById('msgs').innerHTML='<div id="empty"><button style="background:var(--acc);border:none;color:#fff;padding:10px 20px;border-radius:9px;cursor:pointer" onclick="doSetup()">启动 SecureDM(初始化身份)</button></div>';return;}
+  setSt((s.output.active_user||'')+' · 已连接',true);
+  window._activeUser = s.output.active_user || 'me';  // WS 房间命名用(两端各自算 room)
+  loadContacts();
+  // 显示 WS 信令连接状态(便于诊断手机 WS 是否连上 VPS)
+  setTimeout(()=>{
+    const st=document.getElementById('status');
+    if(st && typeof wsReady!=='undefined') st.textContent=(s.output.active_user||'')+(wsReady?' · 信令✓':' · 信令✗(检查网络)');
+  },2500);
+}
+async function doSetup(){await api('/dm/api/setup',{method:'POST',body:'{}'});refresh();}
+async function loadContacts(){
+  // 来电模态优先级高于轮询刷新:响铃期间跳过联系人重渲染,避免任何重绘干扰来电 UI
+  if(document.querySelector('.incomingCallModal'))return;
+  const c=await api('/dm/api/contacts');
+  const cl=document.getElementById('clist');cl.innerHTML='';
+  if(!c.ok||!c.output.length){cl.innerHTML='<div style="padding:14px;color:var(--dim);font-size:13px">暂无联系人<br>点 + 邀请 开始</div>';return;}
+  c.output.forEach(ct=>{
+    const d=document.createElement('div');d.className='citem'+(cur&&cur.contact_id===ct.contact_id?' active':'');
+    d.innerHTML='<div class="nm">'+esc(ct.display_name||('联系人'+ct.contact_id))+'</div><div class="pv">'+esc(ct.preview||'')+'</div>';
+    d.onclick=()=>openChat(ct);cl.appendChild(d);
+  });
+}
+// 已渲染消息的索引:itemId -> DOM 节点。reconcile 只增不删,防 5s 轮询闪烁。
+const _rendered = new Map();
+let _optimisticSeq = 0;
+
+function _msgNode(m){
+  if(m.kind==='manifest'){
+    const d=document.createElement('div');d.className='m manifest';
+    d.textContent='[签名清单] '+m.text.slice(0,80)+'…';return d;
+  }
+  const d=document.createElement('div');
+  d.className='m '+(m.dir==='me'?'me':'them');
+  d.textContent=m.text;return d;
+}
+
+async function openChat(ct, isRefresh){
+  // 响铃期间不轮询重渲染聊天区(用户手动点击仍允许:此时无来电模态或用户已明确要切换)
+  if(isRefresh && document.querySelector('.incomingCallModal'))return;
+  cur=ct;loadContacts();
+  document.getElementById('in').disabled=false;
+  let r;
+  try{ r=await api('/dm/api/history?contact='+encodeURIComponent(ct.contact_id)); }
+  catch(e){ if(!isRefresh){const box=document.getElementById('msgs');box.innerHTML='<div class="sys">加载失败:'+esc(e)+'</div>';} return; }
+  if(!r.ok){
+    if(!isRefresh){const box=document.getElementById('msgs');box.innerHTML='<div class="sys">'+esc(r.error||'加载失败')+'</div>';}
+    return;
+  }
+  const box=document.getElementById('msgs');
+  const nearBottom = (box.scrollHeight - box.scrollTop - box.clientHeight) < 120;
+  // 首次打开:清空重建;之后 reconcile(只追加新消息,不重排不闪烁)
+  if(!isRefresh){ box.innerHTML=''; _rendered.clear(); }
+  (r.output.messages||[]).forEach(m=>{
+    // 1) 服务端去重:同一 itemId 不重复渲染
+    if(m.id!=null && _rendered.has('srv_'+m.id)) return;
+    // 2) 乐观气泡 reconcile:同方向+全文本匹配的乐观气泡,原地转正(不新增不跳侧)
+    const optKey = 'txt_'+m.dir+'_'+m.text;
+    const existing = _rendered.get(optKey);
+    if(existing){
+      // 已渲染过同文本气泡(乐观插入或上次),标记为已确认并跳过
+      if(m.id!=null){ _rendered.set('srv_'+m.id, existing); }
+      return;
+    }
+    const node=_msgNode(m);
+    node.dataset.key = m.id!=null ? ('srv_'+m.id) : optKey;
+    box.appendChild(node);
+    if(m.id!=null) _rendered.set('srv_'+m.id, node);
+    _rendered.set(optKey, node);
+  });
+  // 待下载文件
+  (r.output.incoming_files||[]).forEach(f=>{
+    const fk='file_'+f.file_id;
+    if(_rendered.has(fk))return;
+    const card=fileCard(ct,f);card.dataset.key=fk;box.appendChild(card);_rendered.set(fk,card);
+  });
+  if(nearBottom||!isRefresh) box.scrollTop=box.scrollHeight;
+}
+function fileCard(ct,f){
+  const d=document.createElement('div');d.className='fmsg';
+  d.innerHTML='<div class="fname">📎 '+esc(f.file_name||'文件')+'</div>';
+  // 渲染时文件尚未下载,绝不 verify(否则在下载目录匹配到旧同名/同 hash 文件会误报"校验失败");
+  // 先挂中性徽标"下载后校验",只在下载成功后(onclick 内)才真正 verifyBadge。
+  const vb=document.createElement('span');vb.className='vbadge pending';vb.textContent='下载后校验';d.appendChild(vb);
+  const btn=document.createElement('button');btn.textContent='下载';d.appendChild(btn);
+  btn.onclick=async()=>{
+    btn.disabled=true;btn.textContent='下载中…';
+    const rr=await api('/dm/api/receive_file',{method:'POST',body:JSON.stringify({file_id:f.file_id})});
+    btn.textContent=rr.ok?'已下载':'失败';
+    // 显示可见保存路径(自定义目录或默认目录),让用户知道文件在哪
+    if(rr.ok&&rr.output&&(rr.output.display_path||rr.output.saved_path)){
+      const loc=document.createElement('div');
+      loc.style.cssText='font-size:11.5px;color:var(--dim);margin-top:4px;word-break:break-all';
+      loc.textContent='已存到 '+(rr.output.display_path||rr.output.saved_path);
+      d.appendChild(loc);
+    }
+    if(rr.ok) verifyBadge(ct,f.file_name,vb);
+  };
+  return d;
+}
+async function verifyBadge(ct,fname,el){
+  el.className='vbadge pending';el.textContent='校验中…';
+  const v=await api('/dm/api/verify_file?contact='+encodeURIComponent(ct.contact_id)+'&file_name='+encodeURIComponent(fname));
+  const sender='✓ 已验证来自 '+(v.output&&v.output.sender||'对方');
+  if(v.ok&&v.output&&v.output.verified){
+    // 已验真:若带 ℹ 合法换钥提示,作为中性说明附带(标题),不当作告警公钥变更。
+    el.className='vbadge ok';el.textContent=sender;
+    if(v.output.alert) el.title=v.output.alert;
+  }
+  else if(v.ok&&v.output&&v.output.alert){el.className='vbadge bad';el.textContent='⚠ 公钥变更';el.title=v.output.alert;}
+  else if(v.ok&&v.output){el.className='vbadge bad';el.textContent='✗ 校验失败';el.title=v.diagnosable||'';}
+  else{el.className='vbadge pending';el.textContent='无签名';el.title=(v.diagnosable||v.error||'');}
+}
+async function sendMsg(){
+  const inp=document.getElementById('in');const t=inp.value.trim();if(!t||!cur)return;
+  inp.value='';
+  const box=document.getElementById('msgs');
+  // 乐观插入:最终位置/样式,用全文本 key 登记;服务端同文本到达时原地转正(不重复不跳侧)
+  const d=document.createElement('div');d.className='m me';d.textContent=t;
+  _rendered.set('txt_me_'+t, d);
+  box.appendChild(d);box.scrollTop=box.scrollHeight;
+  const r=await api('/dm/api/send',{method:'POST',body:JSON.stringify({contact:String(cur.contact_id),text:t})});
+  if(!r.ok){
+    _rendered.delete('txt_me_'+t);
+    d.remove();
+    const e=document.createElement('div');e.className='sys';e.textContent='发送失败:'+(r.error||'');box.appendChild(e);
+  }
+}
+function toggleAttach(){const a=document.getElementById('attach');a.style.display=a.style.display==='none'?'flex':'none';if(a.style.display==='flex')loadDlDir();}
+async function loadDlDir(){
+  const r=await api('/dm/api/get_download_dir',{method:'POST',body:'{}'});
+  if(r.ok&&r.output)document.getElementById('dlDir').textContent=r.output.effective||r.output.default||'(未知)';
+}
+async function pickDownloadDir(){
+  const T=window.__TAURI__;
+  if(!(T&&T.core&&T.core.invoke)){alert('自定义下载目录需要桌面壳的原生对话框。\n当前下载目录见上方显示。');return;}
+  try{
+    const p=await T.core.invoke('pick_folder');
+    if(!p)return; // 取消
+    const r=await api('/dm/api/set_download_dir',{method:'POST',body:JSON.stringify({path:p})});
+    if(r.ok){loadDlDir();}else{alert('设置失败:'+(r.error||r.diagnosable||''));}
+  }catch(e){alert('选择目录调用失败:'+(e&&e.message?e.message:e));}
+}
+// 选文件:壳内走原生「打开文件」对话框拿绝对路径(SimpleX 按路径读盘);
+// 浏览器降级为 <input type=file>(浏览器只能给 File 对象,拿不到绝对路径 → 提示)。
+async function pickFile(){
+  // 必须走桌面壳的原生对话框 —— SimpleX daemon 按绝对路径读盘,
+  // 浏览器/远程页拿不到绝对路径,故没有原生桥时直接报错,不再静默降级误导。
+  const T=window.__TAURI__;
+  if(T&&T.core&&T.core.invoke){
+    try{
+      const p=await T.core.invoke('pick_file');
+      if(p){document.getElementById('fpath').value=p;}
+      return; // 取消则不动
+    }catch(e){
+      alert('选文件调用失败:'+(e&&e.message?e.message:e));return;
+    }
+  }
+  alert('「选文件」需要桌面壳的原生对话框。\n当前页未检测到壳桥(window.__TAURI__)。\n请用桌面壳打开,或手动把文件绝对路径填进输入框。');
+}
+function onFallbackPick(inp){
+  const f=inp.files&&inp.files[0];if(!f)return;
+  alert('浏览器无法获取文件完整路径。\n请改用桌面壳(📁 选文件),或手动把文件绝对路径填进输入框。\n已选:'+f.name);
+  inp.value='';
+}
+async function sendFile(){
+  if(!cur)return;
+  const path=document.getElementById('fpath').value.trim();if(!path)return;
+  const signed=document.getElementById('fsigned').checked;
+  const box=document.getElementById('msgs');
+  const note=document.createElement('div');note.className='sys';note.textContent='发送文件…';box.appendChild(note);box.scrollTop=box.scrollHeight;
+  const r=await api('/dm/api/send_file',{method:'POST',body:JSON.stringify({contact:String(cur.contact_id),path,signed})});
+  note.remove();
+  const d=document.createElement('div');d.className='fmsg';
+  if(r.ok){d.innerHTML='<div class="fname">📎 已发送 '+(r.output.file||path.split(/[\\/]/).pop())+(signed?' <span class="vbadge ok">带签名</span>':'')+'</div>';}
+  else{d.innerHTML='<div class="fname" style="color:var(--bad)">发送失败:'+esc(r.error||'')+'</div><div style="font-size:12px;color:var(--dim)">'+esc(r.diagnosable||'')+'</div>';}
+  box.appendChild(d);box.scrollTop=box.scrollHeight;
+  document.getElementById('fpath').value='';
+}
+function newInvite(){document.getElementById('inviteModal').style.display='flex';genInvite();}
+// ── 设置:自定义 ID + 聊天记录口令 ─────────────────────────────
+async function openSettings(){
+  document.getElementById('settingsModal').style.display='flex';
+  document.getElementById('idMsg').textContent='';document.getElementById('dbMsg').textContent='';
+  const idr=await api('/dm/api/get_identity',{method:'POST',body:'{}'});
+  if(idr.ok)document.getElementById('idName').value=idr.output.display_name||'';
+  const pr=await api('/dm/api/db_password_status',{method:'POST',body:'{}'});
+  const enc=pr.ok&&pr.output.encrypted;
+  document.getElementById('dbState').textContent=enc?'(已设口令)':'(未加密)';
+  document.getElementById('dbSetRow').style.display=enc?'none':'flex';
+  // 「输入口令解锁」入口已由 bootGate 密码门接管,settings 里只对真正 needs_unlock=true 的会话显示,
+  // 避免已 unlock 进 settings 后还看到冗余输入框造成误导。
+  const lr=await api('/dm/api/db_lock_status',{method:'POST',body:'{}'});
+  const needsUnlock=lr.ok&&lr.output.needs_unlock;
+  document.getElementById('dbUnlockRow').style.display=needsUnlock?'flex':'none';
+  tfaStatusRefresh();
+}
+function closeSettings(){document.getElementById('settingsModal').style.display='none';}
+async function saveIdentity(){
+  const name=document.getElementById('idName').value.trim();
+  const m=document.getElementById('idMsg');
+  if(!name){m.textContent='填一个显示名';return;}
+  const r=await api('/dm/api/set_identity',{method:'POST',body:JSON.stringify({name})});
+  m.style.color=r.ok?'var(--ok)':'var(--bad)';
+  m.textContent=r.ok?('已改为「'+name+'」(对方刷新后可见)'):('失败:'+(r.error||'')+(r.diagnosable||''));
+  if(r.ok){refresh();}  // 改名成功立即刷新右上角标签(否则要等下次轮询才变,看起来像没生效)
+}
+async function setDbPassword(){
+  const pwd=document.getElementById('dbPwd').value;
+  const pwd2=document.getElementById('dbPwd2').value;
+  const m=document.getElementById('dbMsg');
+  if(pwd.length<4){m.style.color='var(--bad)';m.textContent='口令至少 4 位';return;}
+  if(pwd!==pwd2){m.style.color='var(--bad)';m.textContent='两次输入不一致,请重输(防首次打错锁死)';return;}
+  const r=await api('/dm/api/db_set_password',{method:'POST',body:JSON.stringify({password:pwd})});
+  m.style.color=r.ok?'var(--ok)':'var(--bad)';
+  m.textContent=r.ok?(r.diagnosable||'已设置'):('失败:'+(r.error||'')+(r.diagnosable||''));
+  if(r.ok){document.getElementById('dbState').textContent='(已设口令)';document.getElementById('dbSetRow').style.display='none';}
+}
+async function unlockDb(){
+  const pwd=document.getElementById('dbPwdUnlock').value;
+  const m=document.getElementById('dbMsg');
+  const r=await api('/dm/api/db_unlock',{method:'POST',body:JSON.stringify({password:pwd})});
+  m.style.color=r.ok?'var(--ok)':'var(--bad)';
+  m.textContent=r.ok?'✓ 口令正确,已解锁':'✗ '+(r.error||'口令错误');
+}
+// 变更口令:先验证旧口令,再把新口令派生的密钥写回密钥文件。
+// 注意:这改的是「派生密钥」,真正的 SQLCipher 库 rekey 需底层 sqlcipher_export
+// 迁移(后续);当前对新派生密钥生效,与「首次设口令」同一条路径。
+async function changeDbPassword(){
+  const oldp=document.getElementById('dbPwdOld').value;
+  const np=document.getElementById('dbPwdNew').value;
+  const np2=document.getElementById('dbPwdNew2').value;
+  const m=document.getElementById('dbMsg');
+  if(np.length<4){m.style.color='var(--bad)';m.textContent='新口令至少 4 位';return;}
+  if(np!==np2){m.style.color='var(--bad)';m.textContent='两次新口令不一致,请重输';return;}
+  const r=await api('/dm/api/db_change_password',{method:'POST',body:JSON.stringify({old_password:oldp,new_password:np})});
+  m.style.color=r.ok?'var(--ok)':'var(--bad)';
+  m.textContent=r.ok?(r.diagnosable||'口令已变更'):('失败:'+(r.error||'')+(r.diagnosable||''));
+  if(r.ok){document.getElementById('dbPwdOld').value='';document.getElementById('dbPwdNew').value='';document.getElementById('dbPwdNew2').value='';}
+}
+// 忘记口令 → 新建用户ID:旧加密库打不开(记录看不了),以新身份从头开始
+async function forgotPassword(){
+  if(!confirm('新建用户ID将放弃当前加密的聊天记录(无法查看),并以全新身份重新开始。\n\n确定继续?'))return;
+  if(!confirm('再次确认:原聊天记录将无法恢复。仍要新建用户ID?'))return;
+  const m=document.getElementById('dbMsg');
+  const r=await api('/dm/api/new_user_id',{method:'POST',body:'{}'});
+  m.style.color=r.ok?'var(--ok)':'var(--bad)';
+  m.textContent=r.ok?('已新建用户ID,正在重启…'):('失败:'+(r.error||'')+(r.diagnosable||''));
+  if(r.ok)setTimeout(()=>{closeSettings();refresh();},1500);
+}
+
+async function genInvite(){
+  const kind=(document.querySelector('input[name=invKind]:checked')||{}).value||'once';
+  const ep={'once':'/dm/api/create_invite','anon':'/dm/api/create_invite_incognito','long':'/dm/api/create_address'}[kind];
+  const title={'once':'一次性邀请链接','anon':'匿名一次性邀请','long':'长期有效地址(公共二维码)'}[kind];
+  const desc={'once':'发给对方,在其 SimpleX/SecureDM 里"通过链接连接"接受即建立 E2E 联系','anon':'对方看到的是随机临时档案,不是你的显示名;一次性','long':'可无限次扫码添加,适合公共场合张贴;泄露需删除地址(官方客户端)'}[kind];
+  document.getElementById('inviteTitle').textContent=title;
+  document.getElementById('inviteDesc').textContent=desc;
+  const ta=document.getElementById('inviteLink');ta.value='生成中…';
+  const r=await api(ep,{method:'POST',body:'{}'});
+  if(r.ok&&r.output){const link=(typeof r.output==='string'?r.output:(r.link||r.output.link||''));ta.value=link;renderInviteQr(link);}
+  else{ta.value='';alert('生成邀请失败:'+(r.diagnosable||r.error||'未知错误'));}
+}
+// 粘贴对方给的邀请链接 → 建立联系(对应对方的 + 邀请)
+function acceptInvite(){document.getElementById('acceptLink').value='';document.getElementById('acceptModal').style.display='flex';}
+function closeAccept(){document.getElementById('acceptModal').style.display='none';}
+async function doAccept(){
+  const link=document.getElementById('acceptLink').value.trim();
+  if(!link){alert('先粘贴邀请链接');return;}
+  const btn=document.getElementById('acceptGoBtn');btn.disabled=true;btn.textContent='连接中…';
+  try{
+    const r=await api('/dm/api/accept_invite',{method:'POST',body:JSON.stringify({link})});
+    if(r.ok){closeAccept();alert('已建立联系');loadContacts();}
+    else{alert('添加失败:'+(r.diagnosable||r.error||'未知错误'));}
+  }finally{btn.disabled=false;btn.textContent='连接';}
+}
+// 删除当前选中的联系人(二次确认,防止误删)
+async function delContact(){
+  if(!cur){alert('先在左侧选中一个联系人');return;}
+  if(!confirm('确定删除联系人「'+cur.display_name+'」?\n此操作不可恢复,对话历史将一并清除。'))return;
+  const r=await api('/dm/api/delete_contact',{method:'POST',body:JSON.stringify({contact:String(cur.contact_id)})});
+  if(r.ok){cur=null;loadContacts();document.getElementById('msgs').innerHTML='<div id="empty"><div>联系人已删除</div></div>';}
+  else{alert('删除失败:'+(r.diagnosable||r.error||'未知错误'));}
+}
+// A2H 审批卡:轮询待裁决请求,渲染确认/取消按钮(L4 唯一交互=确认/追问,架构 §7.4)
+async function pollA2H(){
+  try{
+    const r=await api('/dm/api/a2h_status');
+    if(!r.ok)return;
+    renderA2H(r.output.pending||[]);
+  }catch(e){}
+}
+function renderA2H(pending){
+  // 移除旧审批卡
+  document.querySelectorAll('.a2hcard').forEach(e=>e.remove());
+  const box=document.getElementById('msgs');
+  pending.forEach(p=>{
+    const d=document.createElement('div');d.className='fmsg a2hcard';d.style.borderColor='var(--warn)';
+    d.innerHTML='<div class="fname" style="color:var(--warn)">⚠ agent 请求审批</div><div style="font-size:13px;margin:5px 0">'+esc(p.action||'')+'</div><div style="font-size:12px;color:var(--dim)">'+esc(p.reason||'')+'</div>';
+    const row=document.createElement('div');row.style.marginTop='8px';
+    const yes=document.createElement('button');yes.textContent='批准';yes.style.cssText='background:var(--ok);border:none;color:#fff;padding:6px 14px;border-radius:7px;cursor:pointer;margin-right:8px';
+    const no=document.createElement('button');no.textContent='拒绝';no.style.cssText='background:var(--bad);border:none;color:#fff;padding:6px 14px;border-radius:7px;cursor:pointer';
+    yes.onclick=()=>{sendText('yes '+p.request_id);d.remove();};
+    no.onclick=()=>{sendText('no '+p.request_id);d.remove();};
+    row.appendChild(yes);row.appendChild(no);d.appendChild(row);
+    box.appendChild(d);
+  });
+  box.scrollTop=box.scrollHeight;
+}
+async function sendText(t){
+  if(!cur)return;
+  const ttl=parseInt((document.getElementById('ttlSel')||{}).value||'0',10)||0;
+  await api('/dm/api/send',{method:'POST',body:JSON.stringify({contact:String(cur.contact_id),text:t,ttl})});
+}
+
+// ═══════════════ 2 人 E2E 通话(P2P WebRTC,信令经 E2E 加密通道)═══════════════
+let pc=null, localStream=null, callState='idle', callTimer=null, screenTrack=null, isCaller=false, callStartTs=0;
+let _makingOffer=false;  // 完美协商:本端正在产 reoffer 时置位,供 glare 回退判定
+const ICE_SERVERS=[{urls:'stun:stun.l.google.com:19302'}];  // P2P STUN;内网直连为主,无需 TURN
+const PAGE_LOAD_TS = new Date().toISOString();  // 只响应页面加载后的信令,忽略历史遗留
+const STALE_CALL_MS = 45000;  // 通话握手 45s 未完成自动复位 idle(防卡在 answering 收 busy 死循环)
+
+function setCallStatus(t){const el=document.getElementById('callStatus');if(el)el.textContent=t;}
+// [临时诊断] 共享链路打点:同时进 console + 状态条(便于壳内直接看),定位断在哪一环
+function _dbg(tag,obj){const s='[屏诊] '+tag+(obj!==undefined?(' '+JSON.stringify(obj)):'');try{console.log(s);}catch(e){} setCallStatus(s);}
+function showCallPanel(show){document.getElementById('callPanel').style.display=show?'block':'none';}
+
+// 卡死看门狗:非 idle 但长时间未 connected,强制复位
+setInterval(()=>{
+  if(callState!=='idle' && callState!=='connected' && (Date.now()-callStartTs)>STALE_CALL_MS){
+    endCall(true);  // 静默复位
+  }
+},5000);
+
+// ═══ WebSocket 信令(方案 A):实时推送,不轮询聊天记录 ═══
+// 两端浏览器各连 VPS 上的 WS 信令服务器(wss://signal.dreamproject.qzz.io/ws,LE 证书),
+// SDP/ICE 经服务器**实时转发**给对端。房间 = 双方身份排序拼接(两端算出同一 room)。
+let wsSig=null, wsReady=false, myPeerId=null, currentRoom=null, _wsManualClose=false;
+
+// WS 信令服务器(VPS,Let's Encrypt 证书,公网可达,手机/电脑直连,不依赖 adb/局域网)
+const WS_SIGNAL_URL = 'wss://signal.dreamproject.qzz.io/ws';
+function _wsUrl(){ return WS_SIGNAL_URL; }
+// 房间模型:每人一个"个人收件房间"(以**对方**视角命名)。主叫向对方的收件房间发 offer。
+// 计算规则:room = 'inbox-' + 目标身份的**服务端 userId 等价名**。两端都用 display_name 小写,保证一致。
+function _inboxRoom(identity){ return 'inbox-'+(identity||'me').toLowerCase(); }
+function _callRoom(a, b){ return 'call-'+[a.toLowerCase(), b.toLowerCase()].sort().join('__'); }
+
+function ensureWs(onready){
+  if(wsSig && wsReady){ if(onready)onready(); return; }
+  if(wsSig && wsSig.readyState===WebSocket.CONNECTING){ if(onready)wsSig.addEventListener('open',()=>onready(),{once:true}); return; }
+  wsSig = new WebSocket(_wsUrl());
+  wsSig.onopen = ()=>{
+    wsReady=true;
+    myPeerId = (window._activeUser||('peer-'+Math.random().toString(36).slice(2,8)));
+    // 心跳保活(防 Chrome 空闲/网络设备掐断空闲 WS)
+    if(window._wsPing)clearInterval(window._wsPing);
+    window._wsPing=setInterval(()=>{ if(wsSig&&wsReady)wsSig.send(JSON.stringify({type:'ping'})); },25000);
+    if(onready)onready();
+  };
+  wsSig.onmessage = (ev)=>{
+    let msg; try{ msg=JSON.parse(ev.data); }catch(e){ return; }
+    if(msg.type==='signal' && msg.data){ handleSignal(msg.data); }
+    else if(msg.type==='peer-joined'){ setCallStatus('对方已上线'); }
+    else if(msg.type==='peer-left'){ if(callState==='connected')endCall(true); }
+  };
+  wsSig.onclose = ()=>{
+    wsReady=false; wsSig=null;
+    // 自动重连(手机 Chrome 后台/网络抖动会断 WS,不重连就收不到来电)
+    if(!_wsManualClose){ setTimeout(()=>{ ensureWs(()=>{ wsJoin(_inboxRoom(window._activeUser||'me'), myPeerId, false); if(currentRoom)wsJoin(currentRoom,myPeerId, true); }); }, 2000); }
+  };
+  wsSig.onerror = ()=>{ wsReady=false; };
+}
+
+// isCallRoom:仅当加入的是"通话房间"时才更新 currentRoom。
+// "个人收件房间"(_inboxRoom)只是收 offer 的邮箱,不是通话房间,join 它绝不能污染 currentRoom
+// (否则断线重连后 sendSig 的 answer/ice/end 会默认发到收件房间,对方收不到,通话静默坏死)。
+function wsJoin(room, peer, isCallRoom){
+  if(wsSig && wsReady){
+    if(isCallRoom===true) currentRoom = room;
+    wsSig.send(JSON.stringify({type:'join', room, peer, token: TOKEN}));
+  }
+}
+
+function sendSig(sig, room){
+  // 经 WS 实时发送(替代旧的 simplex_send_message 轮询通道)。
+  // 默认发当前通话房间;offer 由主叫发到对方的收件房间。
+  const r = room || currentRoom;
+  if(wsSig && wsReady && r){
+    wsSig.send(JSON.stringify({type:'signal', room: r, data: sig}));
+  }
+}
+
+async function getMedia(video){
+  // 显式开 AEC/降噪/AGC(复用 _audioConstraints):手机外放场景的声学回声自激,
+  // 裸 audio:true 在安卓 Chrome 常不打 AEC,导致环路增益>1 啸叫。
+  const audioC = _audioConstraints();
+  const constraints = video
+    ? {audio: audioC, video:{width:{ideal:640},frameRate:{ideal:24},facingMode:{ideal:_facingMode}}}
+    : {audio: audioC};
+  return await navigator.mediaDevices.getUserMedia(constraints);
+}
+
+// 当前摄像头朝向:environment=后置(默认,性能更好),user=前置。手机端切换摄像头用。
+let _facingMode = 'environment';
+
+// 通话中无缝切换前后摄像头:重新采集对应朝向的视频轨,用 replaceTrack 替换
+// (不重建 PeerConnection,对端无感知、不断连),并更新本地预览。
+async function switchCamera(){
+  if(!localStream || !localStream.getVideoTracks().length){ setCallStatus('当前无视频轨可切换'); return; }
+  _facingMode = (_facingMode==='environment') ? 'user' : 'environment';
+  // 手机摄像头是独占资源:必须先停掉旧轨释放摄像头,再采新轨,否则新采集 NotReadableError。
+  const old = localStream.getVideoTracks()[0];
+  try{
+    if(old){ old.stop(); localStream.removeTrack(old); }   // 先释放旧摄像头
+    const ns = await navigator.mediaDevices.getUserMedia({
+      video:{width:{ideal:640},frameRate:{ideal:24},facingMode:{ideal:_facingMode}},
+      audio:false,
+    });
+    const newTrack = ns.getVideoTracks()[0];
+    if(!newTrack){ setCallStatus('未拿到新摄像头轨'); return; }
+    // 替换发送给对端的轨(所有 video sender)
+    if(pc){
+      const senders = pc.getSenders().filter(s=>s.track && s.track.kind==='video');
+      for(const s of senders){ try{ await s.replaceTrack(newTrack); }catch(e){} }
+    }
+    // 挂新轨并更新预览
+    localStream.addTrack(newTrack);
+    document.getElementById('localVideo').srcObject = localStream;
+    setCallStatus('已切换到'+(_facingMode==='environment'?'后置':'前置')+'摄像头');
+  }catch(e){
+    // 失败时尝试恢复原朝向,避免视频轨彻底丢失
+    setCallStatus('切换摄像头失败:'+e);
+    try{
+      _facingMode = (_facingMode==='environment') ? 'user' : 'environment';  // 回退朝向
+      const rs = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:_facingMode}},audio:false});
+      const rt = rs.getVideoTracks()[0];
+      if(rt && pc){ for(const s of pc.getSenders().filter(s=>s.track&&s.track.kind==='video')){ try{ await s.replaceTrack(rt); }catch(e){} } localStream.addTrack(rt); document.getElementById('localVideo').srcObject=localStream; }
+    }catch(e2){}
+  }
+}
+
+async function startCall(video){
+  if(!cur){alert('先选中联系人');return;}
+  if(callState!=='idle'){alert('已在通话中');return;}
+  isCaller=true;callState='calling';callStartTs=Date.now();
+  showCallPanel(true);setCallStatus(video?'视频呼叫中…':'语音呼叫中…');
+  try{
+    localStream=await getMediaSafe(video);
+    document.getElementById('localVideo').srcObject=localStream;
+    setupPeer();
+    applyLocalTracks();   // 挂本地轨 + 显式 sendrecv(替代旧 addTrack forEach)
+    // 加入 WS:先 join 我的收件房间(听来电),再在通话房间发 offer
+    const me = window._activeUser || 'me';
+    // 信令房间身份源 = 对方跨端稳定的 profile 显示名(被叫监听房间 = 它自己的 profile 名,
+    // 两端自动同源)。本地备注名(display_name)仅用于 UI 显示,不作房间路由。
+    const peerName = cur.peer_profile_name || cur.display_name;
+    await new Promise(res=>ensureWs(res));
+    currentRoom = _callRoom(me, peerName);      // 通话房间(两端同名)
+    wsJoin(currentRoom, myPeerId, true);       // 加入通话房间(收发 answer/ice/end)
+    const offer=await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    // 等 ICE gathering 基本完成后一次性发 offer(含 candidates)
+    await waitIce();
+    // offer 发到**对方的收件房间**(对方在那里监听来电)
+    sendSig({type:'offer', sdp:pc.localDescription.sdp, video, from: me}, _inboxRoom(peerName));
+    setCallStatus('等待对方接听…');
+  }catch(e){setCallStatus('呼叫失败:'+e);callState='idle';}
+}
+
+// ── 接收端屏幕共享大屏:可拖动标题栏 + 右下角缩放手柄 + 轨道结束自动清理 ──
+function _removeScreenView(){
+  const w=document.getElementById('screenViewWrap');
+  if(w)w.remove();
+}
+function _showScreenView(ev){
+  let wrap=document.getElementById('screenViewWrap');
+  if(!wrap){
+    wrap=document.createElement('div');wrap.id='screenViewWrap';
+    wrap.style.cssText='position:fixed;top:6%;left:50%;transform:translateX(-50%);width:64vw;height:70vh;background:#000;border:2px solid var(--acc);border-radius:10px;z-index:1000;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.6)';
+    // 标题栏(可拖动)
+    const bar=document.createElement('div');
+    bar.style.cssText='height:32px;line-height:32px;background:rgba(255,255,255,.08);color:#fff;font-size:13px;padding:0 10px;cursor:move;display:flex;justify-content:space-between;align-items:center;user-select:none';
+    bar.innerHTML='<span>🖥️ 对方屏幕共享(拖动此栏移动,右下角缩放)</span>';
+    const closeB=document.createElement('button');closeB.textContent='✕ 关闭';
+    closeB.style.cssText='background:var(--bad);border:none;color:#fff;padding:3px 12px;border-radius:6px;cursor:pointer;font-size:12px';
+    closeB.onclick=()=>_removeScreenView();
+    bar.appendChild(closeB);
+    wrap.appendChild(bar);
+    // 视频
+    const sv=document.createElement('video');sv.id='screenVideo';sv.autoplay=true;sv.playsInline=true;sv.muted=true;
+    sv.style.cssText='width:100%;height:calc(100% - 32px);object-fit:contain;background:#000';
+    wrap.appendChild(sv);
+    // 右下角缩放手柄
+    const grip=document.createElement('div');
+    grip.style.cssText='position:absolute;right:0;bottom:0;width:20px;height:20px;cursor:nwse-resize;background:linear-gradient(135deg,transparent 50%,var(--acc) 50%);border-bottom-right-radius:8px';
+    wrap.appendChild(grip);
+    document.body.appendChild(wrap);
+    // 拖动逻辑
+    bar.addEventListener('mousedown',e=>{
+      if(e.target===closeB)return;
+      const r=wrap.getBoundingClientRect(),ox=e.clientX-r.left,oy=e.clientY-r.top;
+      wrap.style.transform='none';wrap.style.left=r.left+'px';wrap.style.top=r.top+'px';
+      const mv=ev2=>{wrap.style.left=(ev2.clientX-ox)+'px';wrap.style.top=(ev2.clientY-oy)+'px';};
+      const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);};
+      document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+    });
+    // 缩放逻辑
+    grip.addEventListener('mousedown',e=>{
+      e.preventDefault();
+      const r=wrap.getBoundingClientRect(),sw=r.width,sh=r.height,sx=e.clientX,sy=e.clientY;
+      const mv=ev2=>{wrap.style.width=Math.max(280,sw+ev2.clientX-sx)+'px';wrap.style.height=Math.max(200,sh+ev2.clientY-sy)+'px';};
+      const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);};
+      document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+    });
+  }
+  const sv=wrap.querySelector('#screenVideo');
+  if(ev.streams&&ev.streams[0])sv.srcObject=ev.streams[0];
+  else{let s=new MediaStream();s.addTrack(ev.track);sv.srcObject=s;}
+  // 兜底:对方停止共享(轨道 ended)时自动清大屏(双保险,主路径是 screenstop 信令)
+  ev.track.onended=()=>_removeScreenView();
+  sv.play().catch(()=>{});
+}
+
+function setupPeer(){
+  pc=new RTCPeerConnection({iceServers:ICE_SERVERS});
+  // 不预建 transceiver 再用 addTrack 填(易错:addTrack 复用 recvonly transceiver 不会提升方向,
+  // 导致应答方 answer 被压成 recvonly 只收不发——probe 实测 audio=recvonly 证实)。
+  // 改为:addTrack 让浏览器自然建 sendrecv transceiver;仅当本地确实缺某媒体时,才补一个 recvonly
+  // 占位,保证仍能收到对方该媒体。方向提升统一在 applyLocalTracks 里做。
+  pc.ontrack=(ev)=>{
+    // 远端媒体:音频轨进专用 audio 元素;视频轨区分"摄像头"与"屏幕共享"(第二条视频轨)。
+    let ra=document.getElementById('remoteAudio');
+    if(!ra){ ra=document.createElement('audio');ra.id='remoteAudio';ra.autoplay=true;document.body.appendChild(ra); }
+    if(ev.track.kind==='audio'){
+      let s = ra.srcObject instanceof MediaStream ? ra.srcObject : new MediaStream();
+      if(!s.getAudioTracks().includes(ev.track))s.addTrack(ev.track);
+      ra.srcObject=s;ra.muted=false;ra.play().catch(()=>{});
+      return;
+    }
+    // 视频轨:判断是摄像头还是屏幕共享。
+    // 屏幕共享两条路径:① 对方 addTrack 新增第二条视频轨(contentHint=detail 或 alreadyHasCam);
+    // ② 纯语音通话对方 replaceTrack 复用空闲 video transceiver(contentHint 不传,但本地没摄像头在发)。
+    const rv=document.getElementById('remoteVideo');
+    const alreadyHasCam = rv.srcObject && rv.srcObject.getVideoTracks().length>0;
+    // 本地是否有正在发送的摄像头视频轨(有 → 这条新来的更可能是对方摄像头;没有 → 基本是对方屏幕)
+    const localHasVideoSend = pc.getSenders().some(s=>s.track && s.track.kind==='video' && s.track!==screenTrack);
+    const isScreen = ev.track.contentHint==='detail' || ev.track.contentHint==='text' || alreadyHasCam || !localHasVideoSend;
+    _dbg('ontrack-video',{hint:ev.track.contentHint||'', alreadyCam:!!alreadyHasCam, localVidSend:localHasVideoSend, isScreen:isScreen});
+    if(isScreen){
+      // 屏幕共享:挂到可拖动/可缩放的大屏,并监听轨道结束自动清理
+      _showScreenView(ev);
+    }else{
+      // 摄像头:挂到 remoteVideo(静音防回声,声音走 remoteAudio)
+      if(ev.streams&&ev.streams[0])rv.srcObject=ev.streams[0];
+      else{let s=new MediaStream();s.addTrack(ev.track);rv.srcObject=s;}
+      rv.muted=true;
+      rv.play().catch(()=>{});
+    }
+  };
+  pc.onicecandidate=(ev)=>{ if(ev.candidate) sendSig({type:'ice', candidate:ev.candidate.toJSON()}); };
+  // ── 重协商(完美协商 perfect negotiation)────────────────────────────
+  // 为什么需要:通话建立后 shareScreen() addTrack 屏幕轨,浏览器只触发
+  // negotiationneeded,不会自动重发 offer——没有这里,新轨永远不进 SDP,
+  // 远端 ontrack 收不到屏幕轨,接收端大屏永不出现(2026-08-03 实测失败的根因)。
+  // 完美协商防 glare(两端同时点共享→同时 offer 冲突):
+  //   polite  = 被叫(!isCaller),收到对方 reoffer 时回退自己的 offer 接受对方;
+  //   impolite= 主叫( isCaller),无视对方 reoffer,等对方接受自己的。
+  pc.onnegotiationneeded=async()=>{
+    _dbg('nego-need',{senders:pc.getSenders().length, ice:pc.iceGatheringState});
+    try{
+      _makingOffer=true;
+      await pc.setLocalDescription(await pc.createOffer());
+      await waitIce();
+      sendSig({type:'reoffer', sdp:pc.localDescription.sdp});
+      _dbg('reoffer-sent',{videoM:(pc.localDescription.sdp.match(/m=video/g)||[]).length});
+    }catch(e){try{console.log('[屏诊] reoffer-fail(建联期 glare,常可忽略)',e);}catch(_){}}
+    finally{_makingOffer=false;}
+  };
+  pc.onconnectionstatechange=()=>{
+    setCallStatus('连接状态:'+pc.connectionState);
+    if(pc.connectionState==='connected'){callState='connected';setCallStatus('已接通(E2E 加密通话)');}
+    if(['disconnected','failed','closed'].includes(pc.connectionState))endCall(true);
+  };
+}
+
+// 挂本地轨并把方向显式提升为 sendrecv,本地缺的媒体补 recvonly。
+// 关键:addTrack 后必须把该 transceiver.direction 设为 sendrecv——
+// 否则若 transceiver 已是 recvonly(如先 setRemoteDescription 建好的),addTrack 不会自动提升,
+// 应答方 answer 会被压成 recvonly 只收不发(probe 实测证实)。双向都要调用本函数。
+function applyLocalTracks(){
+  if(!pc||!localStream)return;
+  // 跳过借用的语音触发轨(_voiceTrigger):它只为强制通信音频模式而采集,不发送给对方。
+  const sendTracks = localStream.getTracks().filter(t=>!t._voiceTrigger);
+  sendTracks.forEach(t=>{
+    pc.addTrack(t, localStream);
+  });
+  const hasAudio = sendTracks.some(t=>t.kind==='audio');
+  const hasVideo = sendTracks.some(t=>t.kind==='video');
+  // 显式提升已挂轨的 transceiver 方向为 sendrecv
+  pc.getTransceivers().forEach(tc=>{
+    if(tc.sender.track){  // 有本地轨 → 要能发也要能收
+      tc.direction='sendrecv';
+    }
+  });
+  // 本地缺的媒体补 recvonly(只收对方,不发),保证仍能收到对方该媒体
+  const kinds = pc.getTransceivers().map(tc=>tc.receiver.track?tc.receiver.track.kind:(tc.sender.track?tc.sender.track.kind:null));
+  try{
+    if(!hasAudio && !kinds.includes('audio')) pc.addTransceiver('audio',{direction:'recvonly'});
+    if(!hasVideo && !kinds.includes('video')) pc.addTransceiver('video',{direction:'recvonly'});
+  }catch(e){}
+}
+
+
+
+function waitIce(){
+  return new Promise(res=>{
+    if(pc.iceGatheringState==='complete')return res();
+    let n=0;
+    const iv=setInterval(()=>{
+      n++;
+      if(pc.iceGatheringState==='complete'||n>20){clearInterval(iv);res();}
+    },150);
+  });
+}
+
+// 信令经 WS 实时推送(ws.onmessage → handleSignal),无需轮询 loop。
+async function handleSignal(sig){
+  if(!sig||!sig.type)return;
+  try{
+    if(sig.type==='offer'){
+      // 防御:SDP 必须以 v= 开头(过滤历史里的测试/伪造 offer)
+      if(!sig.sdp||!String(sig.sdp).startsWith('v='))return;
+      // 被叫:只有"真的在通话中"(pc 存在且未关闭/未 failed)才回 busy。
+      const inRealCall = pc && !['closed','failed','disconnected'].includes(pc.connectionState) && pc.connectionState!=='new';
+      if(callState!=='idle' && inRealCall){await sendSig({type:'busy'});return;}
+      if(callState!=='idle'){endCall(true);}
+      // 不自动接听 —— 弹出来电提示,由用户选择"接听/拒绝"(对齐主流 IM 习惯)
+      showIncomingCall(sig);
+      return;
+    }else if(sig.type==='answer'){
+      // 主叫收 answer:必须有活跃 pc + 合法 SDP 才处理
+      if(pc&&callState==='calling'&&sig.sdp&&String(sig.sdp).startsWith('v=')){await pc.setRemoteDescription({type:'answer',sdp:sig.sdp});}
+    }else if(sig.type==='reoffer'){
+      // 通话中收到对方的重协商 offer(对方加了屏幕轨等)。与来电 offer 完全分离,不弹来电框。
+      if(!pc||!sig.sdp||!String(sig.sdp).startsWith('v='))return;
+      _dbg('reoffer-recv',{videoM:(sig.sdp.match(/m=video/g)||[]).length, polite:!isCaller, making:_makingOffer});
+      // glare:自己也在产 reoffer 且同时收到对方的 → polite(被叫)回退让对方赢;impolite(主叫)无视。
+      const polite=!isCaller;
+      const collision=_makingOffer;
+      if(collision && !polite)return;          // 主叫且自己也在 offer:忽略对方,等其接受我的
+      try{
+        await pc.setRemoteDescription({type:'offer',sdp:sig.sdp});
+        await pc.setLocalDescription(await pc.createAnswer());
+        sendSig({type:'reanswer', sdp:pc.localDescription.sdp});
+        _dbg('reanswer-sent',{});
+      }catch(e){setCallStatus('处理重协商失败:'+e);}
+    }else if(sig.type==='reanswer'){
+      // 收重协商应答:无状态限制(可能在 connected),只要有活跃 pc + 合法 SDP
+      _dbg('reanswer-recv',{hasPc:!!pc});
+      if(pc&&sig.sdp&&String(sig.sdp).startsWith('v=')){try{await pc.setRemoteDescription({type:'answer',sdp:sig.sdp});_dbg('reanswer-applied',{});}catch(e){setCallStatus('reanswer失败:'+e);}}
+    }else if(sig.type==='screenstop'){
+      // 对方停止了屏幕共享 → 撤掉大屏(主路径;onended 是兜底)
+      _removeScreenView();
+    }else if(sig.type==='ice'){
+      if(pc&&sig.candidate){try{await pc.addIceCandidate(sig.candidate);}catch(e){}}
+    }else if(sig.type==='end'){
+      setCallStatus('对方已挂断');endCall(true);
+    }else if(sig.type==='busy'){
+      setCallStatus('对方忙线中');endCall(true);
+    }else if(sig.type==='reject'){
+      setCallStatus('对方拒绝了来电');endCall(true);
+    }else if(sig.type==='noanswer'){
+      setCallStatus('对方未接听');endCall(true);
+    }
+  }catch(e){setCallStatus('信令处理异常:'+e);}
+}
+
+// ─── 来电提示(接听/拒绝)— 显式模态,不被联系人列表/空会话遮挡 ───────────
+let _pendingOffer=null, _ringTimer=null;
+function showIncomingCall(sig){
+  _pendingOffer=sig;
+  // 移除旧的来电模态
+  document.querySelectorAll('.incomingCallModal').forEach(e=>e.remove());
+  const callerName = sig.from || (cur?cur.display_name:'对方');
+  const modal=document.createElement('div');modal.className='incomingCallModal';
+  modal.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;z-index:2000';
+  modal.innerHTML=`<div style="background:var(--panel);padding:28px 32px;border-radius:16px;text-align:center;max-width:340px;border:2px solid var(--ok)">
+    <div style="font-size:40px;margin-bottom:8px">📞</div>
+    <div style="font-size:18px;font-weight:600;margin-bottom:4px">${esc(callerName)}</div>
+    <div style="font-size:14px;color:var(--dim);margin-bottom:18px">${sig.video?'视频通话':'语音通话'} · 等待你接听</div>
+    <div style="display:flex;gap:14px;justify-content:center">
+      <button id="incAcc" style="background:var(--ok);border:none;color:#fff;padding:11px 26px;border-radius:10px;cursor:pointer;font-size:16px;font-weight:600">接听</button>
+      <button id="incRej" style="background:var(--bad);border:none;color:#fff;padding:11px 26px;border-radius:10px;cursor:pointer;font-size:16px;font-weight:600">拒绝</button>
+    </div></div>`;
+  document.body.appendChild(modal);
+  modal.querySelector('#incAcc').onclick=()=>{modal.remove();acceptCall(sig);};
+  modal.querySelector('#incRej').onclick=()=>{modal.remove();rejectCall();};
+  // 30s 未接自动按"未接"处理(通知主叫)
+  _ringTimer=setTimeout(()=>{modal.remove();rejectCall(true);},30000);
+  setCallStatus('来电:'+callerName+'('+(sig.video?'视频':'语音')+'),等待你接听');
+}
+
+async function acceptCall(sig){
+  if(_ringTimer){clearTimeout(_ringTimer);_ringTimer=null;}
+  _pendingOffer=null;
+  isCaller=false;callState='answering';callStartTs=Date.now();
+  showCallPanel(true);setCallStatus('接听中…');
+  try{
+    const me = window._activeUser||'me';
+    const callerName = sig.from || (cur?cur.display_name:'');
+    currentRoom = _callRoom(me, callerName);
+    wsJoin(currentRoom, myPeerId, true);
+    if(!cur && callerName){ cur = {contact_id: 0, display_name: callerName}; }
+    // 关键修复 NotReadableError:先尝试 getUserMedia;若视频源不可用,降级为仅音频,不让整个接听失败
+    localStream=await getMediaSafe(sig.video);
+    document.getElementById('localVideo').srcObject=localStream;
+    setupPeer();
+    await pc.setRemoteDescription({type:'offer',sdp:sig.sdp});
+    applyLocalTracks();   // setRemoteDescription 之后挂本地轨并把方向提升为 sendrecv
+    const ans=await pc.createAnswer();
+    await pc.setLocalDescription(ans);
+    await waitIce();
+    sendSig({type:'answer', sdp:pc.localDescription.sdp});
+    setCallStatus('已接听,建立连接中…');
+  }catch(e){setCallStatus('接听失败:'+e);callState='idle';}
+}
+
+function rejectCall(timeout){
+  if(_ringTimer){clearTimeout(_ringTimer);_ringTimer=null;}
+  _pendingOffer=null;
+  sendSig({type: timeout?'noanswer':'reject'});
+  setCallStatus(timeout?'未接听':'已拒绝来电');
+}
+
+// getUserMedia 安全降级:视频源不可用时退化为仅音频,而不是整个失败(NotReadableError)
+async function getMediaSafe(video){
+  if(video){
+    try{ return await getMedia(true); }
+    catch(e){
+      setCallStatus('视频源不可用,已切换为语音通话');
+      try{ return await _getVoiceStream(); }catch(e2){ throw e2; }
+    }
+  }
+  return await _getVoiceStream();
+}
+
+// 纯语音通话:采集 {audio, video} 但把视频轨 disable 且不发送。
+// 为什么带视频轨:只请求 audio 时,安卓 Chrome 走普通媒体录音路径,系统级 AEC 不生效
+// (这就是"视频通话防啸好、纯语音啸叫严重"的根因)。带一条视频轨会强制浏览器进入
+// 通信音频模式(AUDIO_MODE_IN_COMMUNICATION),系统 AEC/降噪才启用。视频轨仅借用采集,
+// 不 addTrack 发给对方(见 applyLocalTracks 的 voiceOnly 分支)。
+async function _getVoiceStream(){
+  try{
+    const s = await navigator.mediaDevices.getUserMedia({
+      audio: _audioConstraints(),
+      video: {width:{ideal:160},frameRate:{ideal:5},facingMode:{ideal:'user'}},  // 极小分辨率,只借通信模式
+    });
+    // 视频轨标记为"借用的语音触发轨",不发送、不预览
+    s.getVideoTracks().forEach(t=>{ t.enabled=false; t._voiceTrigger=true; });
+    return s;
+  }catch(e){
+    // 某些设备拿不到视频(无摄像头),退回纯音频(AEC 弱但能用)
+    return await navigator.mediaDevices.getUserMedia({audio: _audioConstraints()});
+  }
+}
+
+// 抽出音频约束,供 getMedia / _getVoiceStream 复用
+function _audioConstraints(){
+  return {
+    echoCancellation: {ideal: true},
+    echoCancellationType: {ideal: 'system'},
+    noiseSuppression: {ideal: true},
+    autoGainControl: {ideal: true},
+    channelCount: {ideal: 1},
+    googEchoCancellation: {ideal: true},
+    googAutoGainControl: {ideal: true},
+    googNoiseSuppression: {ideal: true},
+    googHighpassFilter: {ideal: true},
+    googTypingNoiseDetection: {ideal: true},
+  };
+}
+
+function toggleMic(){
+  if(!localStream)return;
+  const t=localStream.getAudioTracks()[0];if(!t)return;
+  t.enabled=!t.enabled;
+  document.getElementById('micBtn').textContent=t.enabled?'🎤 静音':'🎤 已静音';
+}
+function toggleCam(){
+  if(!localStream)return;
+  const t=localStream.getVideoTracks()[0];if(!t)return;
+  t.enabled=!t.enabled;
+  document.getElementById('camBtn').textContent=t.enabled?'📷 关视频':'📷 已关';
+}
+async function shareScreen(){
+  if(!pc){alert('先建立通话');return;}
+  try{
+    if(screenTrack){ // 停止共享
+      // 显式通知对方撤掉大屏(无论新增 m-line 还是复用 transceiver,统一靠信令,接收端不猜)
+      try{ sendSig({type:'screenstop'}); }catch(e){}
+      const sender=pc.getSenders().find(s=>s.track===screenTrack);
+      if(sender){
+        // 复用场景:replaceTrack(null) 清空而非 removeTrack(避免动 m-line 结构);
+        // 新增场景(摄像头开着时的第二条视频轨):removeTrack 移除整条。
+        const tc=pc.getTransceivers().find(t=>t.sender===sender);
+        if(tc && tc.receiver.track && tc.receiver.track.kind==='video' && !document.getElementById('localVideo').srcObject){
+          try{ await sender.replaceTrack(null); tc.direction='recvonly'; }catch(e){ try{pc.removeTrack(sender);}catch(e2){} }
+        } else {
+          try{ pc.removeTrack(sender); }catch(e){}
+        }
+      }
+      screenTrack.stop();screenTrack=null;
+      document.getElementById('screenBtn').textContent='🖥️ 共享屏幕';
+      return;
+    }
+    // getDisplayMedia 在某些环境(老浏览器/非安全上下文/部分安卓 WebView)不可用 —— 明确提示而不是报 TypeError
+    if(!navigator.mediaDevices || typeof navigator.mediaDevices.getDisplayMedia!=='function'){
+      setCallStatus('此浏览器不支持屏幕共享(需较新 Chrome + 安全上下文)');
+      return;
+    }
+    const disp=await navigator.mediaDevices.getDisplayMedia({video:{frameRate:{ideal:10},displaySurface:'monitor'},audio:false});
+    screenTrack=disp.getVideoTracks()[0];
+    screenTrack.contentHint='detail';
+    // ── 复用空闲 video transceiver,避免新增 m-line 改变顺序 ──────────────
+    // 纯语音/摄像头关的通话,video m-line 已被一个 sender.track=null 的 recvonly transceiver 占位。
+    // 若直接 addTrack 屏幕轨会新建 m-line、重排顺序 → InvalidAccessError "order of m-lines doesn't match"。
+    // 改为:找那个空闲 video transceiver,replaceTrack 塞屏幕轨 + direction 提为 sendrecv,m-line 数与顺序不变。
+    const idleVideoTc = pc.getTransceivers().find(tc=>tc.receiver.track && tc.receiver.track.kind==='video' && !tc.sender.track);
+    if(idleVideoTc){
+      await idleVideoTc.sender.replaceTrack(screenTrack);
+      idleVideoTc.direction='sendrecv';
+      _dbg('share-reuseTc',{dir:idleVideoTc.direction});
+    }else{
+      // 摄像头正开着(已有活跃 video sender) → 屏幕是第二条视频轨,只能新建 m-line
+      pc.addTrack(screenTrack,disp);
+      _dbg('share-addTrack',{senders:pc.getSenders().length, pcState:pc.connectionState});
+    }
+    screenTrack.onended=()=>{document.getElementById('screenBtn').textContent='🖥️ 共享屏幕';screenTrack=null;};
+    document.getElementById('screenBtn').textContent='🖥️ 停止共享';
+  }catch(e){setCallStatus('屏幕共享失败:'+e);}
+}
+
+async function endCall(remote){
+  if(!remote)sendSig({type:'end'});
+  if(screenTrack){screenTrack.stop();screenTrack=null;}
+  _removeScreenView();  // 挂断时清掉大屏(无论是自己在看还是对方在看)
+  if(pc){try{pc.close();}catch(e){}pc=null;}
+  if(localStream){localStream.getTracks().forEach(t=>t.stop());localStream=null;}
+  document.getElementById('localVideo').srcObject=null;
+  document.getElementById('remoteVideo').srcObject=null;
+  callState='idle';
+  setTimeout(()=>showCallPanel(false),1500);
+}
+
+function renderInviteQr(text){
+  const cv=document.getElementById('inviteQr');
+  const msg=document.getElementById('inviteQrMsg');
+  try{
+    const qr=qrcode(0,'M');  // 0=自动版本号,M=纠错级
+    qr.addData(text);
+    qr.make();
+    const n=qr.getModuleCount();
+    const qz=2;  // quiet zone(格)
+    const cell=240/(n+2*qz);
+    const ctx=cv.getContext('2d');
+    ctx.fillStyle='#ffffff';ctx.fillRect(0,0,240,240);
+    ctx.fillStyle='#000000';
+    for(let r=0;r<n;r++){
+      for(let c=0;c<n;c++){
+        if(qr.isDark(r,c)){
+          ctx.fillRect(Math.round((c+qz)*cell),Math.round((r+qz)*cell),Math.ceil(cell),Math.ceil(cell));
+        }
+      }
+    }
+    cv.style.display='block';msg.style.display='none';
+  }catch(e){
+    // 兜底:文本过长/编码失败 -> 隐藏 canvas,只留文本链接
+    cv.style.display='none';msg.style.display='block';
+  }
+}
+async function copyInvite(){
+  const t=document.getElementById('inviteLink');
+  const text=t.value;
+  let ok=false;
+  try{
+    if(navigator.clipboard&&navigator.clipboard.writeText){
+      await navigator.clipboard.writeText(text);ok=true;
+    }
+  }catch(e){ok=false;}
+  if(!ok){
+    // 兜底:已弃用的 execCommand(http 上下文/权限拒绝时)
+    try{t.select();ok=document.execCommand('copy');}catch(e){ok=false;}
+  }
+  const btn=document.querySelector('#inviteModal button[onclick="copyInvite()"]');
+  if(btn&&ok){const o=btn.textContent;btn.textContent='已复制';setTimeout(()=>{btn.textContent=o;},1500);}
+}
+async function trustFlow(){
+  if(!cur){alert('先选中一个联系人');return;}
+  const r=await api('/dm/api/trust_establish',{method:'POST',body:JSON.stringify({contact:String(cur.contact_id)})});
+  alert(r.ok?('已与 '+cur.display_name+' 建立文件签名信任根,可互发签名文件。'):('失败:'+(r.error||r.diagnosable||'')));
+}
+function closeInvite(){document.getElementById('inviteModal').style.display='none';}
+// 来电监听经 WS(方案 A):页面加载即连 WS 并加入"自己身份的等待房间",
+// 来电 offer 经服务器实时推送触发 handleSignal,不轮询、无残留状态。
+// 注意:startSignal 已在 ws.onmessage 里统一调 handleSignal,这里只需确保 WS 常连 + 加入等待房间。
+function startWsListener(){
+  ensureWs(()=>{
+    // 加入"我的收件房间"(以我的身份命名),主叫方向这里发 offer。收件房间不是通话房间,不写 currentRoom。
+    wsJoin(_inboxRoom(window._activeUser||'me'), myPeerId, false);
+  });
+}
+document.getElementById('in').addEventListener('keydown',e=>{if(e.key==='Enter')sendMsg();});
+// ── 启动密码门(批次A2)────────────────────────────────────────────
+// 页面加载先查 db_lock_status:
+//   needs_unlock(设了口令但本进程没内存密钥)→ 全屏口令门,验过才进对话页。
+//   first_run(库文件不存在 + 未设口令)→ 首启设口令页(可跳过,跳过=明文落盘)。
+// 门挡在前面:不解锁就不跑 refresh()/startWsListener(),联系人/消息根本不加载体。
+async function bootGate(){
+  const r=await api('/dm/api/db_lock_status',{method:'POST',body:'{}'});
+  const o=(r.ok&&r.output)||{};
+  if(o.needs_unlock){
+    document.getElementById('gateTotp').style.display=o.totp_enabled?'block':'none';
+    document.getElementById('lockGate').style.display='flex';
+    setTimeout(()=>document.getElementById('gatePwd').focus(),50);
+    return false;
+  }
+  if(o.first_run&&!o.has_password){
+    document.getElementById('firstRunGate').style.display='flex';
+    setTimeout(()=>document.getElementById('frPwd').focus(),50);
+    return false;
+  }
+  return true;
+}
+async function gateUnlock(){
+  const pwd=document.getElementById('gatePwd').value;
+  const totp=document.getElementById('gateTotp').value.trim();
+  const m=document.getElementById('gateMsg');
+  const r=await api('/dm/api/db_unlock',{method:'POST',body:JSON.stringify({password:pwd,totp_code:totp})});
+  if(r.ok){document.getElementById('lockGate').style.display='none';enterApp();}
+  else{m.textContent='✗ '+(r.error||'解锁失败')+(r.diagnosable?(' — '+r.diagnosable):'');}
+}
+async function gateForgot(){
+  if(!confirm('新建用户ID将放弃当前加密的聊天记录(无法查看),并以全新身份重新开始。\n\n确定继续?'))return;
+  if(!confirm('再次确认:原聊天记录将无法恢复。仍要新建用户ID?'))return;
+  const r=await api('/dm/api/new_user_id',{method:'POST',body:'{}'});
+  const m=document.getElementById('gateMsg');
+  if(r.ok){document.getElementById('lockGate').style.display='none';enterApp();}
+  else{m.textContent='失败:'+(r.error||'')+(r.diagnosable||'');}
+}
+async function frSetPassword(){
+  const p1=document.getElementById('frPwd').value,p2=document.getElementById('frPwd2').value;
+  const m=document.getElementById('frMsg');
+  if(p1.length<4){m.textContent='口令至少 4 位';return;}
+  if(p1!==p2){m.textContent='两次输入不一致,请重输';return;}
+  const r=await api('/dm/api/db_set_password',{method:'POST',body:JSON.stringify({password:p1})});
+  if(r.ok){document.getElementById('firstRunGate').style.display='none';enterApp();}
+  else{m.textContent='失败:'+(r.error||'')+(r.diagnosable||'');}
+}
+function frSkip(){
+  if(!confirm('跳过设口令 = 聊天记录以明文存盘(任何能读到本机文件的人都能看)。\n\n确定跳过?'))return;
+  document.getElementById('firstRunGate').style.display='none';enterApp();
+}
+let _appEntered=false;
+function enterApp(){
+  if(_appEntered)return;_appEntered=true;
+  refresh();setInterval(()=>{if(cur)openChat(cur,true);else loadContacts();pollA2H();},5000);
+  startWsListener();
+}
+// ── 2FA 设置(设置面板内)──────────────────────────────────────────
+async function tfaStatusRefresh(){
+  const r=await api('/dm/api/2fa_status',{method:'POST',body:'{}'});
+  const en=r.ok&&r.output&&r.output.totp_enabled;
+  document.getElementById('tfaState').textContent=en?'(已启用)':'(未启用)';
+  document.getElementById('tfaOffRow').style.display=en?'none':'flex';
+  document.getElementById('tfaOnRow').style.display=en?'flex':'none';
+  if(en)document.getElementById('tfaQrWrap').style.display='none';
+}
+async function tfaSetup(){
+  const m=document.getElementById('tfaMsg');
+  const r=await api('/dm/api/2fa_setup',{method:'POST',body:'{}'});
+  if(!r.ok){m.style.color='var(--bad)';m.textContent='失败:'+(r.error||'')+(r.diagnosable||'');return;}
+  m.style.color='var(--dim)';m.textContent=r.diagnosable||'';
+  document.getElementById('tfaSecret').textContent=r.output.secret;
+  document.getElementById('tfaQrWrap').style.display='flex';
+  renderTotpQr(r.output.otpauth_uri);
+}
+// 独立的 TOTP 二维码渲染(复用 qrcode lib,画布为 tfaQr;renderInviteQr 写死了 invite 画布不能复用)
+function renderTotpQr(text){
+  const cv=document.getElementById('tfaQr');
+  try{
+    const qr=qrcode(0,'M');qr.addData(text);qr.make();
+    const n=qr.getModuleCount(),qz=2,cell=200/(n+2*qz),ctx=cv.getContext('2d');
+    ctx.fillStyle='#ffffff';ctx.fillRect(0,0,200,200);ctx.fillStyle='#000000';
+    for(let r=0;r<n;r++)for(let c=0;c<n;c++)if(qr.isDark(r,c))ctx.fillRect(Math.round((c+qz)*cell),Math.round((r+qz)*cell),Math.ceil(cell),Math.ceil(cell));
+  }catch(e){/* 二维码失败不阻断,手输密钥仍可用 */}
+}
+async function tfaEnable(){
+  const code=document.getElementById('tfaCodeEnable').value.trim();
+  const m=document.getElementById('tfaMsg');
+  const r=await api('/dm/api/2fa_enable',{method:'POST',body:JSON.stringify({code})});
+  m.style.color=r.ok?'var(--ok)':'var(--bad)';
+  m.textContent=r.ok?(r.diagnosable||'已启用'):('失败:'+(r.error||'')+(r.diagnosable||''));
+  if(r.ok)tfaStatusRefresh();
+}
+async function tfaDisable(){
+  const code=document.getElementById('tfaCodeDisable').value.trim();
+  const m=document.getElementById('tfaMsg');
+  const r=await api('/dm/api/2fa_disable',{method:'POST',body:JSON.stringify({code})});
+  m.style.color=r.ok?'var(--ok)':'var(--bad)';
+  m.textContent=r.ok?(r.diagnosable||'已关闭'):('失败:'+(r.error||'')+(r.diagnosable||''));
+  if(r.ok)tfaStatusRefresh();
+}
+(async()=>{ if(await bootGate()) enterApp(); })();
+
+// ─── 媒体权限预热(Bug 2):把"系统授权弹窗"从"接听瞬间"提前到"来电之前" ───
+// 浏览器策略:getUserMedia 必须由用户手势触发,页面加载即调会被静默拒绝并可能污染权限状态。
+// 因此挂一个 once 的 pointerdown/keydown:首次交互后静默采一次流,只为了让系统记住授权,
+// 立即 release 所有轨,不占用摄像头/麦克风。拒绝则静默放弃,不影响后续 acceptCall 正常再申请。
+// 复用 getMediaSafe(false)(内部 _getVoiceStream 会尽量连视频权限一起申请,覆盖语音/视频两种来电)。
+(function(){
+  let _preheated=false;
+  async function _preheatMedia(){
+    if(_preheated)return;_preheated=true;
+    try{
+      const s=await getMediaSafe(false);
+      if(s)s.getTracks().forEach(t=>t.stop());
+    }catch(e){/* 用户拒绝/无设备:静默,接听时再正常申请 */}
+  }
+  const once={once:true};
+  window.addEventListener('pointerdown',_preheatMedia,once);
+  window.addEventListener('keydown',_preheatMedia,once);
+})();
+</script>
+</body></html>
