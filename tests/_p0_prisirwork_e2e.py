@@ -87,6 +87,23 @@ res["cap_search_派单"]     = req("/cap/search", token=TOKEN, method="POST", bo
 res["cap_exec_team_list"]  = req("/cap/execute", token=TOKEN, method="POST",
                                  body={"id": "team.list", "args": {"status": "ready"}})          # 期望经门面跑通
 
+# F6 plugin 能力包:造一个临时包(绑白名单 /health),验证声明式加载 + 白名单约束
+plug_dir = tempfile.mkdtemp(prefix="oi_p0plug_")
+pack = os.path.join(plug_dir, "pack-a")
+os.makedirs(pack, exist_ok=True)
+json.dump({
+    "name": "pack-a", "version": "0.1.0",
+    "capabilities": [
+        {"id": "pack.health", "title": "包内探活", "endpoint": "/health", "method": "GET",
+         "risk": "L0", "auth": False, "keywords": ["包", "探活"]},
+        {"id": "pack.bad", "title": "未登记端点", "endpoint": "/nope/x", "method": "GET"},
+    ],
+}, open(os.path.join(pack, "plugin.json"), "w", encoding="utf-8"))
+res["plugins_load_无token"] = req("/plugins/load", method="POST", body={"dir": pack})            # 期望 401
+res["plugins_load"]         = req("/plugins/load", token=TOKEN, method="POST", body={"dir": pack})  # 期望 200,载 1 跳 1
+res["cap_search_包探活"]    = req("/cap/search", token=TOKEN, method="POST", body={"query": "探活"})  # 期望含 pack.health
+res["cap_exec_pack_health"] = req("/cap/execute", token=TOKEN, method="POST", body={"id": "pack.health"})  # 期望跑通
+
 # 只监听 127.0.0.1:本机非回环地址应连不上
 ext_ip = None
 try:
@@ -158,6 +175,15 @@ checks = {
   "cap/execute team.list 跑通": res["cap_exec_team_list"][0] == 200 and
       res["cap_exec_team_list"][1].get("capability") == "team.list" and
       res["cap_exec_team_list"][1].get("result", {}).get("ok") is True,
+  # F6 plugin 能力包
+  "plugins/load 无 token 401": res["plugins_load_无token"][0] == 401,
+  "plugins/load 载合法跳未登记": res["plugins_load"][0] == 200 and
+      "pack.health" in res["plugins_load"][1].get("loaded", []) and
+      len(res["plugins_load"][1].get("errors", [])) == 1,
+  "cap/search 探活含包能力": any(
+      c.get("id") == "pack.health" for c in res["cap_search_包探活"][1].get("capabilities", [])),
+  "cap/execute 包能力跑通": res["cap_exec_pack_health"][0] == 200 and
+      res["cap_exec_pack_health"][1].get("result", {}).get("ok") is True,
 }
 
 # F5 审计:L1+ 端点已留痕,L0 只读不记,且审计行不含口令/token

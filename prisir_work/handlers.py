@@ -7,7 +7,7 @@
 """
 from __future__ import annotations
 
-from . import __version__, capability, endpoints, team, wallet
+from . import __version__, capability, endpoints, plugins, team, wallet
 
 
 @endpoints.register("/health", method="GET", risk="L0", auth=False)
@@ -75,6 +75,21 @@ def _team_list(body: dict):
         status=body.get("status", "ready"), limit=body.get("limit", 10),
         namespace=body.get("namespace", "tasks"),
     ), 200
+
+
+# ---------------------------------------------------------------------------
+# F6 plugin 能力包:加载声明式能力包进门面
+# ---------------------------------------------------------------------------
+
+@endpoints.register("/plugins/load", method="POST", risk="L1", auth=True)
+def _plugins_load(body: dict):
+    """加载能力包:dir 指单包(含 plugin.json);root 指扫描目录下所有包。二选一。"""
+    body = body if isinstance(body, dict) else {}
+    if body.get("dir"):
+        return plugins.load_plugin(body["dir"]), 200
+    if body.get("root"):
+        return plugins.load_plugins_dir(body["root"]), 200
+    return {"ok": False, "error": "dir_or_root_required"}, 400
 
 
 # ---------------------------------------------------------------------------
@@ -162,4 +177,11 @@ capability.register_capability(
     "team.list", title="查 oiagent 协作队列状态(ready 可调度 / blocked 待决策)",
     endpoint="/team/list", method="POST", risk="L0", auth=True,
     keywords=("队列", "状态", "任务", "进度", "team", "queue", "status", "list"),
+)
+capability.register_capability(
+    "plugins.load", title="加载能力包(声明式 plugin.json → 注册进门面,不执行任意代码)",
+    endpoint="/plugins/load", method="POST", risk="L1", auth=True,
+    keywords=("插件", "能力包", "加载", "扩展", "plugin", "pack", "load", "import"),
+    confirm=("L1 加载能力包:解析 plugin.json 声明,把能力注册进门面。"
+             "只注册已绑白名单端点的能力,不 import/执行任意代码。"),
 )
