@@ -24,6 +24,34 @@ def _wallet_status(_body: dict):
     return wallet.status(), 200
 
 
+@endpoints.register("/wallet/receive", method="POST", risk="L0", auth=True)
+def _wallet_receive(body: dict):
+    """生成收款地址(只读向,免确认)。"""
+    body = body if isinstance(body, dict) else {}
+    return wallet.receive(memo=body.get("memo", ""), amount=body.get("amount")), 200
+
+
+@endpoints.register("/wallet/history", method="GET", risk="L0", auth=True)
+def _wallet_history(_body: dict):
+    """到账查账(只读,入金引导用)。"""
+    return wallet.history(), 200
+
+
+@endpoints.register("/wallet/payto", method="POST", risk="L3", auth=True)
+def _wallet_payto(body: dict):
+    """L3 付款。两阶段:confirm=False 构造 unsigned 待确认;confirm=True+txid+口令 签名广播。
+
+    确认门槛在扩展/shell 侧(渲染确认卡/A2H);PrisirWork 不替用户做决定。
+    testnet/regtest only,mainnet 由 wallet.payto 拒绝。
+    """
+    body = body if isinstance(body, dict) else {}
+    return wallet.payto(
+        address=body.get("address", ""), amount=body.get("amount", 0),
+        memo=body.get("memo", ""), passphrase=body.get("passphrase", ""),
+        confirm=bool(body.get("confirm")), txid=body.get("txid", ""),
+    ), 200
+
+
 # ---------------------------------------------------------------------------
 # F1 能力门面:search_capabilities / execute_capability 两个统一入口
 # ---------------------------------------------------------------------------
@@ -79,4 +107,21 @@ capability.register_capability(
     "wallet.status", title="查询钱包状态(余额/地址脱敏/解锁态)",
     endpoint="/wallet/status", method="GET", risk="L0", auth=True,
     keywords=("钱包", "余额", "地址", "wallet", "balance", "status"),
+)
+capability.register_capability(
+    "wallet.receive", title="生成收款地址(给别人打钱进来用)",
+    endpoint="/wallet/receive", method="POST", risk="L0", auth=True,
+    keywords=("钱包", "收款", "地址", "入金", "wallet", "receive", "address"),
+)
+capability.register_capability(
+    "wallet.history", title="到账查账(最近交易概要,地址脱敏)",
+    endpoint="/wallet/history", method="GET", risk="L0", auth=True,
+    keywords=("钱包", "查账", "到账", "交易", "history", "transactions"),
+)
+capability.register_capability(
+    "wallet.payto", title="付款(两阶段:先构造 unsigned 待确认,确认+口令才签名广播)",
+    endpoint="/wallet/payto", method="POST", risk="L3", auth=True,
+    keywords=("钱包", "付款", "转账", "支付", "wallet", "pay", "send", "transfer"),
+    confirm=("L3 付款:agent 先构造未签名交易给你看(收款方/金额/备注),"
+             "你确认并输入钱包口令后才签名广播。授权权永远在你;testnet/regtest only。"),
 )

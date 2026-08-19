@@ -51,7 +51,7 @@ res["wallet_无token"] = req("/wallet/status")               # 期望 401
 res["wallet_错token"] = req("/wallet/status", token="wrong")# 期望 401
 res["wallet_对token"] = req("/wallet/status", token=TOKEN)  # 期望 200 + daemon unavailable(未装 electrum)
 res["白名单外"]      = req("/admin/shell", token=TOKEN)      # 期望 404
-res["白名单外2"]     = req("/wallet/payto", token=TOKEN, method="POST")  # 未登记 → 404(即使带对 token)
+res["白名单外2"]     = req("/wallet/nonexist", token=TOKEN)  # 未登记 wallet 子路径 → 404(即使带对 token)
 
 # F1 能力门面:search/execute 两入口
 res["cap_search_无token"] = req("/cap/search", method="POST", body={"query": ""})                 # 期望 401
@@ -61,6 +61,17 @@ res["cap_exec_无token"]   = req("/cap/execute", method="POST", body={"id": "wal
 res["cap_exec_未知能力"]  = req("/cap/execute", token=TOKEN, method="POST", body={"id": "nope.x"}) # 期望 404
 res["cap_exec_health"]    = req("/cap/execute", token=TOKEN, method="POST", body={"id": "system.health"})  # 期望 200 经门面跑通
 res["cap_exec_wallet"]    = req("/cap/execute", token=TOKEN, method="POST", body={"id": "wallet.status"})  # 期望 200 路由到端点
+
+# F2 wallet 能力接入 + L3 授权门
+res["wallet_recv_无token"] = req("/wallet/receive", method="POST", body={})                      # 期望 401
+res["wallet_recv"]         = req("/wallet/receive", token=TOKEN, method="POST", body={"memo": "t"})  # 期望 200 daemon unavailable
+res["wallet_history"]      = req("/wallet/history", token=TOKEN)                               # 期望 200 daemon unavailable
+res["payto_无token"]       = req("/wallet/payto", method="POST", body={"address": "a", "amount": 1})  # 期望 401
+res["payto_daemon"]        = req("/wallet/payto", token=TOKEN, method="POST",
+                                 body={"address": "tb1qx", "amount": 0.1})                      # 期望 200 daemon unavailable(未到授权门)
+res["cap_search_付款"]     = req("/cap/search", token=TOKEN, method="POST", body={"query": "付款"}) # 期望命中 wallet.payto L3
+res["cap_exec_payto"]      = req("/cap/execute", token=TOKEN, method="POST",
+                                 body={"id": "wallet.payto", "args": {"address": "tb1qx", "amount": 0.1}})  # 期望经门面,L3 标注
 
 # 只监听 127.0.0.1:本机非回环地址应连不上
 ext_ip = None
@@ -87,7 +98,7 @@ checks = {
   "wallet 对 token 200": res["wallet_对token"][0] == 200,
   "wallet 如实报 unavailable": res["wallet_对token"][1].get("daemon") == "unavailable",
   "白名单外 404": res["白名单外"][0] == 404,
-  "未登记端点(payto)404": res["白名单外2"][0] == 404,
+  "白名单外 wallet 子路径 404": res["白名单外2"][0] == 404,
   "只监听 127.0.0.1": (loopback_only is True),
   # F1 能力门面
   "cap/search 无 token 401": res["cap_search_无token"][0] == 401,
@@ -102,9 +113,59 @@ checks = {
       res["cap_exec_health"][1].get("capability") == "system.health",
   "cap/execute wallet.status 路由到端点": res["cap_exec_wallet"][0] == 200 and
       res["cap_exec_wallet"][1].get("result", {}).get("daemon") == "unavailable",
+  # F2 wallet 能力接入 + L3 授权门
+  "wallet/receive 无 token 401": res["wallet_recv_无token"][0] == 401,
+  "wallet/receive 如实报 unavailable": res["wallet_recv"][0] == 200 and
+      res["wallet_recv"][1].get("daemon") == "unavailable",
+  "wallet/history 如实报 unavailable": res["wallet_history"][0] == 200 and
+      res["wallet_history"][1].get("daemon") == "unavailable",
+  "wallet/payto 无 token 401": res["payto_无token"][0] == 401,
+  "wallet/payto daemon 不可用如实报(未到授权门)": res["payto_daemon"][0] == 200 and
+      res["payto_daemon"][1].get("daemon") == "unavailable",
+  "cap/search 付款命中 wallet.payto": res["cap_search_付款"][0] == 200 and any(
+      c.get("id") == "wallet.payto" and c.get("risk") == "L3"
+      for c in res["cap_search_付款"][1].get("capabilities", [])),
+  "cap/execute wallet.payto 带 L3 标注": res["cap_exec_payto"][0] == 200 and
+      res["cap_exec_payto"][1].get("capability") == "wallet.payto" and
+      res["cap_exec_payto"][1].get("risk") == "L3",
 }
 print("逐项:", json.dumps(checks, ensure_ascii=False, indent=2))
 print("wallet/status 实回:", json.dumps(res["wallet_对token"][1], ensure_ascii=False))
 if loopback_only is None:
     print("(未能取得非回环 IP,loopback 项跳过)")
+
+# F2 mainnet 守卫:换 OI_ELECTRUM_NET=mainnet 起第二个实例,payto 必须被拒
+PORT2 = 12451
+cfg2 = os.path.join(tempfile.mkdtemp(prefix="oi_p0m_"), "work.json")
+json.dump({"token": TOKEN, "port": PORT2}, open(cfg2, "w"))
+env2 = dict(os.environ, PRISIR_WORK_CONFIG=cfg2, PRISIR_WORK_PORT=str(PORT2),
+            OI_ELECTRUM_NET="mainnet")
+proc2 = subprocess.Popen([sys.executable, "-m", "prisir_work", str(PORT2)], env=env2,
+                         cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+up2 = False
+for _ in range(50):
+    try:
+        r = urllib.request.Request(f"http://127.0.0.1:{PORT2}/health")
+        with urllib.request.urlopen(r, timeout=2) as resp:
+            up2 = (resp.status == 200)
+        if up2: break
+    except Exception: time.sleep(0.2)
+mainnet_blocked = False
+if up2:
+    try:
+        rq = urllib.request.Request(f"http://127.0.0.1:{PORT2}/wallet/payto", method="POST")
+        rq.add_header("X-OI-Token", TOKEN); rq.add_header("Content-Type", "application/json")
+        data = json.dumps({"address": "1abc", "amount": 0.1}).encode(); rq.data = data
+        with urllib.request.urlopen(rq, timeout=5) as resp:
+            b = json.loads(resp.read().decode())
+        mainnet_blocked = (b.get("ok") is False and b.get("error") == "mainnet_forbidden")
+    except Exception as e:
+        print("(mainnet 守卫验证异常:", e, ")")
+proc2.terminate()
+try: proc2.wait(timeout=5)
+except Exception: proc2.kill()
+checks["mainnet 守卫:OI_ELECTRUM_NET=mainnet 拒绝付款"] = mainnet_blocked
+print("mainnet 守卫:", "PASS" if mainnet_blocked else "FAIL")
+
 print("P0 验收:", "PASS" if all(v for k, v in checks.items() if v is not None) else "FAIL")
