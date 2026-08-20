@@ -158,3 +158,30 @@ def mask_old_tool_outputs(messages, keep_recent: int = KEEP_RECENT_TOOL,
             kr -= 1
             result = _build(kr)
     return result
+
+
+# ---- 规则式交接摘要(移植自 NTP ctx.js buildHandoffRules):零延迟零成本、可预测。----
+# 取首条用户消息(任务目标)+ 最近 N 条(当前进展)。LLM 现压作为可选增强(壳端在
+# oiagent_web 里优先调模型,失败回退本规则式)。
+def build_handoff_rules(messages, recent_n: int = 6) -> str:
+    """规则式交接摘要(快速新窗接续兜底)。
+
+    messages: [{role, content, ...}](user/assistant/tool)。
+    返回纯文本:任务起点(首条 user slice200) + 最近进展(末 recent_n 条,各 slice220)。
+    tool 步标记为「🔧 工具」便于识别「做过什么」。零 LLM 成本。
+    """
+    msgs = [m for m in (messages or []) if m and _msg_text(m)]
+    if not msgs:
+        return "(上一窗口为空,无内容可接续)"
+
+    def _role_label(r):
+        return {"user": "问", "assistant": "答", "tool": "🔧工具"}.get(r, r)
+
+    first_user = next((_msg_text(m) for m in msgs if m.get("role") == "user"), "")
+    recent = msgs[-recent_n:]
+    out = "【上一窗口交接 · 快速整理(规则式)】\n"
+    out += "任务起点:" + first_user[:200] + "\n\n"
+    out += f"最近进展(末 {len(recent)} 条):\n"
+    for m in recent:
+        out += f"{_role_label(m.get('role'))}:" + _msg_text(m)[:220] + "\n"
+    return out

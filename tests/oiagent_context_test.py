@@ -143,6 +143,47 @@ def test_mask_integration_usage_threshold():
     check("DB 原文不受影响", msgs[1]["content"].startswith("结果数据"))
 
 
+def test_build_handoff_rules():
+    # 空
+    check("空消息 → 占位", "无内容" in oc.build_handoff_rules([]))
+    check("None → 占位", "无内容" in oc.build_handoff_rules(None))
+    # 含 user/assistant/tool
+    msgs = [
+        {"role": "user", "content": "帮我修 ffmpeg 转码 bug"},
+        {"role": "assistant", "content": "好的,先看下脚本"},
+        {"role": "tool", "name": "read_file", "content": "脚本内容..."},
+        {"role": "assistant", "content": "发现是参数顺序错了"},
+    ]
+    h = oc.build_handoff_rules(msgs)
+    check("含任务起点(首条 user)", "帮我修 ffmpeg" in h and "任务起点" in h)
+    check("含最近进展标记", "最近进展" in h)
+    check("tool 步标记 🔧工具", "🔧工具" in h)
+    # 超长截断: 首条 user >200 应截到 200
+    long_user = [{"role": "user", "content": "长" * 500}, {"role": "assistant", "content": "嗯"}]
+    h2 = oc.build_handoff_rules(long_user)
+    # 任务起点那行的内容部分应 ≤200
+    start_line = [l for l in h2.split("\n") if l.startswith("任务起点")][0]
+    check("首条 user 截到 200", len(start_line.replace("任务起点:", "")) == 200)
+
+
+def test_tool_ingestion_activates_masking():
+    """工具结果入库后,跨轮历史里有 role=tool,档位2 masking 有真实靶子(模拟 #43 A 后的数据流)。"""
+    # 模拟工具入库后的历史(user/assistant/tool 混合,tool 是截断后的大输出)
+    msgs = []
+    for i in range(6):
+        msgs.append({"role": "user", "content": f"处理文件{i}"})
+        msgs.append({"role": "assistant", "content": f"调用工具读取{i}"})
+        msgs.append({"role": "tool", "content": f"[🔧 read_file]\n" + ("内容" * 500)})  # ~1000 CJK
+    win = "moonshot-v1-8k"
+    before = oc.usage_for(msgs, win)
+    check("工具入库后历史超阈值", before["mask"] is True)
+    masked = oc.mask_old_tool_outputs(msgs, model=win)
+    n_masked = sum(1 for m in masked if m["role"] == "tool" and "已遮蔽" in m["content"])
+    check("跨轮 tool 历史被遮蔽(档位2激活)", n_masked > 0)
+    after = oc.usage_for(masked, win)
+    check("遮蔽后用量回落阈值下", after["ratio"] < oc.MASK_RATIO)
+
+
 def main():
     print("=== oiagent_context 单元测试 ===\n")
     test_estimate_tokens()
@@ -154,6 +195,10 @@ def main():
     test_mask_old_tool_outputs()
     print()
     test_mask_integration_usage_threshold()
+    print()
+    test_build_handoff_rules()
+    print()
+    test_tool_ingestion_activates_masking()
     print("\n=== 判定 ===")
     if _fails:
         print(f"FAIL: {len(_fails)} 项未过 -> {_fails}")

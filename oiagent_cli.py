@@ -26,6 +26,20 @@ sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 MAX_TURNS_DEFAULT = 30
 SHELL_TIMEOUT = 60
 
+# 工具结果入库粒度:单条 tool 输出入库前截断到此字符数(留头尾+省略标记),
+# 防爆库;完整大输出时效短,跨轮只需「做过什么+关键结论」。
+TOOL_STORE_MAX = 4000
+
+
+def truncate_tool_output(text: str, limit: int = TOOL_STORE_MAX) -> str:
+    """截断长工具输出供入库:留头 (limit-~500) + 省略标记 + 尾 500。"""
+    s = str(text or "")
+    if len(s) <= limit:
+        return s
+    head = s[: limit - 520]
+    tail = s[-500:]
+    return f"{head}\n…[截断,原 {len(s)} 字符]…\n{tail}"
+
 
 # ---------------- tools ----------------
 def _t_read_file(path: str) -> str:
@@ -257,11 +271,16 @@ def run_conversation(messages: list, model: str, workdir: str, max_turns: int = 
         收到无工具调用的文本回复即返回
       - think_level: off/low/medium/high,空=不指定(用平台默认)
       - system_extra: 额外系统块(harness 宪法/记忆召回),拼在 SYSTEM_CHAT 之后
+
+    返回 dict 新增 `trace`: 当轮新增的中间步 [{role:"tool"|"assistant", content, name?}]
+    (tool 结果已按 TOOL_STORE_MAX 截断供入库),供调用方(壳)落库激活跨轮 masking;
+    `out` 仍是最终答复文本(不含中间步)。
     """
     import litellm
     litellm.drop_params = True
     system = SYSTEM_CHAT + (("\n\n" + system_extra) if system_extra.strip() else "")
     msgs = [{"role": "system", "content": system}] + list(messages)
+    trace: list = []  # 当轮 tool/assistant 中间步(供壳入库)
     t0 = time.time()
     turns = 0
     tools = TOOLS if use_tools else None
@@ -276,7 +295,7 @@ def run_conversation(messages: list, model: str, workdir: str, max_turns: int = 
             resp = _completion_with_temperature_fallback(**kwargs)
         except Exception as e:  # noqa: BLE001
             return {"rc": 2, "out": f"[llm error] {type(e).__name__}: {e}", "turns": turns,
-                    "ms": int((time.time() - t0) * 1000)}
+                    "ms": int((time.time() - t0) * 1000), "trace": trace}
         msg = resp.choices[0].message
         am = {"role": "assistant", "content": msg.content or ""}
         tcs = getattr(msg, "tool_calls", None)
@@ -290,7 +309,7 @@ def run_conversation(messages: list, model: str, workdir: str, max_turns: int = 
         if not tcs:
             # 无工具调用 → 这就是答复,返回
             return {"rc": 0, "out": (msg.content or "").strip(), "turns": turns,
-                    "ms": int((time.time() - t0) * 1000)}
+                    "ms": int((time.time() - t0) * 1000), "trace": trace}
 
         for tc in tcs:
             try:
@@ -300,10 +319,14 @@ def run_conversation(messages: list, model: str, workdir: str, max_turns: int = 
             result = dispatch(tc.function.name, args, workdir)
             msgs.append({"role": "tool", "tool_call_id": tc.id,
                          "name": tc.function.name, "content": result})
+            # 轨迹(供壳入库激活跨轮 masking): 截断后存,带工具名保可追溯
+            trace.append({"role": "tool", "name": tc.function.name,
+                          "content": truncate_tool_output(result)})
 
     # 工具循环到头仍未给文本答复 → 取最后一条 assistant 文本
     last = next((m["content"] for m in reversed(msgs) if m.get("role") == "assistant" and m.get("content")), "")
-    return {"rc": 0, "out": last or "[no reply]", "turns": turns, "ms": int((time.time() - t0) * 1000)}
+    return {"rc": 0, "out": last or "[no reply]", "turns": turns,
+            "ms": int((time.time() - t0) * 1000), "trace": trace}
 
 
 def run_agent(prompt: str, model: str, workdir: str, max_turns: int) -> dict:
