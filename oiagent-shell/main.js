@@ -88,7 +88,7 @@ function createWindow() {
     minWidth: 720,
     minHeight: 520,
     title: "oiagent 对话",
-    icon: path.join(REPO_ROOT, "assets", "prisir-mark-256.png"),
+    icon: path.join(__dirname, "icon.png"),
     backgroundColor: "#f6f1e7",   // 国画纸色,与聊天 UI 一致,避免白闪
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -141,7 +141,8 @@ function toggleWindow() {
 // ---------- 托盘 ----------
 function createTray() {
   // 用国画风 mark 若存在,否则空图标(Electron 需要有效 image)。
-  const iconPath = path.join(REPO_ROOT, "assets", "prisir-mark-256.png");
+  // 对话壳专属图标:dialog_flame(铜环 + teal 灵机火焰),与浏览器母标圆规分开。
+  const iconPath = path.join(__dirname, "icon.png");
   let img = nativeImage.createFromPath(iconPath);
   if (img.isEmpty()) img = nativeImage.createEmpty();
   tray = new Tray(img);
