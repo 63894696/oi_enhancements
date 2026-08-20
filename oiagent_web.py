@@ -40,6 +40,12 @@ DEFAULT_MODEL = os.environ.get("OIAGENT_MODEL", "dashscope/qwen3-coder-plus-2025
 DEFAULT_WORKDIR = os.environ.get("OIAGENT_WORKDIR", os.getcwd())
 DEFAULT_STRATEGY = os.environ.get("PRISIR_STRATEGY", "smart")
 
+# Obsidian 经验导出(路线 B):提炼对话成经验文档落 vault。
+# 与 team_lead_tools.OBSIDIAN_VAULT 同源,env OBSIDIAN_VAULT 可覆盖。
+OBSIDIAN_VAULT = Path(os.environ.get(
+    "OBSIDIAN_VAULT", r"C:/Users/Administrator/Documents/ObsidianVault"))
+OBSIDIAN_EXPERIENCES_DIR = OBSIDIAN_VAULT / "experiences"
+
 _DB_DIR = Path(os.environ.get("PRISIR_DATA", str(Path.home() / ".local" / "share" / "prisir")))
 _DB_DIR.mkdir(parents=True, exist_ok=True)
 _CHAT_DB = _DB_DIR / "chats.db"
@@ -530,6 +536,136 @@ def _export_word_html(sid: str) -> str:
 
 
 # ============================================================
+# 经验提炼存 Obsidian(路线 B)
+# ============================================================
+_EXPERIENCE_PROMPT = """把下面这段人机对话提炼成一篇「经验文档」,供日后检索复用。
+只输出一个 JSON 对象(不要 markdown 代码围栏,不要任何额外文字),字段:
+{
+  "title": "一句话标题(≤30字,概括这次对话解决的核心问题)",
+  "tldr": ["≤3 条要点,每条一句话"],
+  "core": ["≤8 条核心经验/做法/结论,每条一句话,具体可执行"],
+  "gotchas": ["踩坑/教训,没有就空数组"],
+  "tags": ["3-6 个检索标签,短词"],
+  "project": "涉及的项目名,看不出就空串"
+}
+要求:提炼**做法和结论**,不要复述对话过程;gotchas 只写真正踩到的坑。
+
+对话内容:
+---
+%s
+---"""
+
+
+def _build_experience_doc(sid: str, distilled: dict) -> str:
+    """套 frontmatter 模板(参照 team_lead_tools._save_team_experience_to_obsidian)。"""
+    from datetime import datetime
+    now_d = datetime.now().strftime("%Y-%m-%d")
+    now_ts = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+    sess = get_session(sid)
+    conv_title = sess[1] if sess else "会话"
+
+    title = (distilled.get("title") or conv_title or "oiagent 对话经验").strip()
+    tldr = [str(x) for x in (distilled.get("tldr") or [])][:3]
+    core = [str(x) for x in (distilled.get("core") or [])][:8]
+    gotchas = [str(x) for x in (distilled.get("gotchas") or [])]
+    tags = [str(x) for x in (distilled.get("tags") or [])][:6]
+    project = (distilled.get("project") or "").strip()
+
+    all_tags = ["经验"] + [t for t in tags if t and t != "经验"]
+    fm_lines = ["---", f"title: {title}", f"date: {now_d}", f"created_at: '{now_ts}'"]
+    if project:
+        fm_lines.append(f"project: {project}")
+    fm_lines.append("tags:")
+    fm_lines += [f"  - {t}" for t in all_tags]
+    fm_lines += ["status: 已存档", "source_skill: oiagent-shell-experience",
+                 f"related: [[{conv_title}]]" if conv_title else "related: []", "---"]
+
+    body = [f"# {title}", ""]
+    if tldr:
+        body += ["## TL;DR"] + [f"- {p}" for p in tldr] + [""]
+    if core:
+        body += ["## 核心经验"] + [f"- {p}" for p in core] + [""]
+    if gotchas:
+        body += ["## 踩坑"] + [f"- {p}" for p in gotchas] + [""]
+    body += ["## 原始对话", ""]
+    for m in get_messages(sid):
+        role = "🧑 用户" if m["role"] == "user" else "🤖 oiagent"
+        body += [f"**{role}**", "", m["content"], ""]
+    return "\n".join(fm_lines) + "\n\n" + "\n".join(body)
+
+
+def _fallback_experience_doc(sid: str) -> str:
+    """提炼失败兜底:默认 frontmatter + 原始对话(不丢数据,提炼是增值)。"""
+    return _build_experience_doc(sid, {"title": None, "tldr": [], "core": [],
+                                       "gotchas": [], "tags": [], "project": ""})
+
+
+def _distill_experience(sid: str) -> dict:
+    """调当前会话模型提炼对话成结构化经验。失败返回 {}(调用方走兜底)。
+
+    复用 _run_chat_thread 的模型解析(router 优先),think_level 强制 low
+    (提炼不需要高思考,省 token)。use_tools=False(纯文本提炼)。
+    """
+    history = get_messages(sid)
+    if not history:
+        return {}
+    conv = "\n\n".join(
+        f"{'用户' if m['role'] == 'user' else 'oiagent'}: {m['content']}"
+        for m in history)
+    prompt = _EXPERIENCE_PROMPT % conv[:12000]  # 截断防爆 context
+
+    msgs = [{"role": "user", "content": prompt}]
+    try:
+        if _router.available_platforms():
+            pick = _router.route(msgs, DEFAULT_STRATEGY)
+            lm = _litellm_model_for(pick["platform"], pick["cfg"], pick["task_type"])
+        else:
+            lm = DEFAULT_MODEL
+        res = run_conversation(msgs, lm, _WORKDIR["path"],
+                               think_level="low", use_tools=False)
+        text = res["out"].strip()
+        # 剥 markdown 代码围栏(模型可能包裹 ```json ... ```)
+        m = re.search(r"\{.*\}", text, re.DOTALL)
+        if not m:
+            return {}
+        data = json.loads(m.group(0))
+        return data if isinstance(data, dict) else {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _save_experience_to_obsidian(sid: str) -> dict:
+    """提炼 + 落 vault。返回 {ok, filepath?, title?, distilled?, error?}。"""
+    try:
+        OBSIDIAN_EXPERIENCES_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": f"vault 目录不可写: {e}"}
+
+    distilled = _distill_experience(sid)
+    used_fallback = not distilled
+    doc = _build_experience_doc(sid, distilled) if distilled else _fallback_experience_doc(sid)
+
+    from datetime import datetime
+    sess = get_session(sid)
+    title = (distilled.get("title") if distilled else None) or (sess[1] if sess else "会话") or "经验"
+    # 命名 YYYY-MM-DD-<slug>.md,slug 取标题去非法字符
+    slug = re.sub(r'[\\/:*?"<>|]', "", title)[:40].strip() or "经验"
+    slug = re.sub(r"\s+", "-", slug)
+    filename = f"{datetime.now().strftime('%Y-%m-%d')}-{slug}.md"
+    filepath = OBSIDIAN_EXPERIENCES_DIR / filename
+    if filepath.exists():  # 重名追加时分秒
+        filepath = OBSIDIAN_EXPERIENCES_DIR / (
+            f"{datetime.now().strftime('%Y-%m-%d')}-{slug}-"
+            f"{datetime.now().strftime('%H%M%S')}.md")
+    try:
+        filepath.write_text(doc, encoding="utf-8")
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": f"写入失败: {e}"}
+    return {"ok": True, "filepath": str(filepath), "title": title,
+            "distilled": not used_fallback}
+
+
+# ============================================================
 # 页面
 # ============================================================
 _PAGE = r"""<!DOCTYPE html>
@@ -691,6 +827,7 @@ _PAGE = r"""<!DOCTYPE html>
           <div class="mi" onclick="exportAs('pdf')">📄 导出为PDF</div>
           <div class="mi" onclick="exportAs('md')">📝 衍生为Markdown</div>
           <div class="mi" onclick="exportAs('docx')">📃 导出为DOCX</div>
+          <div class="mi" onclick="saveExperience()">💎 存为经验(Obsidian)</div>
           <div class="divider"></div>
           <div class="mi danger" onclick="deleteSession()">🗑️ 删除</div>
         </div>
@@ -893,6 +1030,43 @@ function exportAs(fmt){
   const a=document.createElement('a');
   a.href=url; a.download=''; document.body.appendChild(a);
   a.click(); a.remove();
+}
+
+// ---- 经验提炼存 Obsidian(路线 B) ----
+function toast(msg, ok=true){
+  let t=document.getElementById('exp-toast');
+  if(!t){
+    t=document.createElement('div'); t.id='exp-toast';
+    t.style.cssText='position:fixed;bottom:28px;left:50%;transform:translateX(-50%);'
+      +'padding:10px 18px;border-radius:10px;font-size:13px;z-index:9999;max-width:70vw;'
+      +'box-shadow:0 4px 16px rgba(0,0,0,.18);transition:opacity .3s;word-break:break-all;';
+    document.body.appendChild(t);
+  }
+  t.style.background= ok ? '#2f3a34' : '#b23a30';
+  t.style.color='#fbf6ec';
+  t.textContent=msg; t.style.opacity='1';
+  clearTimeout(t._h);
+  t._h=setTimeout(()=>{ t.style.opacity='0'; }, 4200);
+}
+
+async function saveExperience(){
+  if(!sessionId){alert('先开始一个会话');return;}
+  document.getElementById('menu').classList.remove('open');
+  toast('💎 正在提炼经验并存入 Obsidian …(用当前模型)');
+  try{
+    const r = await api('/experience', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({session_id: sessionId})
+    });
+    if(r && r.ok){
+      const note = r.distilled ? '' : '(提炼失败,已存原始对话)';
+      toast('✅ 已存 Obsidian: ' + (r.title||'') + ' ' + note);
+    } else {
+      toast('❌ 存经验失败: ' + ((r&&r.error)||'未知错误'), false);
+    }
+  }catch(e){
+    toast('❌ 存经验异常: ' + e.message, false);
+  }
 }
 
 async function sendMessage() {
@@ -1215,6 +1389,13 @@ class Handler(BaseHTTPRequestHandler):
                 return
             _WORKDIR["path"] = p
             self._json({"ok": True, "workdir": p})
+        elif path == "/oiagent/api/experience":
+            # 经验提炼存 Obsidian(路线 B)。同步 LLM 调用,前端已置 loading。
+            sid = body.get("session_id", "")
+            if not get_session(sid):
+                self._json({"ok": False, "error": "会话不存在"}, 404)
+                return
+            self._json(_save_experience_to_obsidian(sid))
         else:
             self._json({"error": "not found"}, 404)
 
