@@ -275,6 +275,45 @@ class PrisirRouter:
 
 
 # ============================================================
+# 端点模型列表拉取(参考翻译插件 engines.listModels:GET {base}/models)
+# ============================================================
+def list_endpoint_models(base_url: str, api_key: str = "", timeout_s: float = 15.0) -> Dict[str, Any]:
+    """从 OpenAI 兼容端点拉可取模型列表。返回 {ok, models, error}。
+
+    同步实现(供 oiagent_web 设置页「拉取模型」用)。只列模型名,不回显 key。
+    Anthropic 协议端点多数无 /models,失败时返回 error 由前端回退手填。
+    """
+    import httpx  # 延迟导入,避免无 httpx 环境影响其它路径
+    base = (base_url or "").rstrip("/")
+    if not base:
+        return {"ok": False, "models": [], "error": "no_base_url"}
+    url = f"{base}/models"
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    try:
+        with httpx.Client(timeout=timeout_s) as client:
+            r = client.get(url, headers=headers)
+        if r.status_code != 200:
+            return {"ok": False, "models": [], "error": f"HTTP {r.status_code}"}
+        data = r.json()
+        arr = data.get("data") if isinstance(data, dict) else (data if isinstance(data, list) else [])
+        if not isinstance(arr, list):
+            arr = []
+        models = []
+        for m in arr:
+            if isinstance(m, str):
+                models.append(m)
+            elif isinstance(m, dict):
+                mid = m.get("id") or m.get("name") or m.get("model")
+                if mid:
+                    models.append(str(mid))
+        return {"ok": bool(models), "models": models, "error": None if models else "empty"}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "models": [], "error": f"{type(e).__name__}: {e}"}
+
+
+# ============================================================
 # 延续话题(任务#7): AI 回答末尾带 2-5 个相关延续话题(学 Perplexity)
 # ============================================================
 _FOLLOWUP_PROMPT = (

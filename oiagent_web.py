@@ -29,7 +29,7 @@ from urllib.parse import urlparse, parse_qs
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from oiagent_cli import run_conversation  # noqa: E402
 from fastlane.providers.llm_prisir import (  # noqa: E402
-    PrisirKeyStore, PrisirRouter, generate_followups,
+    PrisirKeyStore, PrisirRouter, generate_followups, list_endpoint_models,
 )
 
 WEB_HOST = "127.0.0.1"
@@ -452,7 +452,12 @@ _PAGE = r"""<!DOCTYPE html>
       </select>
       <input id="k-custom-url" type="text" placeholder="base_url,如 https://...">
       <input id="k-custom-key" type="password" placeholder="key(本地可空)" style="margin-top:6px">
-      <input id="k-custom-model" type="text" placeholder="模型名" style="margin-top:6px">
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <input id="k-custom-model" type="text" list="k-model-list" placeholder="模型名(可手填或拉取)" style="flex:1">
+        <button class="topbtn" type="button" onclick="pullModels()" title="从端点拉取可选模型">拉取</button>
+      </div>
+      <datalist id="k-model-list"></datalist>
+      <div id="k-model-hint" style="font-size:11px;color:var(--gh-ink-faint);margin-top:4px"></div>
     </div>
     <div class="row">
       <button class="topbtn" onclick="saveKeys()">保存</button>
@@ -622,6 +627,26 @@ async function pollResult() {
 
 function openKeys(){ document.getElementById('keymodal').classList.add('open'); renderKeys(); }
 function closeKeys(){ document.getElementById('keymodal').classList.remove('open'); }
+async function pullModels(){
+  const hint = document.getElementById('k-model-hint');
+  const url = document.getElementById('k-custom-url').value.trim();
+  const key = document.getElementById('k-custom-key').value.trim();
+  if(!url){ hint.textContent = '先填 base_url 再拉取'; return; }
+  hint.textContent = '拉取中…';
+  try {
+    const r = await api('/models?base_url='+encodeURIComponent(url)+'&api_key='+encodeURIComponent(key));
+    const dl = document.getElementById('k-model-list');
+    dl.innerHTML = '';
+    if(r.ok && r.models && r.models.length){
+      r.models.forEach(m => { const o=document.createElement('option'); o.value=m; dl.appendChild(o); });
+      hint.textContent = '拉到 '+r.models.length+' 个模型,点模型名输入框下拉选择';
+      if(r.models.length && !document.getElementById('k-custom-model').value)
+        document.getElementById('k-custom-model').value = r.models[0];
+    } else {
+      hint.textContent = '未拉到('+(r.error||'空')+'),可继续手填模型名';
+    }
+  } catch(e){ hint.textContent = '拉取失败:'+e; }
+}
 async function saveKeys(){
   const body = {
     custom_proto: document.getElementById('k-custom-proto').value,
@@ -744,6 +769,17 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"running": running, "meta": _get_meta(sid)})
         elif path == "/oiagent/api/keys":
             self._json(_key_store.list_platforms())
+        elif path == "/oiagent/api/models":
+            # 拉取端点模型列表:优先用查询参数里的 base_url/key(未保存时),
+            # 否则用已存的 custom 端点。只回模型名,不回显完整 key。
+            q_base = (qs.get("base_url") or [""])[0].strip()
+            q_key = (qs.get("api_key") or [""])[0].strip()
+            if q_base:
+                base, key = q_base, q_key
+            else:
+                rec = _key_store.get_key("custom") or {}
+                base, key = rec.get("base_url", ""), rec.get("api_key", "")
+            self._json(list_endpoint_models(base, key))
         elif path == "/oiagent/api/export":
             self._handle_export(qs)
         else:
