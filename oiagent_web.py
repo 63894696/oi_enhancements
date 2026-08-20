@@ -468,16 +468,17 @@ _PAGE = r"""<!DOCTYPE html>
   .fu:hover { background:var(--gh-paper-2); border-color:var(--gh-focus); }
 
   #composer { padding:16px 28px 20px; }
-  #composer .box { display:flex; gap:10px; align-items:flex-end; background:var(--gh-surface);
+  #composer .box { display:flex; gap:10px; align-items:flex-start; background:var(--gh-surface);
     border:1px solid var(--gh-line); border-radius:var(--gh-radius-lg); padding:10px 12px; box-shadow:var(--gh-shadow); }
   #composer .box:focus-within { border-color:var(--gh-focus); }
   #input { flex:1; border:none; outline:none; resize:none; background:transparent;
-    color:var(--gh-ink); font-size:14.5px; font-family:var(--gh-font); line-height:1.5; max-height:160px; }
+    color:var(--gh-ink); font-size:14.5px; font-family:var(--gh-font); line-height:1.5;
+    max-height:160px; min-height:44px; }
   #send { padding:9px 18px; border-radius:9px; border:none; background:var(--gh-green-deep);
     color:#fbf6ec; font-size:14px; cursor:pointer; }
   #send:hover { background:var(--gh-green); }
   #send:disabled { background:var(--gh-paper-3); color:var(--gh-ink-faint); cursor:not-allowed; }
-  .composer-bar { display:flex; flex-direction:column; gap:6px; align-items:stretch; }
+  .composer-bar { display:flex; flex-direction:column; gap:6px; align-items:stretch; padding-top:2px; }
   #think-level { padding:6px 8px; border-radius:8px; border:1px solid var(--gh-line);
     background:var(--gh-surface); color:var(--gh-ink); font-size:12px; cursor:pointer; }
   #attach-btn { padding:6px 10px; border-radius:8px; border:1px solid var(--gh-line);
