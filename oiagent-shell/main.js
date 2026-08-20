@@ -61,7 +61,7 @@ function startWeb() {
   if (webProc) return;
   // 已被别的进程占用端口就直接复用,不重复起。
   webUp((up) => {
-    if (up) { webReady = true; return; }
+    if (up) { webReady = true; loadWhenReady(); return; }   // 关键:复用已起后端也要触发加载
     webProc = spawn(PYTHON, [WEB_SCRIPT, "--port", String(WEB_PORT)], {
       cwd: REPO_ROOT,
       stdio: "ignore",          // 不把对话日志引到壳 stdout
@@ -72,7 +72,7 @@ function startWeb() {
     const t = setInterval(() => {
       webUp((up) => { if (up) { webReady = true; clearInterval(t); loadWhenReady(); } });
     }, 400);
-    setTimeout(() => clearInterval(t), 20000);
+    setTimeout(() => clearInterval(t), 30000);
   });
 }
 
@@ -129,6 +129,13 @@ function loadWhenReady() {
           `<body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#f6f1e7;color:#5b5548;font-family:system-ui"><div>正在唤醒 oiagent…</div></body>`
         )
     );
+    // 保险:若 webReady 在我们加载过渡页之后才变 true(端口复用路径下 startWeb
+    // 回调可能早于 createWindow 完成、没人再触发 load),这里兜底每 500ms 复查一次。
+    const retry = setInterval(() => {
+      if (!win) { clearInterval(retry); return; }
+      if (webReady) { clearInterval(retry); win.loadURL(WEB_URL); }
+    }, 500);
+    setTimeout(() => clearInterval(retry), 30000);
   }
 }
 

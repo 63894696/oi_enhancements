@@ -245,7 +245,7 @@ SYSTEM_CHAT = (
 )
 
 
-def run_conversation(messages: list, model: str, workdir: str, max_turns: int = 6,
+def run_conversation(messages: list, model: str, workdir: str, max_turns: int = 20,
                      use_tools: bool = True, think_level: str = "",
                      system_extra: str = "") -> dict:
     """对话模式:接受完整多轮 messages([{role,content}]),返回单轮 assistant 回复。
@@ -253,7 +253,8 @@ def run_conversation(messages: list, model: str, workdir: str, max_turns: int = 
     与 run_agent 的区别:
       - 不注入"自主任务 + DONE"系统提示,改用 SYSTEM_CHAT 助手提示
       - 返回最后一轮 assistant content,不循环到 DONE
-      - 仍允许少量工具调用(max_turns 内),但收到无工具调用的文本回复即返回
+      - 仍允许工具调用(max_turns 内自动续跑,默认 20 — 够 ffmpeg→脚本→跑→收尾这类多步任务),
+        收到无工具调用的文本回复即返回
       - think_level: off/low/medium/high,空=不指定(用平台默认)
       - system_extra: 额外系统块(harness 宪法/记忆召回),拼在 SYSTEM_CHAT 之后
     """
