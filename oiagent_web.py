@@ -18,6 +18,7 @@ import base64
 import html
 import json
 import os
+import re
 import sqlite3
 import sys
 import threading
@@ -988,10 +989,17 @@ class Handler(BaseHTTPRequestHandler):
     def _handle_export(self, qs):
         sid = (qs.get("session_id") or [""])[0]
         fmt = (qs.get("fmt") or ["md"])[0]
-        if not get_session(sid):
+        sess = get_session(sid)
+        if not sess:
             self._json({"error": "not found"}, 404)
             return
-        base = f"oiagent-{sid}"
+        # 复用视频笔记命名逻辑(video-study.js:223):
+        # 取标题,替换非法字符 [\\/:*?"<>|] → _,截断 60 字符
+        title = (sess[1] or "会话").strip()
+        safe_title = re.sub(r'[\\/:*?"<>|]', '_', title)[:60]
+        if not safe_title:
+            safe_title = "oiagent对话"
+        base = safe_title
         if fmt == "md":
             self._download(_export_markdown(sid).encode("utf-8"), "text/markdown; charset=utf-8", f"{base}.md")
         elif fmt == "pdf":
