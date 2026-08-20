@@ -536,8 +536,8 @@ async function switchSession(id) {
 }
 
 async function newSession() {
-  const r = await api('/new', {method:'POST'});
-  sessionId = r.session_id;
+  // 惰性新建:不在此落库,等 sendMessage 首发时才 POST /new,避免删除后残留空"新会话"行。
+  sessionId = null;
   document.getElementById('messages').innerHTML = '';
   document.getElementById('conv-title').textContent = '新会话';
   setStatus('');
