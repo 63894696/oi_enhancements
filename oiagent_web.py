@@ -184,6 +184,41 @@ def _configured_endpoints() -> list[str]:
     return lines
 
 
+# 模型池/CCSwitch 注册表(用户既有资产,周更):读 ~/.cc-switch/model_pool.json,
+# 给模型一份「还有哪些端点可路由、各自强弱」的清单。只读,绝不回显 key。
+_MODEL_POOL_JSON = Path.home() / ".cc-switch" / "model_pool.json"
+
+
+def _model_pool_block() -> list[str]:
+    """摘 model_pool.json:可用模型名 + provider + 强弱标签。读不到/解析失败返回 []。"""
+    try:
+        if not _MODEL_POOL_JSON.is_file():
+            return []
+        d = json.loads(_MODEL_POOL_JSON.read_text(encoding="utf-8"))
+        models = d.get("models") if isinstance(d, dict) else None
+        if not isinstance(models, dict) or not models:
+            return []
+        lines = [f"模型池注册表(每周探活, 共 {len(models)} 个, 文件 ~/.cc-switch/model_pool.json; 可让路由层按 key_env 换端点):"]
+        # 只列前若干 + 标不可用的跳过 key 细节,按 provider 归组精简
+        shown = 0
+        for name, m in models.items():
+            if shown >= 12:
+                lines.append(f"  … 其余 {len(models)-shown} 个见文件")
+                break
+            if not isinstance(m, dict):
+                continue
+            prov = m.get("provider", "?")
+            strengths = ",".join(m.get("strengths", [])[:3]) or "通用"
+            # _unavailable = 上次周探时该模型的 env key 未配/不可达,不代表模型本身无效
+            # (用户可能经自定义端点带自有 key 在用,如 minimax-m3);故标 key 状态而非「不可用」
+            keystate = " [池env-key未配]" if m.get("_unavailable") else ""
+            lines.append(f"  - {name} ({prov}): 长项 {strengths}{keystate}")
+            shown += 1
+        return lines
+    except Exception:  # noqa: BLE001
+        return []
+
+
 def _local_env_block() -> str:
     """组 [本机环境] 块:可用工具 + 已配端点。带 60s 缓存。"""
     now = time.time()
@@ -201,6 +236,9 @@ def _local_env_block() -> str:
     if endpoints:
         parts.append("已配置模型端点(对话壳路由用,key 不回显):")
         parts.extend(endpoints)
+    pool = _model_pool_block()
+    if pool:
+        parts.extend(pool)
     parts.append("[环境结束]")
     text = "\n".join(parts)
     _ENV_CACHE["text"] = text
