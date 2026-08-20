@@ -74,6 +74,28 @@ def _t_list_files(path: str, workdir: str) -> str:
         return f"[list_files error] {e}"
 
 
+# ---------- 思考档位抽象(off/low/medium/high) ----------
+# 各家「思考/推理」参数不统一:GPT/Codex=reasoning_effort(low/medium/high),
+# Claude=thinking{budget_tokens}, Kimi/Qwen=enable_thinking, K3 等无档位。
+# 利用 litellm.drop_params=True(不识别的参数静默丢弃),统一同时下发
+# reasoning_effort + thinking 预算,由 litellm 按 provider 各自翻译/丢弃。
+THINK_LEVELS = ("off", "low", "medium", "high")
+_THINK_BUDGET = {"off": 0, "low": 1024, "medium": 4096, "high": 16384}
+
+
+def _think_kwargs(think_level: str) -> dict:
+    """把统一档位翻译成 litellm kwargs。off → 尽量关思考。"""
+    lvl = (think_level or "").lower()
+    if lvl not in THINK_LEVELS:
+        return {}
+    if lvl == "off":
+        return {"reasoning_effort": "minimal", "thinking": {"type": "disabled"}}
+    return {
+        "reasoning_effort": lvl,  # low/medium/high(GPT/Codex 系)
+        "thinking": {"type": "enabled", "budget_tokens": _THINK_BUDGET[lvl]},  # Claude 系
+    }
+
+
 def _completion_with_temperature_fallback(**kwargs):
     """调 litellm.completion,对「temperature 取值受限」的模型自动降级重试。
 
@@ -149,13 +171,14 @@ SYSTEM_CHAT = (
 
 
 def run_conversation(messages: list, model: str, workdir: str, max_turns: int = 6,
-                     use_tools: bool = True) -> dict:
+                     use_tools: bool = True, think_level: str = "") -> dict:
     """对话模式:接受完整多轮 messages([{role,content}]),返回单轮 assistant 回复。
 
     与 run_agent 的区别:
       - 不注入"自主任务 + DONE"系统提示,改用 SYSTEM_CHAT 助手提示
       - 返回最后一轮 assistant content,不循环到 DONE
       - 仍允许少量工具调用(max_turns 内),但收到无工具调用的文本回复即返回
+      - think_level: off/low/medium/high,空=不指定(用平台默认)
     """
     import litellm
     litellm.drop_params = True
@@ -163,10 +186,12 @@ def run_conversation(messages: list, model: str, workdir: str, max_turns: int = 
     t0 = time.time()
     turns = 0
     tools = TOOLS if use_tools else None
+    think_kw = _think_kwargs(think_level)
     for _ in range(max(1, max_turns)):
         turns += 1
         try:
             kwargs = dict(model=model, messages=msgs, temperature=0.7)
+            kwargs.update(think_kw)
             if tools:
                 kwargs.update(tools=tools, tool_choice="auto")
             resp = _completion_with_temperature_fallback(**kwargs)

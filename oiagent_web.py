@@ -124,7 +124,8 @@ def delete_session(sid: str) -> None:
 # ============================================================
 # 对话执行(后台线程 → asyncio 跑 router + followups)
 # ============================================================
-def _run_chat_thread(sid: str, user_text: str, strategy: str, model: str, workdir: str):
+def _run_chat_thread(sid: str, user_text: str, strategy: str, model: str, workdir: str,
+                     think_level: str = ""):
     try:
         history = get_messages(sid)
         msgs = [{"role": m["role"], "content": m["content"]} for m in history]
@@ -135,11 +136,13 @@ def _run_chat_thread(sid: str, user_text: str, strategy: str, model: str, workdi
             pick = _router.route(msgs + [{"role": "user", "content": user_text}], strategy)
             platform, cfg = pick["platform"], pick["cfg"]
             lm = _litellm_model_for(platform, cfg, pick["task_type"])
-            res = run_conversation(msgs + [{"role": "user", "content": user_text}], lm, workdir)
+            res = run_conversation(msgs + [{"role": "user", "content": user_text}], lm, workdir,
+                                   think_level=think_level)
             answer = res["out"]
             used = f"{platform}:{cfg['model']}"
         else:
-            res = run_conversation(msgs + [{"role": "user", "content": user_text}], model, workdir)
+            res = run_conversation(msgs + [{"role": "user", "content": user_text}], model, workdir,
+                                   think_level=think_level)
             answer = res["out"]
             used = model
 
@@ -354,6 +357,9 @@ _PAGE = r"""<!DOCTYPE html>
     color:#fbf6ec; font-size:14px; cursor:pointer; }
   #send:hover { background:var(--gh-green); }
   #send:disabled { background:var(--gh-paper-3); color:var(--gh-ink-faint); cursor:not-allowed; }
+  .composer-bar { display:flex; flex-direction:column; gap:6px; align-items:stretch; }
+  #think-level { padding:6px 8px; border-radius:8px; border:1px solid var(--gh-line);
+    background:var(--gh-surface); color:var(--gh-ink); font-size:12px; cursor:pointer; }
   #status { padding:0 28px 8px; font-size:12px; color:var(--gh-ink-soft); min-height:18px; }
   .spinner { display:inline-block; width:13px; height:13px; border:2px solid var(--gh-paper-3);
     border-top-color:var(--gh-green-deep); border-radius:50%; animation:spin .8s linear infinite;
@@ -430,7 +436,16 @@ _PAGE = r"""<!DOCTYPE html>
     <div id="composer">
       <div class="box">
         <textarea id="input" rows="2" placeholder="问点什么… (Enter 发送,Shift+Enter 换行)"></textarea>
-        <button id="send" onclick="sendMessage()">发送</button>
+        <div class="composer-bar">
+          <select id="think-level" title="思考档位:无档位的模型(如 K3)会自动忽略">
+            <option value="">思考:默认</option>
+            <option value="off">思考:关闭</option>
+            <option value="low">思考:低</option>
+            <option value="medium">思考:中</option>
+            <option value="high">思考:高</option>
+          </select>
+          <button id="send" onclick="sendMessage()">发送</button>
+        </div>
       </div>
     </div>
   </div>
@@ -601,8 +616,9 @@ async function sendMessage() {
   btn.disabled = true;
   addMsg('user', text);
   setStatus('<span class="spinner"></span>思考中…');
+  const thinkLevel = (document.getElementById('think-level')||{}).value || '';
   await api('/chat', {method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({message:text, session_id:sessionId})});
+    body:JSON.stringify({message:text, session_id:sessionId, think_level:thinkLevel})});
   if (!polling) pollResult();
 }
 
@@ -850,8 +866,9 @@ class Handler(BaseHTTPRequestHandler):
             _running[sid] = True
         add_message(sid, "user", message)
         strategy = body.get("strategy", DEFAULT_STRATEGY)
+        think_level = (body.get("think_level") or "").strip().lower()
         t = threading.Thread(target=_run_chat_thread,
-                             args=(sid, message, strategy, DEFAULT_MODEL, DEFAULT_WORKDIR),
+                             args=(sid, message, strategy, DEFAULT_MODEL, DEFAULT_WORKDIR, think_level),
                              daemon=True)
         t.start()
         self._json({"session_id": sid, "status": "running"})
