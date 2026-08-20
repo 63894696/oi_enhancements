@@ -30,6 +30,7 @@ from urllib.parse import urlparse, parse_qs, quote
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from oiagent_cli import run_conversation  # noqa: E402
+from oiagent_context import MASK_RATIO, usage_for, mask_old_tool_outputs  # noqa: E402
 from fastlane.providers.llm_prisir import (  # noqa: E402
     PrisirKeyStore, PrisirRouter, generate_followups, list_endpoint_models,
 )
@@ -394,17 +395,35 @@ def _run_chat_thread(sid: str, user_text: str, strategy: str, model: str, workdi
         sys_extra = _shell_system_prompt(user_text)
 
         use_router = bool(_router.available_platforms())
+        # 上下文窗口管理(档位1 预警 + 档位2 observation masking)。
+        # 先定模型再算用量;masking 只改发给模型的副本,不动 SQLite 全文。
         if use_router:
             # Prisir 路由: 用 router 选定平台后,把该平台模型映射到 litellm model 串
             pick = _router.route(msgs + [{"role": "user", "content": user_text}], strategy)
             platform, cfg = pick["platform"], pick["cfg"]
             lm = _litellm_model_for(platform, cfg, pick["task_type"])
-            res = run_conversation(msgs + [{"role": "user", "content": content}], lm, workdir,
+        else:
+            lm = model
+
+        # 用量评估(基于将送入的完整历史),超阈值则遮蔽旧 tool 输出
+        full_msgs = msgs + [{"role": "user", "content": content}]
+        usage = usage_for(full_msgs, lm)
+        # mask_old_tool_outputs 返回副本(不就地改);传 model 让其自适应收紧,
+        # 超阈值才遮蔽旧 tool 输出,直至估算用量回落到 MASK_RATIO 以下。
+        send_msgs = mask_old_tool_outputs(full_msgs, model=lm) if usage["mask"] else full_msgs
+        if usage["mask"]:
+            # 记录遮蔽动作 + 遮蔽条数,透出给前端(meta)便于排查
+            n_masked = sum(1 for m in send_msgs
+                           if m.get("role") == "tool" and "已遮蔽" in str(m.get("content", "")))
+            usage = dict(usage, masked=True, masked_count=n_masked)
+
+        if use_router:
+            res = run_conversation(send_msgs, lm, workdir,
                                    think_level=think_level, system_extra=sys_extra)
             answer = res["out"]
             used = f"{platform}:{cfg['model']}"
         else:
-            res = run_conversation(msgs + [{"role": "user", "content": content}], model, workdir,
+            res = run_conversation(send_msgs, lm, workdir,
                                    think_level=think_level, system_extra=sys_extra)
             answer = res["out"]
             used = model
@@ -419,7 +438,14 @@ def _run_chat_thread(sid: str, user_text: str, strategy: str, model: str, workdi
         sess = get_session(sid)
         if sess and sess[1] == "新会话":
             rename_session(sid, user_text[:24])
-        _set_meta(sid, {"last_model": used, "rc": res["rc"]})
+        _set_meta(sid, {"last_model": used, "rc": res["rc"],
+                        "context_usage": {
+                            "used": usage["used"], "window": usage["window"],
+                            "ratio": usage["ratio"], "near_full": usage["near_full"],
+                            "known": usage["known"], "masked": bool(usage.get("masked")),
+                            "masked_count": usage.get("masked_count", 0),
+                            "advise": usage["advise"],
+                        }})
     except Exception as e:  # noqa: BLE001
         add_message(sid, "assistant", f"[错误] {type(e).__name__}: {e}", [])
     finally:
@@ -712,6 +738,10 @@ _PAGE = r"""<!DOCTYPE html>
 
   #conv { flex:1; display:flex; flex-direction:column; min-width:0; }
   #conv-head { display:flex; align-items:center; gap:10px; padding:10px 28px; border-bottom:1px solid var(--gh-line); }
+  #ctx-usage { font-size:11px; color:var(--gh-ink-faint); padding:2px 8px; border-radius:8px;
+    background:rgba(0,0,0,.04); white-space:nowrap; cursor:default; }
+  #ctx-usage.warn { color:#a05a1e; background:rgba(180,120,30,.12); font-weight:600; }
+  #ctx-usage.masked { color:#7a4a9e; background:rgba(122,74,158,.10); }
   #conv-title { font-size:15px; font-weight:600; flex:1; }
   /* Perplexity ⋯ 菜单 */
   #menu-wrap { position:relative; }
@@ -818,6 +848,7 @@ _PAGE = r"""<!DOCTYPE html>
   <div id="conv">
     <div id="conv-head">
       <div id="conv-title">新会话</div>
+      <span id="ctx-usage" title="上下文窗口用量(估算)"></span>
       <div id="menu-wrap">
         <button id="menu-btn" onclick="toggleMenu(event)">⋯</button>
         <div id="menu">
@@ -922,6 +953,26 @@ async function api(path, opts) {
 
 function esc(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
 
+/* 上下文窗口用量指示(档位1 预警 + 档位2 masking 透出)。 */
+function renderCtxUsage(cu) {
+  const el = document.getElementById('ctx-usage');
+  if (!el) return;
+  el.className = '';
+  if (!cu || !cu.window) { el.textContent = ''; el.title = '上下文窗口用量(估算)'; return; }
+  const pct = Math.round((cu.ratio || 0) * 100);
+  const usedK = (cu.used / 1000).toFixed(1), winK = Math.round(cu.window / 1000);
+  let txt = `📏 ${usedK}k/${winK}k (${pct}%)`;
+  let tip = `上下文用量估算: 约 ${cu.used}/${cu.window} tokens (${pct}%)`;
+  if (cu.masked || cu.will_mask) { txt += cu.masked ? ' · 已遮蔽旧工具输出' : ' · 旧工具输出将被遮蔽'; el.classList.add('masked');
+    tip += '\n超阈值自动遮蔽旧工具输出(observation masking)' +
+      (cu.masked_count ? `(本轮遮蔽 ${cu.masked_count} 条)` : '') + ',对话全文仍保留在本地。'; }
+  if (cu.near_full) { el.classList.add('warn'); txt += ' ⚠ 建议开新会话';
+    tip += '\n已用超 75%,建议开新会话避免上下文溢出。'; }
+  if (cu.advise) { tip += '\n' + cu.advise; }
+  el.textContent = txt;
+  el.title = tip;
+}
+
 function addMsg(role, text, followups) {
   const box = document.getElementById('messages');
   const d = document.createElement('div');
@@ -967,6 +1018,13 @@ async function switchSession(id) {
   document.getElementById('pin-label').textContent = r.pinned ? '取消固定' : '固定的';
   r.messages.forEach(m => addMsg(m.role, m.content, m.followups));
   loadSessions();
+  refreshCtxUsage();
+}
+
+async function refreshCtxUsage() {
+  if (!sessionId) { renderCtxUsage(null); return; }
+  try { const r = await api('/context_usage?session_id=' + sessionId);
+    if (r.context_usage) renderCtxUsage(r.context_usage); } catch (e) {}
 }
 
 async function newSession() {
@@ -975,6 +1033,7 @@ async function newSession() {
   document.getElementById('messages').innerHTML = '';
   document.getElementById('conv-title').textContent = '新会话';
   setStatus('');
+  renderCtxUsage(null);
   document.getElementById('send').disabled = false;
   loadSessions();
 }
@@ -1092,6 +1151,7 @@ async function pollResult() {
   while (sessionId) {
     await new Promise(r => setTimeout(r, 900));
     const r = await api('/status?session_id=' + sessionId);
+    if (r.meta && r.meta.context_usage) renderCtxUsage(r.meta.context_usage);
     if (!r.running) {
       const h = await api('/history?session_id=' + sessionId);
       document.getElementById('messages').innerHTML = '';
@@ -1306,6 +1366,16 @@ class Handler(BaseHTTPRequestHandler):
             with _running_lock:
                 running = _running.get(sid, False)
             self._json({"running": running, "meta": _get_meta(sid)})
+        elif path == "/oiagent/api/context_usage":
+            # 切会话/加载时即算一次用量(不依赖 chat 后的 meta)。
+            # model 未知时用 DEFAULT_MODEL 估;若 meta 已有 last_model 用之更准。
+            sid = (qs.get("session_id") or [""])[0]
+            msgs = get_messages(sid)
+            meta = _get_meta(sid)
+            model = meta.get("last_model") or DEFAULT_MODEL
+            u = usage_for([{"role": m["role"], "content": m["content"]} for m in msgs], model)
+            u["will_mask"] = bool(u.pop("mask"))  # 加载时仅预估,未真正遮蔽
+            self._json({"context_usage": u})
         elif path == "/oiagent/api/keys":
             self._json(_key_store.list_platforms())
         elif path == "/oiagent/api/models":

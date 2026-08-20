@@ -1,0 +1,160 @@
+"""oiagent_context.py — 壳端上下文窗口管理(移植自 NTP ctx.js + observation masking)。
+
+两档(用户拍板 1+2, 2026-08-20, 详见 docs/oiagent-shell-context-window-management-2026-08-20.md):
+
+  档位 1 — 窗口表 + token 估算 + 75% 预警(止血):
+    CONTEXT_WINDOWS / DEFAULT_WINDOW / WARN_RATIO
+    estimate_tokens(text) / context_window(model) / usage_for(messages, model)
+
+  档位 2 — observation masking(零 LLM 成本,性价比最高):
+    mask_old_tool_outputs(messages, keep_recent=KEEP_RECENT_TOOL)
+    超阈值时把非最近的 tool 角色长输出替换为占位符,只改发给模型的副本,
+    不动数据库全文(导出/Obsidian 经验仍需全文)。
+
+红线对齐:零 LLM 成本(纯本地确定性逻辑);不丢数据(masking 只作用于发送副本)。
+"""
+from __future__ import annotations
+
+import re
+
+# ---- 模型上下文窗口表(token)。移植自 ntp/ctx.js + 补充壳常用模型。
+# 值取各模型官方/常见配置的保守下界,宁可提醒早不可溢出。----
+CONTEXT_WINDOWS = {
+    "agnes-2.5-flash": 128000,
+    "moonshot-v1-128k": 128000,
+    "moonshot-v1-32k": 32000,
+    "moonshot-v1-8k": 8000,
+    "kimi-k2": 128000,
+    "minimax-abab6.5": 245760,
+    "minimax-m": 245760,          # minimax-m 系(M2/M3 等)按 245k 档
+    "gpt-4o": 128000,
+    "gpt-4o-mini": 128000,
+    "gpt-4-turbo": 128000,
+    "claude-opus": 200000,
+    "claude-sonnet": 200000,
+    "qwen3-coder-plus": 131072,   # dashscope 默认(dashscope/qwen3-coder-plus-*)
+    "qwen-max": 32000,
+    "qwen-plus": 131072,
+    "deepseek-chat": 64000,
+    "deepseek-v": 64000,          # deepseek-v3/v3.1 等
+}
+DEFAULT_WINDOW = 8000            # 未知模型保守默认
+WARN_RATIO = 0.75                # 用到 75% 即提醒"建议开新会话"
+MASK_RATIO = 0.70                # 用到 70% 触发 observation masking(略早于预警)
+KEEP_RECENT_TOOL = 6             # masking 时保留最近 N 条 tool 输出原样
+
+# 建议的大上下文模型(未知/小窗口模型时提示用户)
+RECOMMENDED = "建议接大上下文模型(如 agnes-2.5-flash / moonshot-v1-128k / claude 系列,128k+)更稳"
+
+# CJK 字符区间(与 NTP ctx.js 同算法):⺀-鿿 + 豈-﫿
+_CJK_RE = re.compile(r"[⺀-鿿豈-﫿]")
+
+
+def estimate_tokens(text) -> int:
+    """粗估 token:中英文混排 CJK ~1 字/token、其他 ~4 字符/token。
+    只为阈值提醒/遮蔽触发,不求精确。与 NTP ctx.js estimateTokens 同算法。"""
+    s = str(text or "")
+    cjk = len(_CJK_RE.findall(s))
+    other = len(s) - cjk
+    return int(cjk / 1.0 + other / 4.0 + 0.999)  # ceil
+
+
+def context_window(model) -> dict:
+    """按模型查上下文窗口表。返回 {window, known}。未知模型保守默认。"""
+    if not model:
+        return {"window": DEFAULT_WINDOW, "known": False}
+    m = str(model).lower()
+    for k in CONTEXT_WINDOWS:
+        if k in m:
+            return {"window": CONTEXT_WINDOWS[k], "known": True}
+    return {"window": DEFAULT_WINDOW, "known": False}
+
+
+def _msg_text(m: dict) -> str:
+    """取消息文本:content 可能是 str 或多模态 list(取 text 块)。"""
+    c = m.get("content")
+    if isinstance(c, str):
+        return c
+    if isinstance(c, list):
+        parts = []
+        for blk in c:
+            if isinstance(blk, dict) and blk.get("type") == "text":
+                parts.append(str(blk.get("text") or ""))
+        return "\n".join(parts)
+    return str(c or "")
+
+
+def usage_for(messages, model) -> dict:
+    """会话当前用量 + 是否该提醒/遮蔽。
+
+    messages: [{role, content, ...}];model: 当前模型 id(可为 litellm 串如
+    "openai/qwen3-coder-plus" 或裸模型名 —— context_window 做子串匹配,带前缀也能命中)。
+    返回 {used, window, known, ratio, near_full, mask, advise}。
+    """
+    win = context_window(model)
+    window, known = win["window"], win["known"]
+    used = 0
+    for m in messages or []:
+        used += estimate_tokens(_msg_text(m)) + 8  # +8 角色/格式开销
+    ratio = used / window if window else 0.0
+    return {
+        "used": used,
+        "window": window,
+        "known": known,
+        "ratio": round(ratio, 4),
+        "near_full": ratio >= WARN_RATIO,
+        "mask": ratio >= MASK_RATIO,
+        # 未知识别模型 → 顺带建议换大上下文模型
+        "advise": None if known else RECOMMENDED,
+    }
+
+
+def _mask_with_keep(messages, keep_set: set) -> list:
+    """内部:按 keep_set(保留原样的消息索引)做遮蔽。"""
+    out = []
+    for i, m in enumerate(messages):
+        m = m or {}
+        if m.get("role") == "tool" and i not in keep_set:
+            orig = _msg_text(m)
+            # 原内容很短就不遮蔽(省不出多少,还损失信息)
+            if len(orig) >= 200:
+                nm = dict(m)
+                nm["content"] = f"[旧工具输出已遮蔽: 原 {len(orig)} 字符]"
+                out.append(nm)
+                continue
+        out.append(m)
+    return out
+
+
+def mask_old_tool_outputs(messages, keep_recent: int = KEEP_RECENT_TOOL,
+                          model=None) -> list:
+    """observation masking:把非最近的 tool 角色长输出替换为占位符。
+
+    只作用于发给模型的副本(调用方传入的 list),不动数据库全文。
+    保留最近若干条 tool 消息原样;更早的替换为
+    `[旧工具输出已遮蔽: 原 N 字符]`(留原长度,保可追溯)。
+    user/assistant/system 消息全保留(承载对话语义,不是大头)。
+    返回新 list(不就地改传入对象)。
+
+    自适应收紧:壳上 tool 输出往往是大头,固定保留 keep_recent 条可能仍超阈值。
+    若给了 model,则逐步减少保留条数(keep_recent → 0),直到估算用量回落到
+    MASK_RATIO 以下(或只剩 keep=0),让长对话真正回到安全水位而非只省一点。
+    """
+    if not messages:
+        return list(messages or [])
+    tool_idx = [i for i, m in enumerate(messages) if (m or {}).get("role") == "tool"]
+    if not tool_idx:
+        return list(messages)
+
+    def _build(kr):
+        keep_from = max(0, len(tool_idx) - kr)
+        return _mask_with_keep(messages, set(tool_idx[keep_from:]))
+
+    result = _build(keep_recent)
+    # 自适应:若给了 model 且仍超 MASK_RATIO,逐步收紧保留条数
+    if model is not None:
+        kr = keep_recent
+        while kr > 0 and usage_for(result, model)["ratio"] >= MASK_RATIO:
+            kr -= 1
+            result = _build(kr)
+    return result
