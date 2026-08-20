@@ -74,6 +74,64 @@ def _t_list_files(path: str, workdir: str) -> str:
         return f"[list_files error] {e}"
 
 
+# ---------- search_files:优先调 Everything 的 es.exe(NTFS 全盘极速属性搜) ----------
+# es.exe 依赖本机 Everything.exe 服务在跑;不在 PATH 时尝试常见落地路径。
+# 找不到 es.exe 或服务未运行 → 回退到 os.walk 按文件名子串匹配(慢但稳)。
+_ES_KNOWN_PATHS = (
+    r"D:\down\es-temp\ES-extracted\es.exe",
+    r"D:\down\Everything系统搜索工具\Everything-1.4.1.969.x64\es.exe",
+    r"C:\Program Files\Everything\es.exe",
+    r"C:\Program Files (x86)\Everything\es.exe",
+)
+
+
+def _find_es_exe() -> str:
+    """解析 es.exe 路径:PATH → 已知落地路径。找不到返回 ""。"""
+    try:
+        import shutil
+        p = shutil.which("es.exe") or shutil.which("es")
+        if p:
+            return p
+    except Exception:  # noqa: BLE001
+        pass
+    for cand in _ES_KNOWN_PATHS:
+        if os.path.isfile(cand):
+            return cand
+    return ""
+
+
+def _t_search_files(query: str, workdir: str, limit: int = 50) -> str:
+    """按文件名/路径关键词搜索。es.exe 可用则全盘秒级搜,否则 workdir 下走文件系统。"""
+    q = (query or "").strip()
+    if not q:
+        return "[search_files error] empty query"
+    limit = max(1, min(int(limit or 50), 200))
+    es = _find_es_exe()
+    if es:
+        try:
+            r = subprocess.run([es, "-n", str(limit), q], capture_output=True, timeout=20)
+            out = (r.stdout or b"").decode("utf-8", "replace").strip()
+            if r.returncode == 0 and out:
+                return out
+            # es.exe 报错(常见:Everything 服务未启动) → 落到 walk
+        except Exception:  # noqa: BLE001
+            pass
+    # 回退:workdir 下按文件名子串匹配
+    try:
+        hits = []
+        ql = q.lower()
+        for root, dirs, files in os.walk(workdir):
+            dirs[:] = [d for d in dirs if d not in ("__pycache__", ".pytest_cache", ".git", "node_modules")]
+            for fn in files:
+                if ql in fn.lower():
+                    hits.append(os.path.join(root, fn))
+                    if len(hits) >= limit:
+                        return "\n".join(hits)
+        return "\n".join(hits) or "[no match]"
+    except Exception as e:  # noqa: BLE001
+        return f"[search_files error] {e}"
+
+
 # ---------- 思考档位抽象(off/low/medium/high) ----------
 # 各家「思考/推理」参数不统一:GPT/Codex=reasoning_effort(low/medium/high),
 # Claude=thinking{budget_tokens}, Kimi/Qwen=enable_thinking, K3 等无档位。
@@ -134,6 +192,13 @@ TOOLS = [
         "name": "list_files",
         "description": "List files under a path (relative to workdir).",
         "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}},
+    {"type": "function", "function": {
+        "name": "search_files",
+        "description": "Search files by name/path keyword across the whole disk (via Everything es.exe if available, else walk workdir). Faster than list_files for finding a file whose location you don't know.",
+        "parameters": {"type": "object", "properties": {
+            "query": {"type": "string", "description": "filename/path keyword to search"},
+            "limit": {"type": "integer", "description": "max results, default 50"}},
+            "required": ["query"]}}},
 ]
 
 
@@ -150,6 +215,8 @@ def dispatch(name: str, args: dict, workdir: str) -> str:
         return _t_run_shell(args.get("command", ""), workdir)
     if name == "list_files":
         return _t_list_files(args.get("path", "."), workdir)
+    if name == "search_files":
+        return _t_search_files(args.get("query", ""), workdir, args.get("limit", 50))
     return f"[unknown tool {name}]"
 
 
@@ -165,8 +232,16 @@ SYSTEM = (
 SYSTEM_CHAT = (
     "You are oiagent, a helpful AI assistant in Prisir Browser (no-account, local-first). "
     "Answer the user's questions directly and clearly, in the user's language. "
-    "You may use the provided tools to read/write files or run shell commands when the task needs it, "
-    "but for pure Q&A just answer in prose. Keep answers focused and well-structured."
+    "You may use the provided tools to read/write files, run shell commands, and search files "
+    "when the task needs it, but for pure Q&A just answer in prose. Keep answers focused and well-structured.\n\n"
+    "Attachments: the user can attach files to a message. Text/code files arrive inlined under "
+    "'--- 附件 name ---' markers (truncated at 12k chars); images arrive as multimodal content you can see directly. "
+    "A GIF arrives as its first frame only — you cannot watch the animation, so say so honestly if asked. "
+    "Audio/video are NOT auto-transcribed: if the user wants subtitles/transcription, offer to run the local "
+    "ffmpeg + faster-whisper pipeline via run_shell when those tools are available (check the available-tools list), "
+    "or write a script the user can run.\n\n"
+    "Tools: prefer search_files (Everything es.exe, whole-disk instant) over list_files when locating a file "
+    "whose location you don't know; use list_files for browsing a known directory tree."
 )
 
 

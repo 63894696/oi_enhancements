@@ -84,7 +84,7 @@ def _get_oi_memory():
 
 
 def _shell_system_prompt(user_text: str) -> str:
-    """组壳对话的系统提示:纪律 preamble + 记忆召回块。全程失败静默。"""
+    """组壳对话的系统提示:纪律 preamble + 记忆召回块 + 本机环境块。全程失败静默。"""
     parts = []
     constitution = _load_constitution()
     if constitution:
@@ -92,6 +92,10 @@ def _shell_system_prompt(user_text: str) -> str:
             "你是 oiagent,运行在本地对话壳(Prisir Shell)。下面【项目宪法】是硬性技术契约,"
             "涉及凭证/密钥/网络/代码正确性时以它为准,违反即返工;普通问答不影响。\n\n"
             "【项目宪法】\n" + constitution)
+    # 本机环境:可用工具 + 已配端点,让模型不用猜/不用现查
+    env_block = _local_env_block()
+    if env_block:
+        parts.append(env_block)
     # 记忆召回:按本轮问题召回相关历史/dev_lessons
     if os.environ.get("OIAGENT_RECALL", "1") != "0":
         mem = _get_oi_memory()
@@ -108,6 +112,100 @@ def _shell_system_prompt(user_text: str) -> str:
             except Exception:  # noqa: BLE001
                 pass
     return "\n\n".join(parts)
+
+
+# ============================================================
+# 本机环境发现(任务#36):让模型知道本机已装什么、已配哪些端点,不用现查现猜
+# 每 60s 重扫一次(PATH/已装软件可能变);任何一步失败都静默降级,不阻塞对话。
+# ============================================================
+_ENV_CACHE: dict = {"ts": 0.0, "text": ""}
+_ENV_CACHE_TTL = 60.0
+
+# 要探测的本机工具: name -> 候选解析方式
+_LOCAL_TOOL_CANDIDATES = (
+    ("ffmpeg", ("ffmpeg",)),
+    ("whisper (OpenAI ASR)", ("whisper",)),
+    ("es.exe (Everything 全盘搜索)", ("es.exe", "es")),
+)
+
+
+def _detect_local_tools() -> list[str]:
+    """扫 PATH + 已知路径,返回已就位的本机工具描述行。"""
+    import shutil  # noqa: PLC0415
+    lines = []
+    for label, cmds in _LOCAL_TOOL_CANDIDATES:
+        found = ""
+        for c in cmds:
+            p = shutil.which(c)
+            if p:
+                found = p
+                break
+        # es.exe 常不在 PATH,补已知落地路径
+        if not found and label.startswith("es.exe"):
+            for cand in (
+                r"D:\down\es-temp\ES-extracted\es.exe",
+                r"D:\down\Everything系统搜索工具\Everything-1.4.1.969.x64\es.exe",
+                r"C:\Program Files\Everything\es.exe",
+            ):
+                if os.path.isfile(cand):
+                    found = cand
+                    break
+        if found:
+            lines.append(f"  - {label}: {found}")
+    # Python 包级工具(无独立 exe 也可调用)
+    try:
+        import importlib.util  # noqa: PLC0415
+        if importlib.util.find_spec("faster_whisper") is not None:
+            lines.append("  - faster-whisper (Python 包, 音视频转字幕, 比 whisper 快): 已装")
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        import imageio_ffmpeg  # noqa: PLC0415
+        lines.append(f"  - ffmpeg (imageio-ffmpeg 自带): {imageio_ffmpeg.get_ffmpeg_exe()}")
+    except Exception:  # noqa: BLE001
+        pass
+    return lines
+
+
+def _configured_endpoints() -> list[str]:
+    """列出已配置的模型端点(只示 base_url + model + 有无 key,绝不回显 key 本体)。"""
+    lines = []
+    try:
+        for p in _key_store.list_platforms():
+            if not p.get("has_key"):
+                continue
+            base = p.get("base_url") or "(默认)"
+            model = p.get("model") or "(未设)"
+            proto = (p.get("meta") or {}).get("proto", "")
+            proto_tag = f" [{proto}协议]" if proto else ""
+            lines.append(f"  - {p['platform']}: {base} 模型={model}{proto_tag} key={p.get('key_hint','***')}")
+    except Exception:  # noqa: BLE001
+        pass
+    return lines
+
+
+def _local_env_block() -> str:
+    """组 [本机环境] 块:可用工具 + 已配端点。带 60s 缓存。"""
+    now = time.time()
+    if _ENV_CACHE["text"] and (now - _ENV_CACHE["ts"]) < _ENV_CACHE_TTL:
+        return _ENV_CACHE["text"]
+    tools = _detect_local_tools()
+    endpoints = _configured_endpoints()
+    if not tools and not endpoints:
+        return ""
+    parts = ["[本机环境 — 已可用,不用现查]"]
+    if tools:
+        parts.append("本机已装工具(可直接通过 run_shell 调用):")
+        parts.extend(tools)
+        parts.append("  音视频转字幕工作流: ffmpeg 抽音轨 → faster-whisper 转写 → .srt")
+    if endpoints:
+        parts.append("已配置模型端点(对话壳路由用,key 不回显):")
+        parts.extend(endpoints)
+    parts.append("[环境结束]")
+    text = "\n".join(parts)
+    _ENV_CACHE["text"] = text
+    _ENV_CACHE["ts"] = now
+    return text
 
 # 运行中会话的内存锁/状态(结果落 SQLite,运行状态在内存)
 _running: dict[str, bool] = {}
