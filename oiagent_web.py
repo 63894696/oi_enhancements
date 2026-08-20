@@ -881,7 +881,19 @@ async function deleteSession(){ if(!sessionId) return;
   if(!yes) return;
   await api('/delete', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId})}); newSession(); }
 
-function exportAs(fmt){ if(!sessionId){alert('先开始一个会话');return;} window.open('/oiagent/api/export?session_id='+sessionId+'&fmt='+fmt, '_blank'); }
+function exportAs(fmt){
+  if(!sessionId){alert('先开始一个会话');return;}
+  const url='/oiagent/api/export?session_id='+sessionId+'&fmt='+fmt;
+  if(fmt==='pdf'){
+    // PDF 走打印友好页,需可见窗口供用户另存;新tab保留
+    window.open(url,'_blank'); return;
+  }
+  // md/docx 是 attachment 下载:用隐藏 <a download> 同源点击,
+  // 不开 _blank 新窗 → 修掉「下载后残留空白窗」的 bug。
+  const a=document.createElement('a');
+  a.href=url; a.download=''; document.body.appendChild(a);
+  a.click(); a.remove();
+}
 
 async function sendMessage() {
   const input = document.getElementById('input');

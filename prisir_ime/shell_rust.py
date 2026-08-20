@@ -335,7 +335,20 @@ class PrisirShellIME:
                 return True
         return False
 
+    def _win_down(self):
+        """Win 键(0x5B/0x5C)是否按住 — 单独非缓存检查。
+
+        Bug3 根因:激活态下 Win+D 的 'd' 是真实键,_wants_key 会吞掉它,
+        而 _modifier_down() 在钩子回调里有竞态(Win 键 state 可能尚未置位),
+        导致 D 被吞、Win+D 切桌面失效。这里对 Win 键做一次直接 GetAsyncKeyState,
+        在 _wants_key 里优先放行所有 Win 组合键。"""
+        u = ctypes.windll.user32
+        return bool(u.GetAsyncKeyState(0x5B) & 0x8000 or u.GetAsyncKeyState(0x5C) & 0x8000)
+
     def _wants_key(self, vk):
+        # Win 组合键(Win+D/E/R/L…)一律放行,绝不吞字母 → 系统快捷键不被吃掉
+        if self._win_down():
+            return False
         # 字母始终吞(激活态就是打字)
         if 0x41 <= vk <= 0x5A:
             return True
