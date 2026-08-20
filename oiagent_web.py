@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
 import html
 import json
 import os
@@ -48,6 +49,59 @@ _router = PrisirRouter(_key_store)
 # 运行中会话的内存锁/状态(结果落 SQLite,运行状态在内存)
 _running: dict[str, bool] = {}
 _running_lock = threading.Lock()
+
+# 工作目录(可被 /api/workdir 覆盖,内存态;工具调用以此为 cwd)
+_WORKDIR = {"path": DEFAULT_WORKDIR}
+
+# 附件大小护栏:文本最多内联 12k 字符,超出截断提示;图片走多模态 content
+_ATTACH_TEXT_MAX = 12000
+_IMG_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
+
+
+def _build_user_content(user_text: str, attachments: list):
+    """把用户文本 + 附件组装成发给模型的 content。
+    文本/代码附件 → 内联进文本(带文件名标注);图片 → OpenAI 多模态 content 列表。
+    attachments: [{name, text?, data_base64?, mime?}](由 /api/upload 或前端直传)
+    """
+    atts = [a for a in (attachments or []) if isinstance(a, dict)]
+    if not atts:
+        return user_text
+    images = [a for a in atts if a.get("data_base64") and (
+        (a.get("mime") or "").startswith("image/") or
+        os.path.splitext(a.get("name", ""))[1].lower() in _IMG_EXT)]
+    texts = [a for a in atts if a not in images and (a.get("text") or a.get("data_base64"))]
+    if images:
+        # 多模态 content 列表(OpenAI/Claude 通用格式,litellm 透传)
+        content = [{"type": "text", "text": user_text}]
+        for a in texts:  # 文本附件先并进 text 块
+            pass
+        for a in images:
+            mime = a.get("mime") or "image/png"
+            content.append({"type": "image_url",
+                            "image_url": {"url": f"data:{mime};base64,{a['data_base64']}"}})
+        if texts:
+            blob = _inline_text_attachments(texts)
+            content[0]["text"] = (user_text + blob) if blob else user_text
+        return content
+    # 纯文本附件 → 内联
+    return user_text + _inline_text_attachments(texts)
+
+
+def _inline_text_attachments(atts: list) -> str:
+    parts = []
+    for a in atts:
+        name = a.get("name", "file")
+        txt = a.get("text", "")
+        if not txt and a.get("data_base64"):
+            try:
+                txt = base64.b64decode(a["data_base64"]).decode("utf-8", "replace")
+            except Exception:  # noqa: BLE001
+                txt = ""
+        if len(txt) > _ATTACH_TEXT_MAX:
+            txt = txt[:_ATTACH_TEXT_MAX] + f"\n…[截断,原 {len(txt)} 字符]"
+        if txt.strip():
+            parts.append(f"\n\n--- 附件 {name} ---\n{txt}")
+    return "".join(parts)
 
 
 # ============================================================
@@ -125,10 +179,12 @@ def delete_session(sid: str) -> None:
 # 对话执行(后台线程 → asyncio 跑 router + followups)
 # ============================================================
 def _run_chat_thread(sid: str, user_text: str, strategy: str, model: str, workdir: str,
-                     think_level: str = ""):
+                     think_level: str = "", attachments: list | None = None):
     try:
         history = get_messages(sid)
         msgs = [{"role": m["role"], "content": m["content"]} for m in history]
+        # 组入附件:文本内联、图片走多模态
+        content = _build_user_content(user_text, attachments)
 
         use_router = bool(_router.available_platforms())
         if use_router:
@@ -136,12 +192,12 @@ def _run_chat_thread(sid: str, user_text: str, strategy: str, model: str, workdi
             pick = _router.route(msgs + [{"role": "user", "content": user_text}], strategy)
             platform, cfg = pick["platform"], pick["cfg"]
             lm = _litellm_model_for(platform, cfg, pick["task_type"])
-            res = run_conversation(msgs + [{"role": "user", "content": user_text}], lm, workdir,
+            res = run_conversation(msgs + [{"role": "user", "content": content}], lm, workdir,
                                    think_level=think_level)
             answer = res["out"]
             used = f"{platform}:{cfg['model']}"
         else:
-            res = run_conversation(msgs + [{"role": "user", "content": user_text}], model, workdir,
+            res = run_conversation(msgs + [{"role": "user", "content": content}], model, workdir,
                                    think_level=think_level)
             answer = res["out"]
             used = model
@@ -360,6 +416,13 @@ _PAGE = r"""<!DOCTYPE html>
   .composer-bar { display:flex; flex-direction:column; gap:6px; align-items:stretch; }
   #think-level { padding:6px 8px; border-radius:8px; border:1px solid var(--gh-line);
     background:var(--gh-surface); color:var(--gh-ink); font-size:12px; cursor:pointer; }
+  #attach-btn { padding:6px 10px; border-radius:8px; border:1px solid var(--gh-line);
+    background:var(--gh-surface); color:var(--gh-ink); font-size:14px; cursor:pointer; }
+  #attach-btn:hover { border-color:var(--gh-green-deep); }
+  #attach-row { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+  .atchip { display:inline-flex; align-items:center; gap:6px; padding:4px 8px; font-size:12px;
+    background:var(--gh-paper-2); border:1px solid var(--gh-line); border-radius:999px; color:var(--gh-ink); }
+  .atchip button { border:none; background:none; color:var(--gh-seal); cursor:pointer; font-size:13px; padding:0; }
   #status { padding:0 28px 8px; font-size:12px; color:var(--gh-ink-soft); min-height:18px; }
   .spinner { display:inline-block; width:13px; height:13px; border:2px solid var(--gh-paper-3);
     border-top-color:var(--gh-green-deep); border-radius:50%; animation:spin .8s linear infinite;
@@ -434,6 +497,7 @@ _PAGE = r"""<!DOCTYPE html>
     <div id="messages"></div>
     <div id="status"></div>
     <div id="composer">
+      <div id="attach-row"></div>
       <div class="box">
         <textarea id="input" rows="2" placeholder="问点什么… (Enter 发送,Shift+Enter 换行)"></textarea>
         <div class="composer-bar">
@@ -444,6 +508,8 @@ _PAGE = r"""<!DOCTYPE html>
             <option value="medium">思考:中</option>
             <option value="high">思考:高</option>
           </select>
+          <button id="attach-btn" type="button" title="附加文件(文本内联/图片多模态)">📎</button>
+          <input id="attach-input" type="file" multiple style="display:none">
           <button id="send" onclick="sendMessage()">发送</button>
         </div>
       </div>
@@ -473,6 +539,15 @@ _PAGE = r"""<!DOCTYPE html>
       </div>
       <datalist id="k-model-list"></datalist>
       <div id="k-model-hint" style="font-size:11px;color:var(--gh-ink-faint);margin-top:4px"></div>
+    </div>
+    <div class="kf">
+      <label>工作目录</label>
+      <div class="hint">oiagent 读写文件/跑命令的基准目录(影响 read_file/run_shell 相对路径)</div>
+      <div style="display:flex;gap:6px">
+        <input id="k-workdir" type="text" placeholder="如 C:\path\to\project" style="flex:1">
+        <button class="topbtn" type="button" onclick="saveWorkdir()">应用</button>
+      </div>
+      <div id="k-workdir-hint" style="font-size:11px;color:var(--gh-ink-faint);margin-top:4px"></div>
     </div>
     <div class="row">
       <button class="topbtn" onclick="saveKeys()">保存</button>
@@ -610,15 +685,17 @@ async function sendMessage() {
   const input = document.getElementById('input');
   const btn = document.getElementById('send');
   const text = input.value.trim();
-  if (!text) return;
+  const atts = _attachments.slice();
+  if (!text && !atts.length) return;
   if (!sessionId) { const r = await api('/new',{method:'POST'}); sessionId = r.session_id; }
   input.value = '';
   btn.disabled = true;
-  addMsg('user', text);
+  addMsg('user', text + (atts.length ? ' ' + atts.map(a=>'[附件:'+a.name+']').join(' ') : ''));
+  _attachments = []; renderAttach();
   setStatus('<span class="spinner"></span>思考中…');
   const thinkLevel = (document.getElementById('think-level')||{}).value || '';
   await api('/chat', {method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({message:text, session_id:sessionId, think_level:thinkLevel})});
+    body:JSON.stringify({message:text, session_id:sessionId, think_level:thinkLevel, attachments:atts})});
   if (!polling) pollResult();
 }
 
@@ -641,8 +718,50 @@ async function pollResult() {
   polling = false;
 }
 
-function openKeys(){ document.getElementById('keymodal').classList.add('open'); renderKeys(); }
+function openKeys(){ document.getElementById('keymodal').classList.add('open'); renderKeys(); loadWorkdir(); }
 function closeKeys(){ document.getElementById('keymodal').classList.remove('open'); }
+async function loadWorkdir(){
+  const r = await api('/info');
+  document.getElementById('k-workdir').value = r.workdir || '';
+}
+async function saveWorkdir(){
+  const hint = document.getElementById('k-workdir-hint');
+  const wd = document.getElementById('k-workdir').value.trim();
+  if(!wd){ hint.textContent = '工作目录不能为空'; return; }
+  const r = await api('/workdir', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workdir:wd})});
+  if(r.ok){ hint.textContent = '已应用:' + r.workdir; }
+  else { hint.textContent = r.error || '设置失败'; }
+}
+
+/* ---- 附件:文本内联 / 图片多模态 ---- */
+let _attachments = [];
+const _IMG_EXT = ['.png','.jpg','.jpeg','.gif','.webp','.bmp'];
+document.getElementById('attach-btn').addEventListener('click', () => document.getElementById('attach-input').click());
+document.getElementById('attach-input').addEventListener('change', async (e) => {
+  const files = Array.from(e.target.files || []);
+  for (const f of files) {
+    const ext = ('.' + (f.name.split('.').pop() || '')).toLowerCase();
+    const isImg = _IMG_EXT.includes(ext) || (f.type || '').startsWith('image/');
+    const b64 = await new Promise((res) => {
+      const rd = new FileReader();
+      rd.onload = () => res(String(rd.result).split(',')[1] || '');
+      rd.readAsDataURL(f);
+    });
+    _attachments.push({ name: f.name, mime: f.type || (isImg ? 'image/png' : 'text/plain'), data_base64: b64 });
+  }
+  e.target.value = '';
+  renderAttach();
+});
+function renderAttach(){
+  const row = document.getElementById('attach-row');
+  row.innerHTML = '';
+  _attachments.forEach((a, i) => {
+    const chip = document.createElement('span'); chip.className = 'atchip';
+    chip.innerHTML = '📎 ' + esc(a.name) + ' <button type="button" title="移除">×</button>';
+    chip.querySelector('button').onclick = () => { _attachments.splice(i, 1); renderAttach(); };
+    row.appendChild(chip);
+  });
+}
 async function pullModels(){
   const hint = document.getElementById('k-model-hint');
   const url = document.getElementById('k-custom-url').value.trim();
@@ -766,7 +885,7 @@ class Handler(BaseHTTPRequestHandler):
         elif path.startswith("/oiagent/assets/"):
             self._asset(path[len("/oiagent/assets/"):])
         elif path == "/oiagent/api/info":
-            self._json({"strategy": DEFAULT_STRATEGY, "workdir": DEFAULT_WORKDIR,
+            self._json({"strategy": DEFAULT_STRATEGY, "workdir": _WORKDIR["path"],
                         "platforms": _router.available_platforms()})
         elif path == "/oiagent/api/sessions":
             self._json(list_sessions())
@@ -848,13 +967,25 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/oiagent/api/keys/delete":
             _key_store.delete_key(body.get("platform", ""))
             self._json({"ok": True})
+        elif path == "/oiagent/api/workdir":
+            wd = (body.get("workdir") or "").strip()
+            if not wd:
+                self._json({"ok": False, "error": "empty workdir"}, 400)
+                return
+            p = os.path.abspath(os.path.expanduser(wd))
+            if not os.path.isdir(p):
+                self._json({"ok": False, "error": f"目录不存在: {p}"}, 400)
+                return
+            _WORKDIR["path"] = p
+            self._json({"ok": True, "workdir": p})
         else:
             self._json({"error": "not found"}, 404)
 
     def _handle_chat(self, body: dict):
         message = (body.get("message") or "").strip()
+        attachments = body.get("attachments") or []
         sid = body.get("session_id") or ""
-        if not message:
+        if not message and not attachments:
             self._json({"error": "empty message"}, 400)
             return
         if not get_session(sid):
@@ -864,11 +995,15 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"error": "already running", "session_id": sid}, 409)
                 return
             _running[sid] = True
-        add_message(sid, "user", message)
+        # 落库的是用户可见文本 + 附件名标注(附件本体不存库,避免膨胀)
+        att_note = (" " + " ".join(f"[附件:{a.get('name','file')}]" for a in attachments
+                                   if isinstance(a, dict))) if attachments else ""
+        add_message(sid, "user", message + att_note)
         strategy = body.get("strategy", DEFAULT_STRATEGY)
         think_level = (body.get("think_level") or "").strip().lower()
         t = threading.Thread(target=_run_chat_thread,
-                             args=(sid, message, strategy, DEFAULT_MODEL, DEFAULT_WORKDIR, think_level),
+                             args=(sid, message, strategy, DEFAULT_MODEL, _WORKDIR["path"],
+                                   think_level, attachments),
                              daemon=True)
         t.start()
         self._json({"session_id": sid, "status": "running"})
