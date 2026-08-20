@@ -281,17 +281,19 @@ def list_endpoint_models(base_url: str, api_key: str = "", timeout_s: float = 15
     """从 OpenAI 兼容端点拉可取模型列表。返回 {ok, models, error}。
 
     同步实现(供 oiagent_web 设置页「拉取模型」用)。只列模型名,不回显 key。
-    Anthropic 协议端点多数无 /models,失败时返回 error 由前端回退手填。
+    Anthropic 协议端点(如 api.minimaxi.com/anthropic)多数无 /models,
+    但同 host 的 OpenAI 兼容侧(/v1)有 — 拉模型时自动换成 /v1 再试。
     """
     import httpx  # 延迟导入,避免无 httpx 环境影响其它路径
+    from urllib.parse import urlparse
     base = (base_url or "").rstrip("/")
     if not base:
         return {"ok": False, "models": [], "error": "no_base_url"}
-    url = f"{base}/models"
-    headers = {"Content-Type": "application/json"}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-    try:
+
+    def _fetch(url: str) -> Dict[str, Any]:
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
         with httpx.Client(timeout=timeout_s) as client:
             r = client.get(url, headers=headers)
         if r.status_code != 200:
@@ -309,6 +311,17 @@ def list_endpoint_models(base_url: str, api_key: str = "", timeout_s: float = 15
                 if mid:
                     models.append(str(mid))
         return {"ok": bool(models), "models": models, "error": None if models else "empty"}
+
+    try:
+        result = _fetch(f"{base}/models")
+        # anthropic 协议端点 404 → 换同 host 的 OpenAI 兼容侧(/v1)再拉一次
+        if not result["ok"] and result["error"] == "HTTP 404" and base.endswith("/anthropic"):
+            parsed = urlparse(base)
+            alt_base = f"{parsed.scheme}://{parsed.netloc}/v1"
+            result = _fetch(f"{alt_base}/models")
+            if result["ok"]:
+                result["note"] = "models_from_openai_compat_side"
+        return result
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "models": [], "error": f"{type(e).__name__}: {e}"}
 
