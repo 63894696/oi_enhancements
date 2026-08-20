@@ -171,7 +171,8 @@ SYSTEM_CHAT = (
 
 
 def run_conversation(messages: list, model: str, workdir: str, max_turns: int = 6,
-                     use_tools: bool = True, think_level: str = "") -> dict:
+                     use_tools: bool = True, think_level: str = "",
+                     system_extra: str = "") -> dict:
     """对话模式:接受完整多轮 messages([{role,content}]),返回单轮 assistant 回复。
 
     与 run_agent 的区别:
@@ -179,10 +180,12 @@ def run_conversation(messages: list, model: str, workdir: str, max_turns: int = 
       - 返回最后一轮 assistant content,不循环到 DONE
       - 仍允许少量工具调用(max_turns 内),但收到无工具调用的文本回复即返回
       - think_level: off/low/medium/high,空=不指定(用平台默认)
+      - system_extra: 额外系统块(harness 宪法/记忆召回),拼在 SYSTEM_CHAT 之后
     """
     import litellm
     litellm.drop_params = True
-    msgs = [{"role": "system", "content": SYSTEM_CHAT}] + list(messages)
+    system = SYSTEM_CHAT + (("\n\n" + system_extra) if system_extra.strip() else "")
+    msgs = [{"role": "system", "content": system}] + list(messages)
     t0 = time.time()
     turns = 0
     tools = TOOLS if use_tools else None

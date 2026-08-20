@@ -46,6 +46,68 @@ _CHAT_DB = _DB_DIR / "chats.db"
 _key_store = PrisirKeyStore()
 _router = PrisirRouter(_key_store)
 
+# ============================================================
+# harness 接线(对话壳版):宪法契约 + OIMemory 记忆召回
+# 复用 oiagent 协作链路的两个既有件,不重造:
+#   - docs/prisir-dev-constitution.md(契约,同 oiagent_dev_consumer._load_constitution)
+#   - memory/oi_memory.py OIMemory.recall(dev_lessons/历史上下文,同 oi_memory_hooks)
+# 对话壳不是开发团队执行 agent,故注入「壳适配」的纪律提示而非完整开发宪法;
+# 记忆召回默认开(OIAGENT_RECALL=0 关),失败一律静默不阻塞对话。
+# ============================================================
+_REPO_ROOT = Path(__file__).resolve().parent
+_CONSTITUTION_PATH = _REPO_ROOT / "docs" / "prisir-dev-constitution.md"
+_OI_MEM: object | None = None
+
+
+def _load_constitution() -> str:
+    try:
+        return _CONSTITUTION_PATH.read_text(encoding="utf-8").strip()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _get_oi_memory():
+    """惰性单例。memory/ 不在包路径,显式插 sys.path;不可用则 None。"""
+    global _OI_MEM
+    if _OI_MEM is not None:
+        return _OI_MEM
+    try:
+        mem_dir = str(_REPO_ROOT / "memory")
+        if mem_dir not in sys.path:
+            sys.path.insert(0, mem_dir)
+        from oi_memory import OIMemory  # noqa: PLC0415
+        _OI_MEM = OIMemory()
+    except Exception:  # noqa: BLE001
+        _OI_MEM = None
+    return _OI_MEM
+
+
+def _shell_system_prompt(user_text: str) -> str:
+    """组壳对话的系统提示:纪律 preamble + 记忆召回块。全程失败静默。"""
+    parts = []
+    constitution = _load_constitution()
+    if constitution:
+        parts.append(
+            "你是 oiagent,运行在本地对话壳(Prisir Shell)。下面【项目宪法】是硬性技术契约,"
+            "涉及凭证/密钥/网络/代码正确性时以它为准,违反即返工;普通问答不影响。\n\n"
+            "【项目宪法】\n" + constitution)
+    # 记忆召回:按本轮问题召回相关历史/dev_lessons
+    if os.environ.get("OIAGENT_RECALL", "1") != "0":
+        mem = _get_oi_memory()
+        if mem is not None and user_text.strip():
+            try:
+                hits = mem.recall(user_text, n=4, visible_to="oi-shell")
+                if hits:
+                    lines = ["[记忆召回 — 相关历史/经验]"]
+                    for i, h in enumerate(hits, 1):
+                        snippet = (h.content or "")[:180].replace("\n", " ")
+                        lines.append(f"  {i}. [{h.layer}] {h.title}: {snippet}")
+                    lines.append("[召回结束]")
+                    parts.append("\n".join(lines))
+            except Exception:  # noqa: BLE001
+                pass
+    return "\n\n".join(parts)
+
 # 运行中会话的内存锁/状态(结果落 SQLite,运行状态在内存)
 _running: dict[str, bool] = {}
 _running_lock = threading.Lock()
@@ -185,6 +247,8 @@ def _run_chat_thread(sid: str, user_text: str, strategy: str, model: str, workdi
         msgs = [{"role": m["role"], "content": m["content"]} for m in history]
         # 组入附件:文本内联、图片走多模态
         content = _build_user_content(user_text, attachments)
+        # harness 接线:宪法纪律 + 记忆召回(壳适配系统块,失败静默)
+        sys_extra = _shell_system_prompt(user_text)
 
         use_router = bool(_router.available_platforms())
         if use_router:
@@ -193,12 +257,12 @@ def _run_chat_thread(sid: str, user_text: str, strategy: str, model: str, workdi
             platform, cfg = pick["platform"], pick["cfg"]
             lm = _litellm_model_for(platform, cfg, pick["task_type"])
             res = run_conversation(msgs + [{"role": "user", "content": content}], lm, workdir,
-                                   think_level=think_level)
+                                   think_level=think_level, system_extra=sys_extra)
             answer = res["out"]
             used = f"{platform}:{cfg['model']}"
         else:
             res = run_conversation(msgs + [{"role": "user", "content": content}], model, workdir,
-                                   think_level=think_level)
+                                   think_level=think_level, system_extra=sys_extra)
             answer = res["out"]
             used = model
 
