@@ -26,7 +26,7 @@ import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, quote
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from oiagent_cli import run_conversation  # noqa: E402
@@ -1037,6 +1037,22 @@ document.getElementById('input').addEventListener('keydown', e => {
 # ============================================================
 # HTTP 处理
 # ============================================================
+def _content_disposition(filename: str) -> str:
+    """构造 RFC5987 双格式 Content-Disposition 值。
+
+    BaseHTTPRequestHandler.send_header 用 latin-1 严格编码,直接塞中文文件名会
+    UnicodeEncodeError 崩掉整个响应(导出挂起/空回复/浏览器拿不到文件名 →
+    回退 URL 末段 'export',Windows 下甚至落成 .lnk 快捷方式而不是 .md)。
+    正确做法:ASCII 兜底名(给老客户端)+ filename*=UTF-8''<percent-encoded>
+    (现代浏览器优先采用,支持中文)。
+    """
+    # ASCII 兜底:非 ASCII 字符替换为 _,压掉引号/反斜杠/分号防头注入
+    fallback = re.sub(r'[^\x20-\x7e]', "_", filename)
+    fallback = fallback.replace("\\", "_").replace('"', "_").replace(";", "_").strip() or "download"
+    encoded = quote(filename, safe="")
+    return f"attachment; filename=\"{fallback}\"; filename*=UTF-8''{encoded}"
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):  # noqa: N802
         pass
@@ -1055,7 +1071,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         if filename:
-            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+            self.send_header("Content-Disposition", _content_disposition(filename))
         self.end_headers()
         self.wfile.write(body)
 
@@ -1063,7 +1079,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", mime)
         self.send_header("Content-Length", str(len(data)))
-        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Content-Disposition", _content_disposition(filename))
         self.end_headers()
         self.wfile.write(data)
 
