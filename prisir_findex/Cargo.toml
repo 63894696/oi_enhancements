@@ -1,0 +1,20 @@
+[package]
+name = "prisir_findex"
+version = "0.1.0"
+edition = "2021"
+description = "Prisir Browser 本机文件搜索索引引擎(Rust)— 自建全盘文件名索引,不依赖 Everything,只存元数据不存内容"
+
+[lib]
+name = "prisir_findex"
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+walkdir = "2"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

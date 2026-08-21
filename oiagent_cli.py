@@ -146,6 +146,61 @@ def _t_search_files(query: str, workdir: str, limit: int = 50) -> str:
         return f"[search_files error] {e}"
 
 
+# ---------- 本机自建文件索引(prisir_findex,不依赖 Everything) ----------
+# 目标机可能没装 Everything → search_files 的 es.exe 快路径不可用。
+# prisir_findex 是 Rust cdylib 自建索引(只存元数据),用户显式开启后全盘子串秒搜。
+# 这里走 Python ctypes 壳;未开启/未编译时优雅降级返回提示,不报错。
+_FINDEX_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prisir_findex")
+
+
+def _findex():
+    """惰性加载 Findex 单例;不可用返回 None。"""
+    try:
+        if _FINDEX_DIR not in sys.path:
+            sys.path.insert(0, _FINDEX_DIR)
+        from shell_findex import Findex  # noqa: PLC0415
+        return Findex.shared()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _t_local_file_search(query: str, limit: int = 30) -> str:
+    """本机自建索引搜文件(不依赖 Everything)。需用户已开启本机文件搜索。"""
+    q = (query or "").strip()
+    if not q:
+        return "[local_file_search error] empty query"
+    fx = _findex()
+    if fx is None:
+        return ("[local_file_search 不可用] 索引引擎未就绪(prisir_findex.dll 未编译或加载失败)。"
+                "可改用 search_files(全盘 walk 较慢)或 list_files。")
+    st = fx.status()
+    if not st.get("enabled"):
+        return ("[local_file_search 未开启] 本机文件搜索索引尚未建立。"
+                "请用户在菜单开启「本机文件搜索」建索引后再用;或先用 search_files 兜底。")
+    hits = fx.search(q, limit)
+    if not hits:
+        return "[no match]"
+    import datetime
+    lines = []
+    for h in hits:
+        mt = datetime.datetime.fromtimestamp(h.get("mtime", 0)).strftime("%Y-%m-%d %H:%M")
+        lines.append(f"{h['path']}  ({h.get('size',0)}B, {mt})")
+    return "\n".join(lines)
+
+
+def _t_read_file_head(path: str, max_chars: int = 4000) -> str:
+    """读文件开头若干字符,供「搜到后取上下文」。截断防爆上下文。"""
+    p = (path or "").strip()
+    if not p:
+        return "[read_file_head error] empty path"
+    try:
+        with open(p, encoding="utf-8", errors="replace") as f:
+            data = f.read(max(200, min(int(max_chars or 4000), 20000)))
+        return data
+    except Exception as e:  # noqa: BLE001
+        return f"[read_file_head error] {e}"
+
+
 # ---------- 思考档位抽象(off/low/medium/high) ----------
 # 各家「思考/推理」参数不统一:GPT/Codex=reasoning_effort(low/medium/high),
 # Claude=thinking{budget_tokens}, Kimi/Qwen=enable_thinking, K3 等无档位。
@@ -213,6 +268,20 @@ TOOLS = [
             "query": {"type": "string", "description": "filename/path keyword to search"},
             "limit": {"type": "integer", "description": "max results, default 50"}},
             "required": ["query"]}}},
+    {"type": "function", "function": {
+        "name": "local_file_search",
+        "description": "Search local files by name/path keyword using the self-built index (prisir_findex, no Everything needed). Requires the user to have enabled 本机文件搜索 (index built). Fast whole-disk substring search across scanned drives. Use when the user mentions a file/资料 but doesn't remember where it is.",
+        "parameters": {"type": "object", "properties": {
+            "query": {"type": "string", "description": "filename/path keyword to search"},
+            "limit": {"type": "integer", "description": "max results, default 30"}},
+            "required": ["query"]}}},
+    {"type": "function", "function": {
+        "name": "read_file_head",
+        "description": "Read the first N chars of a file to get context after locating it (e.g. via local_file_search). Truncates to avoid blowing up context.",
+        "parameters": {"type": "object", "properties": {
+            "path": {"type": "string", "description": "absolute file path"},
+            "max_chars": {"type": "integer", "description": "max chars to read, default 4000"}},
+            "required": ["path"]}}},
 ]
 
 
@@ -231,6 +300,10 @@ def dispatch(name: str, args: dict, workdir: str) -> str:
         return _t_list_files(args.get("path", "."), workdir)
     if name == "search_files":
         return _t_search_files(args.get("query", ""), workdir, args.get("limit", 50))
+    if name == "local_file_search":
+        return _t_local_file_search(args.get("query", ""), args.get("limit", 30))
+    if name == "read_file_head":
+        return _t_read_file_head(args.get("path", ""), args.get("max_chars", 4000))
     return f"[unknown tool {name}]"
 
 
@@ -255,13 +328,19 @@ SYSTEM_CHAT = (
     "ffmpeg + faster-whisper pipeline via run_shell when those tools are available (check the available-tools list), "
     "or write a script the user can run.\n\n"
     "Tools: prefer search_files (Everything es.exe, whole-disk instant) over list_files when locating a file "
-    "whose location you don't know; use list_files for browsing a known directory tree."
+    "whose location you don't know; use list_files for browsing a known directory tree.\n\n"
+    "Diagrams: the chat UI renders Markdown AND Mermaid. When explaining structure, flow, sequence, "
+    "state, or architecture, PREFER a ```mermaid diagram over long prose — it is far more intuitive "
+    "than text. Use the right type: flowchart (graph TD/LR) for processes & architecture, "
+    "sequenceDiagram for interaction/order, stateDiagram-v2 for state machines, erDiagram for data, "
+    "gantt for schedules, classDiagram for types. Keep diagrams focused (one idea each, ≤ ~15 nodes); "
+    "add a one-line caption before/after. Node labels may be Chinese. Only emit valid mermaid syntax."
 )
 
 
 def run_conversation(messages: list, model: str, workdir: str, max_turns: int = 20,
                      use_tools: bool = True, think_level: str = "",
-                     system_extra: str = "") -> dict:
+                     system_extra: str = "", on_event=None) -> dict:
     """对话模式:接受完整多轮 messages([{role,content}]),返回单轮 assistant 回复。
 
     与 run_agent 的区别:
@@ -271,6 +350,10 @@ def run_conversation(messages: list, model: str, workdir: str, max_turns: int = 
         收到无工具调用的文本回复即返回
       - think_level: off/low/medium/high,空=不指定(用平台默认)
       - system_extra: 额外系统块(harness 宪法/记忆召回),拼在 SYSTEM_CHAT 之后
+      - on_event: 可选回调 fn(dict),在工具执行前后发实时进度事件(壳端轮询展示用):
+          {"type":"tool_start","name":..., "args_preview":...} 与
+          {"type":"tool_end","name":..., "ms":..., "ok":bool, "output_preview":...}
+        默认 None(壳外路径不受影响)。回调内不抛异常(包裹 try)。
 
     返回 dict 新增 `trace`: 当轮新增的中间步 [{role:"tool"|"assistant", content, name?}]
     (tool 结果已按 TOOL_STORE_MAX 截断供入库),供调用方(壳)落库激活跨轮 masking;
@@ -316,12 +399,29 @@ def run_conversation(messages: list, model: str, workdir: str, max_turns: int = 
                 args = json.loads(tc.function.arguments or "{}")
             except Exception:  # noqa: BLE001
                 args = {}
-            result = dispatch(tc.function.name, args, workdir)
+            _tname = tc.function.name
+            if on_event:
+                try:
+                    _ap = json.dumps(args, ensure_ascii=False)
+                    on_event({"type": "tool_start", "name": _tname,
+                              "args_preview": _ap[:200]})
+                except Exception:  # noqa: BLE001
+                    pass
+            _te0 = time.time()
+            result = dispatch(_tname, args, workdir)
+            _tms = int((time.time() - _te0) * 1000)
             msgs.append({"role": "tool", "tool_call_id": tc.id,
-                         "name": tc.function.name, "content": result})
+                         "name": _tname, "content": result})
             # 轨迹(供壳入库激活跨轮 masking): 截断后存,带工具名保可追溯
-            trace.append({"role": "tool", "name": tc.function.name,
+            trace.append({"role": "tool", "name": _tname,
                           "content": truncate_tool_output(result)})
+            if on_event:
+                try:
+                    on_event({"type": "tool_end", "name": _tname, "ms": _tms,
+                              "ok": not result.startswith("["),
+                              "output_preview": truncate_tool_output(result)[:300]})
+                except Exception:  # noqa: BLE001
+                    pass
 
     # 工具循环到头仍未给文本答复 → 取最后一条 assistant 文本
     last = next((m["content"] for m in reversed(msgs) if m.get("role") == "assistant" and m.get("content")), "")

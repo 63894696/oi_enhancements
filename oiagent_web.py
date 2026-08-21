@@ -269,6 +269,32 @@ _events_lock = threading.Lock()
 # 工作目录(可被 /api/workdir 覆盖,内存态;工具调用以此为 cwd)
 _WORKDIR = {"path": DEFAULT_WORKDIR}
 
+# ---------- 本机文件搜索(prisir_findex,不依赖 Everything) ----------
+# 自建 Rust 索引(只存元数据),默认不扫盘,用户显式开启才建库。
+_FINDEX_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prisir_findex")
+
+
+def _findex():
+    """惰性加载 Findex 单例;引擎不可用返回 None。"""
+    try:
+        if _FINDEX_DIR not in sys.path:
+            sys.path.insert(0, _FINDEX_DIR)
+        from shell_findex import Findex  # noqa: PLC0415
+        return Findex.shared()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _default_scan_roots():
+    """默认扫描根:各盘符的用户目录(不扫系统盘根,避开 Windows/Program Files 已由引擎排除)。
+    简化:固定扫所有存在盘符的根,引擎侧排除系统目录。"""
+    roots = []
+    for letter in "CDEFGH":
+        p = f"{letter}:\\"
+        if os.path.isdir(p):
+            roots.append(p)
+    return roots or [os.path.expanduser("~")]
+
 # 附件大小护栏:文本最多内联 12k 字符,超出截断提示;图片走多模态 content
 _ATTACH_TEXT_MAX = 12000
 _IMG_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
@@ -1861,6 +1887,170 @@ document.getElementById('sl-merge').addEventListener('click', () => exitSplit())
 
 
 # ============================================================
+# 用户本地文件搜索页(prisir_findex,国风浅色)
+# ============================================================
+_FINDEX_PAGE = r"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>本机文件搜索 · Prisir</title>
+<style>
+  :root{
+    --gh-paper:#f6f1e7; --gh-paper-2:#efe8da; --gh-surface:#fbf8f1;
+    --gh-ink:#2f3a34; --gh-ink-soft:#5b6a61; --gh-ink-faint:#8a968e; --gh-line:#d8cfbc;
+    --gh-green:#6c7c72; --gh-green-deep:#4a5c52; --gh-seal:#b23a30;
+    --gh-radius:10px; --gh-shadow:0 1px 3px rgba(74,92,82,.12);
+    --gh-font:'Segoe UI','Microsoft YaHei',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{font-family:var(--gh-font);color:var(--gh-ink);margin:0;
+    background:var(--gh-paper) url('/oiagent/assets/guohua_bg_wide.png') center bottom/cover fixed no-repeat;}
+  .wrap{max-width:860px;margin:0 auto;padding:20px 18px 60px;}
+  #brand{display:flex;align-items:center;gap:10px;padding:6px 2px 18px;}
+  #brand img{width:30px;height:30px;border-radius:7px;box-shadow:var(--gh-shadow);}
+  #brand .name{font-size:18px;font-weight:600;color:var(--gh-green-deep);}
+  #brand .sub{font-size:12px;color:var(--gh-ink-faint);margin-left:2px;}
+  .card{background:rgba(251,248,241,.92);backdrop-filter:blur(6px);border:1px solid var(--gh-line);
+    border-radius:var(--gh-radius);box-shadow:var(--gh-shadow);padding:18px;margin-bottom:16px;}
+  .searchrow{display:flex;gap:10px;}
+  #q{flex:1;padding:12px 14px;font-size:15px;border:1px solid var(--gh-line);border-radius:9px;
+    background:var(--gh-surface);color:var(--gh-ink);outline:none;}
+  #q:focus{border-color:var(--gh-green-deep);}
+  .btn{padding:11px 20px;font-size:14px;border-radius:9px;border:1px solid var(--gh-line);
+    background:var(--gh-green-deep);color:#fbf6ec;cursor:pointer;white-space:nowrap;}
+  .btn.ghost{background:var(--gh-surface);color:var(--gh-green-deep);}
+  .btn.seal{background:var(--gh-surface);color:var(--gh-seal);border-color:var(--gh-line);}
+  .btn:hover{filter:brightness(1.05);}
+  .btn:disabled{opacity:.5;cursor:not-allowed;}
+  #statusline{font-size:12.5px;color:var(--gh-ink-soft);margin-top:10px;min-height:18px;}
+  #statusline b{color:var(--gh-green-deep);}
+  .bar{height:6px;background:var(--gh-paper-2);border-radius:4px;overflow:hidden;margin-top:10px;display:none;}
+  .bar>i{display:block;height:100%;background:var(--gh-green);width:0;transition:width .3s;}
+  .hit{display:flex;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid var(--gh-line);}
+  .hit:last-child{border-bottom:none;}
+  .hit .ic{font-size:18px;width:26px;text-align:center;flex:none;}
+  .hit .meta{flex:1;min-width:0;}
+  .hit .nm{font-size:14px;color:var(--gh-ink);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .hit .dir{font-size:12px;color:var(--gh-ink-faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .hit .sz{font-size:11.5px;color:var(--gh-ink-soft);flex:none;text-align:right;}
+  .hit .mt{font-size:11.5px;color:var(--gh-ink-faint);flex:none;width:90px;text-align:right;}
+  #empty{padding:40px 0;text-align:center;color:var(--gh-ink-faint);font-size:13.5px;display:none;}
+  .ctl{display:flex;gap:10px;align-items:center;}
+  .hint{font-size:12px;color:var(--gh-ink-faint);margin-top:8px;line-height:1.6;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="brand">
+    <img src="/oiagent/assets/secbrowser_icon_48.png" alt="">
+    <span class="name">本机文件搜索</span>
+    <span class="sub">自建索引 · 不依赖 Everything · 只存元数据</span>
+  </div>
+
+  <div class="card">
+    <div class="searchrow">
+      <input id="q" placeholder="输入文件名或路径关键词…" autocomplete="off">
+      <button class="btn" id="searchBtn">搜索</button>
+    </div>
+    <div id="statusline"></div>
+    <div class="bar" id="bar"><i id="barfill"></i></div>
+  </div>
+
+  <div class="card" id="ctlcard">
+    <div class="ctl">
+      <button class="btn ghost" id="enableBtn">开启本机搜索</button>
+      <button class="btn seal" id="disableBtn" style="display:none">关闭并清空索引</button>
+    </div>
+    <div class="hint">开启后会扫描本机磁盘建立文件名索引(只记录路径/名称/大小/修改时间,不读文件内容)。
+      大型硬盘首次约需数分钟,期间可继续搜索已索引部分。默认排除系统目录(Windows / Program Files / node_modules 等)。</div>
+  </div>
+
+  <div class="card" id="results">
+    <div id="empty">输入关键词开始搜索本机文件</div>
+    <div id="list"></div>
+  </div>
+</div>
+<script>
+const $=s=>document.querySelector(s);
+async function api(path,opts){const r=await fetch('/oiagent/api'+path,opts);return r.json();}
+function fmtSize(n){if(n>1e9)return(n/1e9).toFixed(1)+' GB';if(n>1e6)return(n/1e6).toFixed(1)+' MB';
+  if(n>1e3)return(n/1e3).toFixed(1)+' KB';return n+' B';}
+function fmtTime(t){if(!t)return'';const d=new Date(t*1000);const p=x=>String(x).padStart(2,'0');
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes());}
+function icon(ext){const m={pdf:'📕',doc:'📘',docx:'📘',xls:'📗',xlsx:'📗',ppt:'📙',pptx:'📙',
+  png:'🖼',jpg:'🖼',jpeg:'🖼',gif:'🖼',mp4:'🎬',mp3:'🎵',zip:'🗜',md:'📄',txt:'📄',py:'🐍',js:'📜'};
+  return m[(ext||'').toLowerCase()]||'📄';}
+
+let building=false, pollTimer=null;
+async function refreshStatus(){
+  const st=await api('/findex/status');
+  const sl=$('#statusline');
+  if(st.ready===false){sl.innerHTML='索引引擎未就绪(未编译)。';$('#enableBtn').disabled=true;return;}
+  $('#enableBtn').disabled=false;
+  if(st.building){
+    building=true;
+    $('#bar').style.display='block';
+    sl.innerHTML='索引建立中… 已扫描 <b>'+(st.scanned||0).toLocaleString()+'</b> 个文件';
+    $('#enableBtn').style.display='none';$('#disableBtn').style.display='none';
+    schedulePoll();
+  }else if(st.enabled){
+    building=false;$('#bar').style.display='none';
+    $('#enableBtn').style.display='none';$('#disableBtn').style.display='';
+    sl.innerHTML='已索引 <b>'+(st.indexed_count||0).toLocaleString()+'</b> 个文件 · 上次扫描 '+
+      (st.last_scan?fmtTime(st.last_scan):'—');
+  }else{
+    building=false;$('#bar').style.display='none';
+    $('#enableBtn').style.display='';$('#disableBtn').style.display='none';
+    sl.innerHTML='本机文件搜索未开启。';
+  }
+}
+function schedulePoll(){if(pollTimer)return;
+  pollTimer=setInterval(async()=>{await refreshStatus();if(!building){clearInterval(pollTimer);pollTimer=null;}},1500);}
+
+async function doSearch(){
+  const q=$('#q').value.trim();
+  const r=await api('/findex/search?q='+encodeURIComponent(q)+'&limit=100');
+  const list=$('#list');list.innerHTML='';
+  if(r.enabled===false){$('#empty').style.display='block';
+    $('#empty').textContent='本机文件搜索未开启,请先点上方「开启本机搜索」。';return;}
+  const hits=r.hits||[];
+  if(!hits.length){$('#empty').style.display='block';
+    $('#empty').textContent=q?('没有匹配「'+q+'」的文件'):'输入关键词开始搜索';return;}
+  $('#empty').style.display='none';
+  for(const h of hits){
+    const div=document.createElement('div');div.className='hit';
+    div.innerHTML='<div class="ic">'+icon(h.ext)+'</div>'+
+      '<div class="meta"><div class="nm"></div><div class="dir"></div></div>'+
+      '<div class="mt">'+fmtTime(h.mtime)+'</div><div class="sz">'+fmtSize(h.size)+'</div>';
+    div.querySelector('.nm').textContent=h.name;
+    div.querySelector('.dir').textContent=h.dir;
+    div.title=h.path;
+    list.appendChild(div);
+  }
+}
+
+$('#searchBtn').onclick=doSearch;
+$('#q').addEventListener('keydown',e=>{if(e.key==='Enter')doSearch();});
+$('#enableBtn').onclick=async()=>{
+  $('#enableBtn').disabled=true;
+  const r=await api('/findex/enable',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  $('#enableBtn').disabled=false;
+  await refreshStatus();
+};
+$('#disableBtn').onclick=async()=>{
+  if(!confirm('确定关闭本机文件搜索并清空索引?'))return;
+  await api('/findex/disable',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  $('#list').innerHTML='';await refreshStatus();
+};
+refreshStatus();
+</script>
+</body>
+</html>
+"""
+
+
+# ============================================================
 # HTTP 处理
 # ============================================================
 def _content_disposition(filename: str) -> str:
@@ -2069,6 +2259,32 @@ class Handler(BaseHTTPRequestHandler):
             # 设置页状态点:只回布尔,不回 token 本体(红线)。
             tok = _pair_load_token()
             self._json({"paired": bool(tok and tok in _AGENT_PAIRED)})
+        elif path == "/oiagent/api/findex/status":
+            # 本机文件搜索状态:{ready, enabled, indexed_count, building, scanned, last_scan}
+            fx = _findex()
+            if fx is None:
+                self._json({"ok": True, "ready": False,
+                            "error": "引擎未编译/加载失败(prisir_findex.dll)"})
+                return
+            st = fx.status()
+            st["ready"] = True
+            self._json(st)
+        elif path == "/oiagent/api/findex/search":
+            # 用户页/智能体查询:q 子串,limit 截断。未开启引导开启。
+            fx = _findex()
+            if fx is None:
+                self._json({"ok": False, "ready": False, "error": "引擎未就绪"}, 503)
+                return
+            if not fx.status().get("enabled"):
+                self._json({"ok": True, "enabled": False, "hits": [],
+                            "hint": "本机文件搜索未开启,请先开启建索引"})
+                return
+            q = (qs.get("q") or [""])[0]
+            limit = int((qs.get("limit") or ["50"])[0] or 50)
+            self._json({"ok": True, "enabled": True, "hits": fx.search(q, limit)})
+        elif path == "/oiagent/findex":
+            # 用户本地文件搜索页(国风浅色)。
+            self._html(_FINDEX_PAGE)
         else:
             self._json({"error": "not found"}, 404)
 
@@ -2150,6 +2366,33 @@ class Handler(BaseHTTPRequestHandler):
             from_sid = body.get("from_session_id", "")
             self._json(_continue_in_new_window(
                 from_sid, handoff=body.get("handoff"), source=body.get("source")))
+        elif path == "/oiagent/api/findex/enable":
+            # 开启本机文件搜索:后台线程首扫,立即回预计时长。
+            # body: {roots?:[...], exclude?:[...]};默认扫各盘符根(引擎排除系统目录)。
+            fx = _findex()
+            if fx is None:
+                self._json({"ok": False, "ready": False,
+                            "error": "引擎未编译/加载失败(prisir_findex.dll)"}, 503)
+                return
+            if fx.status().get("building"):
+                self._json({"ok": True, "building": True, "hint": "索引正在建立中"})
+                return
+            roots = body.get("roots") or _default_scan_roots()
+            exclude = body.get("exclude") or []
+            r = fx.enable_async(roots, exclude)
+            if not r.get("ok"):
+                self._json(r, 500)
+                return
+            self._json({"ok": True, "started": True, "building": True,
+                        "roots": roots,
+                        "hint": "索引建立中,大型硬盘约需数分钟,可轮询 status 看进度"})
+        elif path == "/oiagent/api/findex/disable":
+            # 关闭并清空索引。
+            fx = _findex()
+            if fx is None:
+                self._json({"ok": True, "ready": False})
+                return
+            self._json(fx.disable())
         else:
             self._json({"error": "not found"}, 404)
 
