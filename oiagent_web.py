@@ -295,6 +295,40 @@ def _default_scan_roots():
             roots.append(p)
     return roots or [os.path.expanduser("~")]
 
+
+# 打开入口的安全边界(红线:索引只读元数据,绝不替用户执行未知内容):
+#   open   = 系统默认程序打开文件/文件夹 —— 可执行类型一律拦截(不静默执行)。
+#   reveal = 只在资源管理器中定位(选中),不打开 —— 任何类型都安全。
+_FINDEX_EXEC_BLOCK = {
+    ".exe", ".bat", ".cmd", ".ps1", ".com", ".scr", ".msi", ".msp",
+    ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh", ".lnk", ".pif",
+    ".reg", ".hta", ".cpl", ".jar", ".dll",
+}
+
+
+def _findex_open(path: str, mode: str):
+    """打开/定位索引命中的文件。mode: 'open'(默认程序打开) | 'reveal'(定位)。
+    返回 (ok, error)。仅 Windows(os.startfile / explorer /select:)。"""
+    if not path or not isinstance(path, str):
+        return False, "empty path"
+    p = os.path.abspath(path)
+    if not os.path.exists(p):
+        return False, "文件已不存在(可能已移动/删除,索引待重建)"
+    try:
+        if mode == "reveal":
+            # 任何类型都只定位,不执行 —— 始终安全。
+            import subprocess  # noqa: PLC0415
+            subprocess.Popen(["explorer", "/select,", p])
+            return True, ""
+        # mode == "open":可执行类型拦截,其余用系统默认程序打开。
+        ext = os.path.splitext(p)[1].lower()
+        if ext in _FINDEX_EXEC_BLOCK:
+            return False, f"可执行/脚本类型({ext})不支持直接打开,请改用「定位」"
+        os.startfile(p)  # noqa: S606  # 只打开(默认程序),非 shell 执行任意命令
+        return True, ""
+    except Exception as e:  # noqa: BLE001
+        return False, f"打开失败: {e}"
+
 # 附件大小护栏:文本最多内联 12k 字符,超出截断提示;图片走多模态 content
 _ATTACH_TEXT_MAX = 12000
 _IMG_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
@@ -1927,7 +1961,8 @@ _FINDEX_PAGE = r"""<!DOCTYPE html>
   #statusline b{color:var(--gh-green-deep);}
   .bar{height:6px;background:var(--gh-paper-2);border-radius:4px;overflow:hidden;margin-top:10px;display:none;}
   .bar>i{display:block;height:100%;background:var(--gh-green);width:0;transition:width .3s;}
-  .hit{display:flex;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid var(--gh-line);}
+  .hit{display:flex;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid var(--gh-line);cursor:pointer;}
+  .hit:hover{background:var(--gh-hover,rgba(0,0,0,.03));}
   .hit:last-child{border-bottom:none;}
   .hit .ic{font-size:18px;width:26px;text-align:center;flex:none;}
   .hit .meta{flex:1;min-width:0;}
@@ -1935,6 +1970,12 @@ _FINDEX_PAGE = r"""<!DOCTYPE html>
   .hit .dir{font-size:12px;color:var(--gh-ink-faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .hit .sz{font-size:11.5px;color:var(--gh-ink-soft);flex:none;text-align:right;}
   .hit .mt{font-size:11.5px;color:var(--gh-ink-faint);flex:none;width:90px;text-align:right;}
+  .hit .acts{flex:none;display:flex;gap:6px;}
+  .hit .obtn{font-size:11px;padding:3px 9px;border:1px solid var(--gh-line);border-radius:6px;
+    background:#fff;color:var(--gh-green-deep);cursor:pointer;white-space:nowrap;}
+  .hit .obtn:hover{border-color:var(--gh-seal);color:var(--gh-seal);}
+  .hit .obtn.blocked{color:var(--gh-ink-faint);cursor:not-allowed;}
+  .openmsg{padding:8px 4px;font-size:12.5px;color:var(--gh-seal);display:none;}
   #empty{padding:40px 0;text-align:center;color:var(--gh-ink-faint);font-size:13.5px;display:none;}
   #more{padding:14px 0;text-align:center;color:var(--gh-green-deep);font-size:12.5px;cursor:pointer;
     border-top:1px dashed var(--gh-line);margin-top:6px;}
@@ -1971,6 +2012,7 @@ _FINDEX_PAGE = r"""<!DOCTYPE html>
 
   <div class="card" id="results">
     <div id="empty">输入关键词开始搜索本机文件</div>
+    <div class="openmsg" id="openmsg"></div>
     <div id="list"></div>
     <div id="more" style="display:none"></div>
   </div>
@@ -1985,6 +2027,16 @@ function fmtTime(t){if(!t)return'';const d=new Date(t*1000);const p=x=>String(x)
 function icon(ext,isDir){if(isDir)return'📁';const m={pdf:'📕',doc:'📘',docx:'📘',xls:'📗',xlsx:'📗',ppt:'📙',pptx:'📙',
   png:'🖼',jpg:'🖼',jpeg:'🖼',gif:'🖼',mp4:'🎬',mp3:'🎵',zip:'🗜',md:'📄',txt:'📄',py:'🐍',js:'📜'};
   return m[(ext||'').toLowerCase()]||'📄';}
+// 可执行/脚本类型(与后端 _FINDEX_EXEC_BLOCK 同步):「打开」拦截,只能「定位」。
+const EXEC_BLOCK=new Set(['exe','bat','cmd','ps1','com','scr','msi','msp','vbs','vbe','js','jse','wsf','wsh','lnk','pif','reg','hta','cpl','jar','dll']);
+async function openHit(path,mode){
+  const r=await api('/findex/open',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({path:path,mode:mode})});
+  const m=$('#openmsg');
+  if(r.ok){m.style.display='none';return;}
+  m.textContent='⚠ '+r.error; m.style.display='block';
+  clearTimeout(m._t); m._t=setTimeout(()=>{m.style.display='none';},4000);
+}
 
 let building=false, pollTimer=null;
 // 无限滚动状态
@@ -2037,13 +2089,23 @@ async function loadMore(first){
   $('#empty').style.display='none';
   for(const h of hits){
     const div=document.createElement('div');div.className='hit';
+    const isExec=EXEC_BLOCK.has((h.ext||'').toLowerCase());
     div.innerHTML='<div class="ic">'+icon(h.ext,h.is_dir)+'</div>'+
       '<div class="meta"><div class="nm"></div><div class="dir"></div></div>'+
       '<div class="mt">'+(h.is_dir?'':fmtTime(h.mtime))+'</div>'+
-      '<div class="sz">'+(h.is_dir?'文件夹':fmtSize(h.size))+'</div>';
+      '<div class="sz">'+(h.is_dir?'文件夹':fmtSize(h.size))+'</div>'+
+      '<div class="acts">'+
+        (h.is_dir?'':'<button class="obtn opn'+(isExec?' blocked':'')+'">'+(isExec?'打开(受限)':'打开')+'</button>')+
+        '<button class="obtn loc">定位</button>'+
+      '</div>';
     div.querySelector('.nm').textContent=h.name;
     div.querySelector('.dir').textContent=h.is_dir?h.path:h.dir;
     div.title=h.path;
+    // 单击行=定位(零风险);「打开」按钮=默认程序打开,可执行类型点它也降级为定位。
+    div.querySelector('.loc').onclick=e=>{e.stopPropagation();openHit(h.path,'reveal');};
+    const opn=div.querySelector('.opn');
+    if(opn)opn.onclick=e=>{e.stopPropagation();openHit(h.path,isExec?'reveal':'open');};
+    div.onclick=()=>openHit(h.path,'reveal');
     list.appendChild(div);
   }
   curOffset+=hits.length;
@@ -2186,7 +2248,10 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0))
         if not length:
             return {}
-        return json.loads(self.rfile.read(length).decode("utf-8"))
+        try:
+            return json.loads(self.rfile.read(length).decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+            return {}
 
     # ---------------- GET ----------------
     def do_GET(self):  # noqa: N802
@@ -2429,6 +2494,12 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": True, "ready": False})
                 return
             self._json(fx.disable())
+        elif path == "/oiagent/api/findex/open":
+            # 打开/定位命中文件。body: {path, mode:'open'|'reveal'}。
+            # 安全:reveal 只定位(任意类型安全);open 拦可执行类型(见 _FINDEX_EXEC_BLOCK)。
+            ok, err = _findex_open(body.get("path") or "", body.get("mode") or "reveal")
+            self._json({"ok": ok, "error": err} if not ok else {"ok": True},
+                       200 if ok else 400)
         else:
             self._json({"error": "not found"}, 404)
 
