@@ -2070,6 +2070,7 @@ _FINDEX_PAGE = r"""<!DOCTYPE html>
 </div>
 <script>
 const $=s=>document.querySelector(s);
+function esc(s){const d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML;}
 async function api(path,opts){const r=await fetch('/oiagent/api'+path,opts);return r.json();}
 function fmtSize(n){if(n>1e9)return(n/1e9).toFixed(1)+' GB';if(n>1e6)return(n/1e6).toFixed(1)+' MB';
   if(n>1e3)return(n/1e3).toFixed(1)+' KB';return n+' B';}
