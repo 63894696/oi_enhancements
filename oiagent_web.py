@@ -19,6 +19,7 @@ import html
 import json
 import os
 import re
+import secrets
 import sqlite3
 import sys
 import threading
@@ -32,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from oiagent_cli import run_conversation  # noqa: E402
 from oiagent_context import (  # noqa: E402
     MASK_RATIO, usage_for, mask_old_tool_outputs, build_handoff_rules,
+    sanitize_tool_history,
 )
 from fastlane.providers.llm_prisir import (  # noqa: E402
     PrisirKeyStore, PrisirRouter, generate_followups, list_endpoint_models,
@@ -258,6 +260,12 @@ def _local_env_block() -> str:
 _running: dict[str, bool] = {}
 _running_lock = threading.Lock()
 
+# 实时工具进度事件缓冲(壳三件套①):per-session 事件列表 + 各会话已读游标。
+# _run_chat_thread 经 on_event 回调 append;前端轮询 /status 取增量(自游标之后)。
+_events: dict[str, list] = {}
+_event_cursor: dict[str, int] = {}
+_events_lock = threading.Lock()
+
 # 工作目录(可被 /api/workdir 覆盖,内存态;工具调用以此为 cwd)
 _WORKDIR = {"path": DEFAULT_WORKDIR}
 
@@ -413,20 +421,32 @@ def _run_chat_thread(sid: str, user_text: str, strategy: str, model: str, workdi
         # mask_old_tool_outputs 返回副本(不就地改);传 model 让其自适应收紧,
         # 超阈值才遮蔽旧 tool 输出,直至估算用量回落到 MASK_RATIO 以下。
         send_msgs = mask_old_tool_outputs(full_msgs, model=lm) if usage["mask"] else full_msgs
+        # 孤儿 tool 消息清洗(tool_call_id is not found 修复):库历史里 assistant 丢
+        # tool_calls、tool 行无 tool_call_id,OpenAI 协议端点会报 BadRequestError。
+        # 发送前把孤儿 tool 折叠为 assistant 只读资料块;只改发送副本,不动库。
+        send_msgs = sanitize_tool_history(send_msgs)
         if usage["mask"]:
             # 记录遮蔽动作 + 遮蔽条数,透出给前端(meta)便于排查
             n_masked = sum(1 for m in send_msgs
                            if m.get("role") == "tool" and "已遮蔽" in str(m.get("content", "")))
             usage = dict(usage, masked=True, masked_count=n_masked)
 
+        # 实时工具进度(壳三件套①):on_event 把 run_conversation 内部的工具执行事件
+        # 实时 append 进 _events[sid],前端轮询 /status 取增量展示「进行中的工具调用」。
+        def _on_tool_event(ev):
+            with _events_lock:
+                _events.setdefault(sid, []).append(ev)
+
         if use_router:
             res = run_conversation(send_msgs, lm, workdir,
-                                   think_level=think_level, system_extra=sys_extra)
+                                   think_level=think_level, system_extra=sys_extra,
+                                   on_event=_on_tool_event)
             answer = res["out"]
             used = f"{platform}:{cfg['model']}"
         else:
             res = run_conversation(send_msgs, lm, workdir,
-                                   think_level=think_level, system_extra=sys_extra)
+                                   think_level=think_level, system_extra=sys_extra,
+                                   on_event=_on_tool_event)
             answer = res["out"]
             used = model
 
@@ -515,6 +535,72 @@ def _set_meta(sid: str, m: dict) -> None:
 
 def _get_meta(sid: str) -> dict:
     return _SESS_META.get(sid, {})
+
+
+# ============================================================
+# #58 分屏浏览器操作 — 壳↔扩展通道(2026-08-21 契约 §A)
+# ============================================================
+# ThreadingHTTPServer 每请求一线程,poll 长轮询悬挂安全。
+# 红线:token 只进 settings(0600)/通道鉴权,不进 LLM 上下文/前端 DOM 明文/审计。
+_AGENT_QUEUES: dict[str, list] = {}   # token -> 待下发动作
+_AGENT_ACKS: dict[str, list] = {}     # token -> 已回执
+_AGENT_PAIRED: set[str] = set()       # 已配对 token
+_AGENT_LOCK = threading.Lock()
+_AGENT_COND = threading.Condition(_AGENT_LOCK)
+_SNAP_STATE = {"snapping": False, "pending": 0}  # 贴窗信号,shell 主进程轮询
+_POLL_HOLD_SEC = 30
+_PAIR_SETTINGS = Path(os.environ.get(
+    "OIAGENT_SHELL_SETTINGS",
+    str(Path(os.environ.get("APPDATA", str(Path.home()))) / "oiagent-shell" / "settings.json")))
+
+
+def _pair_load_token() -> str:
+    try:
+        d = json.loads(_PAIR_SETTINGS.read_text(encoding="utf-8"))
+        return str(d.get("shell_pair_token") or "")
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _pair_save_token(token: str) -> None:
+    _PAIR_SETTINGS.parent.mkdir(parents=True, exist_ok=True)
+    data = {}
+    try:
+        data = json.loads(_PAIR_SETTINGS.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        data = {}
+    data["shell_pair_token"] = token
+    _PAIR_SETTINGS.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        os.chmod(_PAIR_SETTINGS, 0o600)
+    except OSError:
+        pass
+
+
+# 启动时把已存 token 配对上(壳重启后扩展无需重新配)
+_t0 = _pair_load_token()
+if _t0:
+    _AGENT_PAIRED.add(_t0)
+    _AGENT_QUEUES.setdefault(_t0, [])
+    _AGENT_ACKS.setdefault(_t0, [])
+
+
+def _agent_sid() -> str:
+    """ack 落库目标会话:取最近活跃的会话(无则新建),不新增全局线程态。"""
+    rows = list_sessions()
+    return rows[0]["id"] if rows else create_session()
+
+
+def _agent_enqueue(token: str, action: dict) -> bool:
+    """壳侧/外部下发动作到已配对扩展。web_auto 钩子与外部 POST 共用。"""
+    with _AGENT_COND:
+        if token not in _AGENT_PAIRED:
+            return False
+        _AGENT_QUEUES.setdefault(token, []).append(action)
+        _SNAP_STATE.update({"snapping": True, "pending": len(_AGENT_QUEUES[token])})
+        _AGENT_COND.notify_all()
+    return True
+
 
 
 # ============================================================
@@ -758,11 +844,16 @@ def _wrap_handoff_as_data(handoff: str) -> str:
             + "\n【交接结束】\n\n请基于以上背景继续任务。")
 
 
-def _continue_in_new_window(from_sid: str) -> dict:
-    """开新窗接续:新建会话,把交接块作为首条 user 消息落库。返回 {ok, session_id?}。"""
+def _continue_in_new_window(from_sid: str, handoff: str = None, source: str = None) -> dict:
+    """开新窗接续:新建会话,把交接块作为首条 user 消息落库。返回 {ok, session_id?}。
+    零 LLM 增量(#39 评审修复):前端已拿摘要时经可选 handoff/source 传入复用,
+    跳过 _build_handoff 的二次 LLM 提炼;不传则现状(自调 _build_handoff)。"""
     if not get_session(from_sid):
         return {"ok": False, "error": "源会话不存在"}
-    h = _build_handoff(from_sid)
+    if isinstance(handoff, str) and handoff.strip():
+        h = {"handoff": handoff, "source": source if source in ("llm", "rules") else "llm"}
+    else:
+        h = _build_handoff(from_sid)
     new_sid = create_session()
     rename_session(new_sid, "接续·" + ((get_session(from_sid) or [None, "会话"])[1] or "会话")[:18])
     add_message(new_sid, "user", _wrap_handoff_as_data(h["handoff"]))
@@ -836,6 +927,34 @@ _PAGE = r"""<!DOCTYPE html>
   #strategy-label { font-size:12px; color:var(--gh-ink-faint); }
 
   #main { flex:1; display:flex; min-height:0; }
+  /* 左右分屏(#39):主对话区包 #split-wrap;默认右栏满宽(左栏隐藏),分屏态左右并列 */
+  #split-wrap { flex:1; display:flex; min-width:0; min-height:0; }
+  #split-left { display:none; flex:0 0 42%; min-width:260px; max-width:80%;
+    border-right:none; background:rgba(251,248,241,.92); flex-direction:column; min-height:0; }
+  #split-wrap.split #split-left { display:flex; }
+  #split-bar { display:none; flex:0 0 6px; cursor:col-resize; background:var(--gh-line); }
+  #split-bar:hover, #split-bar.dragging { background:var(--gh-green); }
+  #split-wrap.split #split-bar { display:block; }
+  #split-wrap.split #conv { flex:1; }
+  #sl-head { display:flex; align-items:center; gap:6px; padding:8px 10px;
+    border-bottom:1px solid var(--gh-line); }
+  .sl-tab { padding:4px 12px; font-size:12px; border:1px solid var(--gh-line); border-radius:8px;
+    background:var(--gh-surface); color:var(--gh-ink-soft); cursor:pointer; }
+  .sl-tab.active { background:var(--gh-green-deep); color:#fbf6ec; border-color:var(--gh-green-deep); }
+  #sl-title { flex:1; font-size:12px; color:var(--gh-ink-faint); white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis; }
+  #sl-merge { padding:4px 10px; font-size:12px; border:1px solid var(--gh-line); border-radius:8px;
+    background:var(--gh-surface); color:var(--gh-seal); cursor:pointer; white-space:nowrap; }
+  #sl-merge:hover { border-color:var(--gh-seal); }
+  #sl-body { flex:1; overflow-y:auto; padding:14px 14px; min-height:0; }
+  #sl-summary-src { font-size:11px; color:var(--gh-ink-faint); margin-bottom:8px; }
+  #sl-summary-text { white-space:pre-wrap; word-break:break-word; line-height:1.6;
+    font-size:13.5px; color:var(--gh-ink); user-select:text; }
+  #sl-replay { display:flex; flex-direction:column; gap:12px; }
+  #sl-replay .msg { max-width:100%; font-size:13px; }
+  #sl-replay .msg.tool { max-width:100%; }
+  #sl-replay .msg.user { align-self:flex-end; }
+  #sl-replay .msg.agent { align-self:flex-start; }
   #rail { width:250px; border-right:1px solid var(--gh-line); background:rgba(239,232,218,.5);
     padding:12px; overflow-y:auto; display:flex; flex-direction:column; gap:4px; }
   #rail h2 { font-size:12px; color:var(--gh-ink-faint); text-transform:uppercase; letter-spacing:1px; margin:4px 2px 8px; }
@@ -882,6 +1001,48 @@ _PAGE = r"""<!DOCTYPE html>
   .msg.tool summary { cursor:pointer; user-select:none; outline:none; }
   .msg.tool .tool-body { margin:6px 0 0; max-height:300px; overflow:auto; white-space:pre-wrap;
     word-break:break-word; font-size:12px; color:var(--gh-ink-soft); }
+
+  /* 壳三件套①:实时工具进度卡 */
+  .msg.tool.live { background:rgba(201,138,46,.08); border:1px solid rgba(201,138,46,.35);
+    color:var(--gh-ink); font-size:13px; white-space:normal; }
+  .msg.tool.live .lv-args { color:var(--gh-ink-faint); font-size:11.5px; word-break:break-all; }
+  .msg.tool.live .lv-ms { color:var(--gh-ink-faint); font-size:11.5px; margin-left:4px; }
+  .msg.tool.live .lv-ok { color:#2f8f4e; font-weight:700; }
+  .msg.tool.live .lv-err { color:var(--gh-seal); font-weight:700; }
+  .msg.tool.live .lv-prev { margin-top:4px; }
+  .msg.tool.live .lv-prev pre { margin:4px 0 0; max-height:180px; overflow:auto;
+    white-space:pre-wrap; word-break:break-word; font-size:11.5px; color:var(--gh-ink-soft); }
+
+  /* 壳三件套②:assistant md 渲染容器(覆盖 white-space:pre-wrap,交由 md 排版) */
+  .msg.md { white-space:normal; }
+  .msg.md > :first-child { margin-top:0; } .msg.md > :last-child { margin-bottom:0; }
+  .msg.md h1,.msg.md h2,.msg.md h3,.msg.md h4 { margin:.7em 0 .35em; line-height:1.3;
+    color:var(--gh-ink); font-weight:700; }
+  .msg.md h1{font-size:19px} .msg.md h2{font-size:17px} .msg.md h3{font-size:15.5px} .msg.md h4{font-size:14.5px}
+  .msg.md p { margin:.45em 0; }
+  .msg.md ul,.msg.md ol { margin:.4em 0; padding-left:1.5em; }
+  .msg.md li { margin:.2em 0; }
+  .msg.md code { background:rgba(0,0,0,.06); padding:1px 5px; border-radius:5px;
+    font-family:Consolas,Menlo,monospace; font-size:13px; }
+  .msg.md pre { background:#2b2b28; color:#e8e4da; padding:10px 12px; border-radius:8px;
+    overflow:auto; white-space:pre; line-height:1.45; margin:.5em 0; }
+  .msg.md pre code { background:none; color:inherit; padding:0; }
+  .msg.md blockquote { border-left:3px solid var(--gh-line); margin:.5em 0; padding:.1em 0 .1em 12px;
+    color:var(--gh-ink-soft); }
+  .msg.md table { border-collapse:collapse; margin:.5em 0; font-size:13.5px; }
+  .msg.md th,.msg.md td { border:1px solid var(--gh-line); padding:6px 10px; text-align:left; }
+  .msg.md th { background:rgba(0,0,0,.04); font-weight:600; }
+  .msg.md img { max-width:100%; border-radius:8px; margin:.4em 0; box-shadow:var(--gh-shadow); }
+  .msg.md a { color:#a05a1e; text-decoration:underline; }
+  .msg.md hr { border:none; border-top:1px solid var(--gh-line); margin:.7em 0; }
+
+  /* 壳三件套④:mermaid 图(流程/时序/架构/状态) */
+  .msg.md .mermaid-diagram { margin:.5em 0; padding:12px; background:#fdfcf8;
+    border:1px solid var(--gh-line); border-radius:8px; overflow:auto; text-align:center; }
+  .msg.md .mermaid-diagram svg { max-width:100%; height:auto; }
+  .msg.md .mermaid-err { color:var(--gh-seal); font-size:12px; margin-bottom:6px; }
+  .msg.md .mermaid-src { background:#f6f3ea; color:var(--gh-ink-soft); padding:8px 10px;
+    border-radius:6px; font-size:12px; white-space:pre-wrap; text-align:left; }
 
   /* 延续话题(Perplexity) */
   .followups { align-self:flex-start; max-width:78%; display:flex; flex-direction:column; gap:6px; margin-top:-6px; }
@@ -948,6 +1109,17 @@ _PAGE = r"""<!DOCTYPE html>
 
   @media (max-width:760px){ #rail{display:none} .msg{max-width:92%} }
 </style>
+<!-- 壳三件套②③:md 标准渲染 + XSS 防护(版本钉死)。仅渲染 assistant 正文;user 保持纯文本。 -->
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+<!-- ④图渲染:mermaid(流程图/时序图/架构图/状态图 → SVG 内联)。ESM 模块,见页面底部 init。 -->
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.esm.min.mjs';
+  // 安全:securityLevel 'strict' 禁 htmlLabels,防图内注入;国风主题基色。
+  mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'neutral' });
+  window.__mermaid = mermaid;
+  window.__mermaidReady = true;
+</script>
 </head>
 <body>
 <div id="topbar">
@@ -965,11 +1137,32 @@ _PAGE = r"""<!DOCTYPE html>
     <h2>会话</h2>
     <div id="sess-list"></div>
   </div>
-  <div id="conv">
+  <div id="split-wrap">
+    <div id="split-left">
+      <div id="sl-head">
+        <button class="sl-tab active" id="sl-tab-summary" type="button">摘要</button>
+        <button class="sl-tab" id="sl-tab-replay" type="button">原文</button>
+        <span id="sl-title"></span>
+        <button id="sl-merge" type="button" title="退出分屏,回到普通单窗">✕ 合并</button>
+      </div>
+      <div id="sl-body">
+        <div id="sl-summary-view">
+          <div id="sl-summary-src"></div>
+          <div id="sl-summary-text"></div>
+        </div>
+        <div id="sl-replay-view" style="display:none">
+          <div id="sl-replay"></div>
+        </div>
+      </div>
+    </div>
+    <div id="split-bar"></div>
+    <div id="conv">
     <div id="conv-head">
       <div id="conv-title">新会话</div>
       <button id="continue-btn" onclick="continueInNewWindow()" style="display:none"
         title="上下文近满,一键开新窗并携带交接摘要接续任务">🔀 开新窗接续</button>
+      <button id="split-btn" onclick="openSplitScreen()" style="display:none"
+        title="上下文近满,本窗内左右分屏:左栏看交接摘要/旧会话原文,右栏开新会话接续">🗔 分屏接续</button>
       <span id="ctx-usage" title="上下文窗口用量(估算)"></span>
       <div id="menu-wrap">
         <button id="menu-btn" onclick="toggleMenu(event)">⋯</button>
@@ -982,6 +1175,7 @@ _PAGE = r"""<!DOCTYPE html>
           <div class="mi" onclick="exportAs('docx')">📃 导出为DOCX</div>
           <div class="mi" onclick="saveExperience()">💎 存为经验(Obsidian)</div>
           <div class="mi" onclick="continueInNewWindow()">🔀 开新窗接续(带交接)</div>
+          <div class="mi" onclick="openSplitScreen()">🗔 分屏接续(带交接)</div>
           <div class="divider"></div>
           <div class="mi danger" onclick="deleteSession()">🗑️ 删除</div>
         </div>
@@ -1006,6 +1200,7 @@ _PAGE = r"""<!DOCTYPE html>
           <button id="send" onclick="sendMessage()">发送</button>
         </div>
       </div>
+    </div>
     </div>
   </div>
 </div>
@@ -1082,7 +1277,8 @@ function renderCtxUsage(cu) {
   if (!el) return;
   el.className = '';
   if (!cu || !cu.window) { el.textContent = ''; el.title = '上下文窗口用量(估算)';
-    const cb0 = document.getElementById('continue-btn'); if (cb0) cb0.style.display = 'none'; return; }
+    const cb0 = document.getElementById('continue-btn'); if (cb0) cb0.style.display = 'none';
+    const sb0 = document.getElementById('split-btn'); if (sb0) sb0.style.display = 'none'; return; }
   const pct = Math.round((cu.ratio || 0) * 100);
   const usedK = (cu.used / 1000).toFixed(1), winK = Math.round(cu.window / 1000);
   let txt = `📏 ${usedK}k/${winK}k (${pct}%)`;
@@ -1095,9 +1291,61 @@ function renderCtxUsage(cu) {
   if (cu.advise) { tip += '\n' + cu.advise; }
   el.textContent = txt;
   el.title = tip;
-  // 近满即亮「开新窗接续」按钮(档位3)
+  // 近满即亮「开新窗接续」+「分屏接续」按钮(档位3)
   const cb = document.getElementById('continue-btn');
   if (cb && cu.near_full) cb.style.display = '';
+  const sb = document.getElementById('split-btn');
+  if (sb && cu.near_full) sb.style.display = '';
+}
+
+// 壳三件套②:md 标准渲染(仅 assistant 正文;DOMPurify 防 XSS)。
+// ③:相对路径的图片/链接重写指向 /oiagent/api/file 端点,使设计稿/生成图/视频可内联。
+function renderMd(text) {
+  if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
+    const d = document.createElement('div'); d.textContent = text; return d.innerHTML;
+  }
+  const rewrite = (href) => {
+    if (!href) return href;
+    if (/^(https?:)?\/\//i.test(href) || href.startsWith('data:') || href.startsWith('/')) return href;
+    return '/oiagent/api/file?path=' + encodeURIComponent(href);
+  };
+  // marked 12.x:直接覆盖 renderer.image/link 不可靠,改用 walkTokens 改 token.href,
+  // 让默认 renderer 用重写后的地址输出(稳)。
+  const walkTokens = (token) => {
+    if (token.type === 'image' || token.type === 'link') token.href = rewrite(token.href);
+  };
+  const html = marked.parse(text || '', { breaks: true, walkTokens });
+  return DOMPurify.sanitize(html, { ADD_ATTR: ['target'], ADD_TAGS: ['svg','g','path','rect','line','text','tspan','ellipse','circle','polygon','marker','defs','foreignObject','style'] });
+}
+
+// 壳三件套④:mermaid 图渲染。把容器内 ```mermaid 代码块(pre code.language-mermaid)
+// 转 SVG 内联。renderMd 是同步字符串→字符串,无法等 mermaid 异步,故渲染分两步:
+// addMsg 先 innerHTML 上 md,再 _renderMermaidIn(el) 异步把 mermaid 块换成 SVG。
+async function _renderMermaidIn(el) {
+  if (!el) return;
+  const blocks = el.querySelectorAll('pre code.language-mermaid, pre code.lang-mermaid');
+  if (!blocks.length) return;
+  // 模块是 ESM 异步加载:若尚未就绪,轮询等待(最多 ~5s),避免加载窗口期内漏渲染。
+  for (let i = 0; i < 50 && !(window.__mermaidReady && window.__mermaid); i++) {
+    await new Promise(r => setTimeout(r, 100));
+  }
+  if (!window.__mermaid) return;
+  const mermaid = window.__mermaid;
+  for (const code of blocks) {
+    const pre = code.closest('pre');
+    if (!pre) continue;
+    const src = code.textContent;
+    const holder = document.createElement('div');
+    holder.className = 'mermaid-diagram';
+    try {
+      const { svg } = await mermaid.render('mmd-' + Math.random().toString(36).slice(2), src);
+      holder.innerHTML = svg;  // mermaid strict 模式产出可信 SVG
+    } catch (e) {
+      holder.innerHTML = '<div class="mermaid-err">图渲染失败:' + esc(String(e)) + '</div>' +
+        '<pre class="mermaid-src">' + esc(src) + '</pre>';
+    }
+    pre.replaceWith(holder);
+  }
 }
 
 function addMsg(role, text, followups) {
@@ -1120,8 +1368,16 @@ function addMsg(role, text, followups) {
   }
   const d = document.createElement('div');
   d.className = 'msg ' + role;
-  d.textContent = text;
-  box.appendChild(d);
+  if (role === 'assistant' || role === 'agent') {
+    // ②md 标准渲染:assistant/agent 正文按 md 解析(表格/代码块/图片),DOMPurify 防 XSS
+    d.innerHTML = renderMd(text);
+    d.classList.add('md');
+    box.appendChild(d);
+    _renderMermaidIn(d);  // ④mermaid 图 → SVG(异步,append 后才能量尺寸)
+  } else {
+    d.textContent = text;  // user 保持纯文本,不解析(防注入)
+    box.appendChild(d);
+  }
   if (followups && followups.length) {
     const fu = document.createElement('div');
     fu.className = 'followups';
@@ -1153,7 +1409,9 @@ async function loadSessions() {
   });
 }
 
-async function switchSession(id) {
+async function switchSession(id, opts) {
+  // 切换右栏会话时自动退出分屏;但 openSplitScreen 程序内切右栏传 {keepSplit:true} 跳过(否则刚设的 splitFrom 被清)。
+  if (splitFrom && id !== sessionId && !(opts && opts.keepSplit)) exitSplit();
   sessionId = id;
   const r = await api('/history?session_id=' + id);
   document.getElementById('messages').innerHTML = '';
@@ -1171,6 +1429,7 @@ async function refreshCtxUsage() {
 }
 
 async function newSession() {
+  exitSplit();   // 新会话时自动退出分屏
   // 惰性新建:不在此落库,等 sendMessage 首发时才 POST /new,避免删除后残留空"新会话"行。
   sessionId = null;
   document.getElementById('messages').innerHTML = '';
@@ -1292,6 +1551,129 @@ async function continueInNewWindow(){
   }
 }
 
+// ---- 左右分屏接续(#39):左栏=交接摘要/旧会话原文(全只读),右栏=新会话 ----
+let splitFrom = null;      // 分屏左栏正显示的旧会话 sid;null=非分屏
+let splitHandoff = null;   // {handoff, source}
+
+function _slTab(which){
+  document.getElementById('sl-tab-summary').classList.toggle('active', which==='summary');
+  document.getElementById('sl-tab-replay').classList.toggle('active', which==='replay');
+  document.getElementById('sl-summary-view').style.display = which==='summary' ? '' : 'none';
+  document.getElementById('sl-replay-view').style.display = which==='replay' ? '' : 'none';
+}
+
+// 左栏只读渲染:复用 addMsg 同款结构(user/assistant 文本 + tool <details> 折叠),
+// 但不渲染 followups 按钮、无 onclick、无输入 → 全只读。
+function addMsgRO(role, text){
+  const box = document.getElementById('sl-replay');
+  if (role === 'tool') {
+    const det = document.createElement('details');
+    det.className = 'msg tool';
+    const sum = document.createElement('summary');
+    const firstNL = text.indexOf('\n');
+    const head = firstNL >= 0 ? text.slice(0, firstNL) : text.slice(0, 60);
+    sum.textContent = head + ' (工具输出,点击展开)';
+    const pre = document.createElement('pre');
+    pre.className = 'tool-body';
+    pre.textContent = firstNL >= 0 ? text.slice(firstNL + 1) : text;
+    det.appendChild(sum); det.appendChild(pre);
+    box.appendChild(det);
+    return;
+  }
+  if (role !== 'user' && role !== 'assistant') return;
+  const d = document.createElement('div');
+  d.className = 'msg ' + (role === 'user' ? 'user' : 'agent');
+  if (role === 'assistant') { d.innerHTML = renderMd(text); d.classList.add('md'); }
+  else { d.textContent = text; }
+  box.appendChild(d);
+  if (role === 'assistant') _renderMermaidIn(d);  // ④分屏回放同样渲染 mermaid
+}
+
+async function loadSplitReplay(){
+  const box = document.getElementById('sl-replay');
+  if (box.dataset.loaded === '1') return;
+  box.innerHTML = '<div style="font-size:12px;color:var(--gh-ink-faint)">回放加载中…</div>';
+  try{
+    const r = await api('/replay?session_id=' + encodeURIComponent(splitFrom));
+    box.innerHTML = '';
+    if (r && r.ok && Array.isArray(r.messages)) {
+      if (r.title) document.getElementById('sl-title').textContent = '旧会话: ' + r.title;
+      r.messages.forEach(m => addMsgRO(m.role, m.content));
+      box.dataset.loaded = '1';
+    } else {
+      box.innerHTML = '<div style="font-size:12px;color:var(--gh-seal)">原文回放失败:' +
+        esc((r && r.error) || '未知错误') + '</div>';
+    }
+  }catch(e){
+    box.innerHTML = '<div style="font-size:12px;color:var(--gh-seal)">原文回放异常:' + esc(e.message) + '</div>';
+  }
+}
+
+function enterSplit(){
+  document.getElementById('split-wrap').classList.add('split');
+}
+function exitSplit(){
+  // 防御:不只在 splitFrom 非空时才收——状态异常(splitFrom 丢了但左栏还亮)也要能关掉左栏。
+  splitFrom = null; splitHandoff = null;
+  const w = document.getElementById('split-wrap');
+  if (w) w.classList.remove('split');
+}
+
+async function openSplitScreen(){
+  if(!sessionId){alert('先开始一个会话');return;}
+  const menu = document.getElementById('menu'); if(menu) menu.classList.remove('open');
+  const from_sid = sessionId;   // 旧会话(进分屏前的当前会话)
+  toast('🗔 正在生成交接摘要并分屏 …');
+  try{
+    // 1) 摘要:GET /handoff(与 /continue 同源:LLM 优先+规则兜底,本期不在 UI 加两档)
+    const h = await api('/handoff?session_id=' + encodeURIComponent(from_sid));
+    if(!h || !h.ok){ toast('❌ 交接摘要失败: ' + ((h&&h.error)||'未知错误'), false); return; }
+    // 2) 先建右栏新会话(POST /continue,复用第1步已拿的摘要→避免二次 LLM 提炼,契约零增量红线;
+    //    交接块仍经 _wrap_handoff_as_data 防注入包装注入首条)——成功才进分屏
+    const r = await api('/continue', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({from_session_id: from_sid, handoff: h.handoff, source: h.source})
+    });
+    if(!(r && r.ok && r.session_id)){
+      toast('❌ 接续失败: ' + ((r&&r.error)||'未知错误'), false); return;   // 不进分屏
+    }
+    // 3) 左栏填摘要(标来源)+ 记 from_sid
+    splitFrom = from_sid; splitHandoff = h;
+    document.getElementById('sl-summary-text').textContent = h.handoff || '';
+    document.getElementById('sl-summary-src').textContent =
+      '交接摘要 · 来源: ' + (h.source==='llm' ? 'LLM 提炼' : '规则整理') + '(只读)';
+    document.getElementById('sl-title').textContent = '';
+    const rb = document.getElementById('sl-replay'); rb.innerHTML = ''; rb.dataset.loaded = '0';
+    _slTab('summary');
+    // 4) 右栏切到新会话(keepSplit:程序内切换,不触发 auto-exit 清掉 splitFrom)
+    await loadSessions();
+    await switchSession(r.session_id, { keepSplit: true });
+    // 5) 亮左栏(右栏新会话已就绪)
+    enterSplit();
+    toast('✅ 分屏接续(' + (r.source==='llm'?'LLM 提炼':'规则整理') + '):左摘要/原文,右新会话');
+  }catch(e){
+    toast('❌ 分屏异常: ' + e.message, false);
+  }
+}
+
+// 分隔条拖拽调宽(纯前端,不持久化)
+(function(){
+  const bar = document.getElementById('split-bar');
+  const left = document.getElementById('split-left');
+  if (!bar || !left) return;
+  let dragging = false;
+  bar.addEventListener('mousedown', (e) => { dragging = true; bar.classList.add('dragging'); e.preventDefault(); });
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const wrap = document.getElementById('split-wrap');
+    const rect = wrap.getBoundingClientRect();
+    let w = e.clientX - rect.left;
+    w = Math.max(260, Math.min(w, rect.width * 0.8));
+    left.style.flex = '0 0 ' + w + 'px';
+  });
+  document.addEventListener('mouseup', () => { if (dragging){ dragging = false; bar.classList.remove('dragging'); } });
+})();
+
 async function sendMessage() {
   const input = document.getElementById('input');
   const btn = document.getElementById('send');
@@ -1310,11 +1692,42 @@ async function sendMessage() {
   if (!polling) pollResult();
 }
 
+// 壳三件套①:实时工具进度卡。进行中的工具调用以临时 DOM(标 data-live)插在消息流末尾,
+// 让用户看得见「在跑什么工具、跑到哪步」,不再只能盯 spinner。轮询结束 history 重渲时清掉。
+function clearLiveProgress(){
+  document.querySelectorAll('#messages [data-live]').forEach(el => el.remove());
+}
+function renderLiveToolEvent(ev){
+  const box = document.getElementById('messages');
+  if (!box) return;
+  if (ev.type === 'tool_start') {
+    const d = document.createElement('div');
+    d.className = 'msg tool live';
+    d.dataset.live = '1';
+    d.dataset.tool = ev.name;
+    d.innerHTML = '<span class="spinner"></span> 🔧 调用 <b>' + esc(ev.name) + '</b>' +
+      (ev.args_preview ? ' <span class="lv-args">' + esc(ev.args_preview) + '</span>' : '');
+    box.appendChild(d);
+  } else if (ev.type === 'tool_end') {
+    // 找同名进行中的卡,更新为完成态(✓/✗ + 耗时 + 输出预览折叠)
+    const card = box.querySelector('[data-live][data-tool="' + ev.name + '"]');
+    const done = '<span class="' + (ev.ok ? 'lv-ok' : 'lv-err') + '">' + (ev.ok ? '✓' : '✗') + '</span>' +
+      ' 🔧 <b>' + esc(ev.name) + '</b> <span class="lv-ms">' + ev.ms + 'ms</span>' +
+      (ev.output_preview ? '<details class="lv-prev"><summary>输出预览</summary><pre>' +
+        esc(ev.output_preview) + '</pre></details>' : '');
+    if (card) { card.innerHTML = done; }
+    else { const d = document.createElement('div'); d.className='msg tool live';
+           d.dataset.live='1'; d.dataset.tool=ev.name; d.innerHTML=done; box.appendChild(d); }
+  }
+  box.scrollTop = box.scrollHeight;
+}
+
 async function pollResult() {
   polling = true;
   while (sessionId) {
     await new Promise(r => setTimeout(r, 900));
     const r = await api('/status?session_id=' + sessionId);
+    if (r.events && r.events.length) r.events.forEach(renderLiveToolEvent);
     if (r.meta && r.meta.context_usage) renderCtxUsage(r.meta.context_usage);
     // 档位3:近满时后台已预提炼交接摘要 → 亮「开新窗接续」按钮并提示
     if (r.meta && r.meta.handoff_ready) {
@@ -1322,6 +1735,9 @@ async function pollResult() {
       if (cb) { cb.style.display = '';
         cb.title = '上下文近满,交接摘要已备好(' +
           (r.meta.handoff_ready.source === 'llm' ? 'LLM 提炼' : '规则整理') + '),一键开新窗接续'; }
+      const sb = document.getElementById('split-btn');
+      if (sb) { sb.style.display = '';
+        sb.title = '上下文近满,交接摘要已备好,本窗内左右分屏接续'; }
     }
     if (!r.running) {
       const h = await api('/history?session_id=' + sessionId);
@@ -1427,6 +1843,11 @@ document.getElementById('input').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 });
 
+// 左栏 tab 切换 + 合并(退出分屏)
+document.getElementById('sl-tab-summary').addEventListener('click', () => _slTab('summary'));
+document.getElementById('sl-tab-replay').addEventListener('click', () => { _slTab('replay'); loadSplitReplay(); });
+document.getElementById('sl-merge').addEventListener('click', () => exitSplit());
+
 (async () => {
   const r = await api('/info');
   document.getElementById('strategy-label').textContent = '路由: ' + r.strategy + (r.platforms.length ? ' · ' + r.platforms.join('/') : ' · 未配key');
@@ -1488,6 +1909,38 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _serve_workdir_file(self, rel_path: str):
+        # 产物内联查看(壳三件套③):安全地从 workdir 取文件。
+        # 红线:realpath 必须落在 workdir 内,拒目录穿越;读文件边界同 read_file。
+        import mimetypes
+        base = os.path.realpath(_WORKDIR["path"])
+        # 仅允许相对路径(拒绝对路径/盘符),再 realpath 归一并校验前缀
+        rel = (rel_path or "").lstrip("/\\")
+        target = os.path.realpath(os.path.join(base, rel))
+        if not target.startswith(base + os.sep) and target != base:
+            self._json({"ok": False, "error": "forbidden: 越出工作目录"}, 403)
+            return
+        if not os.path.isfile(target):
+            self._json({"ok": False, "error": "not found"}, 404)
+            return
+        mime, _ = mimetypes.guess_type(target)
+        ext = os.path.splitext(target)[1].lower()
+        if ext == ".md":
+            mime = "text/plain; charset=utf-8"  # md 以文本取回,前端再渲染(防直接当 html)
+        mime = mime or "application/octet-stream"
+        try:
+            with open(target, "rb") as f:
+                data = f.read()
+        except OSError as e:
+            self._json({"ok": False, "error": f"read error: {e}"}, 500)
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", mime)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
+
     def _asset(self, name: str):
         safe = os.path.basename(name)
         p = Path(__file__).resolve().parent / "assets" / safe
@@ -1532,11 +1985,27 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._json({"id": sid, "title": sess[1], "pinned": bool(sess[2]),
                         "messages": get_messages(sid)})
+        elif path == "/oiagent/api/replay":
+            # 分屏左栏专用只读回放(#39):复用 get_session/get_messages,纯只读
+            # 不写库、不调 LLM、不改 meta。与 /history 区别:ok 信封 + 不带 pinned。
+            sid = (qs.get("session_id") or [""])[0]
+            sess = get_session(sid)
+            if not sess:
+                self._json({"ok": False, "error": "会话不存在"}, 404)
+                return
+            self._json({"ok": True, "id": sid, "title": sess[1],
+                        "messages": get_messages(sid)})
         elif path == "/oiagent/api/status":
             sid = (qs.get("session_id") or [""])[0]
             with _running_lock:
                 running = _running.get(sid, False)
-            self._json({"running": running, "meta": _get_meta(sid)})
+            # 实时工具进度增量(壳三件套①):返回自游标之后的 events,推进游标。
+            with _events_lock:
+                all_ev = _events.get(sid, [])
+                cur = _event_cursor.get(sid, 0)
+                new_ev = all_ev[cur:]
+                _event_cursor[sid] = len(all_ev)
+            self._json({"running": running, "meta": _get_meta(sid), "events": new_ev})
         elif path == "/oiagent/api/context_usage":
             # 切会话/加载时即算一次用量(不依赖 chat 后的 meta)。
             # model 未知时用 DEFAULT_MODEL 估;若 meta 已有 last_model 用之更准。
@@ -1554,6 +2023,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": False, "error": "会话不存在"}, 404)
                 return
             self._json(dict(_build_handoff(sid), ok=True))
+        elif path == "/oiagent/api/file":
+            # 产物内联查看(壳三件套③):从 workdir 安全取文件供 md 内联 img/视频/设计稿。
+            # 红线:realpath 必须落在 workdir 内,拒目录穿越(同 read_file 边界纪律)。
+            self._serve_workdir_file((qs.get("path") or [""])[0])
         elif path == "/oiagent/api/keys":
             self._json(_key_store.list_platforms())
         elif path == "/oiagent/api/models":
@@ -1569,6 +2042,33 @@ class Handler(BaseHTTPRequestHandler):
             self._json(list_endpoint_models(base, key))
         elif path == "/oiagent/api/export":
             self._handle_export(qs)
+        elif path == "/oiagent/api/agent/poll":
+            # #58 扩展长轮询取动作(契约 §A2):token 无效 401;有效悬挂至有动作或超时。
+            token = (qs.get("token") or [""])[0]
+            if token not in _AGENT_PAIRED:
+                self._json({"ok": False, "error": "unpaired"}, 401)
+                return
+            deadline = time.monotonic() + _POLL_HOLD_SEC
+            action = None
+            with _AGENT_COND:
+                while True:
+                    q = _AGENT_QUEUES.setdefault(token, [])
+                    if q:
+                        action = q.pop(0)
+                        _SNAP_STATE.update({"snapping": True, "pending": len(q)})
+                        break
+                    remain = deadline - time.monotonic()
+                    if remain <= 0:
+                        break
+                    _AGENT_COND.wait(timeout=min(remain, 1.0))
+            self._json({"ok": True, "action": action})
+        elif path == "/oiagent/api/snap_state":
+            # shell 主进程 500ms 轮询(契约 §A4):本地无鉴权,只露 snapping bool/pending。
+            self._json(dict(_SNAP_STATE))
+        elif path == "/oiagent/api/agent/pair_status":
+            # 设置页状态点:只回布尔,不回 token 本体(红线)。
+            tok = _pair_load_token()
+            self._json({"paired": bool(tok and tok in _AGENT_PAIRED)})
         else:
             self._json({"error": "not found"}, 404)
 
@@ -1646,8 +2146,10 @@ class Handler(BaseHTTPRequestHandler):
             self._json(_save_experience_to_obsidian(sid))
         elif path == "/oiagent/api/continue":
             # 开新窗接续:新建会话,首条带交接块(只当资料防注入)。
+            # 可选 handoff/source:前端已拿摘要时传入复用,避免二次 LLM 提炼(#39 零增量)。
             from_sid = body.get("from_session_id", "")
-            self._json(_continue_in_new_window(from_sid))
+            self._json(_continue_in_new_window(
+                from_sid, handoff=body.get("handoff"), source=body.get("source")))
         else:
             self._json({"error": "not found"}, 404)
 
@@ -1665,6 +2167,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"error": "already running", "session_id": sid}, 409)
                 return
             _running[sid] = True
+        # 新一轮开始:清空上一轮的实时进度事件与游标(壳三件套①),避免跨轮残留。
+        with _events_lock:
+            _events[sid] = []
+            _event_cursor[sid] = 0
         # 落库的是用户可见文本 + 附件名标注(附件本体不存库,避免膨胀)
         att_note = (" " + " ".join(f"[附件:{a.get('name','file')}]" for a in attachments
                                    if isinstance(a, dict))) if attachments else ""
