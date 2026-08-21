@@ -7,11 +7,11 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
   :root {
-    --bg: #0f1117;
-    --card: #1a1d27;
-    --border: #2a2d3a;
-    --text: #e4e4e7;
-    --text-muted: #a1a1aa;
+    --bg: #eaf5ff;
+    --card: #ffffff;
+    --border: #b3d7f5;
+    --text: #1f2937;
+    --text-muted: #5b6b7c;
     --accent: #6366f1;
     --accent2: #22c55e;
     --accent3: #f59e0b;
@@ -55,9 +55,9 @@
     border-radius: 10px;
     font-weight: 600;
   }
-  .badge.v05 { background: rgba(239,68,68,0.2); color: #f87171; }
-  .badge.v06 { background: rgba(34,197,94,0.2); color: #4ade80; }
-  .badge.mandol { background: rgba(99,102,241,0.2); color: #818cf8; }
+  .badge.v05 { background: rgba(239,68,68,0.15); color: #b91c1c; }
+  .badge.v06 { background: rgba(34,197,94,0.15); color: #15803d; }
+  .badge.mandol { background: rgba(99,102,241,0.12); color: #4f46e5; }
   canvas { max-height: 350px; }
   table {
     width: 100%;
@@ -91,16 +91,16 @@
     font-weight: 600;
   }
   .flow-arrow { color: var(--text-muted); font-size: 1.2rem; }
-  .flow-node.user { background: #1e3a5f; color: #60a5fa; }
-  .flow-node.router { background: #3b1f5e; color: #a78bfa; }
-  .flow-node.kg { background: #1a3d2e; color: #34d399; }
-  .flow-node.ns { background: #3d3a1a; color: #fbbf24; }
-  .flow-node.fts5 { background: #3d1a1a; color: #f87171; }
-  .flow-node.anytxt { background: #1a2d3d; color: #38bdf8; }
-  .flow-node.everything { background: #2d1a3d; color: #c084fc; }
-  .flow-node.memo { background: #3d2d1a; color: #fb923c; }
-  .flow-node.hl { background: #1a3d3d; color: #2dd4bf; }
-  .flow-node.ctx { background: #2a2a4a; color: #e2e8f0; }
+  .flow-node.user { background: #dbeafe; color: #1d4ed8; }
+  .flow-node.router { background: #ede9fe; color: #7c3aed; }
+  .flow-node.kg { background: #d1fae5; color: #047857; }
+  .flow-node.ns { background: #fef3c7; color: #b45309; }
+  .flow-node.fts5 { background: #fee2e2; color: #b91c1c; }
+  .flow-node.anytxt { background: #e0f2fe; color: #0369a1; }
+  .flow-node.everything { background: #f3e8ff; color: #9333ea; }
+  .flow-node.memo { background: #ffedd5; color: #c2410c; }
+  .flow-node.hl { background: #ccfbf1; color: #0f766e; }
+  .flow-node.ctx { background: #e8f4fd; color: #12395b; }
   .legend {
     display: flex;
     gap: 1rem;
@@ -140,7 +140,7 @@
     <canvas id="layersChart"></canvas>
     <div class="legend">
       <div class="legend-item"><div class="legend-dot" style="background:#6366f1"></div>调用</div>
-      <div class="legend-item"><div class="legend-dot" style="background:#334155"></div>跳过</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#94a3b8"></div>跳过</div>
     </div>
   </div>
 
@@ -266,22 +266,22 @@
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-top:0.5rem;">
       <div>
         <h3 style="font-size:0.85rem; color:#ef4444;">OIagent v0.5 Flat</h3>
-        <div style="background:#1a1a2e; border-radius:8px; padding:1rem; margin-top:0.5rem;">
+        <div style="background:#e8f4fd; border-radius:8px; padding:1rem; margin-top:0.5rem;">
           <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:0.5rem;">17 个 namespace (平铺)</div>
           <div style="display:flex;flex-wrap:wrap;gap:4px;">
-            <span style="background:#2a1a3e; padding:2px 8px; border-radius:4px; font-size:0.7rem;">aureon-v0.1</span>
-            <span style="background:#2a1a3e; padding:2px 8px; border-radius:4px; font-size:0.7rem;">aureon-v0.9</span>
-            <span style="background:#2a1a3e; padding:2px 8px; border-radius:4px; font-size:0.7rem;">platform-cursor</span>
-            <span style="background:#2a1a3e; padding:2px 8px; border-radius:4px; font-size:0.7rem;">voice-input</span>
-            <span style="background:#2a1a3e; padding:2px 8px; border-radius:4px; font-size:0.7rem;">oiagent-integration</span>
-            <span style="background:#2a1a3e; padding:2px 8px; border-radius:4px; font-size:0.7rem;">...+12</span>
+            <span style="background:#dbeafe; padding:2px 8px; border-radius:4px; font-size:0.7rem;">aureon-v0.1</span>
+            <span style="background:#dbeafe; padding:2px 8px; border-radius:4px; font-size:0.7rem;">aureon-v0.9</span>
+            <span style="background:#dbeafe; padding:2px 8px; border-radius:4px; font-size:0.7rem;">platform-cursor</span>
+            <span style="background:#dbeafe; padding:2px 8px; border-radius:4px; font-size:0.7rem;">voice-input</span>
+            <span style="background:#dbeafe; padding:2px 8px; border-radius:4px; font-size:0.7rem;">oiagent-integration</span>
+            <span style="background:#dbeafe; padding:2px 8px; border-radius:4px; font-size:0.7rem;">...+12</span>
           </div>
           <div style="font-size:0.7rem; color:var(--text-muted); margin-top:0.5rem;">2922 KG nodes 无层级</div>
         </div>
       </div>
       <div>
         <h3 style="font-size:0.85rem; color:#22c55e;">v0.6 + Mandol Hierarchical</h3>
-        <div style="background:#1e293b; border-radius:8px; padding:1rem; margin-top:0.5rem;">
+        <div style="background:#eaf5ff; border-radius:8px; padding:1rem; margin-top:0.5rem;">
           <div style="font-size:0.75rem; color:#4ade80; margin-bottom:0.5rem;">四层抽象</div>
           <div style="padding-left:1rem;">
             <div style="font-size:0.75rem; color:#34d399; margin:4px 0;">📦 Base Layer (2922 nodes)</div>
@@ -325,7 +325,7 @@ new Chart(latencyCtx, {
   options: {
     responsive: true,
     plugins: {
-      legend: { labels: { color: '#a1a1aa', font: { size: 11 } } },
+      legend: { labels: { color: '#5b6b7c', font: { size: 11 } } },
       tooltip: {
         callbacks: {
           label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y}s`
@@ -334,14 +334,14 @@ new Chart(latencyCtx, {
     },
     scales: {
       y: {
-        title: { display: true, text: '预估延迟 (秒)', color: '#a1a1aa' },
-        grid: { color: '#2a2d3a' },
-        ticks: { color: '#a1a1aa' },
+        title: { display: true, text: '预估延迟 (秒)', color: '#5b6b7c' },
+        grid: { color: '#b3d7f5' },
+        ticks: { color: '#5b6b7c' },
         beginAtZero: true
       },
       x: {
-        grid: { color: '#2a2d3a' },
-        ticks: { color: '#a1a1aa', font: { size: 10 } }
+        grid: { color: '#b3d7f5' },
+        ticks: { color: '#5b6b7c', font: { size: 10 } }
       }
     }
   }
@@ -371,19 +371,19 @@ new Chart(layersCtx, {
     indexAxis: 'y',
     responsive: true,
     plugins: {
-      legend: { labels: { color: '#a1a1aa', font: { size: 11 } } }
+      legend: { labels: { color: '#5b6b7c', font: { size: 11 } } }
     },
     scales: {
       x: {
         stacked: true,
-        title: { display: true, text: '层数', color: '#a1a1aa' },
-        grid: { color: '#2a2d3a' },
-        ticks: { color: '#a1a1aa' }
+        title: { display: true, text: '层数', color: '#5b6b7c' },
+        grid: { color: '#b3d7f5' },
+        ticks: { color: '#5b6b7c' }
       },
       y: {
         stacked: true,
-        grid: { color: '#2a2d3a' },
-        ticks: { color: '#a1a1aa' }
+        grid: { color: '#b3d7f5' },
+        ticks: { color: '#5b6b7c' }
       }
     }
   }
@@ -417,16 +417,16 @@ new Chart(radarCtx, {
   options: {
     responsive: true,
     plugins: {
-      legend: { labels: { color: '#a1a1aa', font: { size: 10 } } }
+      legend: { labels: { color: '#5b6b7c', font: { size: 10 } } }
     },
     scales: {
       r: {
-        grid: { color: '#2a2d3a' },
-        angleLines: { color: '#2a2d3a' },
+        grid: { color: '#b3d7f5' },
+        angleLines: { color: '#b3d7f5' },
         ticks: { display: false },
         suggestedMin: 0,
         suggestedMax: 1,
-        pointLabels: { color: '#a1a1aa', font: { size: 9 } }
+        pointLabels: { color: '#5b6b7c', font: { size: 9 } }
       }
     }
   }

@@ -143,26 +143,26 @@ def render(stats: dict, smp: dict) -> str:
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
-  body{{font-family:system-ui,'Microsoft YaHei',sans-serif;margin:0;background:#0f172a;color:#e6e6e6}}
-  header{{padding:18px 24px;background:#171a21;border-bottom:1px solid #262b36}}
+  body{{font-family:system-ui,'Microsoft YaHei',sans-serif;margin:0;background:#eaf5ff;color:#1f2937}}
+  header{{padding:18px 24px;background:#ffffff;border-bottom:1px solid #b3d7f5}}
   header h1{{margin:0;font-size:20px}}
-  header .sub{{color:#8a93a6;font-size:12px;margin-top:4px}}
-  .tabs{{display:flex;gap:4px;padding:0 24px;background:#171a21}}
-  .tab{{padding:10px 16px;cursor:pointer;border:none;background:transparent;color:#8a93a6;
+  header .sub{{color:#5b6b7c;font-size:12px;margin-top:4px}}
+  .tabs{{display:flex;gap:4px;padding:0 24px;background:#ffffff;border-bottom:1px solid #b3d7f5}}
+  .tab{{padding:10px 16px;cursor:pointer;border:none;background:transparent;color:#5b6b7c;
         border-bottom:2px solid transparent;font-size:14px}}
-  .tab.active{{color:#fff;border-bottom-color:#4f8cff}}
+  .tab.active{{color:#12395b;border-bottom-color:#2f9df4}}
   .panel{{display:none;padding:24px}}
   .panel.active{{display:block}}
   .cards{{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px}}
-  .card{{background:#171a21;border:1px solid #262b36;border-radius:10px;padding:16px 20px;min-width:160px}}
+  .card{{background:#ffffff;border:1px solid #b3d7f5;border-radius:10px;padding:16px 20px;min-width:160px}}
   .card .num{{font-size:28px;font-weight:700}}
-  .card .lbl{{color:#8a93a6;font-size:12px;margin-top:4px}}
-  .chart-box{{background:#171a21;border:1px solid #262b36;border-radius:10px;padding:16px;margin-bottom:20px}}
+  .card .lbl{{color:#5b6b7c;font-size:12px;margin-top:4px}}
+  .chart-box{{background:#ffffff;border:1px solid #b3d7f5;border-radius:10px;padding:16px;margin-bottom:20px}}
   .chart-box h3{{margin:0 0 12px;font-size:15px}}
   canvas{{max-height:320px}}
-  .note{{background:#1c1305;border:1px solid #4a3a12;color:#e8c56a;border-radius:8px;
+  .note{{background:#e8f4fd;border:1px solid #b3d7f5;color:#12395b;border-radius:8px;
          padding:10px 14px;font-size:13px;margin-bottom:16px}}
-  code{{background:#1e293b;padding:2px 6px;border-radius:4px;font-size:12px}}
+  code{{background:#e8f4fd;padding:2px 6px;border-radius:4px;font-size:12px}}
   ul{{line-height:1.9}}
 </style>
 </head>
@@ -219,12 +219,12 @@ const D = {{
   pageLabels: {json.dumps(top_pages_labels)}, pageCounts: {json.dumps(top_pages_counts)},
   workLabels: {json.dumps(top_works_labels)}, workCounts: {json.dumps(top_works_counts)},
 }};
-const gridClr = '#262b36', tickClr = '#8a93a6';
+const gridClr = '#b3d7f5', tickClr = '#5b6b7c';
 function mk(id, type, labels, data, label, horizontal) {{
   new Chart(document.getElementById(id), {{
     type: type,
-    data: {{ labels, datasets: [{{ label, data, backgroundColor:'#4f8cff',
-           borderColor:'#4f8cff', fill:type==='line', tension:0.3 }}] }},
+    data: {{ labels, datasets: [{{ label, data, backgroundColor:'#2f9df4',
+           borderColor:'#1f7fd0', fill:type==='line', tension:0.3 }}] }},
     options: {{
       indexAxis: horizontal ? 'y' : 'x',
       plugins: {{ legend: {{ display:false }} }},

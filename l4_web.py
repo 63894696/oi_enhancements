@@ -211,49 +211,49 @@ _PAGE = r"""<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OIagent · 对话</title>
 <style>
-  :root { --bg:#0f172a; --panel:#1e293b; --bubble-u:#2b6cb0; --bubble-a:#1e293b;
-          --txt:#e2e8f0; --dim:#94a3b8; --accent:#4c8dff; --ok:#3fb27f; --warn:#e0a34a; }
+  :root { --bg:#eaf5ff; --panel:#ffffff; --bubble-u:#2f9df4; --bubble-a:#ffffff;
+          --txt:#1f2937; --dim:#5b6b7c; --accent:#2f9df4; --ok:#1e9e5a; --warn:#c47f2a; }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--txt); font:15px/1.5 -apple-system,"Segoe UI",Roboto,"Microsoft YaHei",sans-serif; }
   #wrap { max-width:760px; margin:0 auto; height:100vh; display:flex; flex-direction:column; }
-  header { padding:12px 16px; border-bottom:1px solid #334155; display:flex; align-items:center; gap:10px; }
+  header { padding:12px 16px; border-bottom:1px solid #b3d7f5; display:flex; align-items:center; gap:10px; }
   header .dot { width:9px; height:9px; border-radius:50%; background:var(--ok); }
   header h1 { font-size:16px; margin:0; font-weight:600; }
   header .st { margin-left:auto; font-size:12px; color:var(--dim); }
   #chat { flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:14px; }
   .msg { max-width:85%; padding:10px 13px; border-radius:12px; white-space:pre-wrap; word-break:break-word; }
-  .msg.user { align-self:flex-end; background:var(--bubble-u); }
-  .msg.agent { align-self:flex-start; background:var(--bubble-a); }
-  .trace { align-self:flex-start; font-size:12px; color:var(--dim); background:#1e293b;
+  .msg.user { align-self:flex-end; background:var(--bubble-u); color:#fff; border:1px solid #1f7fd0; }
+  .msg.agent { align-self:flex-start; background:var(--bubble-a); border:1px solid #b3d7f5; }
+  .trace { align-self:flex-start; font-size:12px; color:var(--dim); background:#e8f4fd;
            border-left:3px solid var(--accent); padding:7px 10px; border-radius:6px; max-width:85%; }
   .trace b { color:var(--accent); font-weight:600; }
   .confirm { align-self:flex-start; display:flex; gap:8px; }
   .confirm button { background:var(--warn); border:none; color:#111; padding:7px 14px; border-radius:8px; cursor:pointer; font-weight:600; }
-  .confirm button.no { background:#475569; color:var(--txt); }
+  .confirm button.no { background:#dceefb; color:var(--txt); }
   .followups { align-self:flex-start; display:flex; gap:8px; flex-wrap:wrap; }
-  .followups button { background:transparent; border:1px solid #334; color:var(--dim);
+  .followups button { background:transparent; border:1px solid #b3d7f5; color:var(--dim);
                       padding:6px 12px; border-radius:16px; cursor:pointer; font-size:13px; }
   .followups button:hover { border-color:var(--accent); color:var(--accent); }
-  #composer { display:flex; gap:10px; padding:14px 16px; border-top:1px solid #334155; }
-  #in { flex:1; background:var(--panel); border:1px solid #334155; color:var(--txt);
+  #composer { display:flex; gap:10px; padding:14px 16px; border-top:1px solid #b3d7f5; }
+  #in { flex:1; background:var(--panel); border:1px solid #b3d7f5; color:var(--txt);
         border-radius:10px; padding:11px 13px; font-size:15px; outline:none; }
   #in:focus { border-color:var(--accent); }
   #send { background:var(--accent); border:none; color:#fff; padding:0 20px; border-radius:10px; cursor:pointer; font-weight:600; }
   #send:disabled { opacity:.5; cursor:default; }
   .sys { align-self:center; font-size:12px; color:var(--dim); }
-  .err { align-self:flex-start; background:#7f1d1d; border-left:3px solid #d66; padding:9px 12px; border-radius:6px; max-width:85%; }
-  .err .retry { margin-top:6px; background:#d66; border:none; color:#fff; padding:5px 12px; border-radius:6px; cursor:pointer; font-size:13px; }
+  .err { align-self:flex-start; background:#fdeaea; border-left:3px solid #d66; padding:9px 12px; border-radius:6px; max-width:85%; }
+  .err .retry { margin-top:6px; background:#c13a3a; border:none; color:#fff; padding:5px 12px; border-radius:6px; cursor:pointer; font-size:13px; }
   .working { align-self:flex-start; font-size:13px; color:var(--dim); display:flex; align-items:center; gap:8px; }
-  .working .spin { width:12px; height:12px; border:2px solid #345; border-top-color:var(--accent); border-radius:50%; animation:sp 0.8s linear infinite; }
+  .working .spin { width:12px; height:12px; border:2px solid #b3d7f5; border-top-color:var(--accent); border-radius:50%; animation:sp 0.8s linear infinite; }
   @keyframes sp { to { transform:rotate(360deg); } }
   /* markdown-ish 渲染 */
   .msg.agent table { border-collapse:collapse; margin:6px 0; font-size:13px; }
-  .msg.agent th, .msg.agent td { border:1px solid #334155; padding:4px 9px; text-align:left; }
-  .msg.agent th { background:#1e293b; }
-  .msg.agent code { background:#1e293b; padding:1px 5px; border-radius:4px; font-family:ui-monospace,Consolas,monospace; font-size:13px; }
-  .msg.agent pre { background:#1e293b; padding:9px 11px; border-radius:8px; overflow-x:auto; }
+  .msg.agent th, .msg.agent td { border:1px solid #b3d7f5; padding:4px 9px; text-align:left; }
+  .msg.agent th { background:#e8f4fd; }
+  .msg.agent code { background:#e8f4fd; padding:1px 5px; border-radius:4px; font-family:ui-monospace,Consolas,monospace; font-size:13px; }
+  .msg.agent pre { background:#e8f4fd; padding:9px 11px; border-radius:8px; overflow-x:auto; }
   .msg.agent pre code { background:none; padding:0; }
-  .msg.agent b, .msg.agent strong { color:#fff; }
+  .msg.agent b, .msg.agent strong { color:#12395b; }
 </style>
 </head>
 <body>

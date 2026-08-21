@@ -16,10 +16,10 @@ try:
     import lingxi_hotkeys as HK
     C = HK.COLORS
 except Exception:  # 配置层缺失时兜底,壳仍能跑
-    C = {"bg": "#0f172a", "bg2": "#1e293b", "border": "#334155",
-         "text": "#e2e8f0", "text_dim": "#94a3b8", "gold": "#e8b458",
-         "ready": "#3fbf7f", "recording": "#2ee06a", "busy": "#e8b23c",
-         "error": "#e05252"}
+    C = {"bg": "#ffffff", "bg2": "#e8f4fd", "border": "#b3d7f5",
+         "text": "#1f2937", "text_dim": "#5b6b7c", "gold": "#c47f2a",
+         "ready": "#1e9e5a", "recording": "#128a4a", "busy": "#b07d18",
+         "error": "#c13a3a"}
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_DB = r"C:\Users\Administrator\voice_input\lingxi_ime\backend\ciku.db"

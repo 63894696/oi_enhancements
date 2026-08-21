@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>SecureDM 能力探针</title>
+<style>
+  body{background:#eaf5ff;color:#1f2937;font:15px/1.8 "Consolas","Microsoft YaHei",monospace;padding:30px}
+  h1{font-size:20px;color:#2f9df4;margin:0 0 16px}
+  b{color:#1e9e5a}
+  .no{color:#c13a3a}
+  .dim{color:#5b6b7c;font-size:13px}
+  .verdict{margin-top:18px;padding:14px;border:1px solid #b3d7f5;border-radius:9px;background:#ffffff}
+</style>
+</head>
+<body>
+<h1>SecureDM 壳 · 原生能力探针</h1>
+<div id="r">检测中…</div>
+<div class="verdict" id="v"></div>
+<script>
+(async()=>{
+  const o=[];
+  const has=(n,c)=>o.push(`<div>${n}: ${c?'<b>✓ 支持</b>':'<span class="no">✗ 不支持</span>'}</div>`);
+  const md=navigator.mediaDevices||{};
+  has('getUserMedia(摄像头/麦克风)', !!md.getUserMedia);
+  has('getDisplayMedia(屏幕共享) — 壳核心价值', !!md.getDisplayMedia);
+  const c=md.getSupportedConstraints?md.getSupportedConstraints():{};
+  has('echoCancellation(回声抑制)', !!c.echoCancellation);
+  has('noiseSuppression(降噪)', !!c.noiseSuppression);
+  has('autoGainControl(自动增益)', !!c.autoGainControl);
+  has('facingMode(前后摄像头)', !!c.facingMode);
+  has('RTCPeerConnection(WebRTC)', typeof RTCPeerConnection!=='undefined');
+  has('RTCRtpScriptTransform(帧级E2E)', typeof RTCRtpScriptTransform!=='undefined');
+  o.push(`<div class="dim" style="margin-top:12px">UA: ${navigator.userAgent}</div>`);
+  try{
+    if(md.enumerateDevices){
+      const ds=await md.enumerateDevices();
+      const k={};ds.forEach(d=>k[d.kind]=(k[d.kind]||0)+1);
+      o.push(`<div class="dim">设备枚举:音频输入×${k.audioinput||0} · 音频输出×${k.audiooutput||0} · 视频输入×${k.videoinput||0}</div>`);
+    }
+  }catch(e){o.push(`<div class="no">设备枚举失败:${e.message}</div>`);}
+  document.getElementById('r').innerHTML=o.join('');
+  // 判定:屏幕共享 + AEC 是否在壳内可用(对比安卓 Chrome 无 getDisplayMedia)
+  const gdm=!!md.getDisplayMedia, aec=!!c.echoCancellation;
+  document.getElementById('v').innerHTML =
+    `<b>判定:</b> ` +
+    (gdm?`getDisplayMedia <b>可用</b> —— 壳突破了安卓 Chrome 的限制。`:`getDisplayMedia <span class="no">不可用</span>。`) +
+    `<br>AEC(echoCancellation): ${aec?'<b>可声明</b>':'<span class="no">不可声明</span>'}。` +
+    `<br><span class="dim">本页运行于壳内 WebView2(Chromium),行为对齐桌面 Chrome。</span>`;
+  document.title='PROBE-DONE';
+})();
+</script>
+</body>
+</html>

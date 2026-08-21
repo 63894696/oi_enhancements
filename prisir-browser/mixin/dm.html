@@ -57,9 +57,9 @@
 </head>
 <body>
 <header><span class="dot" id="livedot"></span><h1>SecureDM 加密私信</h1><span class="st" id="status">…</span></header>
-<div id="compatBanner" style="background:#2a2410;border-bottom:1px solid #4a3f18;color:#e8d98a;font-size:12.5px;padding:6px 12px;display:flex;align-items:center;gap:10px">
+<div id="compatBanner" style="background:#fff8e6;border-bottom:1px solid #e6c869;color:#7a5a12;font-size:12.5px;padding:6px 12px;display:flex;align-items:center;gap:10px">
   <span style="flex:1">⚠ 与 <b>SimpleX 官方客户端</b> 目前仅互通<b>文字消息</b>;语音/视频/屏幕共享/文件互传/群聊需在<b>本应用两端</b>之间进行。请对方也用本应用(分享本程序)。</span>
-  <span onclick="document.getElementById('compatBanner').style.display='none'" style="cursor:pointer;color:#8a7c4a;padding:0 4px" title="关闭提示">✕</span>
+  <span onclick="document.getElementById('compatBanner').style.display='none'" style="cursor:pointer;color:#a08844;padding:0 4px" title="关闭提示">✕</span>
 </div>
 <div id="main">
   <div id="contacts">
@@ -89,17 +89,17 @@
       <button id="callBtn" title="语音通话" onclick="startCall(false)">📞</button>
       <button id="videoBtn" title="视频通话" onclick="startCall(true)">📹</button>
     </div>
-    <div id="callPanel" style="display:none;padding:10px 14px;border-top:1px solid var(--line);background:#1e293b">
+    <div id="callPanel" style="display:none;padding:10px 14px;border-top:1px solid var(--line);background:#e8f4fd">
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-        <video id="remoteVideo" autoplay playsinline style="width:280px;background:#000;border-radius:8px"></video>
-        <video id="localVideo" autoplay playsinline muted style="width:120px;background:#000;border-radius:8px"></video>
+        <video id="remoteVideo" autoplay playsinline style="width:280px;background:#e8f4fd;border:1px solid #b3d7f5;border-radius:8px"></video>
+        <video id="localVideo" autoplay playsinline muted style="width:120px;background:#e8f4fd;border:1px solid #b3d7f5;border-radius:8px"></video>
         <div style="display:flex;flex-direction:column;gap:7px">
           <div id="callStatus" style="font-size:13px;color:var(--dim)">呼叫中…</div>
           <div style="display:flex;gap:7px">
-            <button onclick="toggleMic()" id="micBtn" style="background:#3a3f4b;border:none;color:#fff;padding:6px 12px;border-radius:7px;cursor:pointer">🎤 静音</button>
-            <button onclick="toggleCam()" id="camBtn" style="background:#3a3f4b;border:none;color:#fff;padding:6px 12px;border-radius:7px;cursor:pointer">📷 关视频</button>
-            <button onclick="switchCamera()" id="switchCamBtn" title="切换前后摄像头" style="background:#3a3f4b;border:none;color:#fff;padding:6px 12px;border-radius:7px;cursor:pointer">🔄 切换摄像头</button>
-            <button onclick="shareScreen()" id="screenBtn" style="background:#3a3f4b;border:none;color:#fff;padding:6px 12px;border-radius:7px;cursor:pointer">🖥️ 共享屏幕</button>
+            <button onclick="toggleMic()" id="micBtn" style="background:#ffffff;border:1px solid #b3d7f5;color:#12395b;padding:6px 12px;border-radius:7px;cursor:pointer">🎤 静音</button>
+            <button onclick="toggleCam()" id="camBtn" style="background:#ffffff;border:1px solid #b3d7f5;color:#12395b;padding:6px 12px;border-radius:7px;cursor:pointer">📷 关视频</button>
+            <button onclick="switchCamera()" id="switchCamBtn" title="切换前后摄像头" style="background:#ffffff;border:1px solid #b3d7f5;color:#12395b;padding:6px 12px;border-radius:7px;cursor:pointer">🔄 切换摄像头</button>
+            <button onclick="shareScreen()" id="screenBtn" style="background:#ffffff;border:1px solid #b3d7f5;color:#12395b;padding:6px 12px;border-radius:7px;cursor:pointer">🖥️ 共享屏幕</button>
             <button onclick="endCall()" style="background:var(--bad);border:none;color:#fff;padding:6px 12px;border-radius:7px;cursor:pointer">挂断</button>
           </div>
         </div>
@@ -107,39 +107,39 @@
     </div>
     <div id="attach" style="display:none;padding:9px 16px;border-top:1px solid var(--line);gap:8px;align-items:center;flex-wrap:wrap">
       <button onclick="pickFile()" title="打开文件夹选择要发送的文件" style="background:var(--panel);border:1px solid var(--acc);color:var(--acc);padding:7px 12px;border-radius:8px;cursor:pointer">📁 选文件</button>
-      <input id="fpath" placeholder="文件绝对路径(或点「选文件」)" style="flex:1;min-width:180px;background:var(--panel);border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px 10px">
+      <input id="fpath" placeholder="文件绝对路径(或点「选文件」)" style="flex:1;min-width:180px;background:#ffffff;border:1px solid #b3d7f5;color:var(--txt);border-radius:8px;padding:8px 10px">
       <input type="file" id="filePickFallback" style="display:none" onchange="onFallbackPick(this)">
       <label title="勾选后自动建立签名信任并附签名清单,对方能看到「✓ 已验证来自 你」;无需再去联系人区点钥匙" style="font-size:13px;color:var(--dim);display:flex;align-items:center;gap:4px"><input type="checkbox" id="fsigned" checked>签名发送</label>
       <button onclick="sendFile()" style="background:var(--acc);border:none;color:#fff;padding:7px 14px;border-radius:8px;cursor:pointer">发文件</button>
       <div style="width:100%;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--dim)">
         <span>下载到:</span><span id="dlDir" style="color:var(--txt)">…</span>
-        <button onclick="pickDownloadDir()" title="自定义下载保存目录(桌面壳)" style="background:var(--panel);border:1px solid #334155;color:var(--dim);padding:3px 9px;border-radius:6px;cursor:pointer;font-size:12px">改目录</button>
+        <button onclick="pickDownloadDir()" title="自定义下载保存目录(桌面壳)" style="background:#ffffff;border:1px solid #b3d7f5;color:var(--dim);padding:3px 9px;border-radius:6px;cursor:pointer;font-size:12px">改目录</button>
       </div>
     </div>
   </div>
 </div>
 <div id="inviteModal"><div class="box"><b id="inviteTitle">一次性邀请链接</b><div style="font-size:12px;color:var(--dim);margin:6px 0" id="inviteDesc">发给对方,在其 SimpleX/SecureDM 里"通过链接连接"接受即建立 E2E 联系</div><div style="display:flex;gap:14px;font-size:12.5px;color:var(--dim);margin-bottom:8px;flex-wrap:wrap"><label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="invKind" value="once" checked onchange="genInvite()">一次性(私聊)</label><label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="invKind" value="anon" onchange="genInvite()">匿名一次性</label><label style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="radio" name="invKind" value="long" onchange="genInvite()">长期有效(公共二维码)</label></div><textarea id="inviteLink" readonly></textarea><div style="display:flex;justify-content:center;margin:10px 0"><canvas id="inviteQr" width="240" height="240" style="background:#fff;border-radius:8px;padding:6px"></canvas></div><div id="inviteQrMsg" style="display:none;font-size:12px;color:var(--warn);text-align:center;margin-bottom:8px">链接过长,请复制粘贴</div><button onclick="copyInvite()">复制</button> <button onclick="closeInvite()">关闭</button></div></div>
-<div id="acceptModal"><div class="box"><b>添加联系人</b><div style="font-size:12px;color:var(--dim);margin:6px 0">粘贴对方发给你的一次性邀请链接(对方点「+ 邀请」生成的)</div><textarea id="acceptLink" placeholder="粘贴邀请链接,例如 simplex://… 或 https://simplex.chat/invitation#…"></textarea><button id="acceptGoBtn" onclick="doAccept()">连接</button> <button onclick="closeAccept()" style="background:#475569">取消</button></div></div>
+<div id="acceptModal"><div class="box"><b>添加联系人</b><div style="font-size:12px;color:var(--dim);margin:6px 0">粘贴对方发给你的一次性邀请链接(对方点「+ 邀请」生成的)</div><textarea id="acceptLink" placeholder="粘贴邀请链接,例如 simplex://… 或 https://simplex.chat/invitation#…"></textarea><button id="acceptGoBtn" onclick="doAccept()">连接</button> <button onclick="closeAccept()" style="background:#dceefb;color:#12395b">取消</button></div></div>
 <div id="settingsModal"><div class="box"><b>设置</b>
   <div style="margin:14px 0 6px;font-size:13px;color:var(--dim)">自定义 ID(显示名)</div>
-  <div style="display:flex;gap:8px"><input id="idName" placeholder="你的显示名(对方看到)" style="flex:1;background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px"><button onclick="saveIdentity()">保存</button></div>
+  <div style="display:flex;gap:8px"><input id="idName" placeholder="你的显示名(对方看到)" style="flex:1;background:#ffffff;border:1px solid #b3d7f5;color:var(--txt);border-radius:8px;padding:8px;font-size:13px"><button onclick="saveIdentity()">保存</button></div>
   <div id="idMsg" style="font-size:12px;color:var(--dim);margin-top:4px"></div>
   <hr style="border:none;border-top:1px solid var(--line);margin:16px 0">
   <div style="margin:0 0 6px;font-size:13px;color:var(--dim)">聊天记录口令加密 <span id="dbState" style="color:var(--warn)"></span></div>
   <div style="font-size:12px;color:var(--dim);margin-bottom:8px">设口令后,聊天记录库以 SQLCipher 加密;每次启动需输入口令解锁,口令错进不去(同官方)。请务必记牢,丢失无法恢复。</div>
   <div id="dbSetRow" style="display:flex;flex-direction:column;gap:8px">
-    <input id="dbPwd" type="password" placeholder="设置口令(≥4 位)" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px">
-    <input id="dbPwd2" type="password" placeholder="再输一遍确认(防首次打错)" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px">
+    <input id="dbPwd" type="password" placeholder="设置口令(≥4 位)" style="background:#ffffff;border:1px solid #b3d7f5;color:var(--txt);border-radius:8px;padding:8px;font-size:13px">
+    <input id="dbPwd2" type="password" placeholder="再输一遍确认(防首次打错)" style="background:#ffffff;border:1px solid #b3d7f5;color:var(--txt);border-radius:8px;padding:8px;font-size:13px">
     <div><button onclick="setDbPassword()">设置口令</button></div>
   </div>
   <div id="dbUnlockRow" style="display:none;flex-direction:column;gap:8px">
-    <div style="display:flex;gap:8px"><input id="dbPwdUnlock" type="password" placeholder="输入口令解锁" style="flex:1;background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px"><button onclick="unlockDb()">解锁</button></div>
+    <div style="display:flex;gap:8px"><input id="dbPwdUnlock" type="password" placeholder="输入口令解锁" style="flex:1;background:#ffffff;border:1px solid #b3d7f5;color:var(--txt);border-radius:8px;padding:8px;font-size:13px"><button onclick="unlockDb()">解锁</button></div>
     <div style="font-size:12px;color:var(--dim)">忘记口令?<a href="javascript:void(0)" onclick="forgotPassword()" style="color:var(--warn)">新建用户ID</a>(原聊天记录将无法查看)</div>
     <hr style="border:none;border-top:1px solid var(--line);margin:10px 0">
     <div style="font-size:12px;color:var(--dim)">变更口令(需先验证旧口令):</div>
-    <input id="dbPwdOld" type="password" placeholder="旧口令" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px">
-    <input id="dbPwdNew" type="password" placeholder="新口令(≥4 位)" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px">
-    <input id="dbPwdNew2" type="password" placeholder="再输一遍新口令" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px">
+    <input id="dbPwdOld" type="password" placeholder="旧口令" style="background:#ffffff;border:1px solid #b3d7f5;color:var(--txt);border-radius:8px;padding:8px;font-size:13px">
+    <input id="dbPwdNew" type="password" placeholder="新口令(≥4 位)" style="background:#ffffff;border:1px solid #b3d7f5;color:var(--txt);border-radius:8px;padding:8px;font-size:13px">
+    <input id="dbPwdNew2" type="password" placeholder="再输一遍新口令" style="background:#ffffff;border:1px solid #b3d7f5;color:var(--txt);border-radius:8px;padding:8px;font-size:13px">
     <div><button onclick="changeDbPassword()">变更口令</button></div>
   </div>
   <div id="dbMsg" style="font-size:12px;color:var(--dim);margin-top:4px"></div>
@@ -151,23 +151,23 @@
     <div id="tfaQrWrap" style="display:none;flex-direction:column;gap:8px">
       <div style="display:flex;justify-content:center"><canvas id="tfaQr" width="200" height="200" style="background:#fff;border-radius:8px;padding:6px"></canvas></div>
       <div style="font-size:12px;color:var(--dim)">或手输密钥:<code id="tfaSecret" style="user-select:all;color:var(--txt)"></code></div>
-      <div style="display:flex;gap:8px"><input id="tfaCodeEnable" placeholder="输入 App 显示的 6 位码" maxlength="6" style="flex:1;background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px"><button onclick="tfaEnable()">启用</button></div>
+      <div style="display:flex;gap:8px"><input id="tfaCodeEnable" placeholder="输入 App 显示的 6 位码" maxlength="6" style="flex:1;background:#ffffff;border:1px solid #b3d7f5;color:var(--txt);border-radius:8px;padding:8px;font-size:13px"><button onclick="tfaEnable()">启用</button></div>
     </div>
   </div>
   <div id="tfaOnRow" style="display:none;flex-direction:column;gap:8px">
     <div style="font-size:12px;color:var(--ok)">已启用:解锁需口令 + 动态码</div>
-    <div style="display:flex;gap:8px"><input id="tfaCodeDisable" placeholder="输入 6 位码以关闭" maxlength="6" style="flex:1;background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:8px;font-size:13px"><button onclick="tfaDisable()" style="background:#475569">关闭 2FA</button></div>
+    <div style="display:flex;gap:8px"><input id="tfaCodeDisable" placeholder="输入 6 位码以关闭" maxlength="6" style="flex:1;background:#ffffff;border:1px solid #b3d7f5;color:var(--txt);border-radius:8px;padding:8px;font-size:13px"><button onclick="tfaDisable()" style="background:#dceefb;color:#12395b">关闭 2FA</button></div>
   </div>
   <div id="tfaMsg" style="font-size:12px;color:var(--dim);margin-top:4px"></div>
-  <div style="margin-top:16px;text-align:right"><button onclick="closeSettings()" style="background:#475569">关闭</button></div>
+  <div style="margin-top:16px;text-align:right"><button onclick="closeSettings()" style="background:#dceefb;color:#12395b">关闭</button></div>
 </div></div>
 <div id="lockGate" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:999;align-items:center;justify-content:center">
   <div class="box" style="max-width:400px;width:92%">
     <b style="font-size:16px">🔒 聊天记录已加密</b>
     <div style="font-size:12px;color:var(--dim);margin:8px 0 12px">输入口令解锁;启用 2FA 的话还需验证器 6 位动态码。</div>
     <div style="display:flex;flex-direction:column;gap:8px">
-      <input id="gatePwd" type="password" placeholder="口令" onkeydown="if(event.key==='Enter')gateUnlock()" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:10px;font-size:14px">
-      <input id="gateTotp" placeholder="2FA 动态码(如已启用)" maxlength="6" onkeydown="if(event.key==='Enter')gateUnlock()" style="display:none;background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:10px;font-size:14px">
+      <input id="gatePwd" type="password" placeholder="口令" onkeydown="if(event.key==='Enter')gateUnlock()" style="background:#ffffff;border:1px solid #b3d7f5;color:var(--txt);border-radius:8px;padding:10px;font-size:14px">
+      <input id="gateTotp" placeholder="2FA 动态码(如已启用)" maxlength="6" onkeydown="if(event.key==='Enter')gateUnlock()" style="display:none;background:#ffffff;border:1px solid #b3d7f5;color:var(--txt);border-radius:8px;padding:10px;font-size:14px">
       <div><button onclick="gateUnlock()" style="width:100%;padding:10px">解锁</button></div>
       <div id="gateMsg" style="font-size:12px;color:var(--bad);min-height:16px"></div>
       <div style="font-size:12px;color:var(--dim)">忘记口令?<a href="javascript:void(0)" onclick="gateForgot()" style="color:var(--warn)">新建用户ID</a>(原聊天记录将无法查看)</div>
@@ -179,9 +179,9 @@
     <b style="font-size:16px">🔐 首次启动 · 给聊天记录加把锁</b>
     <div style="font-size:12px;color:var(--dim);margin:8px 0 12px">建议现在设一个口令:聊天记录库将用 SQLCipher 加密落盘,每次启动需口令解锁。<b style="color:var(--warn)">跳过 = 聊天记录以明文存盘</b>(官方 SimpleX 也是这套取舍)。</div>
     <div style="display:flex;flex-direction:column;gap:8px">
-      <input id="frPwd" type="password" placeholder="设置口令(≥4 位)" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:10px;font-size:14px">
-      <input id="frPwd2" type="password" placeholder="再输一遍确认" style="background:#1e293b;border:1px solid #334155;color:var(--txt);border-radius:8px;padding:10px;font-size:14px">
-      <div style="display:flex;gap:8px"><button onclick="frSetPassword()" style="flex:1;padding:10px">设口令并加密</button><button onclick="frSkip()" style="background:#475569;padding:10px">跳过(明文)</button></div>
+      <input id="frPwd" type="password" placeholder="设置口令(≥4 位)" style="background:#ffffff;border:1px solid #b3d7f5;color:var(--txt);border-radius:8px;padding:10px;font-size:14px">
+      <input id="frPwd2" type="password" placeholder="再输一遍确认" style="background:#ffffff;border:1px solid #b3d7f5;color:var(--txt);border-radius:8px;padding:10px;font-size:14px">
+      <div style="display:flex;gap:8px"><button onclick="frSetPassword()" style="flex:1;padding:10px">设口令并加密</button><button onclick="frSkip()" style="background:#dceefb;color:#12395b;padding:10px">跳过(明文)</button></div>
       <div id="frMsg" style="font-size:12px;color:var(--bad);min-height:16px"></div>
     </div>
   </div>
@@ -802,7 +802,7 @@ function _showScreenView(ev){
   let wrap=document.getElementById('screenViewWrap');
   if(!wrap){
     wrap=document.createElement('div');wrap.id='screenViewWrap';
-    wrap.style.cssText='position:fixed;top:6%;left:50%;transform:translateX(-50%);width:64vw;height:70vh;background:#000;border:2px solid var(--acc);border-radius:10px;z-index:1000;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.6)';
+    wrap.style.cssText='position:fixed;top:6%;left:50%;transform:translateX(-50%);width:64vw;height:70vh;background:#e8f4fd;border:2px solid var(--acc);border-radius:10px;z-index:1000;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.6)';
     // 标题栏(可拖动)
     const bar=document.createElement('div');
     bar.style.cssText='height:32px;line-height:32px;background:rgba(255,255,255,.08);color:#fff;font-size:13px;padding:0 10px;cursor:move;display:flex;justify-content:space-between;align-items:center;user-select:none';
@@ -814,7 +814,7 @@ function _showScreenView(ev){
     wrap.appendChild(bar);
     // 视频
     const sv=document.createElement('video');sv.id='screenVideo';sv.autoplay=true;sv.playsInline=true;sv.muted=true;
-    sv.style.cssText='width:100%;height:calc(100% - 32px);object-fit:contain;background:#000';
+    sv.style.cssText='width:100%;height:calc(100% - 32px);object-fit:contain;background:#e8f4fd';
     wrap.appendChild(sv);
     // 右下角缩放手柄
     const grip=document.createElement('div');
@@ -1190,7 +1190,7 @@ function renderInviteQr(text){
     const cell=240/(n+2*qz);
     const ctx=cv.getContext('2d');
     ctx.fillStyle='#ffffff';ctx.fillRect(0,0,240,240);
-    ctx.fillStyle='#000000';
+    ctx.fillStyle='#12395b';
     for(let r=0;r<n;r++){
       for(let c=0;c<n;c++){
         if(qr.isDark(r,c)){
@@ -1316,7 +1316,7 @@ function renderTotpQr(text){
   try{
     const qr=qrcode(0,'M');qr.addData(text);qr.make();
     const n=qr.getModuleCount(),qz=2,cell=200/(n+2*qz),ctx=cv.getContext('2d');
-    ctx.fillStyle='#ffffff';ctx.fillRect(0,0,200,200);ctx.fillStyle='#000000';
+    ctx.fillStyle='#ffffff';ctx.fillRect(0,0,200,200);ctx.fillStyle='#12395b';
     for(let r=0;r<n;r++)for(let c=0;c<n;c++)if(qr.isDark(r,c))ctx.fillRect(Math.round((c+qz)*cell),Math.round((r+qz)*cell),Math.ceil(cell),Math.ceil(cell));
   }catch(e){/* 二维码失败不阻断,手输密钥仍可用 */}
 }
