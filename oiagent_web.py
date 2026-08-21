@@ -1894,7 +1894,7 @@ _FINDEX_PAGE = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>本机文件搜索 · Prisir</title>
+<title>探囊 · 本机文件搜索 · Prisir</title>
 <style>
   :root{
     --gh-paper:#f6f1e7; --gh-paper-2:#efe8da; --gh-surface:#fbf8f1;
@@ -1936,6 +1936,9 @@ _FINDEX_PAGE = r"""<!DOCTYPE html>
   .hit .sz{font-size:11.5px;color:var(--gh-ink-soft);flex:none;text-align:right;}
   .hit .mt{font-size:11.5px;color:var(--gh-ink-faint);flex:none;width:90px;text-align:right;}
   #empty{padding:40px 0;text-align:center;color:var(--gh-ink-faint);font-size:13.5px;display:none;}
+  #more{padding:14px 0;text-align:center;color:var(--gh-green-deep);font-size:12.5px;cursor:pointer;
+    border-top:1px dashed var(--gh-line);margin-top:6px;}
+  #more:hover{color:var(--gh-seal);}
   .ctl{display:flex;gap:10px;align-items:center;}
   .hint{font-size:12px;color:var(--gh-ink-faint);margin-top:8px;line-height:1.6;}
 </style>
@@ -1944,13 +1947,13 @@ _FINDEX_PAGE = r"""<!DOCTYPE html>
 <div class="wrap">
   <div id="brand">
     <img src="/oiagent/assets/secbrowser_icon_48.png" alt="">
-    <span class="name">本机文件搜索</span>
-    <span class="sub">自建索引 · 不依赖 Everything · 只存元数据</span>
+    <span class="name">探囊</span>
+    <span class="sub">本机文件搜索 · 探囊取物,毫秒即得 · 自建索引 · 不读文件内容</span>
   </div>
 
   <div class="card">
     <div class="searchrow">
-      <input id="q" placeholder="输入文件名或路径关键词…" autocomplete="off">
+      <input id="q" placeholder="文件名 / 路径关键词,支持 *.docx、报告*、2026*报告 等通配…" autocomplete="off">
       <button class="btn" id="searchBtn">搜索</button>
     </div>
     <div id="statusline"></div>
@@ -1969,6 +1972,7 @@ _FINDEX_PAGE = r"""<!DOCTYPE html>
   <div class="card" id="results">
     <div id="empty">输入关键词开始搜索本机文件</div>
     <div id="list"></div>
+    <div id="more" style="display:none"></div>
   </div>
 </div>
 <script>
@@ -1978,11 +1982,14 @@ function fmtSize(n){if(n>1e9)return(n/1e9).toFixed(1)+' GB';if(n>1e6)return(n/1e
   if(n>1e3)return(n/1e3).toFixed(1)+' KB';return n+' B';}
 function fmtTime(t){if(!t)return'';const d=new Date(t*1000);const p=x=>String(x).padStart(2,'0');
   return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes());}
-function icon(ext){const m={pdf:'📕',doc:'📘',docx:'📘',xls:'📗',xlsx:'📗',ppt:'📙',pptx:'📙',
+function icon(ext,isDir){if(isDir)return'📁';const m={pdf:'📕',doc:'📘',docx:'📘',xls:'📗',xlsx:'📗',ppt:'📙',pptx:'📙',
   png:'🖼',jpg:'🖼',jpeg:'🖼',gif:'🖼',mp4:'🎬',mp3:'🎵',zip:'🗜',md:'📄',txt:'📄',py:'🐍',js:'📜'};
   return m[(ext||'').toLowerCase()]||'📄';}
 
 let building=false, pollTimer=null;
+// 无限滚动状态
+let curQ='', curOffset=0, curTotal=0, loading=false;
+const PAGE=100;
 async function refreshStatus(){
   const st=await api('/findex/status');
   const sl=$('#statusline');
@@ -2009,26 +2016,53 @@ function schedulePoll(){if(pollTimer)return;
   pollTimer=setInterval(async()=>{await refreshStatus();if(!building){clearInterval(pollTimer);pollTimer=null;}},1500);}
 
 async function doSearch(){
-  const q=$('#q').value.trim();
-  const r=await api('/findex/search?q='+encodeURIComponent(q)+'&limit=100');
-  const list=$('#list');list.innerHTML='';
+  curQ=$('#q').value.trim(); curOffset=0; curTotal=0;
+  $('#list').innerHTML=''; $('#more').style.display='none';
+  await loadMore(true);
+}
+async function loadMore(first){
+  if(loading)return; loading=true;
+  const r=await api('/findex/search?q='+encodeURIComponent(curQ)+'&limit='+PAGE+'&offset='+curOffset);
+  loading=false;
+  const list=$('#list');
   if(r.enabled===false){$('#empty').style.display='block';
     $('#empty').textContent='本机文件搜索未开启,请先点上方「开启本机搜索」。';return;}
-  const hits=r.hits||[];
-  if(!hits.length){$('#empty').style.display='block';
-    $('#empty').textContent=q?('没有匹配「'+q+'」的文件'):'输入关键词开始搜索';return;}
+  const hits=r.hits||[]; const rt=(r.total===undefined?0:r.total);
+  // total=-1 表示「至少 offset+实返数,可能更多」(惰性统计省全表 COUNT)。
+  if(rt>=0)curTotal=rt; else curTotal=curOffset+hits.length+1; // -1 → 至少还有更多
+  const more = (rt<0) || (curOffset+hits.length < curTotal);
+  if(first && !hits.length){$('#empty').style.display='block';
+    $('#empty').textContent=curQ?('没有匹配「'+curQ+'」的文件或文件夹'):'输入关键词开始搜索';
+    return;}
   $('#empty').style.display='none';
   for(const h of hits){
     const div=document.createElement('div');div.className='hit';
-    div.innerHTML='<div class="ic">'+icon(h.ext)+'</div>'+
+    div.innerHTML='<div class="ic">'+icon(h.ext,h.is_dir)+'</div>'+
       '<div class="meta"><div class="nm"></div><div class="dir"></div></div>'+
-      '<div class="mt">'+fmtTime(h.mtime)+'</div><div class="sz">'+fmtSize(h.size)+'</div>';
+      '<div class="mt">'+(h.is_dir?'':fmtTime(h.mtime))+'</div>'+
+      '<div class="sz">'+(h.is_dir?'文件夹':fmtSize(h.size))+'</div>';
     div.querySelector('.nm').textContent=h.name;
-    div.querySelector('.dir').textContent=h.dir;
+    div.querySelector('.dir').textContent=h.is_dir?h.path:h.dir;
     div.title=h.path;
     list.appendChild(div);
   }
+  curOffset+=hits.length;
+  // 底部「加载更多」+ 总量提示
+  const moreEl=$('#more');
+  if(more){moreEl.style.display='block';
+    const tot = rt<0 ? (curOffset+'+') : curTotal.toLocaleString();
+    moreEl.textContent='已显示 '+curOffset+' 条'+(rt<0?('(共 '+tot+' 条)'):(' / 共 '+tot+' 条'))+' · 滚到底或点击加载更多';}
+  else{moreEl.style.display= hits.length? 'block':'none';
+    if(hits.length)moreEl.textContent='共 '+curOffset.toLocaleString()+' 条,已全部显示';}
 }
+$('#more').onclick=()=>loadMore(false);
+// 滚到底自动加载
+window.addEventListener('scroll',()=>{
+  if(building||loading)return;
+  if(more && (window.innerHeight+window.scrollY)>=document.body.offsetHeight-200){
+    loadMore(false);
+  }
+});
 
 $('#searchBtn').onclick=doSearch;
 $('#q').addEventListener('keydown',e=>{if(e.key==='Enter')doSearch();});
@@ -2270,18 +2304,20 @@ class Handler(BaseHTTPRequestHandler):
             st["ready"] = True
             self._json(st)
         elif path == "/oiagent/api/findex/search":
-            # 用户页/智能体查询:q 子串,limit 截断。未开启引导开启。
+            # 用户页/智能体查询:q 子串,limit/offset 分页。未开启引导开启。
             fx = _findex()
             if fx is None:
                 self._json({"ok": False, "ready": False, "error": "引擎未就绪"}, 503)
                 return
             if not fx.status().get("enabled"):
-                self._json({"ok": True, "enabled": False, "hits": [],
+                self._json({"ok": True, "enabled": False, "hits": [], "total": 0,
                             "hint": "本机文件搜索未开启,请先开启建索引"})
                 return
             q = (qs.get("q") or [""])[0]
             limit = int((qs.get("limit") or ["50"])[0] or 50)
-            self._json({"ok": True, "enabled": True, "hits": fx.search(q, limit)})
+            offset = int((qs.get("offset") or ["0"])[0] or 0)
+            res = fx.search(q, limit, offset)
+            self._json({"ok": True, "enabled": True, "hits": res["hits"], "total": res["total"]})
         elif path == "/oiagent/findex":
             # 用户本地文件搜索页(国风浅色)。
             self._html(_FINDEX_PAGE)

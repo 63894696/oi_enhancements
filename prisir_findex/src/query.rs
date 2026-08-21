@@ -38,6 +38,28 @@ fn escape_like(s: &str) -> String {
     s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
 }
 
+/// 是否含 glob 通配符(`*` 任意串 / `?` 单字符)。
+fn has_wildcard(q: &str) -> bool {
+    q.contains('*') || q.contains('?')
+}
+
+/// 把含通配符的查询转成 LIKE 模式:
+///   先按字面转义 \,%,_;再把 glob 的 * → %(任意串)、? → _(单字符)。
+/// 其余字符一律按字面(包括中文/空格/点),语义与 Everything 的通配一致。
+/// 例: "*.docx"→"%.docx"  "报告*"→"报告%"  "2026*报告"→"2026%报告"  "me?ting"→"me_ting"
+fn wildcard_to_like(q: &str) -> String {
+    // 用占位符保护 glob 通配,先转义 LIKE 元字符,再换回 glob 语义。
+    const STAR: char = '\u{1}';
+    const QUEST: char = '\u{2}';
+    let protected: String = q.chars().map(|c| match c {
+        '*' => STAR,
+        '?' => QUEST,
+        _ => c,
+    }).collect();
+    let escaped = escape_like(&protected);
+    escaped.replace(STAR, "%").replace(QUEST, "_")
+}
+
 /// 是否纯 CJK 的 2 字 bigram token。
 fn is_bigram(t: &str) -> bool {
     let chars: Vec<char> = t.chars().collect();
@@ -77,6 +99,13 @@ fn to_match(q: &str) -> Option<String> {
     Some(expr)
 }
 
+/// 提取通配模式的最长字面**前缀**(第一个 * 或 ? 之前的部分),用于 NOCASE 索引区间下推。
+/// 如 "报告*"→"报告"、"read*"→"read"、"*.docx"→""(无前缀)、"2026*报告"→"2026"。
+/// 返回原始字面(未转 LIKE),供 name >= prefix AND name < prefix+1 区间。
+fn literal_prefix(q: &str) -> String {
+    q.chars().take_while(|&c| c != '*' && c != '?').collect()
+}
+
 impl FindexEngine {
     /// 子串搜索:name/path 命中,匹配度排序 + mtime 倒序,limit/offset 分页。
     /// q 空串时回最近修改的 limit 条。返回 hits + total。
@@ -98,6 +127,12 @@ impl FindexEngine {
             return Ok(SearchResult { hits: rows.flatten().collect(), total });
         }
 
+        // 通配符查询(* / ?)走 glob 路径:FTS 是整词匹配处理不了部分通配,
+        // 转成 LIKE 模式(* → %,? → _),按 mtime 索引扫 + LIMIT 提前停。
+        if has_wildcard(q) {
+            return self.query_glob(&conn, q, lim, off, cap);
+        }
+
         // 任何非空查询优先走 FTS 分词索引(中英统一);失败/无 token 才退 LIKE。
         // LIKE 退路的 RANK 用裸列名(无 JOIN 不歧义),FTS 路用 f.name(JOIN 必须带前缀)。
         if let Some(match_expr) = to_match(q) {
@@ -106,6 +141,87 @@ impl FindexEngine {
             }
         }
         self.query_like(&conn, q, lim, off, cap)
+    }
+
+    /// 通配符搜索:`*` 任意串、`?` 单字符,语义同 Everything。
+    /// 转 LIKE 模式后按 mtime 索引降序扫 + 提前停。
+    /// 性能关键:**不单独 count**(稀疏命中时 count 要扫全表确认总数,再查一遍=双倍成本)。
+    /// 改为直接取 limit+1 条:返回数 > limit 即知「还有更多」(total=-1),否则 total=实返数。
+    /// 排序退化为纯 mtime(通配本就是批量捞一类文件,mtime 是用户最想要的序)。
+    fn query_glob(&self, conn: &rusqlite::Connection, q: &str, lim: i64, off: i64, cap: i64) -> Result<SearchResult, String> {
+        let like = wildcard_to_like(q);
+        // 全通配(如 "*" / "*.*" )等价于「全部」,直接按 mtime 回。
+        let all_literal = like.chars().all(|c| c == '%' || c == '_');
+
+        // 取 cap=limit+offset+1 条;若实返==cap 说明到上限可能还有(total=-1)。
+        // 优化:有字面前缀(报告*/read*/2026*报告)时,先用 NOCASE 索引区间缩候选,
+        // 再用完整 LIKE 模式过滤 —— 中文前缀从扫整个索引 348ms → 区间下推亚毫秒。
+        let prefix = literal_prefix(q);
+        let use_prefix = !all_literal && !prefix.is_empty();
+        // 前缀上界:末字符 +1(字典序下一个串),界定 name >= prefix AND name < upper。
+        let upper: String = {
+            let mut cs: Vec<char> = prefix.chars().collect();
+            match cs.pop() {
+                Some(last) => {
+                    let mut u: String = cs.into_iter().collect();
+                    u.push(char::from_u32(last as u32 + 1).unwrap_or(last));
+                    u
+                }
+                None => prefix.clone(),
+            }
+        };
+
+        // 纯后缀通配 "*.ext"(只一个 * 开头 + . + 纯字母数字后缀):直通 ext 列等值查,
+        // 走 idx_files_ext(全表扫 1551ms → 0.2ms)。按类型捞文件的高频操作。
+        let pure_ext: Option<String> = {
+            let b = q.as_bytes();
+            if b.len() >= 3 && b[0] == b'*' && b[1] == b'.' {
+                let ext = &q[2..];
+                if !ext.is_empty()
+                    && ext.chars().all(|c| c.is_ascii_alphanumeric())
+                {
+                    Some(ext.to_ascii_lowercase())
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        };
+
+        let sql = if all_literal {
+            "SELECT path,name,dir,ext,size,mtime,is_dir FROM files ORDER BY mtime DESC LIMIT ?1 OFFSET ?2".to_string()
+        } else if pure_ext.is_some() {
+            "SELECT path,name,dir,ext,size,mtime,is_dir FROM files
+             WHERE ext = ?1 ORDER BY mtime DESC LIMIT ?2 OFFSET ?3".to_string()
+        } else if use_prefix {
+            // name 在 [prefix, upper) 区间内(NOCASE 区间下推)且整体匹配 LIKE 模式
+            "SELECT path,name,dir,ext,size,mtime,is_dir FROM files
+             WHERE name >= ?1 COLLATE NOCASE AND name < ?2 COLLATE NOCASE
+               AND (name LIKE ?3 ESCAPE '\\' OR path LIKE ?3 ESCAPE '\\')
+             ORDER BY mtime DESC LIMIT ?4 OFFSET ?5".to_string()
+        } else {
+            "SELECT path,name,dir,ext,size,mtime,is_dir FROM files
+             WHERE name LIKE ?1 ESCAPE '\\' OR path LIKE ?1 ESCAPE '\\'
+             ORDER BY mtime DESC LIMIT ?2 OFFSET ?3".to_string()
+        };
+        let mut stmt = conn.prepare_cached(&sql).map_err(|e| format!("glob prepare: {e}"))?;
+        let mut rows: Vec<FileHit> = if all_literal {
+            stmt.query_map(params![cap, 0i64], Self::row_to_hit).map_err(|e| format!("glob query: {e}"))?.flatten().collect()
+        } else if let Some(ext) = pure_ext {
+            stmt.query_map(params![ext, cap, 0i64], Self::row_to_hit).map_err(|e| format!("glob query: {e}"))?.flatten().collect()
+        } else if use_prefix {
+            stmt.query_map(params![prefix, upper, like, cap, 0i64], Self::row_to_hit).map_err(|e| format!("glob query: {e}"))?.flatten().collect()
+        } else {
+            stmt.query_map(params![like, cap, 0i64], Self::row_to_hit).map_err(|e| format!("glob query: {e}"))?.flatten().collect()
+        };
+        // total:到上限(-1 还有更多),否则 = offset + 实返(精确,因没扫到 cap 说明已穷尽)。
+        let reached_cap = rows.len() as i64 >= cap;
+        let total = if reached_cap { -1 } else { off + rows.len() as i64 };
+        // 只回当前页(limit 条),丢掉为探测多取的那 1 条。
+        let skip = off as usize;
+        let rows: Vec<FileHit> = rows.drain(skip..).take(lim as usize).collect();
+        Ok(SearchResult { hits: rows, total })
     }
 
     /// FTS 命中数阈值:超过它,为自定义 rank 取全量 rowid 排序就不划算(如 'py' 命中 25 万),

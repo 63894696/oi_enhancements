@@ -112,6 +112,11 @@ impl FindexEngine {
              );
              CREATE INDEX IF NOT EXISTS idx_files_name ON files(name);
              CREATE INDEX IF NOT EXISTS idx_files_mtime ON files(mtime);
+             -- NOCASE 索引:让通配/前缀查询(报告% / read%)走 name>? AND name<? 区间下推,
+             -- 否则 BINARY 序下 LIKE 前缀只能扫整个索引(中文前缀 348ms → NOCASE 0.01ms)。
+             CREATE INDEX IF NOT EXISTS idx_files_name_nocase ON files(name COLLATE NOCASE);
+             -- ext 索引:让 *.docx 这类纯后缀通配直通 ext='docx' 等值查(全表扫 1551ms → 0.2ms)。
+             CREATE INDEX IF NOT EXISTS idx_files_ext ON files(ext);
              CREATE VIRTUAL TABLE IF NOT EXISTS files_fts USING fts5(
                name_tok,
                tokenize='unicode61'
