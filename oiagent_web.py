@@ -329,6 +329,46 @@ def _findex_open(path: str, mode: str):
     except Exception as e:  # noqa: BLE001
         return False, f"打开失败: {e}"
 
+
+def _reputation():
+    """惰性加载信誉查询模块(查毒)。导入失败返回 None。"""
+    try:
+        if _FINDEX_DIR not in sys.path:
+            sys.path.insert(0, _FINDEX_DIR)
+        import reputation  # noqa: PLC0415
+        return reputation
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _rep_key(platform: str) -> str:
+    """取查毒引擎 key(keyring);未配返回 ''。key 不回显/不落审计。platform: virustotal|malwarebazaar"""
+    rec = _key_store.get_key(platform) or {}
+    return rec.get("api_key", "") or ""
+
+
+def _reputation_summary(out: dict) -> str:
+    """把 MB/VT/上传结果汇成一句人话结论。绝不替用户下「删除」决定,只给判定+建议。"""
+    mb = out.get("malwarebazaar") or {}
+    vt = out.get("virustotal") or {}
+    up = out.get("upload") or {}
+    if mb.get("found"):
+        return f"⛔ MalwareBazaar 已知恶意({mb.get('signature','未知家族')})。强烈建议隔离/删除。"
+    if vt.get("found"):
+        mal, total = vt.get("malicious", 0), vt.get("total", 0)
+        if vt.get("verdict") == "malicious":
+            return f"⛔ VirusTotal {mal}/{total} 引擎报毒。强烈建议隔离/删除(也可能误报,看引擎数与文件名判断)。"
+        if vt.get("verdict") == "suspicious":
+            return f"⚠ VirusTotal 标记可疑({vt.get('suspicious',0)}/{total})。建议进一步核查来源。"
+        return f"✅ VirusTotal {total} 引擎均未报毒({vt.get('meaningful_name') or '见文件名'})。大概率安全。"
+    if up.get("ok"):
+        return "📤 已上传 VirusTotal 分析,稍后重查此文件出报告。"
+    if not out.get("vt_configured") and not out.get("mb_configured"):
+        return "❓ 未配任何查毒引擎 key。配 VirusTotal(全网 70+ 引擎)或 MalwareBazaar(已知恶意库)免费 key 后可查。"
+    if not out.get("vt_configured"):
+        return "❓ MalwareBazaar 未收录(它只收已知恶意,查不到≠安全)。配 VirusTotal key 可查全网引擎;仍查不到再考虑上传本体。"
+    return "❓ 两个引擎都查无此文件(可能是新文件/自用程序)。点「上传分析」或人工核查来源。"
+
 # 附件大小护栏:文本最多内联 12k 字符,超出截断提示;图片走多模态 content
 _ATTACH_TEXT_MAX = 12000
 _IMG_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
@@ -1976,6 +2016,15 @@ _FINDEX_PAGE = r"""<!DOCTYPE html>
   .hit .obtn:hover{border-color:var(--gh-seal);color:var(--gh-seal);}
   .hit .obtn.blocked{color:var(--gh-ink-faint);cursor:not-allowed;}
   .openmsg{padding:8px 4px;font-size:12.5px;color:var(--gh-seal);display:none;}
+  /* 查毒结果面板 */
+  #repPanel{padding:0 4px;display:none;}
+  #repPanel.show{display:block;padding:12px 4px;border-bottom:1px solid var(--gh-line);}
+  #repPanel .summary{font-size:13.5px;font-weight:600;color:var(--gh-ink);margin-bottom:8px;line-height:1.5;}
+  #repPanel .detail{font-size:12px;color:var(--gh-ink-soft);line-height:1.7;word-break:break-all;}
+  #repPanel .detail code{color:var(--gh-green-deep);user-select:all;}
+  #repPanel .row-actions{margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+  #repPanel .mini{font-size:11.5px;color:var(--gh-ink-faint);}
+  .vtdanger{color:var(--gh-seal);font-weight:600;}
   #empty{padding:40px 0;text-align:center;color:var(--gh-ink-faint);font-size:13.5px;display:none;}
   #more{padding:14px 0;text-align:center;color:var(--gh-green-deep);font-size:12.5px;cursor:pointer;
     border-top:1px dashed var(--gh-line);margin-top:6px;}
@@ -2014,6 +2063,7 @@ _FINDEX_PAGE = r"""<!DOCTYPE html>
   <div class="card" id="results">
     <div id="empty">输入关键词开始搜索本机文件</div>
     <div class="openmsg" id="openmsg"></div>
+    <div id="repPanel"></div>
     <div id="list"></div>
     <div id="more" style="display:none"></div>
   </div>
@@ -2037,6 +2087,55 @@ async function openHit(path,mode){
   if(r.ok){m.style.display='none';return;}
   m.textContent='⚠ '+r.error; m.style.display='block';
   clearTimeout(m._t); m._t=setTimeout(()=>{m.style.display='none';},4000);
+}
+// ---------- 协助查毒(只查不删;只传哈希,上传本体需当场显式同意) ----------
+let _repCfg=null;
+async function repConfig(){
+  if(_repCfg===null){const s=await api('/findex/reputation/status');_repCfg={vt:!!s.vt_configured,mb:!!s.mb_configured};}
+  return _repCfg;
+}
+async function setVtKey(){
+  const eng=(prompt('配哪个引擎的 key?输入 vt(VirusTotal,全网70+引擎)或 mb(MalwareBazaar,已知恶意库):','vt')||'').trim().toLowerCase();
+  if(eng!=='vt'&&eng!=='mb'){if(eng!=='')alert('已取消');return;}
+  const name=eng==='vt'?'VirusTotal(virustotal.com 免费注册)':'MalwareBazaar(bazaar.abuse.ch 免费注册 Auth-Key)';
+  const k=prompt('粘贴 '+name+' 的 API key(只存本机密钥库,不回显;留空=清除):','');
+  if(k===null)return;
+  const r=await api('/findex/reputation/key',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({engine:eng,api_key:k.trim()})});
+  _repCfg=null; // 失效缓存
+  alert((r.configured?'已保存':'已清除')+'('+(r.engine||eng)+',只存本机)。');
+}
+async function checkRep(path, upload){
+  const panel=$('#repPanel');
+  panel.className='show';
+  panel.innerHTML='<div class="summary">🔍 查毒中…(本地算哈希 → 云端只传哈希'+(upload?',已授权上传本体':'')+')</div>';
+  const r=await api('/findex/reputation',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({path:path,upload:!!upload})});
+  if(!r.ok){panel.innerHTML='<div class="summary vtdanger">查毒失败:'+(r.error||'')+'</div>';return;}
+  const mb=r.malwarebazaar||{}, vt=r.virustotal||{}, up=r.upload||{};
+  let det='<div class="detail">文件:<code>'+esc(path)+'</code><br>SHA256:<code>'+(r.sha256||'')+'</code><br>';
+  det+='MalwareBazaar: '+(mb.found?('<span class="vtdanger">命中·'+esc(mb.signature||'已知恶意')+'</span>'):(mb.error==='no_malwarebazaar_key'?'未配 key':(mb.ok?'未收录':('查询失败 '+(mb.error||'')))))+'<br>';
+  if(r.vt_configured){
+    det+='VirusTotal: '+(vt.found?((vt.malicious||0)+'/'+ (vt.total||0)+' 引擎报毒'+(vt.meaningful_name?(' · '+esc(vt.meaningful_name)):'')):(vt.ok?'无此文件记录':('查询失败 '+(vt.error||''))))+'<br>';
+  }else{det+='VirusTotal: 未配 key(可查全网 70+ 引擎)<br>';}
+  if(up.ok!==undefined){det+='上传: '+(up.ok?('已提交分析 '+(up.hint||'')):('失败 '+(up.error||'')))+'<br>';}
+  det+='</div>';
+  let acts='<div class="row-actions">';
+  // 云端查无此文件 + 配了 VT → 给「上传分析」(当场显式同意才传本体)。
+  const unknown = !mb.found && (!vt.found);
+  if(unknown && r.vt_configured && !up.ok){
+    acts+='<button class="btn seal" id="upBtn">📤 上传到 VirusTotal 分析</button>';
+  }
+  if(!r.vt_configured || !r.mb_configured){acts+='<button class="btn ghost" id="vtBtn">🔑 配查毒 key</button>';}
+  acts+='<button class="btn ghost" id="locBtn">定位文件</button>';
+  acts+='<span class="mini">只查不删;是否删除由你定(见下方判定建议)。</span></div>';
+  panel.innerHTML='<div class="summary">'+esc(r.summary||'')+'</div>'+det+acts;
+  const upB=$('#upBtn'); if(upB)upB.onclick=()=>{
+    if(confirm('将把该文件本体上传到 VirusTotal 进行多引擎分析(文件会离开本机,交给第三方)。\n\n仅当哈希查不到、且你信任 VT 处理此文件时才继续。\n\n确定上传?')){
+      checkRep(path,true);
+    }};
+  const vtB=$('#vtBtn'); if(vtB)vtB.onclick=setVtKey;
+  const locB=$('#locBtn'); if(locB)locB.onclick=()=>openHit(path,'reveal');
 }
 
 let building=false, pollTimer=null;
@@ -2071,6 +2170,7 @@ function schedulePoll(){if(pollTimer)return;
 async function doSearch(){
   curQ=$('#q').value.trim(); curOffset=0; curTotal=0;
   $('#list').innerHTML=''; $('#more').style.display='none';
+  $('#repPanel').className='';$('#repPanel').innerHTML='';
   await loadMore(true);
 }
 // 渲染一条命中行(体检与普通搜索共用)。单击行/「定位」=定位;「打开」拦可执行类型。
@@ -2082,6 +2182,7 @@ function renderHit(h, list){
     '<div class="mt">'+(h.is_dir?'':fmtTime(h.mtime))+'</div>'+
     '<div class="sz">'+(h.is_dir?'文件夹':fmtSize(h.size))+'</div>'+
     '<div class="acts">'+
+      (h.is_dir?'':'<button class="obtn rep">查毒</button>')+
       (h.is_dir?'':'<button class="obtn opn'+(isExec?' blocked':'')+'">'+(isExec?'打开(受限)':'打开')+'</button>')+
       '<button class="obtn loc">定位</button>'+
     '</div>';
@@ -2089,6 +2190,8 @@ function renderHit(h, list){
   div.querySelector('.dir').textContent=h.is_dir?h.path:h.dir;
   div.title=h.path;
   div.querySelector('.loc').onclick=e=>{e.stopPropagation();openHit(h.path,'reveal');};
+  const rep=div.querySelector('.rep');
+  if(rep)rep.onclick=e=>{e.stopPropagation();checkRep(h.path,false);};
   const opn=div.querySelector('.opn');
   if(opn)opn.onclick=e=>{e.stopPropagation();openHit(h.path,isExec?'reveal':'open');};
   div.onclick=()=>openHit(h.path,'reveal');
@@ -2132,6 +2235,7 @@ $('#searchBtn').onclick=doSearch;
 $('#secBtn').onclick=async()=>{
   // 安全体检:最近 7 天改动过的可执行/脚本文件(纯元数据,不读内容)。
   $('#list').innerHTML=''; $('#more').style.display='none'; $('#empty').style.display='none';
+  $('#repPanel').className='';$('#repPanel').innerHTML='';
   const r=await api('/findex/recent_exec?days=7');
   const list=$('#list');
   if(r.enabled===false){$('#empty').style.display='block';
@@ -2416,6 +2520,10 @@ class Handler(BaseHTTPRequestHandler):
             res = fx.recent_exec(since)
             self._json({"ok": True, "enabled": True, "days": days,
                         "hits": res["hits"], "total": res["total"]})
+        elif path == "/oiagent/api/findex/reputation/status":
+            # 查毒配置状态:各引擎是否配 key(只回 bool,不回显 key)。
+            self._json({"ok": True, "vt_configured": bool(_rep_key("virustotal")),
+                        "mb_configured": bool(_rep_key("malwarebazaar"))})
         elif path == "/oiagent/findex":
             # 用户本地文件搜索页(国风浅色)。
             self._html(_FINDEX_PAGE)
@@ -2533,6 +2641,58 @@ class Handler(BaseHTTPRequestHandler):
             ok, err = _findex_open(body.get("path") or "", body.get("mode") or "reveal")
             self._json({"ok": ok, "error": err} if not ok else {"ok": True},
                        200 if ok else 400)
+        elif path == "/oiagent/api/findex/reputation/key":
+            # 配置查毒引擎 key。body: {api_key, engine:'virustotal'|'malwarebazaar'(默认 vt)};空 key=清除。
+            engine = (body.get("engine") or "virustotal").strip().lower()
+            if engine not in ("virustotal", "malwarebazaar"):
+                engine = "virustotal"
+            if "api_key" not in body:
+                self._json({"ok": False, "error": "missing api_key"}, 400)
+                return
+            k = (body.get("api_key") or "").strip()
+            if not k:
+                _key_store.delete_key(engine)
+                self._json({"ok": True, "engine": engine, "configured": False})
+                return
+            _key_store.set_key(engine, k)
+            self._json({"ok": True, "engine": engine, "configured": True})
+        elif path == "/oiagent/api/findex/reputation":
+            # 协助查毒(只查不删):本地哈希 → MalwareBazaar 免key → VT(若配key)。
+            # body: {path, upload?:bool}。upload=true 表示用户当场显式同意上传本体到 VT。
+            rep = _reputation()
+            if rep is None:
+                self._json({"ok": False, "error": "查毒模块未加载"}, 503)
+                return
+            path = body.get("path") or ""
+            h = rep.hash_file(path)
+            if not h.get("ok"):
+                self._json({"ok": False, "error": h.get("error", "hash failed")}, 400)
+                return
+            out = {"ok": True, "path": path, "sha256": h["sha256"], "md5": h["md5"], "size": h["size"]}
+            # 1) MalwareBazaar(配了 key 才查;只传哈希)
+            mbk = _rep_key("malwarebazaar")
+            out["mb_configured"] = bool(mbk)
+            mb = rep.query_malwarebazaar(sha256=h["sha256"], api_key=mbk) if mbk else \
+                {"ok": False, "found": False, "error": "no_malwarebazaar_key"}
+            out["malwarebazaar"] = mb
+            # 2) VirusTotal 哈希查询(若配了 key;只传哈希)
+            vtk = _rep_key("virustotal")
+            out["vt_configured"] = bool(vtk)
+            vt = None
+            if vtk:
+                vt = rep.query_virustotal_hash(h["sha256"], vtk)
+                out["virustotal"] = vt
+            # 3) 用户当场显式同意 → 上传本体到 VT(仅当 VT 查无此文件)
+            if body.get("upload") and vtk:
+                if vt and vt.get("found"):
+                    out["upload"] = {"ok": False, "error": "VT 已有此文件报告,无需上传"}
+                else:
+                    out["upload"] = rep.upload_virustotal(path, vtk)
+            elif body.get("upload") and not vtk:
+                out["upload"] = {"ok": False, "error": "未配置 VirusTotal key,无法上传"}
+            # 汇总判定(给前端/智能体一个一句话结论)
+            out["summary"] = _reputation_summary(out)
+            self._json(out)
         else:
             self._json({"error": "not found"}, 404)
 

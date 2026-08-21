@@ -177,14 +177,20 @@ def _t_local_file_search(query: str, limit: int = 30) -> str:
     if not st.get("enabled"):
         return ("[local_file_search 未开启] 本机文件搜索索引尚未建立。"
                 "请用户在菜单开启「本机文件搜索」建索引后再用;或先用 search_files 兜底。")
-    hits = fx.search(q, limit)
+    res = fx.search(q, limit)
+    hits = res.get("hits", [])
     if not hits:
         return "[no match]"
     import datetime
     lines = []
+    tot = res.get("total", 0)
+    if tot < 0 or tot > len(hits):
+        cnt = f"{len(hits)}+" if tot < 0 else str(tot)
+        lines.append(f"[共约 {cnt} 条匹配,以下为最相关的前 {len(hits)} 条;可收紧关键词]")
     for h in hits:
         mt = datetime.datetime.fromtimestamp(h.get("mtime", 0)).strftime("%Y-%m-%d %H:%M")
-        lines.append(f"{h['path']}  ({h.get('size',0)}B, {mt})")
+        tag = "[目录] " if h.get("is_dir") else ""
+        lines.append(f"{tag}{h['path']}  ({h.get('size',0)}B, {mt})")
     return "\n".join(lines)
 
 
@@ -199,6 +205,53 @@ def _t_read_file_head(path: str, max_chars: int = 4000) -> str:
         return data
     except Exception as e:  # noqa: BLE001
         return f"[read_file_head error] {e}"
+
+
+def _t_file_reputation(path: str) -> str:
+    """协助查毒(只查不删):本地算 SHA256 → 云端只传哈希查信誉(MalwareBazaar/VirusTotal)。
+    只给判定+建议,绝不上传文件本体、绝不替用户删除。key 从 keyring 取,不回显。"""
+    p = (path or "").strip()
+    if not p:
+        return "[file_reputation error] empty path"
+    try:
+        if _FINDEX_DIR not in sys.path:
+            sys.path.insert(0, _FINDEX_DIR)
+        import reputation  # noqa: PLC0415
+        from fastlane.providers.llm_prisir import PrisirKeyStore  # noqa: PLC0415
+    except Exception as e:  # noqa: BLE001
+        return f"[file_reputation 不可用] 查毒模块加载失败: {e}"
+    h = reputation.hash_file(p)
+    if not h.get("ok"):
+        return f"[file_reputation error] {h.get('error','hash failed')}"
+    ks = PrisirKeyStore()
+    mbk = (ks.get_key("malwarebazaar") or {}).get("api_key", "")
+    vtk = (ks.get_key("virustotal") or {}).get("api_key", "")
+    lines = [f"文件: {p}", f"SHA256: {h['sha256']}", f"大小: {h.get('size',0)}B"]
+    # MalwareBazaar(配 key 才查)
+    if mbk:
+        mb = reputation.query_malwarebazaar(sha256=h["sha256"], api_key=mbk)
+        if mb.get("found"):
+            lines.append(f"MalwareBazaar: ⛔ 已知恶意({mb.get('signature','未知家族')}, 首见 {mb.get('first_seen','?')})")
+        elif mb.get("ok"):
+            lines.append("MalwareBazaar: 未收录(查不到≠安全)")
+        else:
+            lines.append(f"MalwareBazaar: 查询失败 {mb.get('error','')}")
+    else:
+        lines.append("MalwareBazaar: 未配 key")
+    # VirusTotal(配 key 才查)
+    if vtk:
+        vt = reputation.query_virustotal_hash(h["sha256"], vtk)
+        if vt.get("found"):
+            lines.append(f"VirusTotal: {vt.get('malicious',0)}/{vt.get('total',0)} 引擎报毒"
+                         f"({vt.get('meaningful_name') or '见文件名'})")
+        elif vt.get("ok"):
+            lines.append("VirusTotal: 无此文件记录(未知文件,可考虑用户授权后上传分析)")
+        else:
+            lines.append(f"VirusTotal: 查询失败 {vt.get('error','')}")
+    else:
+        lines.append("VirusTotal: 未配 key")
+    lines.append("—— 判定建议:仅依据云端信誉,供用户参考;是否删除/隔离由用户决定,本工具不执行。")
+    return "\n".join(lines)
 
 
 # ---------- 思考档位抽象(off/low/medium/high) ----------
@@ -282,6 +335,12 @@ TOOLS = [
             "path": {"type": "string", "description": "absolute file path"},
             "max_chars": {"type": "integer", "description": "max chars to read, default 4000"}},
             "required": ["path"]}}},
+    {"type": "function", "function": {
+        "name": "file_reputation",
+        "description": "Check a file's safety reputation (assist malware checking). Computes its SHA256 locally (read-only), then queries cloud reputation by HASH ONLY (MalwareBazaar / VirusTotal, if their free API keys are configured). NEVER uploads the file body, NEVER deletes/quarantines — returns verdict + suggestion; the decision stays with the user.",
+        "parameters": {"type": "object", "properties": {
+            "path": {"type": "string", "description": "absolute file path"}},
+            "required": ["path"]}}},
 ]
 
 
@@ -304,6 +363,8 @@ def dispatch(name: str, args: dict, workdir: str) -> str:
         return _t_local_file_search(args.get("query", ""), args.get("limit", 30))
     if name == "read_file_head":
         return _t_read_file_head(args.get("path", ""), args.get("max_chars", 4000))
+    if name == "file_reputation":
+        return _t_file_reputation(args.get("path", ""))
     return f"[unknown tool {name}]"
 
 
