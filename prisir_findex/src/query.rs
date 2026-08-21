@@ -148,7 +148,7 @@ impl FindexEngine {
     /// 性能关键:**不单独 count**(稀疏命中时 count 要扫全表确认总数,再查一遍=双倍成本)。
     /// 改为直接取 limit+1 条:返回数 > limit 即知「还有更多」(total=-1),否则 total=实返数。
     /// 排序退化为纯 mtime(通配本就是批量捞一类文件,mtime 是用户最想要的序)。
-    fn query_glob(&self, conn: &rusqlite::Connection, q: &str, lim: i64, off: i64, cap: i64) -> Result<SearchResult, String> {
+    fn query_glob(&self, conn: &rusqlite::Connection, q: &str, lim: i64, off: i64, _cap: i64) -> Result<SearchResult, String> {
         let like = wildcard_to_like(q);
         // 全通配(如 "*" / "*.*" )等价于「全部」,直接按 mtime 回。
         let all_literal = like.chars().all(|c| c == '%' || c == '_');
@@ -205,22 +205,34 @@ impl FindexEngine {
              WHERE name LIKE ?1 ESCAPE '\\' OR path LIKE ?1 ESCAPE '\\'
              ORDER BY mtime DESC LIMIT ?2 OFFSET ?3".to_string()
         };
-        let mut stmt = conn.prepare_cached(&sql).map_err(|e| format!("glob prepare: {e}"))?;
-        let mut rows: Vec<FileHit> = if all_literal {
-            stmt.query_map(params![cap, 0i64], Self::row_to_hit).map_err(|e| format!("glob query: {e}"))?.flatten().collect()
-        } else if let Some(ext) = pure_ext {
-            stmt.query_map(params![ext, cap, 0i64], Self::row_to_hit).map_err(|e| format!("glob query: {e}"))?.flatten().collect()
+        // total 稳定语义(翻页不漂移):能走索引的两条快路径(ext 等值 / 前缀区间)count 极快,
+        // 给精确值;mtime 全表扫的路径(纯后缀/中间无锚点)count 太贵,给 -1 让前端滚动探。
+        let total: i64 = if all_literal {
+            conn.query_row("SELECT COUNT(*) FROM files", [], |r| r.get(0)).unwrap_or(-1)
+        } else if let Some(ext) = &pure_ext {
+            conn.query_row("SELECT COUNT(*) FROM files WHERE ext=?1", params![ext], |r| r.get(0)).unwrap_or(-1)
         } else if use_prefix {
-            stmt.query_map(params![prefix, upper, like, cap, 0i64], Self::row_to_hit).map_err(|e| format!("glob query: {e}"))?.flatten().collect()
+            conn.query_row(
+                "SELECT COUNT(*) FROM files WHERE name >= ?1 COLLATE NOCASE AND name < ?2 COLLATE NOCASE
+                 AND (name LIKE ?3 ESCAPE '\\' OR path LIKE ?3 ESCAPE '\\')",
+                params![prefix, upper, like], |r| r.get(0),
+            ).unwrap_or(-1)
         } else {
-            stmt.query_map(params![like, cap, 0i64], Self::row_to_hit).map_err(|e| format!("glob query: {e}"))?.flatten().collect()
+            -1
         };
-        // total:到上限(-1 还有更多),否则 = offset + 实返(精确,因没扫到 cap 说明已穷尽)。
-        let reached_cap = rows.len() as i64 >= cap;
-        let total = if reached_cap { -1 } else { off + rows.len() as i64 };
-        // 只回当前页(limit 条),丢掉为探测多取的那 1 条。
-        let skip = off as usize;
-        let rows: Vec<FileHit> = rows.drain(skip..).take(lim as usize).collect();
+
+        // 真 LIMIT/OFFSET 翻页:不 cap 多取、不手 drain —— 手凑 total 的 cap 方案在翻页中途
+        // 会让 total 从 -1 跳成 off+len 的伪精确值(offset=100 时甚至越界空页),前端判断崩。
+        let mut stmt = conn.prepare_cached(&sql).map_err(|e| format!("glob prepare: {e}"))?;
+        let rows: Vec<FileHit> = if all_literal {
+            stmt.query_map(params![lim, off], Self::row_to_hit).map_err(|e| format!("glob query: {e}"))?.flatten().collect()
+        } else if let Some(ext) = pure_ext {
+            stmt.query_map(params![ext, lim, off], Self::row_to_hit).map_err(|e| format!("glob query: {e}"))?.flatten().collect()
+        } else if use_prefix {
+            stmt.query_map(params![prefix, upper, like, lim, off], Self::row_to_hit).map_err(|e| format!("glob query: {e}"))?.flatten().collect()
+        } else {
+            stmt.query_map(params![like, lim, off], Self::row_to_hit).map_err(|e| format!("glob query: {e}"))?.flatten().collect()
+        };
         Ok(SearchResult { hits: rows, total })
     }
 
