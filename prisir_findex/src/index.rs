@@ -108,7 +108,8 @@ impl FindexEngine {
                ext  TEXT NOT NULL,
                size INTEGER NOT NULL,
                mtime INTEGER NOT NULL,
-               is_dir INTEGER NOT NULL DEFAULT 0
+               is_dir INTEGER NOT NULL DEFAULT 0,
+               first_seen INTEGER NOT NULL DEFAULT 0
              );
              CREATE INDEX IF NOT EXISTS idx_files_name ON files(name);
              CREATE INDEX IF NOT EXISTS idx_files_mtime ON files(mtime);
@@ -123,6 +124,19 @@ impl FindexEngine {
              );
              CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);",
         ).map_err(|e| format!("init db: {e}"))?;
+        // 老库迁移:无 first_seen 列则补(默认 0=未知,不假装知道老文件生日)。
+        // first_seen 索引在此建(不在上面 batch):老库第一次执行批时列还不存在,
+        // 索引放批里会让整批报错,迁移永远到不了。先 ALTER 补列,再建索引,老库新库都安全。
+        let has_fs: bool = conn
+            .prepare("SELECT 1 FROM pragma_table_info('files') WHERE name='first_seen'")
+            .and_then(|mut s| s.exists([]))
+            .unwrap_or(false);
+        if !has_fs {
+            conn.execute_batch("ALTER TABLE files ADD COLUMN first_seen INTEGER NOT NULL DEFAULT 0;")
+                .map_err(|e| format!("migrate first_seen: {e}"))?;
+        }
+        conn.execute_batch("CREATE INDEX IF NOT EXISTS idx_files_first_seen ON files(first_seen);")
+            .map_err(|e| format!("first_seen idx: {e}"))?;
         Ok(Self {
             conn: Mutex::new(conn),
             scanned: Arc::new(AtomicU64::new(0)),
@@ -244,18 +258,29 @@ impl FindexEngine {
 
     fn flush_batch(&self, batch: &mut Vec<(String, String, String, String, i64, i64, i64)>) -> Result<(), String> {
         let mut conn = self.conn.lock().unwrap();
+        let now = now_unix() as i64;
         let tx = conn.transaction().map_err(|e| format!("tx: {e}"))?;
         {
+            // INSERT OR IGNORE:已存在的 path 不覆盖其 first_seen(保住真首次入库时间);
+            // 再 UPDATE 其余字段(mtime/size 等会随时间变,first_seen 不动)。
             let mut ins = tx.prepare_cached(
-                "INSERT OR REPLACE INTO files(path,name,dir,ext,size,mtime,is_dir) VALUES(?1,?2,?3,?4,?5,?6,?7)",
+                "INSERT OR IGNORE INTO files(path,name,dir,ext,size,mtime,is_dir,first_seen) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",
             ).map_err(|e| format!("prepare: {e}"))?;
+            let mut upd = tx.prepare_cached(
+                "UPDATE files SET name=?2,dir=?3,ext=?4,size=?5,mtime=?6,is_dir=?7 WHERE path=?1",
+            ).map_err(|e| format!("prepare upd: {e}"))?;
             // files_fts 是普通 FTS 表,rowid 与 files.id 对齐(靠 path 反查 id)。
             let mut fts = tx.prepare_cached(
                 "INSERT INTO files_fts(rowid,name_tok) VALUES((SELECT id FROM files WHERE path=?1),?2)",
             ).map_err(|e| format!("prepare fts: {e}"))?;
             for (path, name, dir, ext, size, mtime, is_dir) in batch.iter() {
-                ins.execute(params![path, name, dir, ext, size, mtime, is_dir])
+                let n = ins.execute(params![path, name, dir, ext, size, mtime, is_dir, now])
                     .map_err(|e| format!("insert: {e}"))?;
+                if n == 0 {
+                    // 已存在:刷新可变字段,first_seen 保持原值。
+                    upd.execute(params![path, name, dir, ext, size, mtime, is_dir])
+                        .map_err(|e| format!("update: {e}"))?;
+                }
                 // 存分词串而非原文,中文才能子串命中(unicode61 不自切 CJK)。
                 let tok = tokenize(name);
                 fts.execute(params![path, tok])

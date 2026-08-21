@@ -15,6 +15,9 @@ pub struct FileHit {
     pub size: i64,
     pub mtime: i64,
     pub is_dir: bool,
+    /// 探囊首次入库时间(0=老库迁移/未知)。跨文件系统的「真新增」依据,非 NTFS btime。
+    #[serde(default)]
+    pub first_seen: i64,
 }
 
 #[derive(Serialize)]
@@ -143,9 +146,10 @@ impl FindexEngine {
         self.query_like(&conn, q, lim, off, cap)
     }
 
-    /// 安全体检:最近 mtime_unix 秒内**改动过的可执行/脚本文件**(按 mtime 倒序)。
-    /// 用于一键「最近新增可执行文件」体检:刚下载/刚落地的程序 mtime 即落地时间,
-    /// 纯元数据判断,不读内容,符合索引红线。exts 为小写扩展名(不带点)。
+    /// 安全体检:最近 since_unix 秒内**探囊首次发现**的可执行文件(first_seen 倒序)。
+    /// 用 first_seen(首次入库时间)而非 mtime:只有探囊装上后**新出现**的文件才算,
+    /// 老程序自更新(mtime 变但 first_seen 老)不会误报进来。跨文件系统,不依赖 NTFS btime。
+    /// 纯元数据,不读内容。exts 为小写扩展名(不带点)。
     pub fn query_recent_exec(&self, since_unix: i64, exts: &[String], limit: u32) -> Result<SearchResult, String> {
         if exts.is_empty() {
             return Ok(SearchResult { hits: vec![], total: 0 });
@@ -153,14 +157,15 @@ impl FindexEngine {
         let conn = self.conn.lock().unwrap();
         let lim = if limit == 0 { 500 } else { limit.min(2000) } as i64;
         let marks = exts.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-        // 全部用匿名 ? 占位,参数按出现顺序绑定:since, exts..., (count 无 limit / select 有 limit)。
+        // first_seen>0 排除老库迁移的未知生日条目(那些 0=探囊装前就存在,不算「新增」)。
+        // 全部用匿名 ? 占位,参数按出现顺序绑定:since, exts..., (select 多一个 limit)。
         let sql = format!(
-            "SELECT path,name,dir,ext,size,mtime,is_dir FROM files
-             WHERE is_dir=0 AND mtime >= ? AND ext IN ({marks})
-             ORDER BY mtime DESC LIMIT ?"
+            "SELECT path,name,dir,ext,size,mtime,is_dir,first_seen FROM files
+             WHERE is_dir=0 AND first_seen > 0 AND first_seen >= ? AND ext IN ({marks})
+             ORDER BY first_seen DESC LIMIT ?"
         );
         let cnt_sql = format!(
-            "SELECT COUNT(*) FROM files WHERE is_dir=0 AND mtime >= ? AND ext IN ({marks})"
+            "SELECT COUNT(*) FROM files WHERE is_dir=0 AND first_seen > 0 AND first_seen >= ? AND ext IN ({marks})"
         );
         let mk = |with_limit: bool| -> Vec<Box<dyn rusqlite::ToSql>> {
             let mut v: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(since_unix)];
@@ -364,6 +369,8 @@ impl FindexEngine {
     }
 
     fn row_to_hit(r: &rusqlite::Row) -> rusqlite::Result<FileHit> {
+        // first_seen 是第 7 列,老库/普通 SELECT(只选了 7 列)没有它,取不到给 0。
+        let first_seen = r.get::<_, i64>(7).unwrap_or(0);
         Ok(FileHit {
             path: r.get(0)?,
             name: r.get(1)?,
@@ -372,6 +379,7 @@ impl FindexEngine {
             size: r.get(4)?,
             mtime: r.get(5)?,
             is_dir: r.get::<_, i64>(6)? != 0,
+            first_seen,
         })
     }
 }

@@ -38,11 +38,16 @@ struct BuildArgs {
 }
 
 /// 开/建库(不扫盘)。返回 opaque handle,失败回 null。
+/// 诊断:失败原因写入 %TEMP%\findex_open_err.txt(打开失败排障用,稳定后可去)。
 #[no_mangle]
 pub extern "C" fn findex_open(db_path: *const c_char) -> *mut c_void {
     match FindexEngine::new(cstr(db_path)) {
         Ok(e) => Box::into_raw(Box::new(e)) as *mut c_void,
-        Err(_) => std::ptr::null_mut(),
+        Err(m) => {
+            let log = std::env::temp_dir().join("findex_open_err.txt");
+            let _ = std::fs::write(&log, format!("db={} err={}\n", cstr(db_path), m));
+            std::ptr::null_mut()
+        }
     }
 }
 
