@@ -43,6 +43,8 @@ class Findex:
         lib.findex_build.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
         lib.findex_query.restype = ctypes.c_void_p
         lib.findex_query.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint, ctypes.c_uint]
+        lib.findex_recent_exec.restype = ctypes.c_void_p
+        lib.findex_recent_exec.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
         lib.findex_status.restype = ctypes.c_void_p
         lib.findex_status.argtypes = [ctypes.c_void_p]
         lib.findex_clear.restype = ctypes.c_void_p
@@ -96,6 +98,19 @@ class Findex:
     def search(self, query, limit=50, offset=0):
         """子串搜索(name/path),匹配度排序 + mtime 倒序。回 {"hits":[...], "total":N}。"""
         r = self._json(self.lib.findex_query(self.h, (query or "").encode(), int(limit), int(offset)))
+        if not r.get("ok"):
+            return {"hits": [], "total": 0}
+        return {"hits": r.get("hits", []), "total": r.get("total", 0)}
+
+    def recent_exec(self, since_unix, exts=None, limit=500):
+        """安全体检:最近 since_unix 秒内改动过的可执行/脚本文件(mtime 倒序)。
+        纯元数据,不读内容。exts 默认常见可执行/脚本扩展名。"""
+        import json as _json  # noqa: PLC0415
+        if exts is None:
+            # 聚焦真可执行体(落地马优先看这些);js/vbs 等脚本在开发机噪音太大,默认不含。
+            exts = ["exe", "dll", "com", "scr", "msi", "msp", "bat", "cmd", "ps1"]
+        args = _json.dumps({"since_unix": int(since_unix), "exts": exts, "limit": int(limit)})
+        r = self._json(self.lib.findex_recent_exec(self.h, args.encode()))
         if not r.get("ok"):
             return {"hits": [], "total": 0}
         return {"hits": r.get("hits", []), "total": r.get("total", 0)}

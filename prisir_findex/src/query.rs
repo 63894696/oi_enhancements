@@ -143,6 +143,47 @@ impl FindexEngine {
         self.query_like(&conn, q, lim, off, cap)
     }
 
+    /// 安全体检:最近 mtime_unix 秒内**改动过的可执行/脚本文件**(按 mtime 倒序)。
+    /// 用于一键「最近新增可执行文件」体检:刚下载/刚落地的程序 mtime 即落地时间,
+    /// 纯元数据判断,不读内容,符合索引红线。exts 为小写扩展名(不带点)。
+    pub fn query_recent_exec(&self, since_unix: i64, exts: &[String], limit: u32) -> Result<SearchResult, String> {
+        if exts.is_empty() {
+            return Ok(SearchResult { hits: vec![], total: 0 });
+        }
+        let conn = self.conn.lock().unwrap();
+        let lim = if limit == 0 { 500 } else { limit.min(2000) } as i64;
+        let marks = exts.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        // 全部用匿名 ? 占位,参数按出现顺序绑定:since, exts..., (count 无 limit / select 有 limit)。
+        let sql = format!(
+            "SELECT path,name,dir,ext,size,mtime,is_dir FROM files
+             WHERE is_dir=0 AND mtime >= ? AND ext IN ({marks})
+             ORDER BY mtime DESC LIMIT ?"
+        );
+        let cnt_sql = format!(
+            "SELECT COUNT(*) FROM files WHERE is_dir=0 AND mtime >= ? AND ext IN ({marks})"
+        );
+        let mk = |with_limit: bool| -> Vec<Box<dyn rusqlite::ToSql>> {
+            let mut v: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(since_unix)];
+            for e in exts {
+                v.push(Box::new(e.clone()));
+            }
+            if with_limit {
+                v.push(Box::new(lim));
+            }
+            v
+        };
+        let cnt_prm = mk(false);
+        let total: i64 = conn
+            .query_row(&cnt_sql, cnt_prm.iter().map(|b| b.as_ref()).collect::<Vec<_>>().as_slice(), |r| r.get(0))
+            .unwrap_or(-1);
+        let mut stmt = conn.prepare_cached(&sql).map_err(|e| format!("recent_exec prepare: {e}"))?;
+        let q_prm = mk(true);
+        let rows = stmt
+            .query_map(q_prm.iter().map(|b| b.as_ref()).collect::<Vec<_>>().as_slice(), Self::row_to_hit)
+            .map_err(|e| format!("recent_exec query: {e}"))?;
+        Ok(SearchResult { hits: rows.flatten().collect(), total })
+    }
+
     /// 通配符搜索:`*` 任意串、`?` 单字符,语义同 Everything。
     /// 转 LIKE 模式后按 mtime 索引降序扫 + 提前停。
     /// 性能关键:**不单独 count**(稀疏命中时 count 要扫全表确认总数,再查一遍=双倍成本)。

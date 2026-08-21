@@ -1996,6 +1996,7 @@ _FINDEX_PAGE = r"""<!DOCTYPE html>
     <div class="searchrow">
       <input id="q" placeholder="文件名 / 路径关键词,支持 *.docx、报告*、2026*报告 等通配…" autocomplete="off">
       <button class="btn" id="searchBtn">搜索</button>
+      <button class="btn ghost" id="secBtn" title="一键:最近 7 天新增/改动的可执行文件,揪可疑落地程序">🛡 安全体检</button>
     </div>
     <div id="statusline"></div>
     <div class="bar" id="bar"><i id="barfill"></i></div>
@@ -2072,6 +2073,27 @@ async function doSearch(){
   $('#list').innerHTML=''; $('#more').style.display='none';
   await loadMore(true);
 }
+// 渲染一条命中行(体检与普通搜索共用)。单击行/「定位」=定位;「打开」拦可执行类型。
+function renderHit(h, list){
+  const div=document.createElement('div');div.className='hit';
+  const isExec=EXEC_BLOCK.has((h.ext||'').toLowerCase());
+  div.innerHTML='<div class="ic">'+icon(h.ext,h.is_dir)+'</div>'+
+    '<div class="meta"><div class="nm"></div><div class="dir"></div></div>'+
+    '<div class="mt">'+(h.is_dir?'':fmtTime(h.mtime))+'</div>'+
+    '<div class="sz">'+(h.is_dir?'文件夹':fmtSize(h.size))+'</div>'+
+    '<div class="acts">'+
+      (h.is_dir?'':'<button class="obtn opn'+(isExec?' blocked':'')+'">'+(isExec?'打开(受限)':'打开')+'</button>')+
+      '<button class="obtn loc">定位</button>'+
+    '</div>';
+  div.querySelector('.nm').textContent=h.name;
+  div.querySelector('.dir').textContent=h.is_dir?h.path:h.dir;
+  div.title=h.path;
+  div.querySelector('.loc').onclick=e=>{e.stopPropagation();openHit(h.path,'reveal');};
+  const opn=div.querySelector('.opn');
+  if(opn)opn.onclick=e=>{e.stopPropagation();openHit(h.path,isExec?'reveal':'open');};
+  div.onclick=()=>openHit(h.path,'reveal');
+  list.appendChild(div);
+}
 async function loadMore(first){
   if(loading)return; loading=true;
   const r=await api('/findex/search?q='+encodeURIComponent(curQ)+'&limit='+PAGE+'&offset='+curOffset);
@@ -2087,27 +2109,7 @@ async function loadMore(first){
     $('#empty').textContent=curQ?('没有匹配「'+curQ+'」的文件或文件夹'):'输入关键词开始搜索';
     return;}
   $('#empty').style.display='none';
-  for(const h of hits){
-    const div=document.createElement('div');div.className='hit';
-    const isExec=EXEC_BLOCK.has((h.ext||'').toLowerCase());
-    div.innerHTML='<div class="ic">'+icon(h.ext,h.is_dir)+'</div>'+
-      '<div class="meta"><div class="nm"></div><div class="dir"></div></div>'+
-      '<div class="mt">'+(h.is_dir?'':fmtTime(h.mtime))+'</div>'+
-      '<div class="sz">'+(h.is_dir?'文件夹':fmtSize(h.size))+'</div>'+
-      '<div class="acts">'+
-        (h.is_dir?'':'<button class="obtn opn'+(isExec?' blocked':'')+'">'+(isExec?'打开(受限)':'打开')+'</button>')+
-        '<button class="obtn loc">定位</button>'+
-      '</div>';
-    div.querySelector('.nm').textContent=h.name;
-    div.querySelector('.dir').textContent=h.is_dir?h.path:h.dir;
-    div.title=h.path;
-    // 单击行=定位(零风险);「打开」按钮=默认程序打开,可执行类型点它也降级为定位。
-    div.querySelector('.loc').onclick=e=>{e.stopPropagation();openHit(h.path,'reveal');};
-    const opn=div.querySelector('.opn');
-    if(opn)opn.onclick=e=>{e.stopPropagation();openHit(h.path,isExec?'reveal':'open');};
-    div.onclick=()=>openHit(h.path,'reveal');
-    list.appendChild(div);
-  }
+  for(const h of hits)renderHit(h,list);
   curOffset+=hits.length;
   // 底部「加载更多」+ 总量提示
   const moreEl=$('#more');
@@ -2127,6 +2129,21 @@ window.addEventListener('scroll',()=>{
 });
 
 $('#searchBtn').onclick=doSearch;
+$('#secBtn').onclick=async()=>{
+  // 安全体检:最近 7 天改动过的可执行/脚本文件(纯元数据,不读内容)。
+  $('#list').innerHTML=''; $('#more').style.display='none'; $('#empty').style.display='none';
+  const r=await api('/findex/recent_exec?days=7');
+  const list=$('#list');
+  if(r.enabled===false){$('#empty').style.display='block';
+    $('#empty').textContent='本机文件搜索未开启,请先点上方「开启本机搜索」。';return;}
+  const hits=r.hits||[];
+  if(!hits.length){$('#empty').style.display='block';
+    $('#empty').textContent='最近 7 天未发现新增/改动的可执行文件 ✓';return;}
+  for(const h of hits)renderHit(h,list);
+  const m=$('#more'); m.style.display='block';
+  m.textContent='安全体检:最近 7 天共 '+(r.total!=null?r.total.toLocaleString():hits.length)+
+    ' 个可执行/脚本文件有改动 · 重点关注陌生路径/临时目录/AppData 下的 · 只看元数据,点「定位」核查';
+};
 $('#q').addEventListener('keydown',e=>{if(e.key==='Enter')doSearch();});
 $('#enableBtn').onclick=async()=>{
   $('#enableBtn').disabled=true;
@@ -2383,6 +2400,22 @@ class Handler(BaseHTTPRequestHandler):
             offset = int((qs.get("offset") or ["0"])[0] or 0)
             res = fx.search(q, limit, offset)
             self._json({"ok": True, "enabled": True, "hits": res["hits"], "total": res["total"]})
+        elif path == "/oiagent/api/findex/recent_exec":
+            # 安全体检:最近 N 天改动过的可执行/脚本文件(纯元数据,不读内容)。
+            # ?days=7(默认 7)。刚下载/刚落地的程序 mtime 即落地时间,一键揪可疑新增。
+            fx = _findex()
+            if fx is None:
+                self._json({"ok": False, "ready": False, "error": "引擎未就绪"}, 503)
+                return
+            if not fx.status().get("enabled"):
+                self._json({"ok": True, "enabled": False, "hits": [], "total": 0,
+                            "hint": "本机文件搜索未开启,请先开启建索引"})
+                return
+            days = int((qs.get("days") or ["7"])[0] or 7)
+            since = int(time.time()) - days * 86400
+            res = fx.recent_exec(since)
+            self._json({"ok": True, "enabled": True, "days": days,
+                        "hits": res["hits"], "total": res["total"]})
         elif path == "/oiagent/findex":
             # 用户本地文件搜索页(国风浅色)。
             self._html(_FINDEX_PAGE)

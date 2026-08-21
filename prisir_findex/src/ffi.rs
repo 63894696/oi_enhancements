@@ -97,6 +97,31 @@ pub extern "C" fn findex_status(handle: *mut c_void) -> *mut c_char {
     )
 }
 
+/// 安全体检:最近 since_unix 秒内改动过的可执行/脚本文件。
+/// args_json = {"since_unix":i64, "exts":["exe",...], "limit":u32}。纯元数据,不读内容。
+#[no_mangle]
+pub extern "C" fn findex_recent_exec(handle: *mut c_void, args_json: *const c_char) -> *mut c_char {
+    let eng = match get(handle) {
+        Some(e) => e,
+        None => return err_json("null_handle"),
+    };
+    let v: serde_json::Value = match serde_json::from_str(cstr(args_json)) {
+        Ok(v) => v,
+        Err(e) => return err_json(&format!("bad_json: {e}")),
+    };
+    let since = v.get("since_unix").and_then(|x| x.as_i64()).unwrap_or(0);
+    let exts: Vec<String> = v
+        .get("exts")
+        .and_then(|x| x.as_array())
+        .map(|a| a.iter().filter_map(|e| e.as_str().map(|s| s.to_string())).collect())
+        .unwrap_or_default();
+    let limit = v.get("limit").and_then(|x| x.as_u64()).unwrap_or(500) as u32;
+    match eng.query_recent_exec(since, &exts, limit) {
+        Ok(res) => to_c_string(json!({"ok": true, "hits": res.hits, "total": res.total}).to_string()),
+        Err(e) => err_json(&e),
+    }
+}
+
 /// 清空索引(关闭功能)。
 #[no_mangle]
 pub extern "C" fn findex_clear(handle: *mut c_void) -> *mut c_char {
