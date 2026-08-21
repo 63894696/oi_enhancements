@@ -42,7 +42,7 @@ class Findex:
         lib.findex_build.restype = ctypes.c_void_p
         lib.findex_build.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
         lib.findex_query.restype = ctypes.c_void_p
-        lib.findex_query.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint]
+        lib.findex_query.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint, ctypes.c_uint]
         lib.findex_status.restype = ctypes.c_void_p
         lib.findex_status.argtypes = [ctypes.c_void_p]
         lib.findex_clear.restype = ctypes.c_void_p
@@ -93,10 +93,12 @@ class Findex:
         return {"ok": True, "started": True}
 
     # ---- 搜索 ----
-    def search(self, query, limit=50):
-        """子串搜索(name/path),按 mtime 倒序。回 hits 列表。"""
-        r = self._json(self.lib.findex_query(self.h, (query or "").encode(), int(limit)))
-        return r.get("hits", []) if r.get("ok") else []
+    def search(self, query, limit=50, offset=0):
+        """子串搜索(name/path),匹配度排序 + mtime 倒序。回 {"hits":[...], "total":N}。"""
+        r = self._json(self.lib.findex_query(self.h, (query or "").encode(), int(limit), int(offset)))
+        if not r.get("ok"):
+            return {"hits": [], "total": 0}
+        return {"hits": r.get("hits", []), "total": r.get("total", 0)}
 
     # ---- 状态 ----
     def status(self):

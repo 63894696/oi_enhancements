@@ -64,15 +64,15 @@ pub extern "C" fn findex_build(handle: *mut c_void, args_json: *const c_char) ->
     }
 }
 
-/// 搜索。回 {"ok":true,"hits":[...]}。
+/// 搜索。回 {"ok":true,"hits":[...],"total":N}(带 is_dir,匹配度排序,offset 分页)。
 #[no_mangle]
-pub extern "C" fn findex_query(handle: *mut c_void, query: *const c_char, limit: u32) -> *mut c_char {
+pub extern "C" fn findex_query(handle: *mut c_void, query: *const c_char, limit: u32, offset: u32) -> *mut c_char {
     let eng = match get(handle) {
         Some(e) => e,
         None => return err_json("null_handle"),
     };
-    match eng.query(cstr(query), limit) {
-        Ok(hits) => to_c_string(json!({"ok": true, "hits": hits}).to_string()),
+    match eng.query(cstr(query), limit, offset) {
+        Ok(res) => to_c_string(json!({"ok": true, "hits": res.hits, "total": res.total}).to_string()),
         Err(e) => err_json(&e),
     }
 }

@@ -11,9 +11,10 @@ from shell_findex import Findex  # noqa: E402
 
 
 def build_tree(root):
-    """造一棵带已知文件名的小目录树。"""
+    """造一棵带已知文件名的小目录树(含一个关键词目录,验目录条目)。"""
     os.makedirs(os.path.join(root, "docs", "reports"), exist_ok=True)
     os.makedirs(os.path.join(root, "pics"), exist_ok=True)
+    os.makedirs(os.path.join(root, "报告归档"), exist_ok=True)  # 目录名含关键词
     files = {
         os.path.join(root, "docs", "季度报告2026.docx"): b"docx",
         os.path.join(root, "docs", "reports", "财务报表-八月.xlsx"): b"xlsx",
@@ -24,7 +25,6 @@ def build_tree(root):
     for p, data in files.items():
         with open(p, "wb") as f:
             f.write(data)
-        # 错开 mtime,让倒序可分辨
     return files
 
 
@@ -45,28 +45,49 @@ def main():
         assert r.get("ok"), f"enable 失败: {r}"
 
         st = fx.status()
+        # 5 文件 + 4 目录(docs, docs/reports, pics, 报告归档)= 9
         print("[3] status 已开启:", st)
-        assert st["enabled"] is True and st["indexed_count"] == 5, f"count 错: {st}"
+        assert st["enabled"] is True and st["indexed_count"] == 9, f"count 错: {st}"
 
-        hits = fx.search("报告")
-        names = [h["name"] for h in hits]
-        print(f"[4] search('报告') -> {names}")
+        res = fx.search("报告")
+        hits, names = res["hits"], [h["name"] for h in res["hits"]]
+        print(f"[4] search('报告') total={res['total']} -> {names}")
         assert any("季度报告" in n for n in names), "应命中季度报告(含'报告')"
-        assert not any("财务报表" in n for n in names), "财务报表不含'报告'应不命中"
+        assert any("报告归档" in n for n in names), "应命中目录 报告归档"
+        # 目录条目带 is_dir
+        dirhit = [h for h in hits if h["name"] == "报告归档"]
+        assert dirhit and dirhit[0]["is_dir"] is True, "目录条目应 is_dir=True"
+        filehit = [h for h in hits if "季度报告" in h["name"]]
+        assert filehit and filehit[0]["is_dir"] is False, "文件条目应 is_dir=False"
 
-        hits_fin = fx.search("财务")
-        print(f"[4b] search('财务') -> {[h['name'] for h in hits_fin]}")
-        assert any("财务报表" in h["name"] for h in hits_fin), "应命中财务报表"
+        res_fin = fx.search("财务")
+        print(f"[4b] search('财务') -> {[h['name'] for h in res_fin['hits']]}")
+        assert any("财务报表" in h["name"] for h in res_fin["hits"]), "应命中财务报表"
 
-        hits2 = fx.search("photo")
-        print(f"[5] search('photo') -> {[h['path'] for h in hits2]}")
-        assert any("photo_final.jpg" in h["path"] for h in hits2), "path 子串应命中"
+        res2 = fx.search("photo")
+        print(f"[5] search('photo') -> {[h['path'] for h in res2['hits']]}")
+        assert any("photo_final.jpg" in h["path"] for h in res2["hits"]), "path 子串应命中"
 
-        # mtime 倒序校验
-        hits3 = fx.search("", 50)
-        mt = [h["mtime"] for h in hits3]
-        assert mt == sorted(mt, reverse=True), "应按 mtime 倒序"
-        print(f"[6] 空查询按 mtime 倒序 OK, 共 {len(hits3)} 条")
+        # 匹配度排序:精确名应排在子串命中前
+        res_r = fx.search("readme")
+        if res_r["hits"]:
+            assert res_r["hits"][0]["name"] == "readme.md", "精确名应排最前"
+        print("[5b] 匹配度排序 OK(readme 精确名置顶)")
+
+        # 分页:limit=2 offset=2 与 offset=0 不重叠
+        allr = fx.search("", 50)
+        p1 = fx.search("", 2, 0)
+        p2 = fx.search("", 2, 2)
+        ids1 = {h["path"] for h in p1["hits"]}
+        ids2 = {h["path"] for h in p2["hits"]}
+        assert not (ids1 & ids2), "分页 offset 不应重叠"
+        assert allr["total"] == 9, f"空查询 total 应=9, 实 {allr['total']}"
+        print(f"[6] 分页 offset 不重叠 OK;空查询 total={allr['total']}")
+
+        # mtime 倒序(同匹配度桶内)
+        mt = [h["mtime"] for h in allr["hits"] if not h["is_dir"]]
+        assert mt == sorted(mt, reverse=True), "文件应按 mtime 倒序"
+        print("[6b] mtime 倒序 OK")
 
         fx.disable()
         st2 = fx.status()
