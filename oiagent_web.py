@@ -100,7 +100,7 @@ def _shell_system_prompt(user_text: str) -> str:
     constitution = _load_constitution()
     if constitution:
         parts.append(
-            "你是 oiagent,运行在本地对话壳(Prisir Shell)。下面【项目宪法】是硬性技术契约,"
+            "你是 OIagent,运行在本地对话壳(Prisir Shell)。下面【项目宪法】是硬性技术契约,"
             "涉及凭证/密钥/网络/代码正确性时以它为准,违反即返工;普通问答不影响。\n\n"
             "【项目宪法】\n" + constitution)
     # 本机环境:可用工具 + 已配端点,让模型不用猜/不用现查
@@ -649,6 +649,10 @@ _AGENT_LOCK = threading.Lock()
 _AGENT_COND = threading.Condition(_AGENT_LOCK)
 _SNAP_STATE = {"snapping": False, "pending": 0}  # 贴窗信号,shell 主进程轮询
 _POLL_HOLD_SEC = 30
+# 浏览器→壳任务移交(#90,2026-08-22):并行确认卡模式。
+# task_id -> {token, task, status(pending/running/rejected/done/failed), session_id, result}
+_PENDING_SHELL: dict[str, dict] = {}
+_PENDING_LOCK = threading.Lock()
 _PAIR_SETTINGS = Path(os.environ.get(
     "OIAGENT_SHELL_SETTINGS",
     str(Path(os.environ.get("APPDATA", str(Path.home()))) / "oiagent-shell" / "settings.json")))
@@ -702,6 +706,44 @@ def _agent_enqueue(token: str, action: dict) -> bool:
     return True
 
 
+# ---- 浏览器→壳任务移交执行(#90)----
+def _shell_task_push_result(task_id: str) -> None:
+    """把移交任务的最终结果经 _AGENT_QUEUES 回推给扩展(走现有 agent/poll)。"""
+    with _PENDING_LOCK:
+        rec = _PENDING_SHELL.get(task_id)
+        if not rec:
+            return
+        token, status = rec.get("token", ""), rec.get("status", "")
+        answer = (rec.get("result") or "")[:4000]
+        ok = status == "done"
+    payload = {"type": "shell_task_result", "task_id": task_id, "ok": ok,
+               "result": answer if ok else (answer or "执行失败/被拒绝")}
+    _agent_enqueue(token, payload)
+
+
+def _shell_task_run(task_id: str) -> None:
+    """确认后:建会话跑本地工具链,完成回推结果。复用 _run_chat_thread 主路径。"""
+    with _PENDING_LOCK:
+        rec = _PENDING_SHELL.get(task_id)
+        if not rec:
+            return
+        rec["status"] = "running"
+        token, task = rec["token"], rec["task"]
+    sid = create_session("[浏览器移交] " + task[:18])
+    with _PENDING_LOCK:
+        _PENDING_SHELL[task_id]["session_id"] = sid
+    # 任务文本当资料防注入(同交接红线),不劫持本地会话
+    wrapped = _wrap_handoff_as_data("【浏览器智能体移交的本地任务】\n" + task.strip())
+    add_message(sid, "user", wrapped)
+    _run_chat_thread(sid, task, DEFAULT_STRATEGY, DEFAULT_MODEL, _WORKDIR["path"], "")
+    # 跑完取最终 assistant 答复回推
+    msgs = get_messages(sid)
+    final = next((m["content"] for m in reversed(msgs) if m["role"] == "assistant"), "")
+    with _PENDING_LOCK:
+        _PENDING_SHELL[task_id]["status"] = "done" if final else "failed"
+        _PENDING_SHELL[task_id]["result"] = final
+    _shell_task_push_result(task_id)
+
 
 # ============================================================
 # 导出(Markdown / PDF / DOCX)
@@ -714,7 +756,7 @@ def _export_markdown(sid: str) -> str:
         if m["role"] == "user":
             lines.append(f"\n## 🧑 用户\n\n{m['content']}\n")
         elif m["role"] == "assistant":
-            lines.append(f"\n## 🤖 oiagent\n\n{m['content']}\n")
+            lines.append(f"\n## ✨ OIagent\n\n{m['content']}\n")
             if m["followups"]:
                 lines.append("\n**延续话题:** " + " / ".join(m["followups"]) + "\n")
         elif m["role"] == "tool":
@@ -728,7 +770,7 @@ def _export_html_for_pdf(sid: str) -> str:
     title = html.escape(sess[1] if sess else "会话")
     parts = [f"<h1>{title}</h1>"]
     for m in get_messages(sid):
-        role = "用户" if m["role"] == "user" else "oiagent"
+        role = "用户" if m["role"] == "user" else "OIagent"
         css = "user" if m["role"] == "user" else "agent"
         parts.append(f'<div class="msg {css}"><div class="role">{role}</div>'
                      f'<div class="body">{html.escape(m["content"]).replace(chr(10), "<br>")}</div></div>')
@@ -751,7 +793,7 @@ def _export_docx(sid: str) -> bytes | None:
     doc = Document()
     doc.add_heading(sess[1] if sess else "会话", 0)
     for m in get_messages(sid):
-        role = "用户" if m["role"] == "user" else "oiagent"
+        role = "用户" if m["role"] == "user" else "OIagent"
         doc.add_heading(role, level=2)
         doc.add_paragraph(m["content"])
     import io
@@ -766,7 +808,7 @@ def _export_word_html(sid: str) -> str:
     title = html.escape(sess[1] if sess else "会话")
     parts = [f"<h1>{title}</h1>"]
     for m in get_messages(sid):
-        role = "用户" if m["role"] == "user" else "oiagent"
+        role = "用户" if m["role"] == "user" else "OIagent"
         parts.append(f"<h2>{role}</h2><p>{html.escape(m['content']).replace(chr(10), '<br>')}</p>")
     return ("<html xmlns:o='urn:schemas-microsoft-com:office:office' "
             "xmlns:w='urn:schemas-microsoft-com:office:word'><head><meta charset='utf-8'></head><body>"
@@ -802,7 +844,7 @@ def _build_experience_doc(sid: str, distilled: dict) -> str:
     sess = get_session(sid)
     conv_title = sess[1] if sess else "会话"
 
-    title = (distilled.get("title") or conv_title or "oiagent 对话经验").strip()
+    title = (distilled.get("title") or conv_title or "OIagent 对话经验").strip()
     tldr = [str(x) for x in (distilled.get("tldr") or [])][:3]
     core = [str(x) for x in (distilled.get("core") or [])][:8]
     gotchas = [str(x) for x in (distilled.get("gotchas") or [])]
@@ -830,7 +872,7 @@ def _build_experience_doc(sid: str, distilled: dict) -> str:
         if m["role"] == "tool":
             role = "🔧 工具"
         else:
-            role = "🧑 用户" if m["role"] == "user" else "🤖 oiagent"
+            role = "🧑 用户" if m["role"] == "user" else "✨ OIagent"
         body += [f"**{role}**", "", m["content"], ""]
     return "\n".join(fm_lines) + "\n\n" + "\n".join(body)
 
@@ -852,7 +894,7 @@ def _distill_experience(sid: str) -> dict:
         return {}
     conv = "\n\n".join(
         (f"工具[{m.get('name','') or ''}]: " + m["content"][:300]) if m["role"] == "tool"
-        else f"{'用户' if m['role'] == 'user' else 'oiagent'}: {m['content']}"
+        else f"{'用户' if m['role'] == 'user' else 'OIagent'}: {m['content']}"
         for m in history)
     prompt = _EXPERIENCE_PROMPT % conv[:12000]  # 截断防爆 context
 
@@ -909,7 +951,7 @@ def _distill_handoff(sid: str) -> str:
         return ""
     conv = "\n\n".join(
         (f"工具[{m.get('name','') or ''}]: " + m["content"][:300]) if m["role"] == "tool"
-        else f"{'用户' if m['role'] == 'user' else 'oiagent'}: {m['content']}"
+        else f"{'用户' if m['role'] == 'user' else 'OIagent'}: {m['content']}"
         for m in history)
     msgs = [{"role": "user", "content": _HANDOFF_PROMPT % conv[:12000]}]
     try:
@@ -999,7 +1041,7 @@ _PAGE = r"""<!DOCTYPE html>
 <html lang="zh">
 <head>
 <meta charset="utf-8">
-<title>oiagent · Prisir AI</title>
+<title>OIagent · Prisir AI</title>
 <style>
   :root {
     --gh-paper:#f6f1e7; --gh-paper-2:#efe8da; --gh-paper-3:#e7dfce; --gh-surface:#fbf8f1;
@@ -1225,7 +1267,7 @@ _PAGE = r"""<!DOCTYPE html>
 <div id="topbar">
   <div id="brand">
     <img src="/oiagent/assets/secbrowser_icon_48.png" alt="icon">
-    <span class="name">oiagent · Prisir AI</span>
+    <span class="name">OIagent · Prisir AI</span>
   </div>
   <div class="spacer"></div>
   <span id="strategy-label"></span>
@@ -1330,7 +1372,7 @@ _PAGE = r"""<!DOCTYPE html>
     </div>
     <div class="kf">
       <label>工作目录</label>
-      <div class="hint">oiagent 读写文件/跑命令的基准目录(影响 read_file/run_shell 相对路径)</div>
+      <div class="hint">OIagent 读写文件/跑命令的基准目录(影响 read_file/run_shell 相对路径)</div>
       <div style="display:flex;gap:6px">
         <input id="k-workdir" type="text" placeholder="如 C:\path\to\project" style="flex:1">
         <button class="topbtn" type="button" onclick="saveWorkdir()">应用</button>
@@ -1568,6 +1610,24 @@ function openDlg(opts){
 }
 function dlgPrompt(title, value){ return openDlg({title:title, input:true, value:value, okText:'保存'}); }
 function dlgConfirm(title, sub){ return openDlg({title:title, sub:sub, okText:'删除'}); }
+
+// ---- #90 浏览器→壳任务移交确认卡(并行轮询,不阻塞对话) ----
+const _shellHandled = new Set();
+async function _pollShellPending(){
+  try{
+    const r = await fetch('/oiagent/api/shell_pending').then(x=>x.json());
+    for(const it of (r.pending||[])){
+      if(_shellHandled.has(it.task_id)) continue;
+      _shellHandled.add(it.task_id);
+      const yes = await openDlg({title:'浏览器智能体移交本地任务', sub:it.task, okText:'执行'});
+      await api('/shell_task_confirm', {method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({task_id:it.task_id, approve:!!yes})});
+      if(yes) toast('已移交本地执行,结果将回传浏览器', true);
+      loadSessions();
+    }
+  }catch(e){/* 静默,下轮重试 */}
+}
+setInterval(_pollShellPending, 2000);
 
 async function renameSession(){ if(!sessionId) return;
   const t = await dlgPrompt('重命名会话', document.getElementById('conv-title').textContent);
@@ -2480,6 +2540,12 @@ class Handler(BaseHTTPRequestHandler):
             # 设置页状态点:只回布尔,不回 token 本体(红线)。
             tok = _pair_load_token()
             self._json({"paired": bool(tok and tok in _AGENT_PAIRED)})
+        elif path == "/oiagent/api/shell_pending":
+            # #90 壳 UI 轮询待确认的移交任务:只回 task_id+摘要(截断)+来源,不回 token 本体。
+            with _PENDING_LOCK:
+                items = [{"task_id": tid, "task": r["task"][:200], "source": "browser"}
+                         for tid, r in _PENDING_SHELL.items() if r.get("status") == "pending"]
+            self._json({"ok": True, "pending": items})
         elif path == "/oiagent/api/findex/status":
             # 本机文件搜索状态:{ready, enabled, indexed_count, building, scanned, last_scan}
             fx = _findex()
@@ -2543,7 +2609,7 @@ class Handler(BaseHTTPRequestHandler):
         title = (sess[1] or "会话").strip()
         safe_title = re.sub(r'[\\/:*?"<>|]', '_', title)[:60]
         if not safe_title:
-            safe_title = "oiagent对话"
+            safe_title = "OIagent对话"
         base = safe_title
         if fmt == "md":
             self._download(_export_markdown(sid).encode("utf-8"), "text/markdown; charset=utf-8", f"{base}.md")
@@ -2694,6 +2760,70 @@ class Handler(BaseHTTPRequestHandler):
             # 汇总判定(给前端/智能体一个一句话结论)
             out["summary"] = _reputation_summary(out)
             self._json(out)
+        elif path == "/oiagent/api/agent/pair":
+            # #58 配对注册(契约补落地):body {token} → 入 _AGENT_PAIRED + 0600 持久化。
+            token = (body.get("token") or "").strip()
+            if not token:
+                self._json({"ok": False, "error": "missing token"}, 400)
+                return
+            with _AGENT_COND:
+                _AGENT_PAIRED.add(token)
+                _AGENT_QUEUES.setdefault(token, [])
+                _AGENT_ACKS.setdefault(token, [])
+            _pair_save_token(token)
+            self._json({"ok": True, "paired": True})
+        elif path == "/oiagent/api/agent/ack":
+            # #58 扩展回执(契约补落地):body {token, id, ok, result, error?}。
+            token = (body.get("token") or "").strip()
+            if token not in _AGENT_PAIRED:
+                self._json({"ok": False, "error": "unpaired"}, 401)
+                return
+            name = str(body.get("name") or body.get("id") or "action")
+            okk = bool(body.get("ok"))
+            summ = str(body.get("result") or body.get("error") or "")[:4000]
+            add_message(_agent_sid(), "tool",
+                        f"[🌐 浏览器] {name} → {'ok' if okk else 'err'} {summ}")
+            with _AGENT_COND:
+                _AGENT_ACKS.setdefault(token, []).append(body)
+                if not _AGENT_QUEUES.get(token):
+                    _SNAP_STATE.update({"snapping": False, "pending": 0})
+            self._json({"ok": True})
+        elif path == "/oiagent/api/shell_task":
+            # #90 浏览器→壳任务移交:body {token, task, task_id?}。
+            # 并行确认卡:登记 pending 立即回,壳 UI 轮询 /shell_pending 弹卡,不悬挂请求线程。
+            token = (body.get("token") or "").strip()
+            if token not in _AGENT_PAIRED:
+                self._json({"ok": False, "error": "unpaired"}, 401)
+                return
+            task = (body.get("task") or "").strip()
+            if not task:
+                self._json({"ok": False, "error": "empty task"}, 400)
+                return
+            task_id = (body.get("task_id") or "").strip() or uuid.uuid4().hex[:12]
+            with _PENDING_LOCK:
+                _PENDING_SHELL[task_id] = {"token": token, "task": task[:1000],
+                                           "status": "pending", "session_id": "", "result": ""}
+            self._json({"ok": True, "task_id": task_id, "status": "pending_confirm"})
+        elif path == "/oiagent/api/shell_task_confirm":
+            # #90 壳 UI 用户确认/拒绝。body {task_id, approve:bool}。
+            task_id = (body.get("task_id") or "").strip()
+            approve = bool(body.get("approve"))
+            with _PENDING_LOCK:
+                rec = _PENDING_SHELL.get(task_id)
+                if not rec:
+                    self._json({"ok": False, "error": "task not found"}, 404)
+                    return
+                if rec["status"] != "pending":
+                    self._json({"ok": False, "error": "already handled", "status": rec["status"]}, 409)
+                    return
+                if not approve:
+                    rec["status"] = "rejected"
+            if approve:
+                threading.Thread(target=_shell_task_run, args=(task_id,), daemon=True).start()
+                self._json({"ok": True, "status": "running"})
+            else:
+                _shell_task_push_result(task_id)
+                self._json({"ok": True, "status": "rejected"})
         else:
             self._json({"error": "not found"}, 404)
 
@@ -2752,7 +2882,7 @@ def main():
     DEFAULT_MODEL, DEFAULT_WORKDIR, DEFAULT_STRATEGY = args.model, args.workdir, args.strategy
 
     srv = ThreadingHTTPServer((WEB_HOST, args.port), Handler)
-    print(f"oiagent 对话模式: http://{WEB_HOST}:{args.port}  路由={DEFAULT_STRATEGY}  数据={_CHAT_DB}")
+    print(f"OIagent 对话模式: http://{WEB_HOST}:{args.port}  路由={DEFAULT_STRATEGY}  数据={_CHAT_DB}")
     srv.serve_forever()
 
 
