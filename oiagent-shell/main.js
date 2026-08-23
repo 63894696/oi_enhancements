@@ -14,16 +14,77 @@
 //   - oiagent_web 只监听 127.0.0.1;壳加载的也是回环地址,不触外网。
 //
 // 与已归档 securedm-shell(Tauri)不同:本壳走 Electron(用户拍板),复用 oiagent_web.py。
-const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, nativeImage, shell } = require("electron");
+const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, nativeImage, shell, Notification } = require("electron");
 const { spawn } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 const http = require("http");
 const os = require("os");
 
+// ---------- v2.0 日志基础设施 ----------
+// 所有诊断日志落 userData/logs/,三层文件:electron-main.log(主进程自身)
+// + spawn-stdout.log(Python exe stdout) + spawn-stderr.log(stderr)。
+// 装包后 userData = %APPDATA%/oiagent-shell(Win),开发态也是。
+const USER_LOGS_DIR = path.join(app.getPath("userData"), "logs");
+try { fs.mkdirSync(USER_LOGS_DIR, { recursive: true }); } catch (_) {}
+const LOG_MAIN = path.join(USER_LOGS_DIR, "electron-main.log");
+const LOG_STDOUT = path.join(USER_LOGS_DIR, "spawn-stdout.log");
+const LOG_STDERR = path.join(USER_LOGS_DIR, "spawn-stderr.log");
+function logTs() { return new Date().toISOString(); }
+function logTo(file, level, category, msg, extra) {
+  try {
+    const line = `${logTs()} ${level} ${category} ${msg}${extra ? " " + extra : ""}\n`;
+    fs.appendFileSync(file, line, "utf8");
+  } catch (_) { /* 永不抛 */ }
+}
+// 滚动:每个文件超 5MB → 改名 .log.1
+function rotateLog(file) {
+  try {
+    if (!fs.existsSync(file)) return;
+    const stat = fs.statSync(file);
+    if (stat.size < 5 * 1024 * 1024) return;
+    for (let i = 3; i >= 1; i--) {
+      const src = `${file}.${i}`;
+      const dst = `${file}.${i + 1}`;
+      if (fs.existsSync(src)) fs.renameSync(src, dst);
+    }
+    fs.renameSync(file, `${file}.1`);
+  } catch (_) {}
+}
+function logInfo(cat, msg, extra)  { rotateLog(LOG_MAIN); logTo(LOG_MAIN, "INFO",  cat, msg, extra); }
+function logWarn(cat, msg, extra)  { rotateLog(LOG_MAIN); logTo(LOG_MAIN, "WARN",  cat, msg, extra); }
+function logError(cat, msg, extra) { rotateLog(LOG_MAIN); logTo(LOG_MAIN, "ERROR", cat, msg, extra); }
+function logDebug(cat, msg, extra) { rotateLog(LOG_MAIN); logTo(LOG_MAIN, "DEBUG", cat, msg, extra); }
+logInfo("boot", "electron main process started", `pid=${process.pid} ver=${process.versions.electron} userData=${app.getPath("userData")}`);
+
+// 兜底:捕获未处理异常,落日志(避免窗口静默崩用户看不到)
+process.on("uncaughtException", (err) => {
+  logError("uncaught", err.message || String(err), `stack=${(err.stack || "").split("\n")[0]}`);
+});
+process.on("unhandledRejection", (reason) => {
+  logError("unhandledRejection", String(reason), "");
+});
+
 // ---------- 配置 ----------
-const REPO_ROOT = path.resolve(__dirname, "..");          // oi_enhancements 根
-const WEB_SCRIPT = path.join(REPO_ROOT, "oiagent_web.py");
+// __dirname/.. 在两种环境含义不同:
+//   开发态:oiagent-shell/ 在 oi_enhancements/ 内 → REPO_ROOT = oi_enhancements/
+//   装包后:oiagent-shell/ 在 $INSTDIR\PrisirAI\ 内 → REPO_ROOT = $INSTDIR(PrisirAI.exe 同级)
+// 探测多候选路径,保证装包后能找到 PrisirAI.exe。
+const PARENT_DIR = path.resolve(__dirname, "..");
+const WEB_SCRIPT = path.join(PARENT_DIR, "oiagent_web.py");
+// 发布态(装包后):$INSTDIR\PrisirAI.exe;开发态:$REPO/dist/PrisirAI.exe;旧 .bak 也认。
+const CORE_EXE_CANDIDATES = [
+  path.join(PARENT_DIR, "PrisirAI.exe"),                    // 装包后:与 oiagent-shell 同级
+  path.join(PARENT_DIR, "dist", "PrisirAI.exe"),            // 开发态
+  path.join(PARENT_DIR, "dist", "PrisirAI-core.exe"),       // 旧名回退(v0.x 阶段产物)
+];
+function resolveCoreExe() {
+  for (const p of CORE_EXE_CANDIDATES) {
+    if (fs.existsSync(p)) return p;
+  }
+  return CORE_EXE_CANDIDATES[0];   // 默认返回装包后路径,让 spawn 报错时用户能看到准确路径
+}
+const REPO_ROOT = PARENT_DIR;          // 兼容旧代码(暂留,实际未用)
 const WEB_HOST = "127.0.0.1";
 const WEB_PORT = parseInt(process.env.OIAGENT_WEB_PORT || "18802", 10);
 const WEB_URL = `http://${WEB_HOST}:${WEB_PORT}`;
@@ -61,18 +122,68 @@ function startWeb() {
   if (webProc) return;
   // 已被别的进程占用端口就直接复用,不重复起。
   webUp((up) => {
-    if (up) { webReady = true; loadWhenReady(); return; }   // 关键:复用已起后端也要触发加载
-    webProc = spawn(PYTHON, [WEB_SCRIPT, "--port", String(WEB_PORT)], {
-      cwd: REPO_ROOT,
-      stdio: "ignore",          // 不把对话日志引到壳 stdout
-      windowsHide: true,
+    if (up) {
+      logInfo("startWeb", "port already up, reusing", `port=${WEB_PORT}`);
+      webReady = true; loadWhenReady(); return;   // 关键:复用已起后端也要触发加载
+    }
+    // 发布态:优先 spawn 打包好的 PrisirAI.exe(用户免装 Python);
+    // 开发态:exe 不存在则回退 python oiagent_web.py。
+    const coreExe = resolveCoreExe();
+    const useExe = fs.existsSync(coreExe);
+    const cmd = useExe ? coreExe : PYTHON;
+    const args = useExe ? ["--port", String(WEB_PORT)] : [WEB_SCRIPT, "--port", String(WEB_PORT)];
+    // v2.0:stdout/stderr 落 spawn-{out,err}.log(原本 stdio: "ignore" 用户看不到任何错)。
+    // Windows spawn 只接受文件路径 / 'pipe' / 'ignore',不接受 WriteStream 对象。
+    // 用 'pipe' + 自己写文件:跨平台稳,且日志可加锁/轮转。
+    logInfo("startWeb", "spawning backend", `cmd=${cmd} args=${JSON.stringify(args)} cwd=${REPO_ROOT} useExe=${useExe}`);
+    try {
+      webProc = spawn(cmd, args, {
+        cwd: REPO_ROOT,
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
+      });
+    } catch (e) {
+      logError("startWeb", "spawn failed", `err=${e.message}`);
+      return;
+    }
+    // 手动把 stdout/stderr 流接进 spawn-*.log(append 模式,fs.WriteStream 跨平台稳)。
+    try {
+      const outFd = fs.openSync(LOG_STDOUT, "a");
+      const errFd = fs.openSync(LOG_STDERR, "a");
+      webProc.stdout.on("data", (chunk) => { try { fs.writeSync(outFd, chunk); } catch (_) {} });
+      webProc.stderr.on("data", (chunk) => { try { fs.writeSync(errFd, chunk); } catch (_) {} });
+      webProc.on("close", () => { try { fs.closeSync(outFd); fs.closeSync(errFd); } catch (_) {} });
+    } catch (e) {
+      logWarn("startWeb", "stdout/stderr redirect failed", `err=${e.message}`);
+    }
+    webProc.on("spawn", () => {
+      logInfo("webProc", "spawned", `pid=${webProc.pid}`);
     });
-    webProc.on("exit", () => { webProc = null; webReady = false; });
+    webProc.on("exit", (code, signal) => {
+      logWarn("webProc", "exited", `code=${code} signal=${signal} pid=${webProc && webProc.pid}`);
+      webProc = null; webReady = false;
+      // 退出后不要立即重启,避免循环;留给用户再次触发或托盘菜单"重启对话"
+    });
+    webProc.on("error", (err) => {
+      logError("webProc", "error event", `err=${err.message}`);
+    });
     // 轮询等就绪
     const t = setInterval(() => {
-      webUp((up) => { if (up) { webReady = true; clearInterval(t); loadWhenReady(); } });
+      webUp((up) => {
+        if (up) {
+          webReady = true;
+          clearInterval(t);
+          logInfo("startWeb", "backend ready", `port=${WEB_PORT}`);
+          loadWhenReady();
+        }
+      });
     }, 400);
-    setTimeout(() => clearInterval(t), 30000);
+    setTimeout(() => {
+      clearInterval(t);
+      if (!webReady) {
+        logError("startWeb", "backend not ready within 30s", `cmd=${cmd}`);
+      }
+    }, 30000);
   });
 }
 
@@ -87,7 +198,7 @@ function createWindow() {
     height: 760,
     minWidth: 720,
     minHeight: 520,
-    title: "oiagent 对话",
+    title: "PrisirAI",
     icon: path.join(__dirname, "icon.png"),
     backgroundColor: "#f6f1e7",   // 国画纸色,与聊天 UI 一致,避免白闪
     webPreferences: {
@@ -126,7 +237,7 @@ function loadWhenReady() {
     win.loadURL(
       "data:text/html;charset=utf-8," +
         encodeURIComponent(
-          `<body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#f6f1e7;color:#5b5548;font-family:system-ui"><div>正在唤醒 oiagent…</div></body>`
+          `<body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#f6f1e7;color:#5b5548;font-family:system-ui"><div>正在唤醒 Prisir AI…</div></body>`
         )
     );
     // 保险:若 webReady 在我们加载过渡页之后才变 true(端口复用路径下 startWeb
@@ -145,6 +256,48 @@ function toggleWindow() {
   else { win.show(); win.focus(); loadWhenReady(); }
 }
 
+// ---------- v2.0 开发者模式 ----------
+// 检测 $INSTDIR/dev/git-portable/ 是否存在(装包器开发者模式节产物)。
+// 检测是用户已主动勾选安装 git-portable + repo.zip + DEV_README.txt。
+// 红线:开发者模式菜单只在检测到 dev 资源时才显示,普通用户看不到。
+// __dirname 在装包后是 $INSTDIR\oiagent-shell\,所以 $INSTDIR = path.resolve(__dirname, "..")。
+// 注意:PARENT_DIR 在不同环境含义不同(装包后 = $INSTDIR,开发态 = oi_enhancements/),
+// 这里我们只关心装包后路径,直接用 __dirname 解析。
+const INSTDIR = path.resolve(__dirname, "..");
+const DEV_GIT_PORTABLE = path.join(INSTDIR, "dev", "git-portable");
+const DEV_REPO_ZIP = path.join(INSTDIR, "dev", "repo.zip");
+const DEV_README = path.join(INSTDIR, "dev", "DEV_README.txt");
+function devModeAvailable() {
+  // 三件都存在才算「开发者模式就绪」(否则菜单点了也是空跑)。
+  return fs.existsSync(DEV_GIT_PORTABLE) && fs.existsSync(DEV_REPO_ZIP);
+}
+function openDeveloperTerminal() {
+  // 用 git-portable.cmd shim(已在 PATH 注入),给开发者一个立即可用的 git 命令行。
+  // 找不到 shim 时退到 bash.exe(用户也可手动配 PATH)。
+  const shim = path.join(DEV_GIT_PORTABLE, "git-portable.cmd");
+  if (!fs.existsSync(shim)) {
+    logWarn("devTerminal", "shim not found", `path=${shim}`);
+    return;
+  }
+  try {
+    spawn("cmd.exe", ["/c", "start", "", shim], {
+      detached: true, stdio: "ignore", windowsHide: false,
+    }).unref();
+    logInfo("devTerminal", "spawned", `shim=${shim}`);
+  } catch (e) {
+    logError("devTerminal", "spawn failed", `err=${e.message}`);
+  }
+}
+function openDevReadme() {
+  // 写完打包 + 设置默认应用关联的 PDF/RTF;最稳是用系统应用打开 .txt。
+  try {
+    shell.openPath(DEV_README);
+    logInfo("devReadme", "opened", `path=${DEV_README}`);
+  } catch (e) {
+    logError("devReadme", "open failed", `err=${e.message}`);
+  }
+}
+
 // ---------- 托盘 ----------
 function createTray() {
   // 用国画风 mark 若存在,否则空图标(Electron 需要有效 image)。
@@ -153,14 +306,23 @@ function createTray() {
   let img = nativeImage.createFromPath(iconPath);
   if (img.isEmpty()) img = nativeImage.createEmpty();
   tray = new Tray(img);
-  tray.setToolTip("oiagent 对话");
-  tray.setContextMenu(Menu.buildFromTemplate([
-    { label: "打开 oiagent", click: () => { if (win) { win.show(); loadWhenReady(); } else createWindow(); } },
+  tray.setToolTip("PrisirAI");
+  // 托盘菜单:开发者模式只在该模式安装后才出现(普通用户托盘菜单保持简洁)。
+  const trayItems = [
+    { label: "打开 PrisirAI", click: () => { if (win) { win.show(); loadWhenReady(); } else createWindow(); } },
     { label: "开机自启", type: "checkbox", checked: app.getLoginItemSettings().openAtLogin,
       click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked }) },
-    { type: "separator" },
-    { label: "退出", click: () => { quitting = true; app.quit(); } },
-  ]));
+  ];
+  if (devModeAvailable()) {
+    trayItems.push({ type: "separator" });
+    trayItems.push({ label: "开发者模式", submenu: [
+      { label: "打开开发者终端 (git-portable)", click: openDeveloperTerminal },
+      { label: "查看开发者说明", click: openDevReadme },
+    ]});
+  }
+  trayItems.push({ type: "separator" });
+  trayItems.push({ label: "退出", click: () => { quitting = true; app.quit(); } });
+  tray.setContextMenu(Menu.buildFromTemplate(trayItems));
   tray.on("click", toggleWindow);
 }
 
@@ -173,6 +335,105 @@ ipcMain.handle("shell:info", () => ({
 }));
 ipcMain.handle("shell:toggle", () => toggleWindow());
 
+// v2.0 反馈卡:白名单 URL 走 shell.openExternal(系统浏览器)。
+// 只允许 https:// 且 babelspan.com 子域或主页。防止渲染层被 XSS 诱导打开恶意 URL。
+ipcMain.handle("shell:openExternal", (_e, url) => {
+  try {
+    const u = String(url || "");
+    if (!/^https:\/\//i.test(u)) return { ok: false, error: "https-only" };
+    const host = new URL(u).hostname.toLowerCase();
+    if (host !== "bbs.babelspan.com" && host !== "babelspan.com") {
+      return { ok: false, error: "host not in babelspan.com allowlist" };
+    }
+    shell.openExternal(u);
+    logInfo("shell:openExternal", "opened", `url=${u}`);
+    return { ok: true };
+  } catch (e) {
+    logError("shell:openExternal", "err", `e=${e.message}`);
+    return { ok: false, error: e.message };
+  }
+});
+
+// ---------- #50 品牌化应用通知(契约 2026-08-21 §C,壳侧) ----------
+// 与扩展同逻辑:每日轮询 babelspan.com 公开更新清单 JSON,新条目弹 Electron Notification。
+// 红线:L3 只读自治(只推只读更新、点击只开页);无 key(公开静态 JSON);
+// 容错静默(404/非JSON/断网一律当无更新);防轰炸(去重 + 一次最多3条 + 每日一次)。
+// 隐私:只向外 GET babelspan.com,不上报任何数据;seen 只存 item id(落盘于 userData)。
+const BRAND_UPDATES_URL = "https://www.babelspan.com/updates.json";
+const BRAND_MAX_PER_RUN = 3;   // 一次最多 3 条,防轰炸
+const BRAND_SEEN_CAP = 100;    // seen 只留最近 100 个 id
+const BRAND_INTERVAL_MS = 24 * 60 * 60 * 1000; // 每日
+
+function _brandSeenPath() {
+  return path.join(app.getPath("userData"), "brand-notify-seen.json");
+}
+function _brandLoadSeen() {
+  try {
+    const a = JSON.parse(fs.readFileSync(_brandSeenPath(), "utf-8"));
+    return Array.isArray(a) ? a : [];
+  } catch { return []; }
+}
+function _brandSaveSeen(arr) {
+  try { fs.writeFileSync(_brandSeenPath(), JSON.stringify(arr)); } catch {}
+}
+
+// 容错静默:任何失败都返回 [],绝不抛、绝不弹错误通知。
+async function _brandFetchUpdates() {
+  try {
+    const r = await fetch(BRAND_UPDATES_URL, { cache: "no-store" });
+    if (!r.ok) return [];
+    const ct = (r.headers.get("content-type") || "").toLowerCase();
+    if (ct && ct.indexOf("json") < 0) return [];
+    let data;
+    try { data = await r.json(); } catch { return []; }
+    const items = data && Array.isArray(data.items) ? data.items : [];
+    return items.filter((it) => it && typeof it === "object"
+      && typeof it.id === "string" && it.id.trim()
+      && typeof it.title === "string" && it.title.trim());
+  } catch { return []; }
+}
+
+async function checkBrandUpdates() {
+  try {
+    if (!Notification.isSupported()) return;
+    const items = await _brandFetchUpdates();
+    if (!items.length) return;
+    const seen = _brandLoadSeen();
+    const seenSet = new Set(seen);
+    const fresh = items.filter((it) => !seenSet.has(it.id)).slice(0, BRAND_MAX_PER_RUN);
+    if (!fresh.length) return;
+    const iconPath = path.join(__dirname, "icon.png");
+    let icon = nativeImage.createFromPath(iconPath);
+    if (icon.isEmpty()) icon = undefined;
+    for (const it of fresh) {
+      try {
+        const url = (typeof it.url === "string" && /^https:\/\//.test(it.url))
+          ? it.url : "https://www.babelspan.com/";
+        const n = new Notification({
+          title: "Prisir · " + String(it.title).slice(0, 80), // 品牌化前缀
+          body: String(it.body || "").slice(0, 200),
+          icon: icon,
+        });
+        // 点击只开页(shell.openExternal 交给系统浏览器),不做任何写操作。
+        n.on("click", () => { try { shell.openExternal(url); } catch {} });
+        n.show();
+        seen.push(it.id); // 只记真正弹过的
+      } catch { /* 单条失败不拖垮整批 */ }
+    }
+    while (seen.length > BRAND_SEEN_CAP) seen.shift();
+    _brandSaveSeen(seen);
+  } catch { /* 顶层兜底:绝不崩主进程 */ }
+}
+
+function startBrandNotify() {
+  // 用户可关(评审 minor):userData 下放一个 brand-notify-disabled 标志文件即停用,优先级高于一切。
+  try {
+    if (fs.existsSync(path.join(app.getPath("userData"), "brand-notify-disabled"))) return;
+  } catch {}
+  checkBrandUpdates(); // 启动即首查
+  setInterval(checkBrandUpdates, BRAND_INTERVAL_MS); // 之后每日
+}
+
 // ---------- 生命周期 ----------
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
@@ -181,19 +442,24 @@ if (!gotLock) {
   app.on("second-instance", () => { if (win) { win.show(); win.focus(); loadWhenReady(); } });
 
   app.whenReady().then(() => {
+    // Windows toast 品牌化(评审 nit):不设 AppUserModelId 时通知归到通用 Electron app id。
+    try { app.setAppUserModelId("com.prisir.oiagent-shell"); } catch {}
+    logInfo("app", "whenReady, starting web + window + tray");
     startWeb();
     createWindow();
     createTray();
     globalShortcut.register(HOTKEY, toggleWindow);
+    startBrandNotify(); // #50 品牌化应用通知(每日轮询,容错静默)
     app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   });
 
-  app.on("before-quit", () => { quitting = true; });
+  app.on("before-quit", () => { quitting = true; logInfo("app", "before-quit"); });
   app.on("will-quit", () => {
+    logInfo("app", "will-quit");
     globalShortcut.unregisterAll();
     if (webProc) { try { webProc.kill(); } catch {} webProc = null; }
   });
 
   // 所有窗口关上不退(托盘常驻),macOS 惯例;Windows 也一样常驻托盘。
-  app.on("window-all-closed", () => { /* 常驻托盘,不 app.quit() */ });
+  app.on("window-all-closed", () => { logInfo("app", "window-all-closed (stay in tray)"); });
 }
