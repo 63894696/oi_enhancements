@@ -131,7 +131,16 @@ function startWeb() {
     const coreExe = resolveCoreExe();
     const useExe = fs.existsSync(coreExe);
     const cmd = useExe ? coreExe : PYTHON;
-    const args = useExe ? ["--port", String(WEB_PORT)] : [WEB_SCRIPT, "--port", String(WEB_PORT)];
+    // --lan:遥控模式开箱即用。装包用户只能从桌面图标启动、没有「开启遥控」按钮,
+    // 若不带 --lan,手机遥控页永远显示「未开启」且无开启途径=死功能(用户实测反馈)。
+    // 安全由令牌门禁兜底:--lan 下非回环来源必须持持久配对令牌否则 401,配对码出示在 PC 屏
+    // 由人抄进手机,公网来源连 offer 都拦。本地对话主链行为不变(回环不带令牌)。
+    // 可用 OIAGENT_SHELL_NO_LAN=1 显式关回默认 127.0.0.1。
+    const wantLan = !process.env.OIAGENT_SHELL_NO_LAN;
+    const lanArgs = wantLan ? ["--lan"] : [];
+    const args = useExe
+      ? ["--port", String(WEB_PORT), ...lanArgs]
+      : [WEB_SCRIPT, "--port", String(WEB_PORT), ...lanArgs];
     // v2.0:stdout/stderr 落 spawn-{out,err}.log(原本 stdio: "ignore" 用户看不到任何错)。
     // Windows spawn 只接受文件路径 / 'pipe' / 'ignore',不接受 WriteStream 对象。
     // 用 'pipe' + 自己写文件:跨平台稳,且日志可加锁/轮转。
@@ -198,9 +207,11 @@ function createWindow() {
     height: 760,
     minWidth: 720,
     minHeight: 520,
-    title: "PrisirAI",
+    title: "Prisir(湃睿思) AI",
     icon: path.join(__dirname, "icon.png"),
     backgroundColor: "#f6f1e7",   // 国画纸色,与聊天 UI 一致,避免白闪
+    show: false,                   // 先藏,ready-to-show 再亮相,避免加载期白闪
+    autoHideMenuBar: true,         // 隐藏顶部菜单栏(File/Edit/View…),对话壳不需要
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,      // 红线:渲染层拿不到 Node
@@ -209,9 +220,29 @@ function createWindow() {
     },
   });
 
+  // 首屏 ready 才显示(防白闪);ready-to-show 只在首轮加载触发。
+  win.once("ready-to-show", () => { if (win) { win.show(); win.focus(); } });
+  // 兜底:远程 loadURL 若因故迟迟不 ready(后端慢/复用端口),3.5s 后强制亮相,
+  // 否则窗口会卡在隐藏态只剩托盘图标,用户得手动右键才能看到(本次修的 bug)。
+  setTimeout(() => { if (win && !win.isVisible()) { win.show(); win.focus(); } }, 3500);
+
   // 外链一律交给系统浏览器,壳内不导航出回环。
+  // 同源(回环)window.open 弹出的新窗口(手机遥控/关于/隐私等)也要隐藏菜单栏 + 先藏后亮,
+  // 否则这些子窗口仍带 File/Edit/View 菜单且可能白闪(用户实测反馈)。
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith(WEB_URL)) return { action: "allow" };
+    if (url.startsWith(WEB_URL)) return { action: "allow", overrideBrowserWindowOptions: {
+      autoHideMenuBar: true,
+      // 注意:子窗不设 show:false。window.open 的子窗不经 createWindow,拿不到句柄挂
+      // ready-to-show,也没有 3.5s 兜底——设了 show:false 会永远 hidden(用户点"手机遥控"/
+      // "关于"没反应的真根因)。backgroundColor 已设,白闪可忽略,直接默认 show。
+      backgroundColor: "#f6f1e7",
+      webPreferences: {
+        preload: path.join(__dirname, "preload.js"),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
+    }};
     shell.openExternal(url);
     return { action: "deny" };
   });
@@ -237,7 +268,7 @@ function loadWhenReady() {
     win.loadURL(
       "data:text/html;charset=utf-8," +
         encodeURIComponent(
-          `<body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#f6f1e7;color:#5b5548;font-family:system-ui"><div>正在唤醒 Prisir AI…</div></body>`
+          `<body style="margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#f6f1e7;color:#5b5548;font-family:system-ui"><div>正在唤醒 Prisir(湃睿思) AI…</div></body>`
         )
     );
     // 保险:若 webReady 在我们加载过渡页之后才变 true(端口复用路径下 startWeb
@@ -306,7 +337,7 @@ function createTray() {
   let img = nativeImage.createFromPath(iconPath);
   if (img.isEmpty()) img = nativeImage.createEmpty();
   tray = new Tray(img);
-  tray.setToolTip("PrisirAI");
+  tray.setToolTip("Prisir(湃睿思) AI");
   // 托盘菜单:开发者模式只在该模式安装后才出现(普通用户托盘菜单保持简洁)。
   const trayItems = [
     { label: "打开 PrisirAI", click: () => { if (win) { win.show(); loadWhenReady(); } else createWindow(); } },
@@ -457,9 +488,29 @@ if (!gotLock) {
   app.on("will-quit", () => {
     logInfo("app", "will-quit");
     globalShortcut.unregisterAll();
-    if (webProc) { try { webProc.kill(); } catch {} webProc = null; }
+    killBackend();
   });
 
   // 所有窗口关上不退(托盘常驻),macOS 惯例;Windows 也一样常驻托盘。
   app.on("window-all-closed", () => { logInfo("app", "window-all-closed (stay in tray)"); });
+}
+
+// 退出时把后端清干净:webProc.kill() 只杀直接 spawn 的进程,杀不掉它再起的孙进程,
+// 且「复用端口」路径下 webProc=null 根本不杀——残留后端占着 18802,下次启动误「复用」旧版。
+// 故除 kill 直接子进程外,再按命令行特征兜底清残留 oiagent_web/PrisirAI 后端进程。
+function killBackend() {
+  if (webProc) { try { webProc.kill(); } catch {} webProc = null; }
+  try {
+    // 清自己 workdir 下起的 oiagent_web/PrisirAI 后端(不动别人的/系统 python)。
+    // 用 CIM 过滤命令行含 oiagent_web 或 PrisirAI.exe --port 的进程。
+    spawn("powershell", ["-NoProfile", "-Command",
+      "Get-CimInstance Win32_Process | Where-Object { " +
+      "($_.Name -match '^(python|PrisirAI)\\.exe$') -and " +
+      "($_.CommandLine -match 'oiagent_web|PrisirAI\\.exe.*--port') } | " +
+      "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+    ], { detached: true, stdio: "ignore", windowsHide: true }).unref();
+    logInfo("killBackend", "sweep issued");
+  } catch (e) {
+    logWarn("killBackend", "sweep failed", `err=${e.message}`);
+  }
 }
