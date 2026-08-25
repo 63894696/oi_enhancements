@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">PrisirAI 遥控器</string>
+    <string name="title_activity_main">PrisirAI 遥控器</string>
+    <string name="package_name">ai.prisir.remote</string>
+    <string name="custom_url_scheme">ai.prisir.remote</string>
+</resources>

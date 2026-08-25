@@ -1,0 +1,12 @@
+# 构建产物 / 缓存不入库
+**/build/
+**/.gradle/
+**/*.apk
+**/*.aab
+**/local.properties
+**/.idea/
+**/captures/
+**/.cxx/
+**/node_modules/
+*.keystore
+!gradle/wrapper/gradle-wrapper.jar

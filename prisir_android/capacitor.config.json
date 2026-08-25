@@ -1,0 +1,9 @@
+{
+  "appId": "ai.prisir.remote",
+  "appName": "PrisirAI 遥控器",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "http",
+    "cleartext": true
+  }
+}

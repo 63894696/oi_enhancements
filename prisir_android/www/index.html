@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PrisirAI 遥控器</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; margin: 0; background: #f5f5f5; color: #222; }
+  .page { padding: 16px; max-width: 480px; margin: 0 auto; }
+  h1 { font-size: 18px; color: #00897B; margin: 0 0 4px; }
+  .sub { font-size: 12px; color: #888; margin-bottom: 20px; }
+  .card { background: #fff; border-radius: 10px; padding: 14px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .card h2 { font-size: 14px; margin: 0 0 10px; color: #555; }
+  .pc-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 8px; }
+  .pc-item .name { font-weight: 600; font-size: 14px; }
+  .pc-item .addr { font-size: 11px; color: #888; }
+  .pc-item button { padding: 6px 14px; background: #00897B; color: #fff; border: none; border-radius: 6px; font-size: 13px; }
+  input[type=text] { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; margin-bottom: 8px; }
+  .btn { width: 100%; padding: 12px; background: #00897B; color: #fff; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; }
+  .btn.secondary { background: #fff; color: #00897B; border: 1px solid #00897B; }
+  .status { font-size: 13px; padding: 10px; border-radius: 8px; margin-top: 10px; display: none; }
+  .status.ok { display: block; background: #E8F5E9; color: #2E7D32; }
+  .status.err { display: block; background: #FFEBEE; color: #C62828; }
+  .hidden { display: none !important; }
+  #chatFrame { width: 100%; height: 100vh; border: none; }
+</style>
+</head>
+<body>
+
+<!-- 配对页 -->
+<div id="pairPage" class="page">
+  <h1>PrisirAI 遥控器</h1>
+  <div class="sub">手机指挥 · PC 重活 · 局域网直连</div>
+
+  <div class="card">
+    <h2>发现的 PC</h2>
+    <div id="pcList"><div style="color:#aaa;font-size:13px">监听中…(5秒)</div></div>
+  </div>
+
+  <div class="card">
+    <h2>手动输入 PC 地址</h2>
+    <input type="text" id="manualIp" placeholder="PC IP,如 192.168.1.100">
+    <input type="text" id="manualPort" placeholder="端口,默认 18802" value="18802">
+    <button class="btn" id="btnManual">连接这台 PC</button>
+  </div>
+
+  <div class="card">
+    <h2>配对(首次)</h2>
+    <p style="font-size:12px;color:#888;margin:0 0 10px">先在电脑上:PrisirAI → 菜单「手机遥控」→「生成配对码」,屏幕上会出现一个 6 位配对码。<br>然后在这里填同一个局域网的电脑地址,把屏幕上的 6 位码填进下面即可(大小写都行,5 分钟内有效):</p>
+    <input type="text" id="offerInput" placeholder="填 PC 屏幕上的 6 位配对码" maxlength="8" style="text-transform:uppercase;letter-spacing:2px;font-size:16px;text-align:center">
+    <button class="btn" id="btnConfirm" style="margin-top:8px">确认配对</button>
+    <div id="pairStatus" class="status"></div>
+  </div>
+
+  <div class="card">
+    <h2>已配对</h2>
+    <div id="pairedInfo" style="font-size:13px;color:#888">未配对</div>
+    <button class="btn hidden" id="btnOpenChat" style="margin-top:10px">打开对话</button>
+  </div>
+</div>
+
+<!-- 对话页(WebView 加载 PC UI) -->
+<div id="chatPage" class="hidden">
+  <iframe id="chatFrame"></iframe>
+</div>
+
+<script>
+const LS_TOKEN = 'prisir_token';
+const LS_PC    = 'prisir_pc';   // {ip, port, name}
+let pcs = [];                    // 发现的 PC 列表
+
+// ---------- 本地存储 ----------
+function savePair(ip, port, name, token) {
+  localStorage.setItem(LS_TOKEN, token);
+  localStorage.setItem(LS_PC, JSON.stringify({ip, port, name}));
+}
+function loadPair() {
+  const token = localStorage.getItem(LS_TOKEN);
+  const pc    = localStorage.getItem(LS_PC);
+  return (token && pc) ? {token, ...JSON.parse(pc)} : null;
+}
+function clearPair() { localStorage.removeItem(LS_TOKEN); localStorage.removeItem(LS_PC); }
+
+// ---------- 状态提示 ----------
+function showStatus(msg, ok) {
+  const el = document.getElementById('pairStatus');
+  el.textContent = msg;
+  el.className = 'status ' + (ok ? 'ok' : 'err');
+}
+
+// ---------- 发现 PC ----------
+// 两路:① 试本机回环(模拟器/和 PC 同机时,10.0.2.2 是模拟器访问宿主的别名);
+//       ② 扫手机局域网网段(取常见端口,探 /oiagent/api/info)。
+// 手输 IP/端口始终是主力(异地固定公网 IP/域名场景),扫描只是同 Wi-Fi 的便利补充。
+const SCAN_PORTS = [18802, 18891];
+async function probePc(ip, port, timeoutMs) {
+  try {
+    const r = await fetch(`http://${ip}:${port}/oiagent/api/info`,
+                          {signal: AbortSignal.timeout(timeoutMs || 1500)});
+    if (!r.ok) return null;
+    const info = await r.json();
+    return {ip, port, name: info.lan_ip ? `PC(${info.lan_ip})` : `PC(${ip})`};
+  } catch(e) { return null; }
+}
+
+async function startDiscovery() {
+  const list = document.getElementById('pcList');
+  const saved = loadPair();
+  if (saved) addPcItem(saved.ip, saved.port, saved.name || '上次连接', true);
+
+  // ① 本机回环优先(模拟器:10.0.2.2=宿主 PC;真机和 PC 同机:127.0.0.1)
+  //    probe 超时给足 3s:模拟器 NAT alias 首连慢,1s 级超时会漏探
+  const localCandidates = [];
+  for (const host of ['10.0.2.2', '127.0.0.1']) {
+    for (const port of SCAN_PORTS) localCandidates.push(probePc(host, port, 3000));
+  }
+  const foundLocal = (await Promise.all(localCandidates)).filter(Boolean);
+  foundLocal.forEach(pc => addPcItem(pc.ip, pc.port, pc.name + ' · 本机', false));
+
+  // ② 局域网网段扫描(真机):取手机自己 IP 的 /24 段并扫。Capacitor 无取 IP 插件,
+  //    用 WebRTC 拿本地 candidate IP;拿不到就跳过(用户手输)。
+  const myIp = await getLocalIp();
+  if (myIp) {
+    const prefix = myIp.split('.').slice(0,3).join('.');
+    const tasks = [];
+    for (let i = 1; i <= 254; i++) {
+      const ip = `${prefix}.${i}`;
+      if (ip === myIp) continue;
+      for (const port of SCAN_PORTS) tasks.push(probePc(ip, port, 1500));
+    }
+    // 分批并发,避免一次性 500+ 连接
+    for (let i = 0; i < tasks.length; i += 60) {
+      const batch = await Promise.all(tasks.slice(i, i+60));
+      batch.filter(Boolean).forEach(pc => addPcItem(pc.ip, pc.port, pc.name, false));
+    }
+  }
+  const empty = list.querySelector('div');
+  if (empty) empty.textContent = saved || foundLocal.length
+    ? '点击上方 PC 连接,或下方手输地址(异地填公网 IP/域名)'
+    : '未发现同网段 PC —— 请下方手输 IP(同一 Wi-Fi 填电脑局域网 IP,异地填公网 IP/域名)';
+}
+
+// WebRTC 取本机局域网 IP(无需插件);失败返回 null
+function getLocalIp() {
+  return new Promise(resolve => {
+    try {
+      const pc = new RTCPeerConnection({iceServers: []});
+      pc.createDataChannel('');
+      let done = false;
+      const finish = v => { if (!done){ done=true; try{pc.close();}catch(e){} resolve(v); } };
+      pc.onicecandidate = e => {
+        if (!e.candidate) return finish(null);
+        const m = /([0-9]{1,3}(\.[0-9]{1,3}){3})/.exec(e.candidate.candidate);
+        if (m && !m[1].startsWith('127.')) finish(m[1]);
+      };
+      pc.createOffer().then(o => pc.setLocalDescription(o)).catch(() => finish(null));
+      setTimeout(() => finish(null), 2000);
+    } catch(e) { resolve(null); }
+  });
+}
+
+function addPcItem(ip, port, name, isSaved) {
+  const list = document.getElementById('pcList');
+  const empty = list.querySelector('div');
+  if (empty) empty.remove();
+  const item = document.createElement('div');
+  item.className = 'pc-item';
+  item.innerHTML = `<div><div class="name">${name}</div><div class="addr">${ip}:${port}</div></div>
+                    <button onclick="connectPc('${ip}',${port},'${name}')">连接</button>`;
+  list.appendChild(item);
+}
+
+// ---------- 连接 PC(验证可达) ----------
+async function connectPc(ip, port, name) {
+  showStatus(`连接 ${ip}:${port}…`, true);
+  try {
+    const r = await fetch(`http://${ip}:${port}/oiagent/api/info`, {signal: AbortSignal.timeout(4000)});
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const info = await r.json();
+    showStatus(`已连接 ${ip}:${port}(${info.strategy || 'smart'})`, true);
+    // 如果已配对,直接显示「打开对话」
+    const saved = loadPair();
+    if (saved && saved.ip === ip) {
+      showChatPage(ip, port, saved.token);
+    } else {
+      // 未配对:记下当前 PC,等用户把 PC 屏幕上的配对码填进来后点「确认配对」
+      _curPc = {ip, port};
+      showStatus('已连接,请填 PC 屏幕上的配对码', true);
+    }
+  } catch(e) {
+    showStatus(`连接失败: ${e.message}`, false);
+  }
+}
+
+// ---------- 确认配对 ----------
+// 配对码在 PC 屏幕(手机遥控页)生成,人抄进下面输入框;不再由手机 fetch offer(私网才放行,且更符合「出示在屏上」的安全模型)。
+let _curPc = null;  // connectPc 连接成功后记录 {ip, port},确认配对时用
+document.getElementById('btnConfirm').addEventListener('click', async () => {
+  const ip    = _curPc && _curPc.ip;
+  const port  = _curPc && _curPc.port;
+  const offer = document.getElementById('offerInput').value.trim();
+  if (!ip) { showStatus('请先连接 PC(上面填地址点「连接」)', false); return; }
+  if (!offer) { showStatus('请填 PC 屏幕上的 6 位配对码', false); return; }
+  try {
+    const r = await fetch(`http://${ip}:${port}/oiagent/api/pair/confirm`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({offer}),
+      signal: AbortSignal.timeout(4000),
+    });
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error || '配对失败(码不对或已过期,回 PC 重新生成)');
+    savePair(ip, port, `PC(${ip})`, data.token);
+    showStatus('配对成功!', true);
+    updatePairedUI(ip, port, data.token);
+  } catch(e) {
+    showStatus(`配对失败: ${e.message}`, false);
+  }
+});
+
+// ---------- 打开对话 ----------
+function updatePairedUI(ip, port, token) {
+  const info = document.getElementById('pairedInfo');
+  info.textContent = `已配对 ${ip}:${port}`;
+  document.getElementById('btnOpenChat').classList.remove('hidden');
+  document.getElementById('btnOpenChat').onclick = () => showChatPage(ip, port, token);
+}
+
+function showChatPage(ip, port, token) {
+  document.getElementById('pairPage').classList.add('hidden');
+  document.getElementById('chatPage').classList.remove('hidden');
+  // WebView 加载 PC 对话 UI(根路径 /,令牌走 ?token= qs 供远程鉴权)
+  document.getElementById('chatFrame').src = `http://${ip}:${port}/?token=${encodeURIComponent(token)}`;
+  // P2:SSE 推流——实时收工具进度/答复,不轮询(EventSource 自动重连)
+  connectEvents(ip, port, token);
+}
+
+// ---------- P2 SSE 推流 ----------
+let _es = null;
+function connectEvents(ip, port, token) {
+  if (_es) { try { _es.close(); } catch(e){} }
+  const url = `http://${ip}:${port}/oiagent/events?token=${encodeURIComponent(token)}`;
+  _es = new EventSource(url);
+  _es.onopen = () => console.log('[sse] connected');
+  _es.onmessage = (ev) => {
+    try {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === 'tool_event') {
+        // 工具进度:显示在状态栏(后续可扩展为通知/进度条)
+        const ev2 = msg.ev || {};
+        console.log('[sse] tool:', ev2.type, ev2.name || '');
+      } else if (msg.type === 'chat_done') {
+        console.log('[sse] chat done, rc=', msg.rc);
+      } else if (msg.type === 'hello') {
+        console.log('[sse] hello:', msg.msg);
+      }
+    } catch(e) { console.warn('[sse] bad msg', e); }
+  };
+  _es.onerror = (e) => {
+    // EventSource 自带自动重连(默认 3s),这里只记录
+    console.warn('[sse] error/closed, browser will auto-reconnect', e);
+  };
+}
+
+// ---------- 手动连接 ----------
+document.getElementById('btnManual').addEventListener('click', () => {
+  const ip   = document.getElementById('manualIp').value.trim();
+  const port = document.getElementById('manualPort').value.trim() || '18802';
+  if (!ip) { showStatus('请输入 PC IP', false); return; }
+  connectPc(ip, parseInt(port), `PC(${ip})`);
+});
+
+// ---------- 启动 ----------
+startDiscovery();
+// 如果已配对,直接显示「打开对话」
+const saved = loadPair();
+if (saved) updatePairedUI(saved.ip, saved.port, saved.token);
+</script>
+</body>
+</html>
