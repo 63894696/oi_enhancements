@@ -1,21 +1,108 @@
-MIT License
+OI Enhancements Personal and Commercial Source License v1.0
+(OIE-PCS-1.0)
+License Summary — Installation Notice
 
-Copyright (c) 2026 Prisir
+SPDX-License-Identifier: LicenseRef-OI-Enhancements-PCS-1.0
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Copyright (c) 2026 63894696 (GitHub). All rights reserved.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+The full text of OIE-PCS-1.0 (23 sections, ~550 lines) is installed
+alongside this program (see LICENSE in the install directory) and is
+also published in the source repository:
+https://github.com/63894696/oi_enhancements
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+By clicking "I Agree" / "下一步" below and proceeding with the
+installation, you accept the terms of OIE-PCS-1.0 in full. The summary
+below is provided for convenience only; in case of any conflict
+between this summary and the full text, the full text governs.
+
+
+────────────────────────────────────────────────────────────────────
+English Summary
+────────────────────────────────────────────────────────────────────
+
+OIE-PCS-1.0 is a **source-available** license. It is NOT an
+OSI-approved open source license because it restricts Commercial Use
+and reserves Brand rights.
+
+1. Personal Non-Commercial Use. You may use, copy, modify, and
+   distribute the Software for personal, non-commercial purposes
+   under the terms of OIE-PCS-1.0.
+
+2. Commercial Use requires a separate written commercial license
+   from the Project Copyright Holder. Commercial Use includes:
+   organizational deployment, paid services, commercial
+   distribution, and integration into commercial products. See
+   COMMERCIAL-LICENSE.md for the contact and pricing framework.
+
+3. Modifications to designated **Core Components** (listed in
+   CORE-COMPONENTS.md at the repository root), when Distributed
+   or made available as a Network Service, must be made available
+   under OIE-PCS-1.0. Paths NOT listed in CORE-COMPONENTS.md are
+   not Core Components and are not subject to this source-
+   availability obligation when used outside Commercial Use.
+
+4. Past versions may be additionally available under the Apache
+   License 2.0. See LICENSE-POLICY.md for the delayed permissive
+   licensing strategy.
+
+5. Brand and trademarks — including the names "Prisir AI",
+   "oiagent", "prisraiclass", the Prisir flame logo, and the icons
+   in `assets/` — are NOT licensed by OIE-PCS-1.0. See
+   TRADEMARKS.md. Use of the Brand for commercial purposes requires
+   a separate Brand license.
+
+6. Governing law: laws of the Hong Kong Special Administrative
+   Region (HK SAR). Disputes are resolved by arbitration
+   administered by the Hong Kong International Arbitration Centre
+   (HKIAC), seat Hong Kong, language English.
+
+7. No warranty. The Software is provided "as is", without warranty
+   of any kind. See LICENSE §19 for the full disclaimer.
+
+For the full license text (definitions, all permissions,
+restrictions, remedies, and dispute resolution), read the LICENSE
+file installed with this program or visit:
+https://github.com/63894696/oi_enhancements/blob/master/LICENSE
+
+
+────────────────────────────────────────────────────────────────────
+中文摘要
+────────────────────────────────────────────────────────────────────
+
+OIE-PCS-1.0 是「源码可见」(source-available) 协议。由于限制了商业
+使用并保留了品牌权利,本协议未经 OSI 认证为开源协议。
+
+1. 个人非商业使用。在 OIE-PCS-1.0 条款下,您可以为个人、非商业
+   目的使用、复制、修改和分发本软件。
+
+2. 商业使用需另行获得项目版权所有者签发的书面商业许可。商业使
+   用包括:组织内部部署、付费服务、商业分发,以及集成入商业产品。
+   联系方式与定价框架见 COMMERCIAL-LICENSE.md。
+
+3. 对指定的「核心组件」(详见仓库根目录的 CORE-COMPONENTS.md)
+   的修改,如被分发或作为网络服务提供,必须按 OIE-PCS-1.0 公开。
+   未列于 CORE-COMPONENTS.md 的路径不属于核心组件,在商业使用之
+   外的场景下不受此源码公开义务约束。
+
+4. 过往版本可能另行按 Apache License 2.0 提供。延迟宽松许可策
+   略见 LICENSE-POLICY.md。
+
+5. 品牌与商标 — 包括名称 "Prisir AI"、"oiagent"、"prisraiclass"、
+   湃睿思火焰标识,以及 `assets/` 中的图标 — 不通过 OIE-PCS-1.0
+   授权。商业目的的品牌使用需另行取得品牌许可,详见 TRADEMARKS.md。
+
+6. 适用法律:香港特别行政区法律。争议由香港国际仲裁中心
+   (HKIAC) 仲裁,仲裁地香港,语言英文。
+
+7. 无任何担保。本软件按「现状」提供,不附带任何形式的担保,完整
+   免责声明见 LICENSE §19。
+
+完整许可文本(定义、全部许可、限制、救济与争议解决)请阅读随本程
+序安装的 LICENSE 文件,或访问:
+https://github.com/63894696/oi_enhancements/blob/master/LICENSE
+
+
+────────────────────────────────────────────────────────────────────
+End of summary — full text governs.
+────────────────────────────────────────────────────────────────────

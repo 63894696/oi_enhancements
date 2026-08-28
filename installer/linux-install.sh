@@ -7,6 +7,7 @@
 #   INSTALL_DIR=/opt/prisirai bash ...     # 自定义安装目录
 #   WITH_RUST=0 bash ...                   # 跳过 Rust toolchain(本机已有)
 #   WITH_INDEX=1 bash ...                  # 安装后自动建 findex/fcontent 索引
+#   ACCEPT_LICENSE=1 bash ...              # 非交互环境下跳过协议确认(默认会问)
 set -euo pipefail
 
 # ---------- 参数 ----------
@@ -15,11 +16,59 @@ WITH_RUST="${WITH_RUST:-1}"        # 第一次装 = 1,本机已有 rust 可设 0
 WITH_INDEX="${WITH_INDEX:-0}"      # 默认不自动建索引(用户首次开探囊时再触发)
 SKIP_DEPS="${SKIP_DEPS:-0}"        # 跳过 apt install(完全离线环境用)
 SKIP_FIREJAIL="${SKIP_FIREJAIL:-1}" # electron 跑 firejail 沙箱(默认关,sandbox 已在 electron 层)
+ACCEPT_LICENSE="${ACCEPT_LICENSE:-0}" # 默认要求用户在终端确认 OIE-PCS-1.0
 
 echo "=== PrisirAI Linux 安装 ==="
-echo "INSTALL_DIR = $INSTALL_DIR"
-echo "WITH_RUST   = $WITH_RUST"
-echo "WITH_INDEX  = $WITH_INDEX"
+echo "INSTALL_DIR     = $INSTALL_DIR"
+echo "WITH_RUST       = $WITH_RUST"
+echo "WITH_INDEX      = $WITH_INDEX"
+echo "ACCEPT_LICENSE  = $ACCEPT_LICENSE (1=跳过终端确认)"
+
+# ---------- 0. 协议确认 (OIE-PCS-1.0) ----------
+# Win 端 NSIS 通过 MUI_PAGE_LICENSE 弹 EULA 页;Linux 端在终端里展示摘要,
+# 链接到 LICENSE 全文。ACCEPT_LICENSE=1 用于 CI/无人值守/容器场景。
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LICENSE_FILE="$SCRIPT_DIR/LICENSE.txt"
+
+if [[ "$ACCEPT_LICENSE" != "1" ]]; then
+    echo ""
+    echo "================================================================"
+    echo "  OI Enhancements Personal and Commercial Source License v1.0"
+    echo "  (OIE-PCS-1.0) — Installation Notice"
+    echo "================================================================"
+    if [[ -f "$LICENSE_FILE" ]]; then
+        # 展示 LICENSE.txt(摘要 + 双语);非交互式TTY下 cat 全文即可
+        cat "$LICENSE_FILE"
+    else
+        echo "WARN: 找不到 $LICENSE_FILE,只显示简短摘要。"
+        echo ""
+        echo "SPDX-License-Identifier: LicenseRef-OI-Enhancements-PCS-1.0"
+        echo ""
+        echo "1. 个人非商业使用需遵守 OIE-PCS-1.0。"
+        echo "2. 商业使用需另行取得商业许可(COMMERCIAL-LICENSE.md)。"
+        echo "3. 修改 Core Components(CORE-COMPONENTS.md 列出的路径)且"
+        echo "   分发 / 作为网络服务时,必须按 OIE-PCS-1.0 公开。"
+        echo "4. 品牌商标(Prisir AI / oiagent / 火焰标识 / assets/ 图标)"
+        echo "   不通过 OIE-PCS-1.0 授权,商业使用需品牌许可。"
+        echo "5. 适用法律:香港特别行政区法律;争议由 HKIAC 仲裁。"
+    fi
+    echo ""
+    echo "完整许可文本:"
+    echo "  $LICENSE_FILE"
+    echo "  https://github.com/63894696/oi_enhancements/blob/master/LICENSE"
+    echo "================================================================"
+    if [[ -t 0 ]]; then
+        # 交互式TTY:要求输入 yes
+        read -r -p "接受 OIE-PCS-1.0 条款并继续安装? [yes/no]: " reply
+        case "$reply" in
+            yes|y|Y|Yes|YES) echo "  已接受 OIE-PCS-1.0,继续..." ;;
+            *) echo "ERR: 未接受协议,退出安装。" >&2; exit 1 ;;
+        esac
+    else
+        echo "ERR: 非交互式TTY但 ACCEPT_LICENSE!=1。设置 ACCEPT_LICENSE=1 后重跑。" >&2
+        exit 1
+    fi
+fi
 
 # ---------- 前置检查 ----------
 if [[ "$(uname -s)" != "Linux" ]]; then
@@ -34,7 +83,7 @@ fi
 
 # ---------- 0. 系统依赖 ----------
 if [[ "$SKIP_DEPS" != "1" ]]; then
-    echo "[1/8] 装系统依赖 (apt)..."
+    echo "[1/9] 装系统依赖 (apt)..."
     if command -v apt-get >/dev/null 2>&1; then
         SUDO=""
         [[ $EUID -ne 0 ]] && SUDO="sudo"
@@ -51,7 +100,7 @@ if [[ "$SKIP_DEPS" != "1" ]]; then
 fi
 
 # ---------- 1. Python 依赖 ----------
-echo "[2/8] 装 Python 依赖..."
+echo "[2/9] 装 Python 依赖..."
 pip install --break-system-packages --quiet \
     pypdf rapidocr_onnxruntime opencv-python-headless Pillow || {
     echo "WARN: pip install 部分失败,fcontent/截图 OCR 功能可能不可用,对话主链不受影响" >&2
@@ -59,7 +108,7 @@ pip install --break-system-packages --quiet \
 
 # ---------- 2. Rust toolchain (findex 引擎编译) ----------
 if [[ "$WITH_RUST" == "1" ]]; then
-    echo "[3/8] 装 Rust toolchain (rustup)..."
+    echo "[3/9] 装 Rust toolchain (rustup)..."
     if ! command -v cargo >/dev/null 2>&1; then
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
             --default-toolchain stable --profile minimal
@@ -78,7 +127,7 @@ else
 fi
 
 # ---------- 3. 部署项目文件 ----------
-echo "[4/8] 部署项目文件到 $INSTALL_DIR..."
+echo "[4/9] 部署项目文件到 $INSTALL_DIR..."
 mkdir -p "$INSTALL_DIR"
 
 # 复制仓库根的运行时文件(由调用方决定怎么塞过来;这里假设 git clone 后
@@ -97,7 +146,7 @@ for item in oiagent-shell oiagent_web.py prisir_findex prisir_fcontent assets; d
 done
 
 # ---------- 4. 编译 Rust findex 引擎 ----------
-echo "[5/8] 编译 prisir_findex (Rust → .so)..."
+echo "[5/9] 编译 prisir_findex (Rust → .so)..."
 if [[ -d "$INSTALL_DIR/prisir_findex/src" ]]; then
     (cd "$INSTALL_DIR/prisir_findex" && cargo build --release 2>&1 | tail -5)
     if [[ -f "$INSTALL_DIR/prisir_findex/target/release/libprisir_findex.so" ]]; then
@@ -110,7 +159,7 @@ else
 fi
 
 # ---------- 5. GTK theme 图标(xfwm4 标题栏图标) ----------
-echo "[6/8] 装 GTK theme 图标..."
+echo "[6/9] 装 GTK theme 图标..."
 ICON_SRC="$INSTALL_DIR/assets/prisIr-flame-256.png"
 if [[ ! -f "$ICON_SRC" ]]; then
     # 退而求其次:用 48px
@@ -136,7 +185,7 @@ else
 fi
 
 # ---------- 6. .desktop entry ----------
-echo "[7/8] 装 .desktop entry..."
+echo "[7/9] 装 .desktop entry..."
 DESKTOP_DIR="$HOME/.local/share/applications"
 mkdir -p "$DESKTOP_DIR"
 cat > "$DESKTOP_DIR/PrisirAI.desktop" <<EOF
@@ -165,7 +214,7 @@ fi
 echo "  .desktop entry: $DESKTOP_DIR/PrisirAI.desktop"
 
 # ---------- 7. systemd user services ----------
-echo "[8/8] 装 systemd user services..."
+echo "[8/9] 装 systemd user services..."
 SYSTEMD_DIR="$HOME/.config/systemd/user"
 mkdir -p "$SYSTEMD_DIR"
 
