@@ -2,6 +2,14 @@
 
 > **Prisir(湃睿思) AI** — 本地对话式 AI 助手,免登录,系统级 Agent,本地优先。
 
+> ⚠️ **2026-08-28 历史重写告示**:本仓库于本日执行 `git filter-repo`
+> 清空了 `docs/` 目录(61 份)与两份早期公开架构档案
+> (`INVENTORY-2026-07-03.md`、`ARCHITECTURE-2026-07-03.md`)。
+> 所有 commit SHA 已变更。**任何在此之前的本地 clone / fork / PR
+> 必须丢弃并重新 clone**;之后所有 PR 仅接受基于新 master 的内容。
+> 旧 commits 通过 `git fetch origin '+refs/pull/*/head:refs/remotes/origin/pr/*'`
+> 也无法取回(已被 GC)。
+
 这是 `oi_enhancements` 仓库,包含 Prisir AI、oiagent、prisr_findex、
 prisr_fcontent、fastlane、aureon 等子项目。
 
