@@ -81,6 +81,24 @@ if ! command -v node >/dev/null 2>&1; then
     echo "ERR: node 未装(electron 需要)" >&2; exit 1
 fi
 
+# ---------- 架构检查:仅支持 x86_64 ----------
+# 2026-08-28 决策:本装包仅支持 x86_64 Linux(标准服务器 / 桌面 / WSL)。
+# ARM64(树莓派 4B+ / AWS Graviton / Ampere)与 RISC-V 未提供独立装包。
+# ARM64 用户需: cargo build --target aarch64-unknown-linux-gnu +
+#  Electron arm64 binary + onnxruntime ARM wheel,均未实测,可能跑不通。
+ARCH="$(uname -m)"
+if [[ "$ARCH" != "x86_64" ]]; then
+    echo "ERR: 本装包仅支持 x86_64 Linux。当前架构:$ARCH。" >&2
+    echo "  ARM64 / RISC-V / 其他架构未提供独立装包。" >&2
+    echo "  如确需在 $ARCH 上跑,可手动:" >&2
+    echo "    1) cargo build --release --target ${ARCH}-unknown-linux-gnu" >&2
+    echo "    2) 装 Electron ${ARCH} 二进制(从 electronjs.org 下载)" >&2
+    echo "    3) 装 onnxruntime ${ARCH} wheel" >&2
+    echo "  上述步骤未实测,失败自负。" >&2
+    exit 1
+fi
+echo "  架构: x86_64 ✓"
+
 # ---------- 0. 系统依赖 ----------
 if [[ "$SKIP_DEPS" != "1" ]]; then
     echo "[1/9] 装系统依赖 (apt)..."

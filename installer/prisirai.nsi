@@ -5,6 +5,18 @@
 ; 注册卸载器。
 ;
 ; 编译: makensis prisirai.nsi → ../dist/PrisirAI-Setup-1.0.0.exe
+;
+; 2026-08-28 架构标注:本安装包仅支持 Windows x86_64(64-bit Intel/AMD)。
+; Windows ARM64(Surface Pro X / Surface Pro 11 Snapdragon X Elite)与
+; Windows x86(32-bit)未提供独立安装包 — 这两类机器上运行需要:
+;   - ARM64:用 x64 emulation 模式,微软官方称「x64 on ARM」,但 Electron
+;           + Rust .dll + onnxruntime 在 emulation 下未实测
+;   - x86  :本项目不再支持,32-bit 平台 2026 年已极小众
+; 树莓派 / Apple Silicon / Linux ARM64 服务器请用 Linux 版独立装包
+; (installer/build_linux_tarball.py → PrisirAI-Linux-{ver}.tar.gz)。
+;
+; 装包用户在 ARM 机器上跑会立即在 Rust .dll load 失败处报错
+; (RuntimeError: 未编译 prisir_findex.dll),不会静默运行。
 
 Unicode True
 

@@ -42,10 +42,22 @@ prisr_fcontent、fastlane、aureon 等子项目。
 
 ## 平台
 
-- **Windows**:NSIS 安装包(`installer/PrisirAI-Setup-*.exe`)。
-- **Linux**:Debian/Ubuntu bash 安装脚本(`installer/linux-install.sh`),
-  X11 + GTK(测试于 Debian 13 + xfwm4)。
+> **2026-08-28 架构说明**:以下预编译装包**仅支持 x86_64**。
+> ARM64(Apple Silicon / Windows ARM64 / Linux aarch64 服务器 /
+> 树莓派 4B+)与 RISC-V 未提供独立装包。
+> 在这些架构上跑需手动 `cargo build --target <arch>` +
+> 安装对应 Electron 二进制 + onnxruntime ARM wheel,
+> **未实测,失败自负**。
+> 装包脚本会在启动时 `uname -m` 检查,非 x86_64 直接退出。
+
+- **Windows x86_64**:NSIS 安装包
+  (`installer/PrisirAI-Setup-*.exe`)。Win10/11 64-bit + Intel/AMD。
+- **Linux x86_64**:Debian/Ubuntu bash 安装脚本
+  (`installer/linux-install.sh`),X11 + GTK
+  (测试于 Debian 13 + xfwm4)。装包脚本启动时 `uname -m` 检查。
 - **macOS**:未测试,代码路径已尽量跨平台但需用户自行打包。
+- **Linux ARM64 / RISC-V / Windows ARM64 / Apple Silicon**:见上方说明,
+  未提供独立装包。
 
 
 ## License
