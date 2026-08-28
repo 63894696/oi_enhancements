@@ -1,0 +1,43 @@
+/* guohua-theme.css — shared light ink-painting design tokens.
+   Source palette: 采薇/蒹葭 references (D:\AI生成素材库\视频生成测试).
+   Used by oiagent_web, SecureDM panel, SecureDM web for a unified light guohua theme. */
+:root {
+  /* base */
+  --gh-paper: #f6f1e7;        /* 宣纸底 */
+  --gh-paper-2: #efe8da;      /* 次底/卡片 */
+  --gh-paper-3: #e7dfce;      /* 边界/分隔 */
+  --gh-surface: #fbf8f1;      /* 浮起表面(消息泡/输入框) */
+
+  /* ink */
+  --gh-ink: #2f3a34;          /* 主文字(浓墨) */
+  --gh-ink-soft: #5b6a61;     /* 次文字 */
+  --gh-ink-faint: #8a968e;    /* 弱化/元信息 */
+  --gh-line: #d8cfbc;         /* 描边 */
+
+  /* accents */
+  --gh-green: #6c7c72;        /* 水墨灰绿(主) */
+  --gh-green-deep: #4a5c52;   /* 深绿(主按钮/强调) */
+  --gh-gold: #d6b26c;         /* 暖金点缀 */
+  --gh-seal: #b23a30;         /* 印章赭红(用户气泡/标记) */
+  --gh-seal-deep: #9c3229;
+
+  /* functional */
+  --gh-user-bg: #b23a30;      /* 用户气泡(印章红) */
+  --gh-user-fg: #fbf6ec;
+  --gh-agent-bg: #fbf8f1;     /* agent 气泡 */
+  --gh-focus: #4a5c52;
+
+  --gh-radius: 10px;
+  --gh-radius-lg: 14px;
+  --gh-shadow: 0 1px 3px rgba(74, 92, 82, 0.12);
+  --gh-font: 'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif;
+}
+
+/* Optional guohua backdrop; element opts in via .gh-backdrop. */
+.gh-backdrop {
+  background-color: var(--gh-paper);
+  background-image: var(--gh-bg-image, none);
+  background-size: cover;
+  background-position: center bottom;
+  background-attachment: fixed;
+}

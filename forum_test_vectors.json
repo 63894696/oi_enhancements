@@ -1,0 +1,106 @@
+{
+  "pow_bits_vectors": 8,
+  "note": "post_id=sha256(canon(含sig全帖))→b64url 前16字符",
+  "cases": [
+    {
+      "tag": "ascii",
+      "post": {
+        "v": 1,
+        "kind": "post",
+        "board": "general",
+        "parent": null,
+        "body": "hello prisir forum",
+        "author_pub": "25lf4lFp0UHKubu6krqgH58uHs599MsqwFGQ83/MH50=",
+        "author_fp": "mpLStUqaVALePmWg",
+        "ts": "2026-08-21T08:00:00Z",
+        "pow": {
+          "alg": "sha256-b64",
+          "bits": 8,
+          "nonce": 166
+        },
+        "sig": "J6sSq/vwY2npIAKV681D9UpP5Olsb/tdghK0S4NpJcIt8MsOeBpo29GNQu7lcPsWZH/BA5M04jV69OCofISuBQ==",
+        "post_id": "uSpC9DRJV2rJtcwm"
+      }
+    },
+    {
+      "tag": "unicode",
+      "post": {
+        "v": 1,
+        "kind": "post",
+        "board": "general",
+        "parent": null,
+        "body": "免注册论坛第一帖:公钥即账号",
+        "author_pub": "25lf4lFp0UHKubu6krqgH58uHs599MsqwFGQ83/MH50=",
+        "author_fp": "mpLStUqaVALePmWg",
+        "ts": "2026-08-21T08:00:00Z",
+        "pow": {
+          "alg": "sha256-b64",
+          "bits": 8,
+          "nonce": 35
+        },
+        "sig": "PsLtEqikUCnuQsEUQiMuSdnk03guHRBxEP39RpRrFFYiW83Dg4nD2/DgZzK6wNVGdJtWPnJmDokJqDcfkrBoBw==",
+        "post_id": "F6Xl9Yh4_HiL-tiV"
+      }
+    },
+    {
+      "tag": "emoji",
+      "post": {
+        "v": 1,
+        "kind": "post",
+        "board": "general",
+        "parent": null,
+        "body": "签名即发帖 🔏🔐",
+        "author_pub": "25lf4lFp0UHKubu6krqgH58uHs599MsqwFGQ83/MH50=",
+        "author_fp": "mpLStUqaVALePmWg",
+        "ts": "2026-08-21T08:00:00Z",
+        "pow": {
+          "alg": "sha256-b64",
+          "bits": 8,
+          "nonce": 70
+        },
+        "sig": "IVwMfaVyTSfIbUTQx6wc40XXvL8giK/0ZZqajHiOFVUwSKki08c3l+2QT6jKRmN+u6bNVOhe/qjFmnquaAS3DQ==",
+        "post_id": "pE7D4rRUMqiybbG6"
+      }
+    },
+    {
+      "tag": "mixed",
+      "post": {
+        "v": 1,
+        "kind": "post",
+        "board": "general",
+        "parent": null,
+        "body": "mixed 混排 test ✓ 123",
+        "author_pub": "IVL40Zt5HSRFMkLhXy6rbLfP+ntqXtMAl5YOBpiB2xI=",
+        "author_fp": "MJfi3uLLSjS1OEDN",
+        "ts": "2026-08-21T08:00:00Z",
+        "pow": {
+          "alg": "sha256-b64",
+          "bits": 8,
+          "nonce": 300
+        },
+        "sig": "UbICmkJyqzmuGW0RDam7C/VKdEWog8lzAGgMRauEntmych4ZYnNXP90eoqshGPmeIxF/dvd9OvrTOkQUvJyMBQ==",
+        "post_id": "U48fC9Imy5NJMcaM"
+      }
+    },
+    {
+      "tag": "json_meta",
+      "post": {
+        "v": 1,
+        "kind": "post",
+        "board": "general",
+        "parent": null,
+        "body": "tricky \"quotes\" \\backslash\nnewline\ttab",
+        "author_pub": "IVL40Zt5HSRFMkLhXy6rbLfP+ntqXtMAl5YOBpiB2xI=",
+        "author_fp": "MJfi3uLLSjS1OEDN",
+        "ts": "2026-08-21T08:00:00Z",
+        "pow": {
+          "alg": "sha256-b64",
+          "bits": 8,
+          "nonce": 259
+        },
+        "sig": "ge7xh9jJkerdMdlNwBJ9E6IQ0IdK8PghlMQwSO1MsDyGMOQI5ZV4FZ/4louWJOA2BiMvKIjcmLD1k4RDxCZMBA==",
+        "post_id": "Uwqldlw33P_Ixxxj"
+      }
+    }
+  ]
+}

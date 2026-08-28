@@ -1,0 +1,37 @@
+# Prisir 网络链路(#59)BUILD.gn
+# 用法:把本 source_set 并入 chrome/browser/BUILD.gn,或在 chrome/browser 下
+#       新建 prisir/proxy/BUILD.gn 并在父 BUILD.gn deps 引入。
+# 依赖说明:见各 deps 注释。
+
+import("//mojo/public/tools/bindings/mojom.gni")
+
+source_set("proxy") {
+  sources = [
+    "prisir_proxy_handler.cc",
+    "prisir_proxy_handler.h",
+    "prisir_proxy_prefs.cc",
+    "prisir_proxy_prefs.h",
+    "subscription_parse.cc",
+    "subscription_parse.h",
+  ]
+
+  deps = [
+    "//base",                                  # files/process/launch/rand/json/values/base64
+    "//components/prefs",                      # PrefService / PrefRegistrySimple
+    "//components/os_crypt/async/browser",     # OSCryptAsync(Chromium 153 异步版)
+    "//components/os_crypt/async/common",      # Encryptor(Encrypt/Decrypt)
+    "//mojo/public/cpp/bindings",              # Mojo receiver/handler
+    "//net",                                   # net::UnescapeURLComponent(订阅解析)
+    "//url",                                   # GURL / url_util
+    ":mojom",                                  # prisir_proxy.mojom 生成
+  ]
+
+  testonly = false
+}
+
+# Mojo 接口(#59 网络链路契约):生成 .mojom.h / .mojom.js。
+mojom("mojom") {
+  sources = [
+    "prisir_proxy.mojom",
+  ]
+}

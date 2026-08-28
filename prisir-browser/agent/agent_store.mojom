@@ -1,0 +1,110 @@
+// Prisir 智能体存储 Mojo 接口(M2c 契约,2026-08-14 定稿)
+//
+// 上游:custom-hover-translate/docs/m2-storage-migration-plan-2026-08-14.md §5(接口预留,已拍板)。
+// 定位:把模型配置 + 会话存档从插件 chrome.storage.local 迁到浏览器 profile 级后,
+//       供 M3(agent 运行时)/ M4(NTP WebUI)/ M5(插件改客户端)统一读写的通路。
+//
+// 红线(见 M2 方案 §4,已拍板):
+//   - apiKey 全程不落明文:存 os_crypt/DPAPI 加密的 profile 文件,绝不进 PrefService 明文。
+//   - GetApiKey 仅浏览器内部经 Mojo 使用,不出本体;插件只拿「代发请求」能力,拿不到明文。
+//   - 会话存档默认本地 profile(<profile>/Prisir/agent/threads.json),不上云。
+//   - os_crypt 边界诚实:Win 非交互会话 DPAPI 降级为明文,不夸大保护强度。
+//
+// 容量规则沿用 chatstore 现状:MAX_CONVS=50 / MAX_MSGS=200(LRU),迁移不改行为语义。
+
+module prisir.agent.mojom;
+
+// ── 模型配置(非 key 部分,存 PrefService) ────────────────────────────── //
+struct ModelConfig {
+  string base_url;        // OpenAI 兼容端点
+  string model;           // 文本模型
+  string vision_model;    // 多模态模型(读图/视频帧)
+  bool persist_history;   // 会话持久化开关(默认开)
+};
+
+// ── 会话存档(存 profile 下 threads.json) ────────────────────────────── //
+// 对齐插件 chatstore.js:conversations[id] = {id,title,createdAt,updatedAt,messages[]}
+struct ChatMessage {
+  string role;            // "user" | "assistant" | "system"
+  string text;
+  array<string> citations; // 引用来源(可无)
+  // 注:chatstore 不落单条消息时间戳(createdAt 在会话级),故本 struct 无时间字段。
+};
+
+struct Conversation {
+  string id;
+  string title;
+  string created_at;      // ISO8601(对齐 chatstore new Date().toISOString())
+  string updated_at;      // ISO8601
+  array<ChatMessage> messages;
+};
+
+// 列表用的轻量摘要(不带 messages 全文)
+struct ConversationSummary {
+  string id;
+  string title;
+  string updated_at;      // ISO8601
+  int32 message_count;
+};
+
+// ── 迁移状态(设置页可见,M2 拍板「静默迁+设置页可见」) ────────────────── //
+struct MigrationStatus {
+  bool migrated;          // 是否已完成一次性迁移
+  bool plugin_copy_present; // 插件侧只读副本是否仍在(14 天回滚窗)
+  int32 migrated_conversations; // 已迁会话数(脱敏,不含内容)
+  string last_error;      // 上次迁移错误(脱敏,空=无)
+};
+
+// ── 长期记忆(本体化红利 P0,存 profile 下 memory.json) ────────────────── //
+// 提炼自对话/行为的偏好与上下文摘要,非对话全文(threads.json 才是存档)。
+// 提炼逻辑见 agent_memory.js;此处是存储通路契约。
+// 红线:本地 profile 存储、用户可见可删可清、最小化注入(只摘要不含全文)、
+//       敏感内容(凭证/口令)不落。
+struct MemoryItem {
+  string id;
+  string kind;            // "preference" | "fact" | "context" | "workflow"
+  string text;            // 摘要(≤200 字符,强制摘要)
+  string created_at;      // ISO8601
+  string last_used_at;    // ISO8601
+  int32 use_count;        // 被检索/复用次数(高频加权)
+};
+
+interface AgentStore {
+  // ── 模型配置 ──
+  GetModelConfig() => (ModelConfig config);
+  // 写配置(经用户确认;不涉及 key)
+  SetModelConfig(ModelConfig config) => (bool ok);
+
+  // ── apiKey(os_crypt 加密,永不回明文给插件) ──
+  // 是否已配置 key(不给值,只给有无 —— 供 UI 显示「已配置/未配置」)
+  HasApiKey() => (bool has);
+  // 写 key(经用户确认;浏览器本体加密落盘)
+  SetApiKey(string key) => (bool ok);
+  // 清除 key
+  ClearApiKey() => (bool ok);
+  // 浏览器内部代发请求用:本体读明文 key 发起模型调用,key 不出本体。
+  // (插件/M4 不直接拿 key,而是调本体的「代发」能力 —— 见 AgentRuntime,另案)
+
+  // ── 会话 CRUD(对齐 chatstore 现有 API) ──
+  ListConversations() => (array<ConversationSummary> list);
+  GetConversation(string id) => (Conversation? conv);
+  CreateConversation(string title) => (Conversation conv);
+  AppendMessage(string id, ChatMessage msg) => (bool ok);
+  RenameConversation(string id, string title) => (bool ok);
+  DeleteConversation(string id) => (bool ok);
+
+  // ── 迁移(一次性,见 M2 方案 §3) ──
+  GetMigrationStatus() => (MigrationStatus status);
+  // 触发迁移(通常启动时自动;暴露供设置页手动重试)
+  RunMigration() => (MigrationStatus status);
+
+  // ── 长期记忆(提炼逻辑在 agent_memory.js;此处为存储通路) ──
+  // 列出全部(用户可见;按 last_used_at 新→旧)。
+  ListMemories() => (array<MemoryItem> list);
+  // 新增/合并一条(同 kind+同文本合并;敏感内容由 agent_memory 层拦截)。
+  RememberMemory(string kind, string text) => (bool ok, string id);
+  // 删除单条(用户可删)。
+  ForgetMemory(string id) => (bool ok);
+  // 清空所有记忆(用户一键清除)。
+  ClearMemories() => (int32 cleared);
+};

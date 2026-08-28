@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"SecureDM 壳默认能力:放开核心默认命令(含自定义 pick_file/pick_folder)给本地与远程源。","remote":{"urls":["http://127.0.0.1:18801","http://127.0.0.1:18802","http://localhost:18801","http://localhost:18802"]},"local":true,"windows":["main"],"permissions":["core:default","default"]}}

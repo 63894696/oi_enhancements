@@ -1,0 +1,66 @@
+// Prisir 智能体运行时 Mojo 接口(M3 契约,2026-08-14)
+//
+// 上游:M3-runtime-mapping.md §3;registry.js 白名单红线;M2 agent_store.mojom(存储);
+//       prisir-native-dividend-automation-2026-08-14.md(本体化红利 §4 P0 连续代行)。
+// 定位:agent 运行时的「代行动作执行 + 连续代行链 + 模型对话」通道。与 AgentStore
+//       (数据读写)分开——AgentRuntime 管「动作」,AgentStore 管「数据」。
+//
+// 红线(见 mapping §3 + 红利备忘 §3):
+//   - RunAction/RunActionSequence 只接受 registry 白名单 id,handler 内部 switch 分发,
+//     不执行任意代码。模型只能「选 id + 填 schema 参数」,不能发明动作(registry 红线)。
+//   - Chat 是 apiKey 唯一出手通道:本体经 AgentStore 读 key 代发,只发模型请求、
+//     不回 key 明文;页面/插件拿不到 key(M2 红线)。
+//   - extension_uninstall 仍引导用户手点(浏览器安全限制 + CW-2 红线),不程序化卸载。
+//   - 连续代行链:L0 可连跑;含 L1+ 写操作时必须逐动作确认卡(见 SequenceStep),
+//     绝不因「在链里」跳过确认(提示注入防线:模型被注入也只能在白名单内选,
+//     且写操作要人确认)。不做无人值守定时链(红利备忘 §3 风险,P3 缓)。
+
+module prisir.agent.mojom;
+
+// ── 单动作 ────────────────────────────────────────────────────────────── //
+// 动作执行请求(WebUI 路由后下发)。
+struct ActionRequest {
+  string id;           // registry 动作 id(白名单)
+  string params_json;  // validateParams 校验过的参数(JSON 序列化)
+};
+
+struct ActionResult {
+  bool ok;
+  string result_json;  // 动作产出(结构各动作不同,JSON)
+  string error;        // 失败原因(脱敏)
+};
+
+// ── 连续代行链(本体化红利 P0) ─────────────────────────────────────────── //
+// 链里一步。每步仍是白名单动作;confirmed 标记该步是否已过确认卡(L1+ 必须 true
+// 才执行,L0 忽略)。handler 逐步执行,遇未确认的 L1+ 步 → 暂停并回该步确认数据,
+// 由 WebUI 弹确认卡、用户确认后以 confirmed=true 重放该步续跑。
+struct SequenceStep {
+  string id;            // registry 动作 id
+  string params_json;   // 该步参数(validateParams 校验过)
+  bool confirmed;       // L1+ 步:用户已确认?L0 步:忽略
+};
+
+// 链执行结果。steps 与请求一一对应;status 标记整体停在何处。
+struct SequenceResult {
+  array<ActionResult> steps;   // 已执行步的结果(顺序对应)
+  int32 stopped_at;            // 停在哪一步(-1=全部完成)
+  string status;               // "done" | "needs_confirm" | "error" | "aborted"
+  string needs_confirm_id;     // status=needs_confirm 时,待确认步的动作 id
+  string confirm_preview_json; // 待确认步的确认卡数据(给 WebUI 渲染)
+};
+
+interface AgentRuntime {
+  // 执行一个白名单动作(handler 内按 id 分发到原生 API:BookmarkModel /
+  // ExtensionService / 内容抽取 / 网络栈等,见 mapping §2 表)。
+  RunAction(ActionRequest req) => (ActionResult res);
+
+  // 连续代行链(本体化红利 P0):一条指令编排多个白名单动作顺序执行。
+  // 本体化解锁「无手势限制」红利——插件态每步要手势/IPC,本体可连续跑。
+  // 红线:逐步过白名单 + L1+ 逐步确认卡 + 全程审计;链不改变任何单步的安全语义,
+  //       只省去「每步重新发指令」的往返。
+  RunActionSequence(array<SequenceStep> steps) => (SequenceResult res);
+
+  // 模型对话(给 router 的 chatText):本体经 AgentStore::GetApiKeyForInternalUse
+  // 读 key 代发,key 不出本体。供 router.js 的 llmRoute 与 NTP 问答复用。
+  Chat(string system, string user, int32 max_tokens) => (bool ok, string text);
+};

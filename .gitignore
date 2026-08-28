@@ -172,6 +172,12 @@ securedm-extension/
 lan_token.txt
 integrity_pubkeys.json.bak-*
 tests/_f1_steward_key.pem
+# a2/ simplex 双端密钥 + totp 共享密钥 + pubkey 注册表(运行时生成,不入仓)
+a2/.bob_totp_secret
+a2/.alice_totp_secret
+a2/*_simplex.key
+a2/identity_*.key
+a2/integrity_pubkeys.json
 # 调试 / 探针 / benchmark 产物
 tests/allsrc.txt
 tests/m1_*
@@ -194,6 +200,27 @@ chat_*.json
 download_dir.txt
 # prisir_asr 调试脚本
 prisir_asr/_cdp_*
+prisir_asr/_p3_*
 prisir_asr/_live_test.*
+# memory 调试脚本(以 v 数字开头)
+memory/v[0-9]*_tool_test.py
+# tests/ 调试自检脚本(以下划线开头)
+tests/_action_sequence_selfcheck.js
+tests/_agent_memory_selfcheck.js
+tests/_m2b_migration_selfcheck.js
+tests/_skill_loader_selfcheck.js
+tests/_comet_credits.py
+# prisir-browser mixin 调试片段
+prisir-browser/mixin/_build_dm.py
+prisir-browser/mixin/_dm_bridge.js
+prisir-browser/mixin/_dm_emoji_js.txt
+prisir-browser/mixin/_dm_emoji_snippet.txt
+# wasm_meter 调试 / 自检 / 单次运行产物
+wasm_meter/_cap_reject.mjs
+wasm_meter/_cap_reject.py
+wasm_meter/_result_*.json
+wasm_meter/_result_*.txt
+# 单次运行的 session trace(可重新生成)
+session_trace_*/
 
 

@@ -1,0 +1,41 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>wasm_meter 浏览器验证</title>
+<pre id="out">loading…</pre>
+<script>
+(async () => {
+  const out = [];
+  const expected = [0, 3, 8, 6, 4, 2, -2, 2, 1];
+  try {
+    const resp = await fetch('/m.wasm');
+    const bytes = await resp.arrayBuffer();
+    const auditLog = [];
+    const ops = ['open', 'grant', 'charge', 'charge_rejected'];
+    const imports = { env: { host_audit(op, amount) { auditLog.push({ op: ops[op] ?? ('op' + op), amount: Number(amount) }); } } };
+    const { instance } = await WebAssembly.instantiate(bytes, imports);
+    const m = instance.exports;
+    const i64 = (n) => BigInt(n);
+    const actual = [];
+    const acct = m.meter_open(i64(3));
+    actual.push(acct);
+    actual.push(Number(m.meter_balance(acct)));
+    actual.push(Number(m.meter_grant(acct, i64(5))));
+    actual.push(Number(m.meter_charge(acct, i64(2))));
+    actual.push(Number(m.meter_charge(acct, i64(2))));
+    actual.push(Number(m.meter_charge(acct, i64(2))));
+    actual.push(Number(m.meter_charge(acct, i64(5))));
+    actual.push(Number(m.meter_balance(acct)));
+    actual.push(m.meter_count());
+    const pass = JSON.stringify(actual) === JSON.stringify(expected);
+    out.push('=== wasm_meter @ Browser(Chromium) ===');
+    out.push('actual  : ' + JSON.stringify(actual));
+    out.push('audit   : ' + JSON.stringify(auditLog));
+    out.push(pass ? 'BROWSER_RESULT: PASS' : 'BROWSER_RESULT: FAIL');
+    window.__RESULT = { actual, auditLog, pass };
+  } catch (e) {
+    out.push('BROWSER_RESULT: ERROR ' + e.message);
+    window.__RESULT = { error: String(e) };
+  }
+  document.getElementById('out').textContent = out.join('\n');
+})();
+</script>

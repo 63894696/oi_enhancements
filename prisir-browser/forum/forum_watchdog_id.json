@@ -1,0 +1,15 @@
+{
+  "jwk": {
+    "key_ops": [
+      "sign"
+    ],
+    "ext": true,
+    "alg": "Ed25519",
+    "crv": "Ed25519",
+    "d": "v64xN__jK0YvIHVt8UCxdEVK25_83omErqCSmT0ejq4",
+    "x": "Xol3McpFZjbeJptk1eIawN-GS-El6LgHfI4Wtdp3qC0",
+    "kty": "OKP"
+  },
+  "pub_b64": "Xol3McpFZjbeJptk1eIawN+GS+El6LgHfI4Wtdp3qC0=",
+  "fp": "CPq-ciSom951-hbX"
+}

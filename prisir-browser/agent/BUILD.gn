@@ -1,0 +1,50 @@
+# Prisir 智能体存储(M2a)BUILD.gn
+# 用法:把本 source_set 并入 chrome/browser/BUILD.gn,或在 chrome/browser 下
+#       新建 prisir/agent/BUILD.gn 并在父 BUILD.gn deps 引入。
+# 依赖说明:见各 deps 注释。
+
+import("//mojo/public/tools/bindings/mojom.gni")
+
+source_set("agent") {
+  sources = [
+    "agent_store.cc",
+    "agent_store.h",
+    "agent_store_handler.cc",
+    "agent_store_handler.h",
+    "agent_store_prefs.cc",
+    "agent_store_prefs.h",
+  ]
+
+  deps = [
+    "//base",                                  # files/values/time/rand/json
+    "//components/prefs",                      # PrefService / PrefRegistrySimple
+    "//components/os_crypt/sync:os_crypt",     # OSCrypt(Win=DPAPI)
+    "//mojo/public/cpp/bindings",              # Mojo receiver/handler(M2c)
+    ":mojom",                                  # agent_store.mojom 生成
+  ]
+
+  # 单测(M2a 验证)
+  testonly = false
+}
+
+# Mojo 接口(M2c 存储 + M3 运行时契约):生成 .mojom.h / .mojom.js。
+mojom("mojom") {
+  sources = [
+    "agent_store.mojom",
+    "agent_runtime.mojom",
+  ]
+}
+
+# 单元测试 target(可选,真编译时挂 chrome 的 test 套件或独立 unit_test)。
+# source_set("agent_unittests") {
+#   testonly = true
+#   sources = [ "agent_store_unittest.cc" ]
+#   deps = [
+#     ":agent",
+#     "//base",
+#     "//base/test:test_support",
+#     "//components/prefs:test_support",
+#     "//components/os_crypt/sync:os_crypt",
+#     "//testing/gtest",
+#   ]
+# }

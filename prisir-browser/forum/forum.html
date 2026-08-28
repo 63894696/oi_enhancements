@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Babelspan 论坛 · 免注册</title>
+<style>
+  /* 浅色极简 · Babelspan 品牌色板顺延(paper/ink/copper/teal)
+     反爬塔 → 反信息流:无点赞/热榜/头像墙/红点,按时间倒序纯文字流 + 两级板块树。
+     零图片零 webfont 零框架,单文件 < 15KB,降 VPS 带宽压力。 */
+  :root {
+    --paper:  #f4f0e6;  /* 纸 · 页面底(暖白不刺眼) */
+    --card:   #fbf9f4;  /* 帖面(略亮于底) */
+    --ink:    #12151a;  /* 墨 · 正文标题 */
+    --dim:    #6b6a63;  /* 次要文字 */
+    --copper: #c47a3a;  /* 铜径 · 航道:当前板块/发帖/确认✓(唯一强调) */
+    --copper2:#e09a55;
+    --teal:   #3d9b8f;  /* 书光 · 兴趣域信标:回复计数/关注/hover */
+    --line:   #e2dccb;  /* 分隔线 */
+    --pend-bg:#f7f1df;  /* ⏳ 未确认(暖黄灰底,克制的提醒非警告) */
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+         background: var(--paper); color: var(--ink); line-height: 1.6; }
+  a { color: var(--teal); text-decoration: none; }
+
+  header.top { padding: 20px 26px 0; display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+  header.top h1 { font-size: 20px; font-weight: 600; letter-spacing: .5px; }
+  header.top .tag { font-size: 12.5px; color: var(--dim); }
+  .idcard { margin-left: auto; font-size: 12.5px; color: var(--dim); display: flex; gap: 8px; align-items: center; }
+  .idcard .fp-tag { font-family: Consolas, monospace; color: var(--copper); border-bottom: 1px solid var(--copper2); padding-bottom: 1px; }
+  .idcard .pending-tip { color: var(--copper); }
+
+  /* 两级板块树:域导航(铜径) + 板块子列表 */
+  nav.domains { display: flex; gap: 4px; padding: 16px 26px 0; border-bottom: 2px solid var(--line); }
+  nav.domains button { background: none; border: none; color: var(--dim); font-size: 15px; padding: 8px 16px 12px;
+                       cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; }
+  nav.domains button.on { color: var(--copper); border-bottom-color: var(--copper); font-weight: 600; }
+  nav.boards { display: flex; gap: 6px; padding: 10px 26px; flex-wrap: wrap; }
+  nav.boards button { background: none; border: 1px solid var(--line); border-radius: 999px; color: var(--dim);
+                      font-size: 12.5px; padding: 4px 14px; cursor: pointer; }
+  nav.boards button.on { background: var(--copper); border-color: var(--copper); color: #fff; }
+  nav.boards button:hover:not(.on) { border-color: var(--teal); color: var(--teal); }
+
+  .board-desc { font-size: 12.5px; color: var(--dim); padding: 0 26px 6px; }
+  .banner { background: var(--pend-bg); border-left: 3px solid var(--copper2); padding: 10px 16px;
+            margin: 12px 26px 0; font-size: 12.5px; color: var(--dim); display: none; }
+
+  .composer { margin: 14px 26px; padding-bottom: 6px; }
+  .composer textarea { width: 100%; min-height: 78px; background: var(--card); border: 1px solid var(--line);
+                       border-radius: 6px; padding: 10px 12px; font-size: 14px; font-family: inherit; resize: vertical; }
+  .composer textarea:focus { outline: none; border-color: var(--copper2); }
+  .composer .row { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+  button.post-btn { background: var(--copper); color: #fff; border: none; border-radius: 6px; padding: 8px 20px; font-size: 13.5px; cursor: pointer; }
+  button.post-btn:hover { background: var(--copper2); }
+  button.ghost { background: none; color: var(--teal); border: 1px solid var(--line); border-radius: 6px; padding: 7px 16px; font-size: 13px; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  .pow-status { font-size: 12px; color: var(--dim); }
+
+  .status-line { font-size: 12.5px; color: var(--dim); margin: 8px 26px 0; }
+  .feed { margin: 10px 26px 40px; max-width: 720px; }
+
+  .post { padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .post:last-child { border-bottom: none; }
+  .post.fv-pending { background: var(--pend-bg); padding-left: 12px; padding-right: 12px; border-radius: 6px; border-bottom: none; margin-bottom: 4px; }
+  .post.fv-bad { opacity: .55; }
+  .post header { display: flex; gap: 10px; align-items: baseline; font-size: 12px; color: var(--dim); flex-wrap: wrap; }
+  .post .fp { font-family: Consolas, monospace; color: var(--teal); }
+  .post .badge { margin-left: auto; font-size: 12px; }
+  .post .fv-ok { color: var(--copper); }
+  .post .fv-pend { color: var(--copper2); }
+  .post .body { margin: 6px 0 8px; font-size: 14.5px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
+  .post footer { display: flex; gap: 14px; }
+  .post footer button { background: none; border: none; color: var(--teal); font-size: 12px; cursor: pointer; padding: 0; }
+  .post footer button:hover { text-decoration: underline; }
+  .post footer button.done { color: var(--dim); cursor: default; text-decoration: none; }
+  .empty { color: var(--dim); font-size: 13px; padding: 30px 0; text-align: center; }
+
+  /* F-3 富内容:内联图片 / 视频一行卡片 / emoji 面板 / 待压图预览 */
+  .inline-img { display: block; max-width: 480px; max-height: 360px; border-radius: 6px;
+                margin: 6px 0; border: 1px solid var(--line); }
+  .video-card { display: flex; align-items: center; gap: 8px; padding: 7px 12px; margin: 6px 0;
+                background: var(--card); border: 1px solid var(--line); border-radius: 6px;
+                color: var(--ink); font-size: 13px; max-width: 480px; }
+  .video-card:hover { border-color: var(--teal); }
+  .video-card .vc-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .video-card .vc-domain { color: var(--dim); font-size: 11.5px; font-family: Consolas, monospace; }
+  .composer .toolrow { display: flex; gap: 6px; margin-top: 8px; align-items: center; flex-wrap: wrap; }
+  .composer .toolrow .tbtn { background: none; border: 1px solid var(--line); border-radius: 6px;
+                             color: var(--dim); font-size: 13px; padding: 5px 12px; cursor: pointer; }
+  .composer .toolrow .tbtn:hover { border-color: var(--teal); color: var(--teal); }
+  .emoji-panel { display: none; position: absolute; z-index: 10; background: var(--card);
+                 border: 1px solid var(--line); border-radius: 8px; padding: 8px;
+                 grid-template-columns: repeat(8, 34px); gap: 2px; box-shadow: 0 4px 14px rgba(18,21,26,.08); }
+  .emoji-panel.open { display: grid; }
+  .emoji-panel button { background: none; border: none; font-size: 20px; padding: 4px; cursor: pointer;
+                        border-radius: 4px; line-height: 1.2; }
+  .emoji-panel button:hover { background: var(--pend-bg); }
+  .img-preview { display: none; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; color: var(--dim); }
+  .img-preview.show { display: flex; }
+  .img-preview img { max-width: 90px; max-height: 60px; border-radius: 4px; border: 1px solid var(--line); }
+  .img-preview button { background: none; border: none; color: var(--copper); font-size: 12px; cursor: pointer; }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Babelspan 论坛</h1>
+  <span class="tag">免注册 · 公钥即账号 · 签名即发帖</span>
+  <div class="idcard">
+    <span class="fp-tag" id="my-fp">…</span>
+    <span class="pending-tip" id="my-status"></span>
+  </div>
+</header>
+
+<nav class="domains" id="domains"></nav>
+<nav class="boards" id="boards"></nav>
+<div class="board-desc" id="board-desc"></div>
+
+<div class="banner" id="pending-banner">
+  ⏳ 你的身份尚未被社区验签,帖子为「未确认」暖底;3 个已确认身份回复(=验签引用)后自动摘帽。
+  类似转账「到账延迟」——诚实标注,谨防冒名。
+</div>
+
+<div class="composer">
+  <textarea id="body" maxlength="98304" placeholder="发条帖子……(文字 ≤4000 字;可带 1 张自动压缩图 / 表情 / 视频链接,发出前本地 PoW + Ed25519 签名,私钥不出本机)"></textarea>
+  <div class="toolrow">
+    <button type="button" class="tbtn" id="emoji-btn" title="插入表情">😊 表情</button>
+    <button type="button" class="tbtn" id="img-btn" title="插图:本地自动压缩为 ≤64KB WebP,不泄露原图">🖼 图片</button>
+    <input type="file" id="img-file" accept="image/*" hidden>
+  </div>
+  <div class="emoji-panel" id="emoji-panel"></div>
+  <div class="img-preview" id="img-preview">
+    <img id="img-thumb" alt="待发图">
+    <span id="img-info"></span>
+    <button type="button" id="img-remove">移除</button>
+  </div>
+  <div class="row">
+    <button class="post-btn" id="send">签名并发表</button>
+    <button class="ghost" id="refresh">刷新</button>
+    <span class="pow-status" id="pow-status"></span>
+  </div>
+</div>
+
+<div class="status-line" id="net-status">连接中…</div>
+<div class="feed" id="feed"></div>
+
+<script src="forum_client.js?v=4"></script>
+<script src="forum_store.js?v=4"></script>
+<script src="forum_verify.js?v=4"></script>
+<script>
+// forum.html 主逻辑 — 生产 wss://bbs.babelspan.com/forum;开发直连 ws://127.0.0.1:18812
+const RELAY = (() => {
+  const q = new URLSearchParams(location.search).get("relay");
+  if (q) return q;
+  return location.hostname ? "wss://bbs.babelspan.com/forum" : "ws://127.0.0.1:18812";
+})();
+
+const $ = id => document.getElementById(id);
+let ws = null, powBits = 18, lastSeq = 0; // 会话内游标;刷新后全量重拉
+let BOARDS = {}, curDomain = "browser", curBoard = "lobby";
+const frames = new Map(); // post_id → frame
+const DOMAIN_NAMES = { browser: "浏览器", babelspan: "内容站", meta: "站务" };
+
+function netStatus(t) { $("net-status").textContent = t; }
+
+// ── v2.0 PrisirAI 反馈 hint:解析 ?hint=prisirai + #board=domain/slug ──
+// 由 PrisirAI 装包器反馈卡打开,自动跳到 browser/shell 板块 + body 填模板占位文。
+// 用户可在 body 框里继续编辑;最终签名+发送是用户行为,不是自动发。
+// URL 形如: forum.html#board=browser/shell&hint=prisirai
+//   — board 与 hint 都在 hash 内(避免污染页面搜索),按 & 拆分后再各解析。
+const HINTS = {
+  prisirai: {
+    placeholder: "请描述问题(可贴 traceback/截图描述/复现步骤)。\n附件请上传桌面 PrisirAI-feedback-{ts}.zip(zip 已脱敏 settings.json,不含会话正文)。\n签名后其他人能看到此帖,你可在签名发出前再删改。",
+  },
+};
+let activeHint = null;  // 解析到的 hint key
+function parseUrlHints() {
+  // hash 按 & 拆分,每段单独解析:board=browser/shell / hint=prisirai
+  const hash = location.hash.replace(/^#/, "");
+  hash.split("&").forEach(kv => {
+    const eq = kv.indexOf("=");
+    if (eq < 0) return;
+    const k = kv.slice(0, eq).trim();
+    const v = kv.slice(eq + 1).trim();
+    if (k === "hint" && HINTS[v]) { activeHint = v; return; }
+    if (k === "board") {
+      const m = v.match(/^([^/]+)\/([\w-]+)$/);
+      if (m) { curDomain = m[1]; curBoard = m[2]; }
+    }
+  });
+}
+function applyHintToComposer() {
+  if (!activeHint) return;
+  const h = HINTS[activeHint];
+  const ta = $("body");
+  if (ta && h.placeholder && !ta.value) {
+    ta.placeholder = h.placeholder;
+    ta.focus();
+  }
+}
+
+async function boot() {
+  FORUM.ID = await FORUM.loadOrCreateIdentity();
+  $("my-fp").textContent = FORUM.ID.user_id;
+  if (!FORUM.nativeReady()) {
+    $("my-status").textContent = "(JS 降级模式:私钥在 localStorage,重编译后迁原生层)";
+    $("pending-banner").style.display = "block";
+  }
+  parseUrlHints();
+  applyHintToComposer();
+  connectRelay();
+}
+
+function connectRelay() {
+  ws = FORUM.connect(RELAY, {
+    onOpen: () => { netStatus("已连接 " + RELAY.replace(/^wss?:\/\//, "")); pullHistory(); },
+    onClose: () => { netStatus("已断开,3s 后重连…"); setTimeout(connectRelay, 3000); },
+    onError: () => netStatus("连接错误"),
+    onFrame: onFrame,
+  });
+}
+
+function onFrame(m) {
+  if (m.type === "welcome") {
+    powBits = m.pow_bits;
+    if (m.boards) { BOARDS = m.boards; renderNav(); }
+    return;
+  }
+  if (m.type === "history") {
+    m.msgs.forEach(f => { if (!f.post.board || f.post.board === curBoard) frames.set(f.post_id, f); });
+    if (m.last_seq > lastSeq) lastSeq = m.last_seq;
+    renderAll();
+    return;
+  }
+  if (m.type === "post") {
+    if (m.post.board === curBoard) {
+      frames.set(m.post_id, { post: m.post, post_id: m.post_id, seq: m.seq,
+                              confirmations: m.confirmations, confirmed: m.confirmed,
+                              taken_down: false, retracted: false });
+      renderOne(frames.get(m.post_id));
+    }
+    if (m.seq > lastSeq) lastSeq = m.seq;
+    return;
+  }
+  if (m.type === "confirm-update") {
+    const f = frames.get(m.post_id);
+    if (f) { f.confirmations = m.confirmations; f.confirmed = m.confirmed; renderOne(f); }
+    return;
+  }
+  if (m.type === "takedown" || m.type === "retract") {
+    const f = frames.get(m.post_id);
+    if (f) { if (m.type === "takedown") f.taken_down = true; else f.retracted = true; renderOne(f); }
+    return;
+  }
+}
+
+function pullHistory() {
+  ws.send(JSON.stringify({ type: "read", since_seq: 0, board: curBoard }));
+}
+
+function renderNav() {
+  const d = $("domains"); d.innerHTML = "";
+  Object.keys(BOARDS).forEach(dom => {
+    const b = document.createElement("button");
+    b.textContent = DOMAIN_NAMES[dom] || dom;
+    b.className = dom === curDomain ? "on" : "";
+    b.onclick = () => { curDomain = dom; const first = BOARDS[dom][0]; curBoard = first[0]; renderNav(); switchBoard(); };
+    d.appendChild(b);
+  });
+  const bl = $("boards"); bl.innerHTML = "";
+  (BOARDS[curDomain] || []).forEach(([slug, name, desc]) => {
+    const b = document.createElement("button");
+    b.textContent = name;
+    b.className = slug === curBoard ? "on" : "";
+    b.onclick = () => { curBoard = slug; renderNav(); switchBoard(); };
+    bl.appendChild(b);
+  });
+  const cur = (BOARDS[curDomain] || []).find(x => x[0] === curBoard);
+  $("board-desc").textContent = cur ? cur[2] : "";
+}
+
+function switchBoard() { frames.clear(); lastSeq = 0; $("feed").innerHTML = ""; pullHistory(); }
+
+async function renderAll() {
+  $("feed").innerHTML = "";
+  const sorted = [...frames.values()].sort((a, b) => b.seq - a.seq);
+  if (!sorted.length) { $("feed").innerHTML = '<div class="empty">这个板块还没有帖子,来发第一帖。</div>'; return; }
+  for (const f of sorted) await renderOne(f, true);
+}
+async function renderOne(f, append) {
+  const verified = await FORUM.verifyPost(f.post);
+  const el = FORUM_VERIFY.renderPost(f, verified);
+  const old = $("feed").querySelector(`[data-post-id="${f.post_id}"]`);
+  if (old) old.replaceWith(el);
+  else if (append) $("feed").appendChild(el);
+  else $("feed").prepend(el);
+}
+
+// ── F-3 富内容:emoji 面板 + 图片客户端压缩 + 发送组装 ──
+const EMOJIS = ["😀","😄","😁","😂","🤣","😊","😍","🤔","😅","😭","😴","🙃","😉","😎","🥳","😤",
+                "👍","👎","👏","🙏","💪","🤝","✌️","🫡","👀","💡","🔥","✨","🎉","❤️","🤍","💔",
+                "🦀","🐋","🌊","🌙","⭐","🌱","🍵","📚","🖊️","🗺️","🧭","⛵","🏮","🪔","📡","🛡️"];
+
+let pendingImg = null; // { dataUrl, origKB, outKB }
+
+(function initEmoji() {
+  const panel = $("emoji-panel");
+  EMOJIS.forEach(e => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = e;
+    b.onclick = () => {
+      const ta = $("body");
+      const s = ta.selectionStart ?? ta.value.length;
+      ta.value = ta.value.slice(0, s) + e + ta.value.slice(ta.selectionEnd ?? s);
+      ta.focus();
+      ta.selectionStart = ta.selectionEnd = s + e.length;
+    };
+    panel.appendChild(b);
+  });
+  $("emoji-btn").onclick = () => panel.classList.toggle("open");
+  document.addEventListener("click", ev => {
+    if (!panel.contains(ev.target) && ev.target !== $("emoji-btn")) panel.classList.remove("open");
+  });
+})();
+
+$("img-btn").onclick = () => $("img-file").click();
+
+$("img-file").onchange = async ev => {
+  const f = ev.target.files[0];
+  ev.target.value = "";
+  if (!f || !f.type.startsWith("image/")) return;
+  try {
+    pendingImg = await compressImage(f);
+    $("img-thumb").src = pendingImg.dataUrl;
+    $("img-info").textContent = `已压缩 ${pendingImg.origKB}KB → ${pendingImg.outKB}KB WebP`;
+    $("img-preview").classList.add("show");
+  } catch (e) {
+    $("pow-status").textContent = "图片读取失败:" + e.message;
+  }
+};
+
+$("img-remove").onclick = () => { pendingImg = null; $("img-preview").classList.remove("show"); };
+
+// canvas 客户端压缩:最长边 ≤960px,WebP 质量递减直至 ≤64KB(协议底线,见 §2)
+async function compressImage(file) {
+  const bmp = await createImageBitmap(file);
+  const MAX_SIDE = 960, TARGET = 64 * 1024;
+  let w = bmp.width, h = bmp.height;
+  const scale = Math.min(1, MAX_SIDE / Math.max(w, h));
+  w = Math.max(1, Math.round(w * scale)); h = Math.max(1, Math.round(h * scale));
+  const cv = document.createElement("canvas");
+  cv.width = w; cv.height = h;
+  cv.getContext("2d").drawImage(bmp, 0, 0, w, h);
+  bmp.close();
+  let q = 0.8, blob = null;
+  for (let i = 0; i < 6; i++) {
+    blob = await new Promise(r => cv.toBlob(r, "image/webp", q));
+    if (!blob) throw new Error("浏览器不支持 WebP 编码");
+    if (blob.size <= TARGET) break;
+    q -= 0.13;
+  }
+  const buf = await blob.arrayBuffer();
+  const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+  return { dataUrl: "data:image/webp;base64," + b64,
+           origKB: Math.round(file.size / 1024), outKB: Math.round(blob.size / 1024) };
+}
+
+$("send").onclick = async () => {
+  let body = $("body").value.trim();
+  if (pendingImg) {
+    body += (body ? "\n" : "") + "![" + (pendingImg.outKB + "KB") + "](" + pendingImg.dataUrl + ")";
+  }
+  if (!body) return;
+  $("send").disabled = true;
+  try {
+    const post = await FORUM.makePost(body, { board: curBoard, powBits, onProgress: n => {
+      $("pow-status").textContent = `PoW ${n} 次`;
+    }});
+    $("pow-status").textContent = "签名中…";
+    ws.send(JSON.stringify({ type: "post", post }));
+    const post_id = await FORUM.postIdOf(post);
+    FORUM_STORE.rememberMyPost(post, post_id);
+    $("body").value = "";
+    pendingImg = null; $("img-preview").classList.remove("show");
+    $("pow-status").textContent = "已发出";
+  } catch (e) {
+    $("pow-status").textContent = "失败:" + e.message;
+  } finally {
+    $("send").disabled = false;
+    setTimeout(() => $("pow-status").textContent = "", 4000);
+  }
+};
+$("refresh").onclick = pullHistory;
+
+$("feed").addEventListener("click", async ev => {
+  const replyBtn = ev.target.closest(".reply-btn");
+  const followBtn = ev.target.closest(".follow-btn");
+  if (followBtn) {
+    FORUM_STORE.follow(followBtn.dataset.fp);
+    followBtn.textContent = "已关注 ✓";
+    followBtn.classList.add("done");
+    followBtn.disabled = true;
+    return;
+  }
+  if (!replyBtn) return;
+  const parent = replyBtn.dataset.pid;
+  const body = prompt("回复(= 对该帖验签引用):\n你的回复若来自已确认身份,会为原帖计一票。");
+  if (!body || !body.trim()) return;
+  const post = await FORUM.makePost(body.trim(), { kind: "reply", parent, board: curBoard, powBits });
+  ws.send(JSON.stringify({ type: "post", post }));
+  FORUM_STORE.rememberMyPost(post, await FORUM.postIdOf(post));
+});
+
+boot();
+</script>
+</body>
+</html>

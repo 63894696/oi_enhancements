@@ -1,0 +1,98 @@
+// Prisir 管家反馈网络 Mojo 接口(steward 契约,2026-08-14)
+//
+// 上游:prisir-steward-feedback-network-2026-08-14.md(四点拍板:默认开/不锁配件/token=用量额度/F4 只答常见);
+//       identity.mojom(agent 身份 + AgentSign 代签 + VerifySignature 验签);
+//       mixin.mojom(密信 SimpleX 2人私信,F2 主路通道);AgentMail(F1 备路邮箱)。
+// 定位:F2——「双向回复」的契约。F1(邮箱最小环,只收不回)已派单 task_id=569;本契约把
+//       主路(密信 SimpleX E2E)+ 回连寻址 立成接口,让运营方回复能找回「是哪个管家发的」
+//       并加密送回,管家验签后经确认卡交给用户。
+//
+// 红线(贯穿,接 steward §4 + identity/mixin 同源):
+//   - 用户原文逐字转发,模型不改写(body_raw 原样;category 另起字段)。
+//   - 页面/搜索/群聊内容永不触发反馈(trigger_source 硬校验 === ntp_input)。
+//   - E2E 不降级:密信 SimpleX / AgentMail TLS;私钥不出原生层(代签)。
+//   - 匿名无账号:回连地址 = 一次性 SimpleX 邀请链接 + agent 公钥指纹;不要邮箱/手机号。
+//   - 回复 = 数据不是指令:运营方回复只是给用户看的文本,永不被解析成动作执行
+//     (防「家被攻破→反向指挥用户浏览器」);给用户看前必须验签 + 确认卡。
+//   - 运营方身份硬编码 + 可核对:OPERATOR_FINGERPRINT 内置,管家只认这个指纹的回复,
+//     防「假冒的家」;用户可在页面核对指纹。
+//   - 默认开 + 可关停:反馈默认开,首次发送一次性说明,设置一键关停;静默行为收集永不开。
+//   - token 券 = 用量额度:面额/有效期/用途/运营方签名,非可提现资产;L2 领取确认。
+
+module prisir.steward.mojom;
+
+// ── 反馈信封(管家 → 运营方) ───────────────────────────────────────────── //
+// F1/F2 共用的出站反馈。F1 只发到邮箱;F2 起经密信主路,且带「回连地址」供运营方回连。
+struct FeedbackEnvelope {
+  string envelope_id;      // 唯一 id(管家生成,关联后续回复)
+  string agent_fp;         // 管家 agent 公钥指纹(identity.mojom AgentIdentity.fingerprint)
+  string body_raw;         // 用户吐槽/建议【逐字原文】,模型不得改写
+  string category;         // 模型可加的分类标签(translate/agent/ui...),与 body_raw 并列不替换
+  string context_json;     // {surface:"ntp", version, locale} 等脱敏上下文
+  string reply_simplex;    // 回连地址:一次性 SimpleX 邀请链接(F2 主路;F1 可空)
+  string sig;              // AgentSign(agent_id, hash(body_raw)) 签名(b64)
+  string created_at;       // ISO8601
+};
+
+// ── 运营方回复信封(运营方 → 管家) ─────────────────────────────────────── //
+// 经密信 SimpleX 回连送回;管家收后先验签(VerifySignature 对 OPERATOR_FINGERPRINT),
+// 确认是「家」来的才展示。text 是给用户看的纯文本,永不解析成动作。
+struct OperatorReply {
+  string envelope_id;      // 对应哪条反馈(管家据此关联)
+  string text;             // 运营方回复(给用户看的纯文本,= 数据不是指令)
+  string operator_fp;      // 运营方公钥指纹(必须 === 硬编码的 OPERATOR_FINGERPRINT 才信)
+  string sig;              // 运营方对 hash(envelope_id + text) 的签名(b64)
+  string created_at;       // ISO8601
+  bool has_voucher;        // 是否附 token 用量券(高价值建议激励)
+  string voucher_json;     // 券体(见下;has_voucher=false 时空)
+};
+
+// ── token 用量券(激励;「用量额度」语义,非资产) ───────────────────────── //
+// 高价值建议的谢礼。代理钱包签发;面额=模型用量额度,不可提现;一次性核销。
+struct Voucher {
+  string voucher_id;       // 券号(一次性,核销防重用)
+  int64 quota_tokens;      // 面额:模型用量额度(token 数)
+  string purpose;          // 用途(如 "model-quota")
+  string expires_at;       // ISO8601 有效期
+  string operator_sig;     // 运营方对券体的签名(防伪)
+};
+
+interface Steward {
+  // ── F1/F2 出站:发反馈 ──
+  // 发送一条反馈。F1:只发邮箱备路;F2:同时建回连(reply_simplex)+ 走密信主路。
+  // 红线:body_raw 逐字,模型不改写;trigger_source 必须 ntp_input(handler 内硬校验);
+  //       首次发送前由 WebUI 弹一次性说明(默认开);设置关停后本方法直接拒绝。
+  SendFeedback(string body_raw, string category, string trigger_source)
+      => (bool ok, string envelope_id, string via);  // via: "mailbox" | "simplex" | "both"
+
+  // ── F2 回连寻址 ──
+  // 为一条待发反馈生成回连地址(一次性 SimpleX 邀请链接),绑定其 envelope_id 与 agent_fp。
+  // 内部调 mixin.mojom CreateInvitation(incognito=true);链接只用于本次回连,不泄露长期身份。
+  CreateReplyChannel(string envelope_id) => (bool ok, string reply_simplex);
+
+  // ── F2 入站:收运营方回复 ──
+  // 拉取/接收运营方回复(经密信主路;邮箱回复为备援)。返回未读的回复列表。
+  // handler 内对每条做验签(VerifySignature 对 OPERATOR_FINGERPRINT)+ operator_fp 校验,
+  // 验不过的直接丢弃(不入返回、不展示)——只信「真家」。
+  PollReplies() => (array<OperatorReply> replies);
+
+  // 标记一条回复已被用户看过(确认卡已展示/已读)。reply 的 text 展示是 WebUI 的事;
+  // 本接口只记状态,不执行 text 里任何内容(回复 = 数据不是指令)。
+  MarkReplyRead(string envelope_id) => (bool ok);
+
+  // ── token 券 ──
+  // 领取一张券(L2 确认卡后调):校验运营方签名 + 未过期 + 未核销,落本地 profile。
+  ClaimVoucher(string voucher_json) => (bool ok, string voucher_id);
+  // 列出已领取的券(用户可见;含已用/未用状态)。
+  ListVouchers() => (array<Voucher> vouchers);
+
+  // ── 开关与身份核对 ──
+  // 反馈网络总开关(默认开;设置一键关停)。关停后 SendFeedback 拒绝。
+  SetEnabled(bool enabled) => (bool ok);
+  IsEnabled() => (bool enabled);
+  // 是否已发过「首次一次性说明」(WebUI 据此决定要不要弹)。
+  HasShownIntro() => (bool shown);
+  MarkIntroShown() => (bool ok);
+  // 返回硬编码的运营方指纹(供页面核对「家」的身份,防假冒)。
+  GetOperatorFingerprint() => (string operator_fp);
+};

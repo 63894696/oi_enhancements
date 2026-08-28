@@ -1,0 +1,38 @@
+// Prisir 论坛 Mojo 接口(F-1 契约,2026-08-21 定稿)
+//
+// 上游:docs/prisir-forum-protocol-2026-08-21.md(协议已定稿,canon 双向对拍 5/5 绿);
+//       agent/identity.mojom(身份根 + DeriveKey/SignWith,本接口是其薄壳转发);
+//       mixin/mixin.mojom(SignGroupMessage 同源先例——页面给数据,原生代签,私钥不出原生层)。
+// 定位:免注册论坛 chrome://forum 页面 ↔ 浏览器本体的契约。
+//       本轮 JS 先行(window.ForumNative 未就绪时 WebCrypto+localStorage 降级,诚实标注);
+//       重编译时实现本接口,handler 薄壳转发到 identity 模块。
+//
+// 红线(贯穿,与 identity/mixin 同源,已拍板):
+//   - 私钥不出原生层:论坛签名密钥是 identity 根下派生的 "forum-sign" 子密钥,
+//     页面 JS 拿不到私钥,签名由原生层代做。
+//   - 本地优先:帖子副本/关注列表落本地 profile,默认不上云。
+//   - 诚实口径:不提供「全网删除」接口——retract/takedown 是 relay 层标记,
+//     客户端可保留副本(契约 §0 公开声明)。
+
+module prisir.forum.mojom;
+
+// 论坛身份(identity 根派生的 "forum-sign" 子密钥的公开信息)
+struct ForumIdentity {
+  string pub_raw;         // Ed25519 公钥(b64 raw32)
+  string user_id;         // 公钥指纹 b64url16(= author_fp,对齐 mixin 口径)
+  string key_id;          // 对应 identity.DerivedKey.key_id(固定 "forum-sign")
+  bool native;            // true=原生层托管(私钥不出);false 仅出现于契约文档,运行时恒 true
+};
+
+interface ForumStore {
+  // 取论坛身份(幂等:未派生则原生层调 identity.DeriveKey("forum-sign","ed25519-sign") 后返回)。
+  // 只回公开信息,私钥不经 Mojo。
+  GetForumIdentity() => (ForumIdentity id);
+
+  // 原生代签:用 "forum-sign" 子密钥给 data(canon(帖子无 sig)的 UTF-8 字节)签名。
+  // 对齐 mixin.SignGroupMessage 与 identity.SignWith 语义——页面给数据,拿回签名,拿不到私钥。
+  SignPost(array<uint8> data) => (array<uint8> sig);  // Ed25519 签名 64B
+
+  // 验签(公开操作,页面阅读侧零信任 relay 自验用;等价 identity.VerifySignature)。
+  VerifyPost(string author_pub_b64, array<uint8> data, array<uint8> sig) => (bool valid);
+};

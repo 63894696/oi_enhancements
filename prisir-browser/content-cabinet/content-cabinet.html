@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>内容柜 · 我的收藏 | Prisir</title>
+  <meta name="description" content="把想读的书、想看的影视/动漫/综艺放进浏览器本地的内容柜:本地优先、不上云、不要账号。书架 / 海报墙 / 清单三种视图,可导出导入。" />
+  <link rel="icon" type="image/png" href="prisir-logo-48.png" />
+  <!-- 浏览器内嵌版:剥 Google Fonts 外链,用系统字体栈(本地优先,零外链) -->
+  <style>
+    /* 系统字体栈 fallback:Instrument Serif/Source Serif → Georgia/serif;DM Sans → system sans */
+    :root {
+      --paper: #e8dcc6; --ink: #f2ebe0; --muted: #9aa3b2;
+      --copper: #e09a55; --line: rgba(232,220,198,.12);
+      --teal: #3d9b8f; --warn: #c4a35a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: "DM Sans", system-ui, sans-serif; color: var(--paper);
+      background:
+        radial-gradient(ellipse 80% 50% at 10% -10%, rgba(61,155,143,.14), transparent 55%),
+        radial-gradient(ellipse 60% 40% at 100% 0%, rgba(224,154,85,.1), transparent 50%),
+        linear-gradient(165deg, #0e1116, #171c24 50%, #12151a);
+      min-height: 100vh;
+    }
+    .wrap { width: min(1120px, calc(100% - 2rem)); margin: 0 auto; padding: 2rem 0 4rem; }
+    a { color: var(--copper); }
+    .back { font-size: .85rem; margin-bottom: 1rem; }
+    .head {
+      border: 1px solid var(--line); border-radius: .8rem; padding: 1.3rem 1.5rem;
+      background: linear-gradient(120deg, rgba(255,255,255,.04), rgba(255,255,255,.015));
+      margin-bottom: 1.2rem;
+    }
+    .head h1 {
+      font-family: "Instrument Serif", Georgia, serif; font-weight: 400;
+      font-size: clamp(1.8rem, 4vw, 2.5rem); margin: 0 0 .3rem; letter-spacing: -.02em;
+    }
+    .head .lede { font-family: "Source Serif 4", Georgia, serif; font-size: 1.02rem; line-height: 1.65; color: var(--ink); margin: .4rem 0 0; }
+    .head .privacy {
+      margin-top: .8rem; padding: .6rem .85rem; border-left: 3px solid var(--teal);
+      background: rgba(61,155,143,.07); font-size: .82rem; line-height: 1.55; color: #7ec9bf;
+    }
+    /* 工具条 */
+    .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin: .4rem 0 1.1rem; }
+    .toolbar .spacer { flex: 1; }
+    .chip {
+      border: 1px solid var(--line); padding: .35rem .7rem; border-radius: 999px;
+      font-size: .78rem; color: var(--muted); background: transparent;
+    }
+    .chip strong { color: var(--paper); font-weight: 600; }
+    .chip.copper { border-color: rgba(224,154,85,.5); color: var(--copper); }
+    .fbtn, .btn {
+      font: inherit; font-size: .8rem; cursor: pointer; color: var(--muted);
+      border: 1px solid var(--line); background: transparent; padding: .4rem .8rem; border-radius: 999px;
+      text-decoration: none; display: inline-block;
+    }
+    .fbtn.active, .fbtn:hover, .btn:hover { border-color: rgba(224,154,85,.55); color: var(--copper); background: rgba(196,122,58,.12); }
+    .btn.accent { border-color: rgba(224,154,85,.6); color: var(--copper); background: rgba(196,122,58,.14); }
+    .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+    .seg .fbtn { border: 0; border-radius: 0; }
+    .seg .fbtn.active { background: rgba(224,154,85,.22); color: var(--copper); }
+    .q { font: inherit; color: var(--paper); background: #1c222b; border: 1px solid var(--line); border-radius: .5rem; padding: .45rem .75rem; width: 15rem; max-width: 100%; }
+    /* 添加表单 */
+    .addform {
+      border: 1px dashed rgba(224,154,85,.4); border-radius: .8rem; padding: 1rem 1.2rem;
+      background: rgba(224,154,85,.05); margin-bottom: 1.2rem; display: none;
+    }
+    .addform.open { display: block; }
+    .addform .row { display: flex; flex-wrap: wrap; gap: .6rem; margin-bottom: .6rem; }
+    .addform label { font-size: .72rem; letter-spacing: .04em; color: var(--muted); display: block; margin-bottom: .25rem; text-transform: uppercase; }
+    .addform input, .addform select, .addform textarea {
+      font: inherit; color: var(--paper); background: #1c222b; border: 1px solid var(--line);
+      border-radius: .45rem; padding: .45rem .65rem;
+    }
+    .addform input { width: 13rem; } .addform textarea { width: 100%; min-height: 3rem; resize: vertical; }
+    .addform .field { display: flex; flex-direction: column; }
+    .addform .grow { flex: 1; } .addform .grow input { width: 100%; }
+    .addform .actions { display: flex; gap: .6rem; margin-top: .3rem; }
+    /* ============ 模板一:书架(书脊) ============ */
+    .shelf-bookcase { display: flex; flex-direction: column; gap: 1.2rem; }
+    .plank { border-bottom: 6px solid rgba(224,154,85,.35); padding: 0 .4rem .3rem; }
+    .plank .plank-title { font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 .5rem .2rem; }
+    .spines { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .45rem; min-height: 4rem; }
+    .spine {
+      position: relative; width: 2.6rem; border-radius: .3rem .3rem 0 0; cursor: pointer; overflow: hidden;
+      writing-mode: vertical-rl; text-orientation: mixed; display: flex; align-items: center; justify-content: center;
+      font-size: .8rem; font-weight: 600; letter-spacing: .06em; color: #14181d; padding: .5rem 0;
+      border: 1px solid rgba(0,0,0,.28); box-shadow: inset -3px 0 6px rgba(0,0,0,.22);
+      transition: transform .12s;
+    }
+    .spine:hover { transform: translateY(-6px); }
+    .spine .st { position: absolute; top: .3rem; right: .3rem; font-size: .62rem; writing-mode: horizontal-tb; opacity: .9; }
+    /* ============ 模板二:海报墙 ============ */
+    .shelf-wall { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: .9rem; align-items: start; }
+    .card {
+      position: relative; border: 1px solid var(--line); border-radius: .6rem; overflow: visible;
+      aspect-ratio: 2/3; background: linear-gradient(160deg, #232a33, #161b21); cursor: pointer;
+      display: flex; flex-direction: column; justify-content: flex-end; padding: .8rem;
+      transition: transform .22s ease, box-shadow .22s ease, z-index 0s;
+    }
+    .card .cover-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: .55rem; }
+    .card .cover-shade { position: absolute; inset: 0; border-radius: .55rem; background: linear-gradient(180deg, rgba(13,16,20,0) 40%, rgba(13,16,20,.82)); }
+    .card .cover-emoji { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 2.6rem; opacity: .5; }
+    .card .ct { position: relative; font-family: "Source Serif 4", Georgia, serif; font-weight: 600; font-size: .98rem; line-height: 1.3; text-shadow: 0 1px 8px rgba(0,0,0,.6); }
+    .card .cst { position: relative; font-size: .68rem; color: var(--muted); margin-top: .3rem; }
+    /* cloudlandco 式:悬停海报原位微放大,不遮图 */
+    .card:hover, .card:focus-within { transform: scale(1.05); z-index: 40; box-shadow: 0 14px 34px rgba(0,0,0,.5); }
+    /* 详情面板:旁侧展开,绝不盖海报 */
+    .pop {
+      position: absolute; top: 50%; left: calc(100% + .7rem); transform: translateY(-50%);
+      width: 240px; max-height: 118%; padding: .9rem; z-index: 41;
+      background: rgba(13,16,20,.96); border: 1px solid var(--line); border-radius: .6rem;
+      box-shadow: 0 18px 40px rgba(0,0,0,.55); backdrop-filter: blur(3px);
+      opacity: 0; pointer-events: none; transition: opacity .18s; overflow: auto;
+      display: flex; flex-direction: column; gap: .4rem;
+    }
+    /* 靠右两列的卡片,面板翻到左侧,避免溢出视口 */
+    .card:nth-last-child(-n+2) .pop, .card.flip-left .pop { left: auto; right: calc(100% + .7rem); }
+    .card:hover .pop, .card:focus-within .pop { opacity: 1; pointer-events: auto; }
+    .pop .pt { font-family: "Source Serif 4", serif; font-weight: 600; font-size: 1rem; color: var(--copper); }
+    .pop .pmeta { font-size: .72rem; color: #7ec9bf; }
+    .pop .pdesc { font-size: .8rem; line-height: 1.5; color: var(--ink); }
+    .pop .pdesc:empty { display: none; }
+    .pop .pnote { font-size: .74rem; line-height: 1.45; color: var(--muted); font-style: italic; }
+    .pop .pacts { display: flex; gap: .4rem; flex-wrap: wrap; margin-top: auto; }
+    .pop .pacts .mini { font: inherit; font-size: .68rem; cursor: pointer; color: var(--muted); border: 1px solid var(--line); background: transparent; border-radius: 999px; padding: .22rem .55rem; }
+    .pop .pacts .mini:hover { color: var(--copper); border-color: rgba(224,154,85,.55); }
+    .pop .pacts .mini.done { color: #7ec9bf; border-color: rgba(61,155,143,.5); }
+    .pop .pacts .mini.del { color: #c45c4a; }
+    /* ============ 模板三:清单 ============ */
+    table.shelf-list { width: 100%; border-collapse: collapse; font-size: .86rem; }
+    .shelf-list th, .shelf-list td { text-align: left; padding: .55rem .4rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+    .shelf-list th { color: var(--muted); font-weight: 500; font-size: .7rem; letter-spacing: .05em; text-transform: uppercase; }
+    .shelf-list .lt { font-family: "Source Serif 4", serif; font-weight: 600; }
+    .shelf-list .ld { font-size: .76rem; color: var(--muted); margin-top: .2rem; line-height: 1.4; }
+    .shelf-list .mini { font: inherit; font-size: .68rem; cursor: pointer; color: var(--muted); border: 1px solid var(--line); background: transparent; border-radius: 999px; padding: .2rem .5rem; margin-right: .3rem; }
+    .shelf-list .mini:hover { color: var(--copper); border-color: rgba(224,154,85,.55); }
+    .empty { border: 1px dashed var(--line); border-radius: .8rem; padding: 2.4rem 1.4rem; text-align: center; color: var(--muted); }
+    .empty .big { font-size: 1.6rem; margin-bottom: .5rem; }
+    .badge-done { font-size: .66rem; color: #7ec9bf; border: 1px solid rgba(61,155,143,.5); border-radius: 999px; padding: .1rem .45rem; }
+    .badge-wish { font-size: .66rem; color: var(--copper); border: 1px solid rgba(224,154,85,.5); border-radius: 999px; padding: .1rem .45rem; }
+    footer { margin-top: 2.6rem; color: var(--muted); font-size: .84rem; line-height: 1.6; }
+    .hidden { display: none !important; }
+    input[type=file] { display: none; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <!-- 浏览器内嵌版:剥站内导航(返回海图/为何建站),改 Prisir 内嵌语境 -->
+    <section class="head">
+      <h1>内容柜 · 我的收藏</h1>
+      <p class="lede">把想读的<strong>书</strong>、想看的<strong>影视</strong> / <strong>动漫</strong> / <strong>综艺</strong>、想听的<strong>音乐</strong>、想玩的<strong>游戏</strong>放进同一个柜子——想碰的时候标「想要」,碰完标「已读 / 已看 / 已听 / 已玩」,慢慢沉淀成你的书架。悬停任意条目看详情,装了 Prisir 翻译插件时,悬停还能顺手译外语标题与简介。</p>
+      <div class="privacy">🔒 本地优先:全部收藏只存在<strong>你的浏览器 localStorage</strong>,不上云、不要账号、不过我们的服务器。换机用「导出 / 导入」手动搬运。</div>
+    </section>
+
+    <div class="toolbar">
+      <span class="chip copper"><strong id="cntTotal">0</strong> 条收藏</span>
+      <span class="chip" id="cntDoneChip"><strong id="cntDone">0</strong> 已完成</span>
+      <div class="seg" role="tablist" aria-label="视图">
+        <button type="button" class="fbtn active" data-tpl="bookcase">书架</button>
+        <button type="button" class="fbtn" data-tpl="wall">海报墙</button>
+        <button type="button" class="fbtn" data-tpl="list">清单</button>
+      </div>
+      <div class="spacer"></div>
+      <input class="q" id="q" placeholder="搜标题 / 作者 / 简介…" />
+      <button type="button" class="btn accent" id="btnAdd">＋ 加入收藏</button>
+      <button type="button" class="btn" id="btnExport">导出</button>
+      <button type="button" class="btn" id="btnImport">导入</button>
+      <input type="file" id="fileImport" accept="application/json" />
+    </div>
+
+    <div class="addform" id="addForm">
+      <div class="row">
+        <div class="field grow"><label>标题 *</label><input id="fTitle" placeholder="如 嫌疑人X的献身" /></div>
+        <div class="field"><label>类型</label>
+          <select id="fType"><option value="book">书</option><option value="movie">影视</option><option value="anime">动漫</option><option value="variety">综艺</option><option value="music">音乐</option><option value="game">游戏</option></select>
+        </div>
+        <div class="field"><label>状态</label>
+          <select id="fStatus"><option value="wish">想要</option><option value="done">已完成</option></select>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field"><label>作者 / 主创</label><input id="fAuthor" placeholder="可空" /></div>
+        <div class="field"><label>年份</label><input id="fYear" placeholder="可空" style="width:6rem" /></div>
+        <div class="field grow"><label>链接</label><input id="fUrl" placeholder="可空,https://…" /></div>
+      </div>
+      <div class="row">
+        <div class="field grow"><label>简介</label><textarea id="fDesc" placeholder="可空,一两句介绍"></textarea></div>
+      </div>
+      <div class="row">
+        <div class="field grow"><label>我的笔记</label><textarea id="fNote" placeholder="可空,你的读后感 / 想看的理由"></textarea></div>
+      </div>
+      <div class="row" style="align-items:center">
+        <label style="display:flex;align-items:center;gap:.4rem;text-transform:none;letter-spacing:0;font-size:.84rem;color:var(--ink);cursor:pointer;margin:0">
+          <input type="checkbox" id="fPoster" checked style="width:auto;accent-color:var(--copper)" /> 自动搜集海报
+        </label>
+        <span id="posterHint" style="font-size:.74rem;color:var(--muted)">(需已在浏览器配置模型 KEY,由插件代为搜图挑选;未配置则跳过)</span>
+      </div>
+      <div class="actions">
+        <button type="button" class="btn accent" id="btnSave">保存</button>
+        <button type="button" class="btn" id="btnCancel">取消</button>
+      </div>
+    </div>
+
+    <div id="shelf"></div>
+    <div class="empty hidden" id="empty">
+      <div class="big">📚</div>
+      <div>柜子还是空的。点右上角「＋ 加入收藏」,把第一本想读的书放进来。</div>
+    </div>
+
+    <footer>
+      <p><strong style="color:var(--paper);font-weight:500">Prisir 内容柜</strong> — 浏览器内嵌收藏:纯静态、零后端、本地优先。数据存在 <code>localStorage['babelspan-shelf-v1']</code>,与 babelspan 站内容柜同格式,可互相导出导入搬运。</p>
+      <p>视图模板:书架(书脊)/ 海报墙(悬停出详情)/ 清单(表格)。导出为 JSON,导入自动合并去重(同标题+作者视为同一条)。装了 Prisir 翻译插件时,可复用你已配置的模型 KEY 自动搜集海报。</p>
+    </footer>
+  </div>
+
+  <script>
+    "use strict";
+    const LS_KEY = "babelspan-shelf-v1";
+    const TYPES = { book:{label:"书",emoji:"📖"}, movie:{label:"影视",emoji:"🎬"}, anime:{label:"动漫",emoji:"🎞️"}, variety:{label:"综艺",emoji:"📺"}, music:{label:"音乐",emoji:"🎵"}, game:{label:"游戏",emoji:"🎮"} };
+    // 书架书脊配色(按类型打底,标题散列微调)
+    const SPINE_BASE = { book:["#e09a55","#c9803f"], movie:["#3d9b8f","#2f7f75"], anime:["#a4689e","#8a4f84"], variety:["#c4a35a","#a9873f"], music:["#5b8fc4","#4a74a5"], game:["#7fb069","#659552"] };
+    let items = load();
+    let tpl = "bookcase";
+    let query = "";
+
+    function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+    function uid(){ return "it_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2,7); }
+    function load(){
+      try { const raw = localStorage.getItem(LS_KEY); const arr = raw ? JSON.parse(raw) : null;
+        return Array.isArray(arr) ? arr : []; } catch(e){ return []; }
+    }
+    function save(){ try { localStorage.setItem(LS_KEY, JSON.stringify(items)); } catch(e){ alert("保存失败:"+e.message); } }
+
+    function filtered(){
+      const q = query.toLowerCase();
+      return items.filter(it => !q || `${it.title} ${it.author||""} ${it.desc||""} ${it.note||""}`.toLowerCase().includes(q));
+    }
+    function counts(){
+      document.getElementById("cntTotal").textContent = items.length;
+      document.getElementById("cntDone").textContent = items.filter(i=>i.status==="done").length;
+    }
+    function statusBadge(it){
+      return it.status==="done" ? '<span class="badge-done">已完成</span>' : '<span class="badge-wish">想要</span>';
+    }
+
+    // ---------- 海报搜集(经 Prisir 插件联动,复用你配置的模型 KEY) ----------
+    // 联动:插件在 babelspan 页注入 content script,内嵌一座桥(window.postMessage ↔ chrome.runtime)。
+    // 页面 main world 发 {__ctShelf:'req', kind:'shelf-poster', …};桥转内部消息给 background;
+    // background 读用户已存 chrome.storage.local 的 baseURL/apiKey/visionModel,抓国内可达候选图(百度图片),
+    // 用多模态模型挑出最像「该作品海报/封面」的一张,回 {ok,url} 或 {ok:false,needConfig}。
+    // 未装插件 / 未配 KEY → 收不到响应或 needConfig,页面降级:不显示海报(emoji 兜底)+ 提示去配置。
+    let _bridgeReady = null; // null=未探测, true/false=结果
+    let _reqSeq = 0;
+    const _pending = {};
+    window.addEventListener('message', (ev) => {
+      if (ev.source !== window) return;
+      const d = ev.data;
+      if (!d || d.__ctShelf !== 'res') return;
+      const p = _pending[d.id]; if (!p) return;
+      delete _pending[d.id]; p(d.resp);
+    });
+    function bridgeReq(kind, payload, timeoutMs) {
+      return new Promise((resolve) => {
+        const id = 'r' + (++_reqSeq) + '_' + Date.now();
+        let settled = false;
+        const finish = (v) => { if (!settled){ settled = true; resolve(v); } };
+        _pending[id] = (resp) => finish(resp);
+        try { window.postMessage(Object.assign({ __ctShelf: 'req', id, kind }, payload || {}), '*'); }
+        catch (e) { delete _pending[id]; return finish(null); }
+        setTimeout(() => { if (_pending[id]){ delete _pending[id]; finish(null); } }, timeoutMs || 15000);
+      });
+    }
+    async function detectBridge() {
+      if (_bridgeReady !== null) return _bridgeReady;
+      const r = await bridgeReq('shelf-ping', {}, 2000);
+      _bridgeReady = !!(r && r.ok);
+      return _bridgeReady;
+    }
+    function posterNeedConfig() {
+      const h = document.getElementById('posterHint');
+      if (h) h.innerHTML = '(未检测到插件或模型 KEY:装 Prisir 翻译插件并配置一次,本站即自动复用搜海报)';
+    }
+    // 取一张海报:skip = 跳过前 N 张(用于「换一张」)。回 url 或 null。
+    async function fetchPoster(it, skip) {
+      const r = await bridgeReq('shelf-poster', { title: it.title, author: it.author || '', ctype: it.type, skip: skip || 0 }, 60000);
+      if (!r) { posterNeedConfig(); return null; }
+      if (r.needConfig) { posterNeedConfig(); return null; }
+      if (r.ok && r.url) {
+        if (Array.isArray(r.candidates) && r.candidates.length) it._pcands = r.candidates; // 缓存整批,换一张秒取
+        return r.url;
+      }
+      return null;
+    }
+    // 给单条搜/换海报:优先用缓存候选(秒换),没有才调插件。完成后存 + 重渲。
+    async function ensurePoster(it, skip) {
+      skip = skip || 0;
+      if (Array.isArray(it._pcands) && it._pcands.length) {
+        const url = it._pcands[skip % it._pcands.length];
+        it.poster = url; it._pskip = skip; save(); render();
+        return url;
+      }
+      const url = await fetchPoster(it, skip);
+      if (url) { it.poster = url; it._pskip = skip; save(); render(); }
+      return url;
+    }
+
+    // ---------- 渲染入口 ----------
+    function render(){
+      counts();
+      const box = document.getElementById("shelf");
+      const list = filtered();
+      document.getElementById("empty").classList.toggle("hidden", list.length>0 || items.length>0);
+      if (tpl==="wall") box.innerHTML = wallHtml(list);
+      else if (tpl==="list") box.innerHTML = listHtml(list);
+      else box.innerHTML = bookcaseHtml(list);
+    }
+
+    // ---------- 模板一:书架(书脊,按类型分层) ----------
+    function spineColor(it){
+      const base = SPINE_BASE[it.type] || SPINE_BASE.book;
+      let h=0; for (const ch of it.title) h=(h*31+ch.charCodeAt(0))>>>0;
+      return base[h % base.length];
+    }
+    function bookcaseHtml(list){
+      if (!list.length) return "";
+      const groups = {};
+      for (const it of list){ (groups[it.type]=groups[it.type]||[]).push(it); }
+      const order = ["book","movie","anime","variety","music","game"];
+      return '<div class="shelf-bookcase">' + order.filter(t=>groups[t]).map(t=>{
+        const spines = groups[t].map(it=>{
+          const h = Math.min(9, 4.2 + (it.title.length*0.14)).toFixed(2);
+          return `<div class="spine" data-id="${it.id}" tabindex="0" style="height:${h}rem;background:${spineColor(it)}">
+            <span class="st">${it.status==="done"?"✓":"·"}</span>${esc(it.title)}</div>`;
+        }).join("");
+        return `<div class="plank"><p class="plank-title">${TYPES[t].emoji} ${TYPES[t].label} · ${groups[t].length}</p><div class="spines">${spines}</div></div>`;
+      }).join("") + "</div>";
+    }
+
+    // ---------- 模板二:海报墙(悬停出详情 + 翻译联动) ----------
+    function wallHtml(list){
+      if (!list.length) return "";
+      return '<div class="shelf-wall">' + list.map(it=>{
+        const cover = it.poster
+          ? `<img class="cover-img" src="${esc(it.poster)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()" /><div class="cover-shade"></div>`
+          : `<div class="cover-emoji">${TYPES[it.type]?TYPES[it.type].emoji:"📦"}</div>`;
+        return `
+        <div class="card" data-id="${it.id}" tabindex="0" style="background:linear-gradient(160deg, ${spineColor(it)}33, #161b21)">
+          ${cover}
+          <div class="ct" data-translate="title">${esc(it.title)}</div>
+          <div class="cst">${TYPES[it.type]?TYPES[it.type].label:""} · ${statusBadge(it)}</div>
+          <div class="pop">
+            <div class="pt" data-translate="title">${esc(it.title)}</div>
+            <div class="pmeta">${TYPES[it.type]?TYPES[it.type].label:""}${it.author?(" · "+esc(it.author)):""}${it.year?(" · "+esc(it.year)):""} · ${it.status==="done"?"已完成":"想要"}</div>
+            ${it.desc?`<div class="pdesc" data-translate="desc">${esc(it.desc)}</div>`:""}
+            ${it.note?`<div class="pnote" data-translate="note">“${esc(it.note)}”</div>`:""}
+            <div class="pacts">
+              ${it.url?`<a class="mini" href="${esc(it.url)}" target="_blank" rel="noopener">打开 ↗</a>`:""}
+              <button type="button" class="mini" data-act="poster">🔄 换一张海报</button>
+              <button type="button" class="mini ${it.status==="done"?"done":""}" data-act="toggle">${it.status==="done"?"↺ 标回想要":"✓ 标已完成"}</button>
+              <button type="button" class="mini del" data-act="del">删除</button>
+            </div>
+          </div>
+        </div>`;}).join("") + "</div>";
+    }
+
+    // ---------- 模板三:清单(表格) ----------
+    function listHtml(list){
+      if (!list.length) return "";
+      return `<table class="shelf-list"><thead><tr>
+          <th>标题</th><th>类型</th><th>作者/主创</th><th>年</th><th>状态</th><th>操作</th>
+        </tr></thead><tbody>` + list.map(it=>`
+        <tr data-id="${it.id}">
+          <td class="lt" data-translate="title">${esc(it.title)}
+            ${it.desc?`<div class="ld" data-translate="desc">${esc(it.desc)}</div>`:""}
+            ${it.note?`<div class="ld" data-translate="note" style="font-style:italic">“${esc(it.note)}”</div>`:""}
+            ${it.url?`<div class="ld"><a href="${esc(it.url)}" target="_blank" rel="noopener">打开 ↗</a></div>`:""}
+          </td>
+          <td>${TYPES[it.type]?TYPES[it.type].label:""}</td>
+          <td>${esc(it.author||"—")}</td>
+          <td>${esc(it.year||"—")}</td>
+          <td>${statusBadge(it)}</td>
+          <td>
+            <button type="button" class="mini" data-act="toggle">${it.status==="done"?"↺ 回看":"✓ 已读/看"}</button>
+            <button type="button" class="mini del" data-act="del">删除</button>
+          </td>
+        </tr>`).join("") + "</tbody></table>";
+    }
+
+    // ---------- 交互:切换状态 / 删除 / 换海报(事件代理) ----------
+    document.getElementById("shelf").addEventListener("click", async e=>{
+      const btn = e.target.closest("[data-act]"); if (!btn) return;
+      const host = e.target.closest("[data-id]"); if (!host) return;
+      const id = host.dataset.id; const it = items.find(x=>x.id===id); if (!it) return;
+      if (btn.dataset.act==="toggle"){ it.status = it.status==="done"?"wish":"done"; save(); render(); }
+      else if (btn.dataset.act==="del"){ if (confirm(`删除「${it.title}」?`)){ items = items.filter(x=>x.id!==id); save(); render(); } }
+      else if (btn.dataset.act==="poster"){
+        btn.disabled = true; const old = btn.textContent; btn.textContent = "搜图中…";
+        const next = ((it._pskip || 0) + 1);
+        await ensurePoster(it, next);
+        btn.disabled = false; btn.textContent = old;
+      }
+    });
+    // 书架书脊 hover → 也给出详情(轻提示:title 属性)
+    document.getElementById("shelf").addEventListener("mouseover", e=>{
+      const sp = e.target.closest(".spine"); if (!sp || sp.dataset.tipped) return;
+      const it = items.find(x=>x.id===sp.dataset.id); if (!it) return;
+      sp.title = `${TYPES[it.type]?TYPES[it.type].label:""}${it.author?(" · "+it.author):""}${it.year?(" · "+it.year):""}\n${it.status==="done"?"已完成":"想要"}${it.desc?("\n"+it.desc):""}`;
+      sp.dataset.tipped = "1";
+    });
+
+    // ---------- 视图切换 ----------
+    document.querySelectorAll("[data-tpl]").forEach(b=>b.addEventListener("click", ()=>{
+      tpl = b.dataset.tpl;
+      document.querySelectorAll("[data-tpl]").forEach(x=>x.classList.toggle("active", x===b));
+      render();
+    }));
+    document.getElementById("q").addEventListener("input", e=>{ query=e.target.value.trim(); render(); });
+
+    // ---------- 添加 ----------
+    const addForm = document.getElementById("addForm");
+    document.getElementById("btnAdd").addEventListener("click", ()=>{ addForm.classList.toggle("open"); document.getElementById("fTitle").focus(); });
+    document.getElementById("btnCancel").addEventListener("click", ()=>{ addForm.classList.remove("open"); });
+    document.getElementById("btnSave").addEventListener("click", ()=>{
+      const title = document.getElementById("fTitle").value.trim();
+      if (!title){ alert("标题必填"); return; }
+      const it = {
+        id: uid(), title,
+        type: document.getElementById("fType").value,
+        status: document.getElementById("fStatus").value,
+        author: document.getElementById("fAuthor").value.trim(),
+        year: document.getElementById("fYear").value.trim(),
+        url: document.getElementById("fUrl").value.trim(),
+        desc: document.getElementById("fDesc").value.trim(),
+        note: document.getElementById("fNote").value.trim(),
+        addedAt: new Date().toISOString().slice(0,10)
+      };
+      items.unshift(it);
+      save(); render();
+      ["fTitle","fAuthor","fYear","fUrl","fDesc","fNote"].forEach(id=>document.getElementById(id).value="");
+      addForm.classList.remove("open");
+      // 勾选「自动搜集海报」→ 经插件联动搜图(异步,不阻塞保存)
+      if (document.getElementById("fPoster").checked) {
+        detectBridge().then((ok) => { if (ok) ensurePoster(it, 0); else posterNeedConfig(); });
+      }
+    });
+
+    // ---------- 导出 / 导入 ----------
+    document.getElementById("btnExport").addEventListener("click", ()=>{
+      if (!items.length){ alert("还没有收藏可导出"); return; }
+      const blob = new Blob([JSON.stringify({app:"babelspan-shelf",version:1,exportedAt:new Date().toISOString(),items}, null, 2)], {type:"application/json"});
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "babelspan-shelf-" + new Date().toISOString().slice(0,10) + ".json";
+      a.click(); URL.revokeObjectURL(a.href);
+    });
+    document.getElementById("btnImport").addEventListener("click", ()=>document.getElementById("fileImport").click());
+    document.getElementById("fileImport").addEventListener("change", e=>{
+      const f = e.target.files[0]; if (!f) return;
+      const rd = new FileReader();
+      rd.onload = ()=>{
+        try{
+          const data = JSON.parse(rd.result);
+          const arr = Array.isArray(data) ? data : (data && data.items) || [];
+          if (!Array.isArray(arr)) throw new Error("不是有效的收藏 JSON");
+          const key = it => `${(it.title||"").toLowerCase()}|${(it.author||"").toLowerCase()}`;
+          const seen = new Set(items.map(key));
+          let added = 0;
+          for (const raw of arr){
+            if (!raw || !raw.title) continue;
+            if (seen.has(key(raw))) continue; // 去重
+            seen.add(key(raw));
+            items.unshift({
+              id: raw.id || uid(), title: String(raw.title),
+              type: TYPES[raw.type] ? raw.type : "book",
+              status: raw.status==="done" ? "done" : "wish",
+              author: raw.author||"", year: raw.year||"", url: raw.url||"",
+              desc: raw.desc||"", note: raw.note||"", addedAt: raw.addedAt || new Date().toISOString().slice(0,10)
+            });
+            added++;
+          }
+          save(); render();
+          alert(`导入完成:新增 ${added} 条(重复已自动跳过)。`);
+        }catch(err){ alert("导入失败:"+err.message); }
+        e.target.value = "";
+      };
+      rd.readAsText(f);
+    });
+
+    render();
+  </script>
+  <!-- 浏览器内嵌版:已剥 sendBeacon('/api/track') 站内统计(内嵌无此后端,且本地优先不上报) -->
+</body>
+</html>

@@ -1,0 +1,63 @@
+// Prisir 自更新 Mojo 接口(updater 契约,2026-08-14)
+//
+// 上游:prisir-green-edition-trust-root-2026-08-14.md §2(自更新)+ §7 拍板(默认档=仅提醒)。
+// 定位:绿色版的「杀毒软件式」应用内自更新。不用 Chrome 的 Google Update(绑 Google 系统服务);
+//       走「签名单一事实源 + 版本目录原子切换 + 可回滚」。
+// 信任根:与管家网络/身份层同源——版本清单与新包都经我们 Ed25519 签名,客户端只信我们公钥
+//         (认指纹防假冒的家);验签是铁律。
+//
+// 红线(贯穿):
+//   - 验签铁律:任何更新包/清单必须经 Ed25519 验签 + SHA-256 哈希校验,验不过不落地。
+//   - 默认仅提醒(2026-08-14 拍板):发现新版默认只通知,不自动下载/安装;用户可选「自动」档。
+//   - 绿色版友好:不动注册表;版本目录并存,启动器原子切换;旧版保留可回滚。
+//   - 可关停:设置里可关自更新(仅手动);默认策略明确告知。
+//   - 不强制:更新永不由服务器强制推送执行;应用/回滚都要用户确认(L1)。
+
+module prisir.updater.mojom;
+
+// ── 版本清单(我们签名发布) ─────────────────────────────────────────────── //
+struct VersionManifest {
+  string version;          // 新版本号(如 "0.2.0")
+  string channel;          // "stable" | "beta"
+  string download_url;     // 新包下载地址(全量或差分)
+  string sha256;           // 新包哈希(校验用)
+  int64 size_bytes;        // 包大小
+  string release_notes;    // 更新说明(给用户看,纯文本)
+  string min_version;      // 可从此版本及以上升级(差分用;空=全量)
+  string sig;              // 我们对 hash(version+url+sha256) 的 Ed25519 签名(b64)
+  string published_at;     // ISO8601
+};
+
+// ── 更新状态 ───────────────────────────────────────────────────────────── //
+struct UpdateState {
+  string current_version;  // 当前运行版本
+  string status;           // "idle"|"available"|"downloading"|"ready"|"applying"|"error"
+  string available_version;// 有新版时的新版本号(status=available/ready)
+  int32 progress_pct;      // 下载进度(0-100,status=downloading)
+  string error;            // 失败原因(脱敏)
+  bool can_rollback;       // 是否有旧版可回滚
+};
+
+interface Updater {
+  // ── 查询(只读) ──
+  // 检查更新:拉版本清单 + 验签(认我们公钥)+ 比较版本。默认档=仅提醒,故只置 available,不自动下。
+  CheckUpdate() => (bool ok, UpdateState state, VersionManifest? manifest);
+  // 当前更新状态。
+  GetState() => (UpdateState state);
+
+  // ── 下载/应用/回滚(用户确认驱动) ──
+  // 下载新包(验签 + 哈希校验)。用户点「下载」或自动档触发。差分优先(min_version 匹配则下差分包)。
+  DownloadUpdate() => (bool ok, UpdateState state);
+  // 应用更新(L1 确认卡后调):落地 versions/<ver>/,启动器原子切换;下次启动生效。
+  // 红线:应用前再验一次签;旧版目录保留。
+  ApplyUpdate() => (bool ok, UpdateState state);
+  // 回滚到上一版本(L1 确认):启动器指回旧版目录。
+  Rollback() => (bool ok, UpdateState state);
+
+  // ── 设置 ──
+  // 更新档:"notify"(默认,仅提醒)| "auto"(自动下载+提醒应用)| "off"(关闭,仅手动)。
+  SetChannel(string mode) => (bool ok);
+  GetChannel() => (string mode);
+  // 返回我们用于验签的公钥指纹(供页面核对,防假冒发版)。
+  GetSignerFingerprint() => (string signer_fp);
+};

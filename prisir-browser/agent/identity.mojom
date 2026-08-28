@@ -1,0 +1,122 @@
+// Prisir 身份层 Mojo 接口(identity 契约,2026-08-14)
+//
+// 上游:Architecture/agent-first-os-privacy-scheme-v02 §P1「密钥对即身份」(已拍板);
+//       prisir-native-dividend-automation-2026-08-14.md §6(N1 账号/密钥独立 + N2 agent 身份 OS);
+//       mixin.mojom(密信身份,同源红线);m2-storage-migration-plan(os_crypt 凭证红线)。
+// 定位:浏览器本体的「身份根 + 派生子密钥 + agent 身份宿主」契约。
+//       把「Google 账号即身份」替换为「密钥对即身份」——身份锚在本地 TPM/平台认证器,
+//       不连任何中心账号。这是 N1(账号/密钥独立化)与 N2(agent 的 OS)的共同地基。
+//
+// 红线(贯穿,与密信六红线/M2 同源,已拍板):
+//   - 私钥不出本体/TPM:FIDO2 根私钥永在平台认证器(Windows Hello/TPM);派生子密钥
+//     由原生层代签/代解,页面 JS / 插件 / LLM 一律拿不到任何私钥明文。
+//   - 本地优先、默认无账号:身份 = 本地密钥对,不要邮箱/手机号/中心服务器。
+//     身份创建不联网、不注册。
+//   - os_crypt 边界诚实:派生子密钥落盘经 os_crypt;Win 非交互会话 DPAPI 降级,不夸大。
+//   - 派生单向:根签子、子可重派生;反向不可(子密钥推不出根)。
+//   - 同步可选 opt-in:多端身份同步走自建 E2E(SimpleX smp.babelspan.com 先例),默认关。
+//   - agent 身份是「代理」非独立:agent 子密钥挂在用户身份根下,用户可吊销。
+//   - 不锁单一硬件(2026-08-14 拍板):身份根 ≠ 某台电脑的 TPM。换机/换配件/重装不丢身份——
+//     ① 主锚是一份「主身份种子」(主 Ed25519 私钥,os_crypt 落盘,可导出成恢复短语用户自持);
+//     ② 平台认证器(Windows Hello/TPM)只是「本地解锁器」——用 prf 包住主种子,刷个脸就能用,
+//        但根不靠 TPM 存;③ 支持注册多个认证器 + 恢复短语,任一可解开主种子。
+//     即:TPM 是「方便的锁」,不是「身份本身」——身份属于用户,可携带、可恢复、不被配件绑架。
+
+module prisir.identity.mojom;
+
+// ── 身份根(主身份种子,不锁单一硬件) ───────────────────────────────────── //
+// 身份根的公开信息。主私钥 os_crypt 落盘(可导出恢复短语);平台认证器只作本地解锁器。
+struct IdentityRoot {
+  string root_fingerprint;  // 主身份公钥指纹(b64url,用户可核对的「我是谁」,跨设备不变)
+  string display_name;      // 用户给身份起的名(如「我的 Prisir 身份」)
+  string created_at;        // ISO8601
+  array<string> authenticators;  // 已注册的本地解锁器("platform:windows-hello" / "cross-platform:security-key"),可多个
+  bool prf_supported;       // 当前认证器是否支持 prf 派生(决定能否派生子密钥)
+};
+
+// ── 派生子密钥(挂在根下的用途密钥) ─────────────────────────────────────── //
+// 每个用途一个子密钥:密信签名 / capability E2E / agent 代理 / at-rest 口令源。
+// 子密钥公钥公开;私钥由原生层持有(代签),不经 Mojo 暴露。
+struct DerivedKey {
+  string key_id;         // 子密钥 id(如 "mixin-sign" / "agent-oiagent" / "at-rest")
+  string kind;           // "ed25519-sign" | "x25519-kem" | "agent-proxy" | "sqlcipher-source"
+  string pub_key;        // 子密钥公钥(b64)
+  string fingerprint;    // 子密钥公钥指纹(b64url16)
+  string created_at;     // ISO8601
+  bool revoked;          // 是否已被用户吊销(吊销后原生层拒绝再用它代签)
+};
+
+// ── agent 身份(代理身份,N2 核心) ──────────────────────────────────────── //
+// agent 不是独立身份,是用户身份根下的「代理子密钥」+ 外部可达地址(邮箱/社交)。
+// 用户在语义上拥有 agent;agent 以用户代理名义对外(发信/发帖/收 token 券)。
+struct AgentIdentity {
+  string agent_id;        // agent 标识(如 "oiagent")
+  string key_id;          // 其代理子密钥 id(对应 DerivedKey.key_id, kind="agent-proxy")
+  string pub_key;         // agent 公钥(b64,对外公布,他人可验签)
+  string fingerprint;     // agent 公钥指纹(他人核对「这是不是你的 agent」)
+  string mailbox;         // agent 专属邮箱(如 oiagent@agentmail.to,可空)
+  string social_handle;   // agent 社交身份(如 mastodon handle,可空)
+  bool active;            // 是否启用(用户可停用一个 agent 的对外能力)
+};
+
+// ── 签名/验证结果 ─────────────────────────────────────────────────────── //
+struct Signature {
+  array<uint8> sig;       // 签名字节(Ed25519 64B / 其他按 kind)
+  string key_id;          // 用哪个子密钥签的
+  string signer_fp;       // 签名者公钥指纹(验签方核对)
+};
+
+interface Identity {
+  // ── 身份根生命周期 ──
+  // 是否已创建本机身份根。
+  HasIdentityRoot() => (bool has);
+  // 创建身份根:生成主 Ed25519 身份种子(os_crypt 落盘),并用当前平台认证器
+  // (Windows Hello/TPM,prf 扩展)把它「包」起来作本地解锁器。需用户手势(刷脸/PIN)。
+  // 主私钥不进 TPM(TPM 只是锁),只回公开信息。
+  CreateIdentityRoot(string display_name) => (bool ok, IdentityRoot? root);
+  // 读身份根公开信息(不含任何私钥)。
+  GetIdentityRoot() => (IdentityRoot? root);
+
+  // ── 可携带/可恢复(不锁单一硬件) ──
+  // 导出恢复短语(BIP39 风格助记词,主种子的可读备份):用户自持,用于换机/换配件恢复。
+  // 高敏:仅在交互会话 + 用户明示确认后返回一次,不落明文日志/审计;页面显示一次后由用户抄下。
+  ExportRecoveryPhrase() => (bool ok, string phrase);
+  // 用恢复短语在新设备/新配件上恢复同一身份根(指纹不变),并把当前认证器注册为新解锁器。
+  RecoverFromPhrase(string phrase, string display_name) => (bool ok, IdentityRoot? root);
+  // 给现有身份根追加一个本地解锁器(第二个认证器/换的新配件)。旧解锁器可吊销。
+  AddAuthenticator() => (bool ok, array<string> authenticators);
+  // 吊销一个本地解锁器(如旧电脑/旧安全密钥不再用)。
+  RemoveAuthenticator(string authenticator) => (bool ok);
+
+  // ── 子密钥派生与代签(私钥不出原生层) ──
+  // 派生一个用途子密钥(经 FIDO2 prf 扩展从根派生;原生层记录派生路径)。
+  // 同 kind+key_id 幂等(已存在则返回现有)。私钥由原生层持有,不返回。
+  DeriveKey(string key_id, string kind) => (bool ok, DerivedKey? key);
+  // 列出所有派生子密钥(公开信息)。
+  ListDerivedKeys() => (array<DerivedKey> keys);
+  // 吊销一个子密钥(用户主动;吊销后原生层拒绝再用它代签/代解)。
+  RevokeKey(string key_id) => (bool ok);
+
+  // 原生代签:用 key_id 对应子密钥的私钥给 data 签名,私钥不出原生层。
+  // (对齐 mixin.mojom 的 SignGroupMessage——页面/LLM 给数据,拿回签名,拿不到私钥。)
+  SignWith(string key_id, array<uint8> data) => (bool ok, Signature? sig);
+  // 验签(公开操作,任何方可调):用公钥指纹对应公钥验 sig 是否签了 data。
+  VerifySignature(string signer_fp, array<uint8> data, array<uint8> sig) => (bool valid);
+
+  // ── agent 身份宿主(N2:agent 的 OS) ──
+  // 注册/更新一个 agent 身份:为其派生 agent-proxy 子密钥 + 绑定邮箱/社交地址。
+  // mailbox/social_handle 可空(后续补);凭证(邮箱 API key 等)不经本接口,
+  // 走 AgentStore os_crypt 通路(M2 红线)。
+  RegisterAgent(string agent_id, string mailbox, string social_handle)
+      => (bool ok, AgentIdentity? agent);
+  // 读 agent 身份(公开信息 + 公钥)。
+  GetAgent(string agent_id) => (AgentIdentity? agent);
+  // 列出全部 agent 身份。
+  ListAgents() => (array<AgentIdentity> agents);
+  // 启用/停用一个 agent 的对外能力(用户控制;停用后其代签/收发被拒)。
+  SetAgentActive(string agent_id, bool active) => (bool ok);
+
+  // agent 代签:agent 以用户代理名义对外签名(如给密信消息/token 券签名)。
+  // 等价 SignWith(agent 的 key_id),但强制校验 agent active 且经用户授权策略。
+  AgentSign(string agent_id, array<uint8> data) => (bool ok, Signature? sig);
+};

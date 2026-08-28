@@ -1,0 +1,91 @@
+// Prisir 密信 Mojo 接口(M-1 契约,2026-08-14 定稿)
+//
+// 上游:handoff/2026-08-14-mixin-into-browser-plan.md §4(已拍板:六红线+四开放全按建议)。
+// 定位:密信(2人私信 + 群聊)浏览器 WebUI(chrome://mixin)的页面↔浏览器契约。
+//
+// 红线(方案 §6,已拍板):
+//   - 私钥不出原生层:2人 SimpleX 身份 / 群聊 Ed25519 私钥只在原生层,页面 JS 拿不到。
+//     签名/解密由原生层代做(代签/代解),页面只拿结果。
+//   - E2E 不降级:2人走 SimpleX(libsimplex FFI),群聊 AES-GCM + X25519。
+//   - 本地优先:消息历史/身份落本地 profile(os_crypt),不上云。
+//   - 诚实口径:不宣称自带 IP 匿名(网络层靠叠加 Tor,另案);防套壳不夸大(FFI 可逆向,只提高门槛)。
+//
+// 架构:2人私信协议栈在原生层(libsimplex.dll FFI);群聊加解密在页面 WebCrypto(suite=2),
+//       仅身份私钥托管原生层代签。
+
+module prisir.mixin.mojom;
+
+// ── 2人私信 ──────────────────────────────────────────────────────────── //
+struct Contact {
+  string contact_id;
+  string display_name;
+  string fingerprint;     // SimpleX 身份指纹(用于核对)
+  bool verified;          // 是否已核对指纹
+};
+
+struct ChatMessage {
+  string id;
+  string contact_id;
+  bool outgoing;          // true=我发的
+  string text;
+  int64 created_at;
+  string kind;            // "text" | "file" | "signal"
+};
+
+struct FileOffer {
+  string file_id;
+  string name;
+  int64 size;
+  string from_contact;
+  bool has_valid_signature; // 签名验证标(✓ 已验证来自 X)
+  string signer;            // 签名者(若已验证)
+};
+
+struct MixinIdentity {
+  string fingerprint;     // SimpleX 身份指纹
+  string display_name;
+};
+
+// ── 群聊(身份托管;加解密在页面 WebCrypto) ────────────────────────────── //
+struct GroupIdentity {
+  string pub_raw;         // Ed25519 公钥(b64)
+  string user_id;         // 公钥指纹(b64url16)
+};
+
+interface MixinStore {
+  // ── 2人私信(原生 FFI 到 libsimplex) ──
+  GetIdentity() => (MixinIdentity id);
+  ListContacts() => (array<Contact> contacts);
+  CreateInvitation(bool incognito) => (string invite_link);
+  AcceptInvitation(string link) => (bool ok, string contact_id);
+  SendMessage(string contact_id, string text) => (bool ok);
+  GetMessages(string contact_id) => (array<ChatMessage> msgs);
+  DeleteContact(string contact_id) => (bool ok);
+
+  // 文件传输(带签名验证标)
+  SendFile(string contact_id, string path, bool sign) => (bool ok);
+  ListInboxFiles() => (array<FileOffer> files);
+  ReceiveFile(string file_id) => (bool ok, string saved_path);
+  VerifyFile(string file_id) => (bool valid, string signer);
+
+  // WebRTC 信令(语音/视频/屏幕共享):经 2人 E2E 通道传 SDP/ICE。
+  // 浏览器原生 getDisplayMedia/RTCPeerConnection 在页面跑,信令走此通道。
+  SendSignal(string contact_id, string payload) => (bool ok);
+
+  // 数据库口令(SQLCipher at-rest,本地加密)
+  SetDbPassword(string password) => (bool ok);
+  UnlockDb(string password) => (bool ok);
+  DbLockStatus() => (bool locked, bool has_password);
+
+  // ── 群聊身份托管(私钥不出原生层,页面代签) ──
+  GetGroupIdentity() => (GroupIdentity id);
+  SignGroupMessage(array<uint8> data) => (array<uint8> sig);  // 原生代签,返回 Ed25519 签名
+};
+
+// 事件推送:原生层 → 页面(收到消息/文件/信令/群聊事件)
+interface MixinEvents {
+  OnMessage(ChatMessage msg);
+  OnFileOffer(FileOffer offer);
+  OnSignal(string contact_id, string payload);  // WebRTC 信令到达
+  OnContactReady(string contact_id);            // 邀请被接受/联系人上线
+};
