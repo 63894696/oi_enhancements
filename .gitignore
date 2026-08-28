@@ -105,6 +105,7 @@ installer/_dev_assets/
 # 体积大且可重生成,不进仓库
 installer/_staging/
 installer/_staging2/
+installer/_dist/
 # V13' 旧 staging,保留防止误 push
 installer/_stale_*/
 
