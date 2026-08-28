@@ -95,29 +95,59 @@ def stepfun_llm(**overrides: Any) -> OpenAICompatLLM:
 
 
 class OllamaLocalLLMAdapter(CloudAdapter):
-    """本地 Ollama 兜底(F-5:所有云 LLM 失败 → 本地;loopback http 例外)"""
+    """本地 llama.cpp server 兜底(F-5:所有云 LLM 失败 → 本地;loopback http 例外)
+
+    2026-07-12 替换: Ollama → llama.cpp mtmd (MiniCPM-V-4.6 Q4_K_M)
+    - 本地: 127.0.0.1:8099 (本地 llama_local_server.py)
+    - VPS:  https://llama.dreamproject.qzz.io (nginx 反代 127.0.0.1:8099)
+    - API 兼容 OpenAI /v1/chat/completions 格式
+    - 推理速度 ~18 tok/s (CPU, 2 threads)
+    - 无 VPN 时用 VPS 域名;有 VPN 时可切本地
+
+    2026-08-02 注意: 类名 `OllamaLocalLLMAdapter` 是历史命名,实际指向 llama-server
+    (MiniCPM-V),非 Ollama。新代码请用 factory.py 中注册的 display name "llama-server"。
+    后续可考虑重命名为 `LlamaServerAdapter`(破坏性变更,需同步更新 import)。
+    """
 
     def __init__(self, config: Dict[str, Any] | None = None):
         cfg = dict(config or {})
-        cfg.setdefault("name", "ollama-local")
-        base = cfg.get("base_url", "http://127.0.0.1:11434").rstrip("/")
-        cfg.setdefault("endpoint", f"{base}/api/chat")
+        cfg.setdefault("name", "llama-server-local")
+        # 2026-07-12: 默认 VPS 公网域名 (无 VPN 也能用)
+        # 有 VPN 时可配置 base_url="http://127.0.0.1:8099" 走本地
+        base = cfg.get("base_url", "https://llama.dreamproject.qzz.io").rstrip("/")
+        cfg.setdefault("endpoint", f"{base}/v1/chat/completions")
         super().__init__(cfg)
-        self.model = cfg.get("model", "qwen2.5:7b-instruct-q4_K_M")
+        self.model = cfg.get("model", "MiniCPM-V-4.6")
 
     async def generate(self, prompt: Messages, **kwargs: Any) -> str:
         import httpx
 
-        payload = {"model": self.model, "messages": _as_messages(prompt), "stream": False}
+        payload = {
+            "model": self.model,
+            "messages": _as_messages(prompt),
+            "stream": False,
+            "max_tokens": kwargs.get("max_tokens", 512),
+            "temperature": kwargs.get("temperature", 0.7),
+        }
         async with httpx.AsyncClient(timeout=self.config.get("timeout_s", 120)) as client:
             r = await client.post(self.endpoint, json=payload)
             r.raise_for_status()
             data = r.json()
-        # 2026-07-03 H-4 修法:本地兜底空字符串必须抛错(让 CloudRouter 降级)
-        # 之前 r.json().get("message", {}).get("content", "") 空结果被当成功
-        text = (data.get("message") or {}).get("content", "")
-        if not text:
+        # 2026-08-02 修法: MiniCPM-V 的回复有时在 content,有时在 reasoning_content
+        # VPS llama-server 与 llama_local_server.py 格式已统一,都把 reasoning_content
+        # 放在 message 内,无需两层 fallback。统一逻辑:先 content,空则 reasoning_content。
+        try:
+            choices = data.get("choices", [])
+            if not choices:
+                raise RuntimeError(f"{self.name} 空 choices,响应:{str(data)[:200]}")
+            msg = choices[0].get("message", {})
+            text = msg.get("content", "") or msg.get("reasoning_content", "")
+        except (KeyError, IndexError, TypeError) as e:
             raise RuntimeError(
-                f"本地 Ollama LLM 空结果(content=''),响应:{str(data)[:200]}"
+                f"{self.name} 响应解析失败:{str(data)[:200]}"
+            ) from e
+        if not text or not text.strip():
+            raise RuntimeError(
+                f"{self.name} 空结果(content='', reasoning_content=''),响应:{str(data)[:200]}"
             )
         return text

@@ -2,7 +2,7 @@
 
 token 由整合包安装时随机生成,写两处:
   - 扩展 chrome.storage.local(agentToken)
-  - coworker 本地配置文件(本模块读的这份)
+  - PrisirWork 本地配置文件(本模块读的这份)
 
 token 绝不进 LLM、不写日志。文件权限尽量收紧(仅当前用户可读)。
 """
@@ -15,16 +15,16 @@ import stat
 import sys
 from pathlib import Path
 
-# 默认端口(安装时可改)。coworker §3:如 12450。
+# 默认端口(安装时可改)。PrisirWork §3:如 12450。
 DEFAULT_PORT = 12450
 HOST = "127.0.0.1"  # 红线①:只监听回环,任何非 127.0.0.1 绑定都拒绝。
 
-# 配置文件默认路径:~/.oiagent/coworker.json(可用 OI_COWORKER_CONFIG 覆盖,便于测试)。
+# 配置文件默认路径:~/.prisir/work.json(可用 PRISIR_WORK_CONFIG 覆盖,便于测试)。
 def config_path() -> Path:
-    env = os.environ.get("OI_COWORKER_CONFIG")
+    env = os.environ.get("PRISIR_WORK_CONFIG")
     if env:
         return Path(env)
-    return Path.home() / ".oiagent" / "coworker.json"
+    return Path.home() / ".prisir" / "work.json"
 
 
 def _restrict_perms(p: Path) -> None:
@@ -58,7 +58,7 @@ def load_or_create_token() -> str:
 
 
 def get_port() -> int:
-    env = os.environ.get("OI_COWORKER_PORT")
+    env = os.environ.get("PRISIR_WORK_PORT")
     if env and env.isdigit():
         return int(env)
     p = config_path()

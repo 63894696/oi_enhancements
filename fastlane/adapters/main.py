@@ -5,7 +5,7 @@
 变化(相对骨架版):
 - /transcribe 接受 {"audio_b64": ...} → 真降级链(豆包→Qwen→SiliconFlow→本地)
   仍兼容旧骨架格式 {"audio_data": [...]}(chunk dict 列表)
-- /generate → LLM 降级链(Qwen-Max→DeepSeek→StepFun→Ollama)
+- /generate → LLM 降级链(Qwen-Max→DeepSeek→StepFun→llama.cpp/MiniCPM-V)
 - 新增 /synthesize → TTS 降级链(Edge→CosyVoice→SAPI)
 - /health 返回三条链的装配报告(哪些 provider 进链、哪些缺 key 被跳过)
 - 2026-07-03 H-2 修法:加 Bearer auth middleware,复用 ghostline 仓 auth_token 机制

@@ -63,6 +63,23 @@ pub extern "C" fn prisir_ime_query(handle: *mut c_void, input: *const c_char) ->
     to_c_string(serde_json::to_string(&arr).unwrap_or_else(|_| "[]".to_string()))
 }
 
+/// 五笔候选查询(wubi86),返回 JSON 数组 [{"word":"...","weight":N},...](调用方须 free_string)
+#[no_mangle]
+pub extern "C" fn prisir_ime_query_wubi(handle: *mut c_void, input: *const c_char) -> *mut c_char {
+    let Some(inp) = cstr(input) else {
+        return std::ptr::null_mut();
+    };
+    let Some(engine) = get(handle) else {
+        return std::ptr::null_mut();
+    };
+    let cands = engine.query_wubi(inp);
+    let arr: Vec<serde_json::Value> = cands
+        .iter()
+        .map(|(w, wt)| serde_json::json!({"word": w, "weight": wt}))
+        .collect();
+    to_c_string(serde_json::to_string(&arr).unwrap_or_else(|_| "[]".to_string()))
+}
+
 /// 整句智能首选,返回拼接整句(无路径返回空串;调用方须 free_string)
 #[no_mangle]
 pub extern "C" fn prisir_ime_smart_sentence(handle: *mut c_void, input: *const c_char) -> *mut c_char {

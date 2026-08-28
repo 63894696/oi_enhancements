@@ -28,11 +28,21 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+# 上下文窗口估算(P0 本地核心·上下文用量):复用壳端零成本 token 估算 + 窗口表。
+# 模块与 localllm 同目录(oi_enhancements),直接 import;失败则用量接口退化(仅消息条数)。
+try:
+    import oiagent_context as _ctx
+except Exception:  # noqa: BLE001
+    _ctx = None
+
 # L3 daemon(阶段 0/1 复用)
 DAEMON_URL = "http://127.0.0.1:18791/"
 # L4 自身监听(默认本地回环;远程接入经 SSH 隧道,不直接绑公网)
 L4_HOST = os.environ.get("L4_HOST", "127.0.0.1")
 L4_PORT = 18800
+# 当前模型(与 aureon-oiagent DEFAULT_MODEL 对齐,用于上下文窗口估算)。
+# daemon 每轮回包也带 model,此处仅作 /api/context_usage 的查询基准。
+L4_MODEL = os.environ.get("L4_MODEL", "claude-opus-4-8")
 
 # ── 访问令牌(远程接入安全边界的第一步)────────────────────────────────
 # 令牌文件默认在 aureon 数据目录;不存在则首次启动自动生成并打印一次。
@@ -125,6 +135,169 @@ def _append_history(session_id: str, role: str, content: Any) -> None:
 # 反馈派生:把 daemon 的 answer/content 转成 L4 结构化反馈
 # ────────────────────────────────────────────────────────────────────── #
 
+# ────────────────────────────────────────────────────────────────────── #
+# 任务回执(医嘱式):任务在别处发起(IME @Agent / 语音)且结果在键盘收起后才出
+# 时,落一条回执;对话壳(前台/启动)拉取渲染成"✅ 已加日程… / ⚠️ 失败…"气泡。
+# 纯本地:JSONL 存 l4_receipts/<sid>.jsonl,GET /api/receipts 消费式拉取(读后清空)。
+# ────────────────────────────────────────────────────────────────────── #
+
+_RECEIPTS_DIR = Path.home() / ".local" / "share" / "aureon" / "l4_receipts"
+_MAX_RECEIPTS = 50
+
+
+def _receipt_file(session_id: str) -> Path:
+    safe = "".join(c for c in session_id if c.isalnum() or c in "-_") or "anon"
+    return _RECEIPTS_DIR / f"{safe}.jsonl"
+
+
+def _write_receipt(session_id: str, status: str, text: str,
+                   request: str = "", did: list[str] | None = None) -> None:
+    """追加一条回执。status: ok | fail | blocked。失败静默(不阻断对话)。"""
+    try:
+        _RECEIPTS_DIR.mkdir(parents=True, exist_ok=True)
+        f = _receipt_file(session_id)
+        # 裁剪:超上限先读尾保留
+        if f.exists():
+            lines = f.read_text(encoding="utf-8").splitlines()
+            if len(lines) >= _MAX_RECEIPTS:
+                f.write_text("\n".join(lines[-(_MAX_RECEIPTS - 1):]) + "\n", encoding="utf-8")
+        rec = {"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "status": status,
+               "text": text, "request": request[:200], "did": (did or [])[:6]}
+        with f.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _read_receipts(session_id: str) -> list[dict[str, Any]]:
+    """消费式拉取:读出后清空文件(已读不再重投)。"""
+    f = _receipt_file(session_id)
+    if not f.exists():
+        return []
+    try:
+        out = [json.loads(ln) for ln in f.read_text(encoding="utf-8").splitlines() if ln.strip()]
+        f.unlink()  # 消费:删文件
+        return out
+    except Exception:  # noqa: BLE001
+        return []
+
+
+# ────────────────────────────────────────────────────────────────────── #
+# P0 本地核心(2026-08-26):多会话列表 / 上下文用量 / estop-cancel
+# 设计:session 管理下沉 l4_web(方案 b),让 adb reverse 离线也能多会话。
+#   - 多会话:历史即 <sid>.jsonl 文件,枚举目录即会话列表;切换=对话壳换 session_id。
+#   - 上下文用量:复用 oiagent_context 零成本 token 估算 + 窗口表,不依赖 daemon。
+#   - estop-cancel:l4_web 是同步等待(无流式事件边界),无法真正中断 daemon 工具链;
+#     故做「客户端放弃等待」(cancel),连接标记可关闭,daemon 结果到达即丢弃,UI 立即解锁。
+#     真正中断工具链(ollama abort / tool 边界)留待后续(需 daemon 流式接口)。
+# ────────────────────────────────────────────────────────────────────── #
+
+
+def _list_sessions() -> list[dict[str, Any]]:
+    """枚举历史文件得会话列表,按最后修改时间倒序(最近活跃在前)。
+
+    title 取该会话首条 user 消息(截 30 字),无则退化为 session_id。
+    """
+    out: list[dict[str, Any]] = []
+    try:
+        if not _HISTORY_DIR.exists():
+            return out
+        files = [f for f in _HISTORY_DIR.glob("*.jsonl") if f.is_file()]
+        files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
+        for f in files:
+            sid = f.stem
+            title = sid
+            n = 0
+            try:
+                for ln in f.read_text(encoding="utf-8").splitlines():
+                    ln = ln.strip()
+                    if not ln:
+                        continue
+                    n += 1
+                    if title == sid:
+                        try:
+                            m = json.loads(ln)
+                            if m.get("role") == "user":
+                                c = m.get("content")
+                                if isinstance(c, list):  # 多模态取 text 块
+                                    c = " ".join(str(b.get("text", "")) for b in c if isinstance(b, dict))
+                                title = (str(c) or sid)[:30] or sid
+                        except Exception:  # noqa: BLE001
+                            pass
+            except Exception:  # noqa: BLE001
+                continue
+            out.append({
+                "id": sid,
+                "title": title,
+                "n": n,
+                "updated": time.strftime("%m-%d %H:%M", time.localtime(f.stat().st_mtime)),
+            })
+    except Exception:  # noqa: BLE001
+        pass
+    return out
+
+
+def _context_usage(session_id: str) -> dict[str, Any]:
+    """当前会话上下文用量(估算)。复用 oiagent_context;缺模块则退化为条数统计。"""
+    hist = _get_history(session_id)
+    if _ctx is None:
+        return {"ok": True, "session_id": session_id, "messages": len(hist),
+                "known": False, "advise": "oiagent_context 模块不可用,仅统计条数"}
+    u = _ctx.usage_for(hist, L4_MODEL)
+    return {
+        "ok": True,
+        "session_id": session_id,
+        "model": L4_MODEL,
+        "messages": len(hist),
+        "used": u["used"],
+        "window": u["window"],
+        "ratio": u["ratio"],
+        "pct": int(round(u["ratio"] * 100)),
+        "near_full": u["near_full"],
+        "known": u["known"],
+        "advise": u.get("advise"),
+    }
+
+
+# estop-cancel:进行中的 /api/chat 连接注册表 {session_id: conn}(读阶段可被 close)
+_CHAT_CONN: dict[str, Any] = {}
+_CHAT_CONN_LOCK = threading.Lock()
+# 等待集:urlopen 阻塞期(连接未建立)的 session,estop 在此期标记取消
+_CHAT_PENDING: set[str] = set()
+_CHAT_PENDING_LOCK = threading.Lock()
+
+
+def _register_conn(session_id: str, conn: Any) -> None:
+    with _CHAT_CONN_LOCK:
+        _CHAT_CONN[session_id] = conn
+
+
+def _unregister_conn(session_id: str, conn: Any) -> None:
+    with _CHAT_CONN_LOCK:
+        if _CHAT_CONN.get(session_id) is conn:
+            _CHAT_CONN.pop(session_id, None)
+
+
+def _cancel_conn(session_id: str) -> bool:
+    """关闭该会话进行中的 daemon 连接 → l4_web 读端抛错 → /api/chat 立即返回。
+
+    这是「客户端放弃等待」(cancel),不真正杀 daemon 工具链(见上注释)。
+    两阶段:读阶段(连接在注册表)→ 直接 close;等待期(连接未建立)→ 移出等待集标记取消。
+    """
+    with _CHAT_CONN_LOCK:
+        conn = _CHAT_CONN.pop(session_id, None)
+    with _CHAT_PENDING_LOCK:
+        was_pending = session_id in _CHAT_PENDING
+        _CHAT_PENDING.discard(session_id)
+    if conn is not None:
+        try:
+            conn.close()
+        except Exception:  # noqa: BLE001
+            pass
+        return True
+    return was_pending
+
+
 def _derive_feedback(resp: dict[str, Any]) -> dict[str, Any]:
     """从 daemon 的 {answer, content, tool_trace, stop_reason, rounds, model} 提取反馈四要素。
 
@@ -167,6 +340,15 @@ def _derive_feedback(resp: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _stopped_feedback(session_id: str) -> dict[str, Any]:
+    """estop-cancel 命中的统一返回:落「已停止」历史 + 结构化反馈。"""
+    _append_history(session_id, "assistant", "(已被用户停止)")
+    return {"ok": True, "feedback": {
+        "did": [], "tool_names": [], "result": "⏹ 已停止(放弃等待后台结果)。",
+        "needs_confirm": False, "followups": ["换个说法", "继续"],
+        "stop_reason": "cancelled", "rounds": None, "model": None}}
+
+
 def _ask_daemon(session_id: str, user_text: str) -> dict[str, Any]:
     """把一轮对话发给 L3 daemon(action=ask),返回结构化反馈。"""
     _append_history(session_id, "user", user_text)
@@ -181,22 +363,74 @@ def _ask_daemon(session_id: str, user_text: str) -> dict[str, Any]:
         DAEMON_URL, data=body, method="POST",
         headers={"Content-Type": "application/json"},
     )
+    conn = None
+    # estop-cancel:urlopen 会阻塞到 daemon 返回首部(可能数十秒,期间连接未建立)。
+    # 故先入「等待集」,让 /api/estop 在等待期就能标记取消;连接建立后升级注册表。
+    with _CHAT_PENDING_LOCK:
+        _CHAT_PENDING.add(session_id)
     try:
-        with urllib.request.urlopen(req, timeout=180) as r:
+        conn = urllib.request.urlopen(req, timeout=180)
+        with _CHAT_PENDING_LOCK:
+            cancelled_early = session_id not in _CHAT_PENDING  # estop 已在等待期触发
+        if cancelled_early:
+            try:
+                conn.close()
+            except Exception:  # noqa: BLE001
+                pass
+            return _stopped_feedback(session_id)
+        _register_conn(session_id, conn)   # 升级:读阶段可被 estop 直接 close
+        with conn as r:
             resp = json.loads(r.read().decode("utf-8"))
+        with _CHAT_CONN_LOCK:
+            cancelled_read = session_id not in _CHAT_CONN      # estop 在读阶段触发
+        if cancelled_read:
+            return _stopped_feedback(session_id)
     except urllib.error.URLError as e:
+        reason = getattr(e, "reason", e)
+        with _CHAT_CONN_LOCK, _CHAT_PENDING_LOCK:
+            was_cancelled = (session_id not in _CHAT_CONN) or (session_id not in _CHAT_PENDING)
+        if was_cancelled:
+            return _stopped_feedback(session_id)
+        _write_receipt(session_id, "fail", f"任务未能执行:连不上引擎({reason})。请确认 daemon 在跑。", user_text)
         return {
             "ok": False,
             "error": f"无法连接 L3 daemon({DAEMON_URL}): {e}",
             "diagnosable": "确认 aureon-oiagent daemon 在跑: GET http://127.0.0.1:18791/health",
         }
+    except Exception as e:  # 读端被 close() 中断等
+        with _CHAT_CONN_LOCK, _CHAT_PENDING_LOCK:
+            was_cancelled = (session_id not in _CHAT_CONN) or (session_id not in _CHAT_PENDING)
+        if was_cancelled:
+            return _stopped_feedback(session_id)
+        _write_receipt(session_id, "fail", f"任务执行中断:{e}", user_text)
+        return {"ok": False, "error": f"daemon 读取异常: {e}"}
+    finally:
+        with _CHAT_PENDING_LOCK:
+            _CHAT_PENDING.discard(session_id)
+        if conn is not None:
+            _unregister_conn(session_id, conn)
 
     if "error" in resp and "answer" not in resp:
+        _write_receipt(session_id, "fail", f"任务未能执行:{resp.get('error')}", user_text)
         return {"ok": False, "error": resp.get("error"), "raw": resp}
 
     fb = _derive_feedback(resp)
     # 把 assistant 答案落进历史(供下一轮上下文)
     _append_history(session_id, "assistant", fb["result"])
+
+    # 回执:任务发起方常不在前台(IME/语音),结果落队列待对话壳拉取
+    status = "blocked" if fb.get("needs_confirm") else ("fail" if fb.get("stop_reason") == "max_rounds" else "ok")
+    head = fb["did"][0] if fb["did"] else ""
+    # 医嘱式简短:结果截 300 字,超出末尾标注(完整回答在对话页)
+    full = fb["result"] or ""
+    snippet = full[:300] + ("…(详情见对话)" if len(full) > 300 else "")
+    if status == "ok":
+        rtext = "✅ 已完成「%s」%s。%s" % (user_text[:40], ("· " + head) if head else "", snippet)
+    elif status == "blocked":
+        rtext = "⚠️ 需要你确认「%s」。%s" % (user_text[:40], snippet)
+    else:
+        rtext = "⚠️ 未完成「%s」(步数耗尽)。%s" % (user_text[:40], snippet)
+    _write_receipt(session_id, status, rtext, user_text, fb["did"])
     return {"ok": True, "feedback": fb}
 
 
@@ -260,7 +494,7 @@ _PAGE = r"""<!DOCTYPE html>
 <div id="wrap">
   <header>
     <span class="dot" id="livedot"></span>
-    <h1>OIagent 对话</h1>
+    <h1>PrisirAI</h1>
     <span class="st" id="status">连接中…</span>
   </header>
   <div id="chat"></div>
@@ -476,12 +710,56 @@ class L4Handler(BaseHTTPRequestHandler):
                 self._json({"ok": False, "error": "session_id required"}, 400)
                 return
             self._json({"ok": True, "messages": _get_history(sid)})
+        elif path == "/api/receipts":
+            if not self._require_auth():
+                return
+            from urllib.parse import parse_qs
+            q = parse_qs(urlparse(self.path).query)
+            sid = (q.get("session_id") or [""])[0]
+            if not sid:
+                self._json({"ok": False, "error": "session_id required"}, 400)
+                return
+            self._json({"ok": True, "receipts": _read_receipts(sid)})
+        elif path == "/api/sessions":
+            # P0 多会话:枚举历史文件,按活跃度倒序
+            if not self._require_auth():
+                return
+            self._json({"ok": True, "sessions": _list_sessions()})
+        elif path == "/api/context_usage":
+            # P0 上下文用量:零成本估算(oiagent_context)
+            if not self._require_auth():
+                return
+            from urllib.parse import parse_qs
+            q = parse_qs(urlparse(self.path).query)
+            sid = (q.get("session_id") or [""])[0]
+            if not sid:
+                self._json({"ok": False, "error": "session_id required"}, 400)
+                return
+            self._json(_context_usage(sid))
         else:
             self._json({"error": "unknown path"}, 404)
 
     def do_POST(self) -> None:
         from urllib.parse import urlparse
-        if urlparse(self.path).path != "/api/chat":
+        path = urlparse(self.path).path
+        if path == "/api/estop":
+            # P0 estop-cancel:放弃等待该会话进行中的后台结果,立即解锁 UI
+            if not self._require_auth():
+                return
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                req = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+            except Exception:  # noqa: BLE001
+                req = {}
+            sid = (req.get("session_id") or "").strip()
+            if not sid:
+                self._json({"ok": False, "error": "session_id required"}, 400)
+                return
+            stopped = _cancel_conn(sid)
+            self._json({"ok": True, "stopped": stopped,
+                        "note": "客户端已放弃等待;daemon 后台结果(若仍产出)将被丢弃"})
+            return
+        if path != "/api/chat":
             self._json({"error": "unknown path"}, 404)
             return
         if not self._require_auth():

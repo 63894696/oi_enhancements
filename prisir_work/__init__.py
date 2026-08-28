@@ -1,4 +1,4 @@
-"""oiagent_coworker(Prisir 工坊 PrisirWork)— 智能整合包本地常驻协作组件。
+"""prisir_work(Prisir 工坊 PrisirWork)— 智能整合包本地常驻协作组件。
 
 定位:浏览器 MV3 扩展(沙箱内)做不了的事,由它在本地做:
   ① 托管本地 CLI 进程(首个:Electrum daemon → 钱包)

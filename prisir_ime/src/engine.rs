@@ -194,6 +194,16 @@ impl ImeEngine {
         self.syll.is_full_pinyin(s)
     }
 
+    /// 五笔候选查询(wubi86 表,精确编码匹配,权重降序)。
+    /// 与拼音 `query` 并列,供 FFI `prisir_ime_query_wubi` 调用。
+    pub fn query_wubi(&self, input: &str) -> Vec<Candidate> {
+        let key = input.trim().to_lowercase();
+        if key.is_empty() {
+            return Vec::new();
+        }
+        self.db.query_wubi(&key, 50).unwrap_or_default()
+    }
+
     /// 拼音候选查询(对齐 Python _query_pinyin)
     pub fn query(&self, input: &str) -> Vec<Candidate> {
         let n_syll = self.segment(input).len().max(1);

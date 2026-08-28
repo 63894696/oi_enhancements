@@ -15,4 +15,7 @@ pub mod trie;
 pub mod engine;
 pub mod ffi;
 
+#[cfg(target_os = "android")]
+pub mod jni;
+
 pub use engine::ImeEngine;

@@ -1,12 +1,17 @@
 # -*- coding: utf-8 -*-
-"""Prisir IME 实机验证壳 — Rust 引擎驱动
+"""Prisir 灵犀输入法壳 — Rust 引擎驱动(拼音/五笔双法)
 外挂式输入法:全局键盘钩子捕获输入 → 光标位置候选窗 → SendInput 上屏。
 引擎用 prisir_ime.dll(Rust,逻辑同源 Python lingxi_ime),用于实机验证。
 自包含:光标定位/候选窗/上屏内联,不依赖 lingxi_ime backend。
 
+三法拆分(2026-08-24):拼音/五笔在本壳内按 --method 切换,激活键错开;
+语音独立在 voice_input/lingxi_app.py(右Alt)。
+  拼音  --method pinyin  右Ctrl (0xA3)
+  五笔  --method wubi    右Shift(0xA1)
+
 用法:
-  python shell_rust.py [--db path] [--no-index]
-  右Ctrl 切换激活;激活态打字出候选;数字/空格选词;回车上屏原文;Esc 取消
+  python shell_rust.py [--method pinyin|wubi] [--db path] [--no-index] [--no-tray]
+  激活键切换激活;激活态打字出候选;数字/空格选词;回车上屏原文;Esc 取消
 """
 import ctypes, json, os, sys, time, threading
 from ctypes import wintypes
@@ -31,7 +36,14 @@ WH_KEYBOARD_LL = 13
 WM_KEYDOWN = 0x0100
 WM_SYSKEYDOWN = 0x0104
 VK_BACK, VK_RETURN, VK_ESCAPE, VK_SPACE = 0x08, 0x0D, 0x1B, 0x20
-VK_0, VK_9, VK_RCONTROL = 0x30, 0x39, 0xA3
+VK_0, VK_9 = 0x30, 0x39
+VK_RCONTROL, VK_RSHIFT = 0xA3, 0xA1
+
+# 三法激活键(与 lingxi_hotkeys.SCHEMAS 对齐):拼音右Ctrl / 五笔右Shift / 语音右Alt(独立进程)
+METHODS = {
+    "pinyin": {"label": "拼音", "trigger": VK_RCONTROL, "tag": "P"},
+    "wubi":   {"label": "五笔", "trigger": VK_RSHIFT,   "tag": "W"},
+}
 
 # 候选窗扩展样式:WS_EX_NOACTIVATE = 鼠标点选不抢前台焦点。
 # 缺了它,点候选词时焦点切到候选窗,SendInput 的字会上屏进候选窗自己而不是目标应用。
@@ -71,6 +83,8 @@ class RustIMEEngine:
         lib.prisir_ime_load.argtypes = [ctypes.c_char_p, ctypes.c_int]
         lib.prisir_ime_query.restype = ctypes.c_void_p
         lib.prisir_ime_query.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+        lib.prisir_ime_query_wubi.restype = ctypes.c_void_p
+        lib.prisir_ime_query_wubi.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
         lib.prisir_ime_smart_sentence.restype = ctypes.c_void_p
         lib.prisir_ime_smart_sentence.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
         lib.prisir_ime_learn.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p]
@@ -92,6 +106,10 @@ class RustIMEEngine:
 
     def query(self, inp):
         ptr = self.lib.prisir_ime_query(self.h, inp.encode())
+        return json.loads(self._str(ptr) or "[]")
+
+    def query_wubi(self, inp):
+        ptr = self.lib.prisir_ime_query_wubi(self.h, inp.encode())
         return json.loads(self._str(ptr) or "[]")
 
     def smart_sentence(self, inp):
@@ -204,7 +222,13 @@ class KBDLLHOOKSTRUCT(ctypes.Structure):
 
 # ---------- 输入法主程序 ----------
 class PrisirShellIME:
-    def __init__(self, db_path, build_index=True, no_tray=False):
+    def __init__(self, db_path, build_index=True, no_tray=False, method="pinyin"):
+        if method not in METHODS:
+            raise ValueError(f"未知输入法: {method} (可选 {list(METHODS)})")
+        self.method = method
+        self._mcfg = METHODS[method]
+        self._trigger_vk = self._mcfg["trigger"]
+        self._tag = self._mcfg["tag"]
         self.engine = RustIMEEngine(db_path, build_index)
         self._root = None
         self._input = ""
@@ -230,9 +254,12 @@ class PrisirShellIME:
         if not self._install_hook():
             print("[ERROR] 键盘钩子安装失败")
             return
-        print(f"[OK] Prisir IME 测试壳已启动 (引擎加载 {self.engine.load_ms:.0f}ms)")
-        print("     右Ctrl 切换激活;打字出候选;数字/空格选词;回车上屏原文;Esc 取消")
+        print(f"[OK] Prisir 灵犀·{self._mcfg['label']}已启动 (引擎加载 {self.engine.load_ms:.0f}ms)")
+        print(f"     {self._trigger_name()} 切换激活;打字出候选;数字/空格选词;回车上屏原文;Esc 取消")
         self._root.mainloop()
+
+    def _trigger_name(self):
+        return "右Ctrl" if self._trigger_vk == VK_RCONTROL else "右Shift"
 
     def _toggle(self):
         self._active = not self._active
@@ -256,11 +283,11 @@ class PrisirShellIME:
     def _build_tk_tray(self):
         # 纯 Tk 状态窗(迷你浮窗当托盘替代):显示激活态,双击退出。单线程,无 GIL 风险。
         w = tk.Toplevel(self._root)
-        w.title("Prisir IME")
+        w.title(f"灵犀·{self._mcfg['label']}")
         w.overrideredirect(True)
         w.attributes("-topmost", True)
         w.configure(bg=C["bg"])
-        self._status_lbl = tk.Label(w, text="P·未激活", font=("Microsoft YaHei UI", 9),
+        self._status_lbl = tk.Label(w, text=f"{self._tag}·未激活", font=("Microsoft YaHei UI", 9),
                                     bg=C["bg"], fg=C["text_dim"], padx=8, pady=4)
         self._status_lbl.pack()
         w.geometry("+20+760")  # 屏幕左下
@@ -270,7 +297,7 @@ class PrisirShellIME:
     def _set_status(self, active):
         if getattr(self, "_status_lbl", None):
             try:
-                self._status_lbl.config(text="P·已激活" if active else "P·未激活",
+                self._status_lbl.config(text=f"{self._tag}·已激活" if active else f"{self._tag}·未激活",
                                         fg=C["ready"] if active else C["text_dim"])
             except Exception:
                 pass
@@ -306,9 +333,9 @@ class PrisirShellIME:
                     if kb.flags & 0x10:  # LLKHF_INJECTED:合成键(自己 SendInput 的)放行
                         return u.CallNextHookEx(self._hook, nCode, wParam, lParam)
                     vk = kb.vkCode
-                    if vk == VK_RCONTROL:
+                    if vk == self._trigger_vk:
                         self._key_queue.put(vk)
-                        return 1  # 吞掉右Ctrl,不切窗口焦点
+                        return 1  # 吞掉激活键,不切窗口焦点
                     # 任何修饰键(Ctrl/Alt/Shift/Win)按下时一律放行,保组合键(Ctrl+C/V/Space 等)
                     if self._modifier_down():
                         return u.CallNextHookEx(self._hook, nCode, wParam, lParam)
@@ -378,7 +405,7 @@ class PrisirShellIME:
 
     def _on_press(self, vk):
         # 主线程(泵回调),可直接操作 Tk
-        if vk == VK_RCONTROL:
+        if vk == self._trigger_vk:
             self._toggle()
             return
         if not self._active:
@@ -420,8 +447,9 @@ class PrisirShellIME:
         if 0 <= idx < len(self._cands):
             word = self._cands[idx]
             inp = self._input
-            # 学习写库放后台线程:不挡上屏
-            threading.Thread(target=self._learn_safe, args=(inp, word), daemon=True).start()
+            # 学习写库放后台线程:不挡上屏(五笔编码非拼音,跳过学习避免污染词频)
+            if self.method != "wubi":
+                threading.Thread(target=self._learn_safe, args=(inp, word), daemon=True).start()
             # 吞键模式:字母未进屏,直接发中文上屏
             send_unicode(word)
             self._cancel()
@@ -444,10 +472,14 @@ class PrisirShellIME:
             self._hide()
             return
         t0 = time.perf_counter()
-        rows = self.engine.query(self._input)
+        if self.method == "wubi":
+            rows = self.engine.query_wubi(self._input)
+            self._smart = ""  # 五笔无整句智能
+        else:
+            rows = self.engine.query(self._input)
+            # 整句首选:输入含 >=2 音节时给出(用 Rust smart_sentence,空串=无路径)
+            self._smart = self.engine.smart_sentence(self._input) if len(self._input) >= 3 else ""
         qms = (time.perf_counter() - t0) * 1000
-        # 整句首选:输入含 >=2 音节时给出(用 Rust smart_sentence,空串=无路径)
-        self._smart = self.engine.smart_sentence(self._input) if len(self._input) >= 3 else ""
         self._cands = [r["word"] for r in rows[:9]]
         # 整句首选置顶(若与候选不同)
         if self._smart and self._smart not in self._cands:
@@ -532,6 +564,7 @@ def main():
     db = DEFAULT_DB
     build_index = True
     no_tray = False
+    method = "pinyin"
     args = sys.argv[1:]
     if "--no-index" in args:
         build_index = False
@@ -539,7 +572,9 @@ def main():
         no_tray = True
     if "--db" in args:
         db = args[args.index("--db") + 1]
-    PrisirShellIME(db, build_index, no_tray).start()
+    if "--method" in args:
+        method = args[args.index("--method") + 1]
+    PrisirShellIME(db, build_index, no_tray, method).start()
 
 
 if __name__ == "__main__":

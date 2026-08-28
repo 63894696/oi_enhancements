@@ -1,7 +1,7 @@
 {
   "name": "oiagent-shell",
   "version": "0.1.0",
-  "description": "oiagent 本地对话壳(Electron)—— 不启浏览器也能和 oiagent 对话",
+  "description": "PrisirAI 本地对话壳(Electron)—— 不启浏览器也能和 PrisirAI 对话",
   "main": "main.js",
   "private": true,
   "scripts": {

@@ -47,6 +47,23 @@ vendor/.memory/
 *.oi_summary*
 *.oi_fact*
 
+# 根目录调试脚本/截图/输出(以前 _*.py 简写,这里兜底任何 _ 开头的临时文件)
+# 保留子目录里真有价值的 _*.py(已在 .git 跟踪的不影响)
+/_*.py
+/_*.png
+/_*.jpg
+/_*.jpeg
+/_*.txt
+/_*.log
+/_*.json
+/_*.html
+/_*.js
+/_*.ps1
+/_*.css
+/_*.xml
+/_*.bin
+/_*/
+
 # voice_input/ — separate standalone git repo (15 commits, v1.3.2 = d723c76)
 # Tracked in its own C:/Users/Administrator/voice_input/.git, NOT in this repo
 # Per user decision 2026-07-03: vendor/voice_input/ is the original spec
@@ -80,3 +97,55 @@ ops_dashboard.html
 _run_*_backend.bat
 _*_test.png
 _phone_*.png
+
+# 开发者模式资产已随「纯用户安装包」决策移除(2026-08-25)
+installer/_dev_assets/
+
+# 装包 staging 暂存区(含编译产物、icon 资源、clean oiagent-shell)
+# 体积大且可重生成,不进仓库
+installer/_staging/
+installer/_staging2/
+# V13' 旧 staging,保留防止误 push
+installer/_stale_*/
+
+# Linux 装包常见本地构建产物
+node_modules/
+*.exe
+*.dll
+*.so
+*.dylib
+*.deb
+*.rpm
+*.AppImage
+target/
+
+# 本地临时调试脚本(以前用 _*.py 命名,现在很多改 .tmp_*.py)
+.tmp_*
+.tmp_at*.txt
+.tmp_capacitor_hello/
+.tmp_check.apk
+.tmp_check.dex
+.claude/
+
+# 开发期生成的二进制 spec / 构建配置
+PrisirAI-core.spec
+
+# PrisirAI 桌面调试环境占位(临时快照)
+backup-a*/
+
+# PrisirAI 临时目录占位(避免误提交)
+"TemP/"
+
+# prisir_fcontent: 模型权重与运行截图不入仓(运行时按需下载)
+prisir_fcontent/models/
+prisir_fcontent/screenshots/
+
+# 运行时数据库(本地生成,不入仓)
+prisir_fcontent/fcontent.db
+prisir_fcontent/fcontent.db-shm
+prisir_fcontent/fcontent.db-wal
+prisir_findex/findex.db
+prisir_findex/findex.db-shm
+prisir_findex/findex.db-wal
+
+

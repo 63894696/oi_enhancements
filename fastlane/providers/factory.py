@@ -2,7 +2,7 @@
 
 按「环境里有什么 key」装配三条 CloudRouter 链,顺序遵循 ADR-002:
     ASR:豆包 → Qwen → SiliconFlow → 本地 SenseVoice
-    LLM:Qwen-Max → DeepSeek → StepFun → 本地 Ollama
+    LLM:Qwen-Max → DeepSeek → StepFun → 本地 llama.cpp(MiniCPM-V-4.6)
     TTS:Edge TTS → CosyVoice → 本地 SAPI
 缺 key 的 provider 自动跳过(记录原因),本地兜底永远压链尾。
 
@@ -52,7 +52,7 @@ def _llm_candidates() -> List[Tuple[str, Callable[[], CloudAdapter]]]:
         ("qwen-max", qwen_llm),
         ("deepseek-v3.2", deepseek_llm),
         ("stepfun", stepfun_llm),
-        ("ollama-local", OllamaLocalLLMAdapter),
+        ("llama-server", OllamaLocalLLMAdapter),  # 2026-07-12: 实际是 llama-server (MiniCPM-V-4.6);类名 OllamaLocalLLMAdapter 保留向后兼容
     ]
 
 

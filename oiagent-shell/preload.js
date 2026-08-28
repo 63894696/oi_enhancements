@@ -10,6 +10,9 @@ contextBridge.exposeInMainWorld("oiShell", {
   // 返回 { webUrl, webReady, prisirTokenPresent, version }
   shellInfo: () => ipcRenderer.invoke("shell:info"),
   toggle: () => ipcRenderer.invoke("shell:toggle"),
+  // v2.0 反馈卡:让 oiagent_web 在壳内用 IPC 打开系统浏览器(替代 window.open)
+  // 红线:只允许 https:// 与 babelspan.com;其他 URL 拒绝,防被任意站点诱导打开。
+  openExternal: (url) => ipcRenderer.invoke("shell:openExternal", url),
   // 标记:在壳内运行(供 oiagent_web 区分「壳内」vs「纯浏览器」)
   inShell: true,
 });
