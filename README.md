@@ -63,6 +63,28 @@ SPDX-License-Identifier: `LicenseRef-OI-Enhancements-PCS-1.0`
 > rights. It is a source-available license with a commercial
 > licensing pathway.
 
+### Legal framework (current version)
+
+- **Governing law**: laws of the Hong Kong Special Administrative
+  Region (HK SAR).
+- **Dispute resolution**: arbitration administered by the Hong Kong
+  International Arbitration Centre (HKIAC), seat Hong Kong.
+- **Language of arbitration**: English, with right to submit
+  Chinese-language evidence without translation at the tribunal's
+  discretion.
+- **Commercial license defaults**: 1-year term; devices/users per
+  executed agreement; minor-version upgrades included; major-version
+  upgrades by paid addendum.
+- **Breach**: 30-day written notice + 30-day cure period for general
+  breaches; immediate termination for unlicensed Commercial Use,
+  Brand misuse, undisclosed Core Component modifications, and patent
+  litigation against the Project Copyright Holder.
+- **Enforcement**: arbitral award enforceable under Mainland-HK
+  Reciprocal Enforcement Arrangement (2019), New York Convention
+  (1958), and Hague Judgments Convention (2019/2023).
+
+The full 23-section text is in [LICENSE](./LICENSE).
+
 ### Per-version licensing summary
 
 | Version | Primary License | Additional Future License | Status |

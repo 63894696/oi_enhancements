@@ -250,14 +250,289 @@ this License shall not constitute a waiver of future enforcement
 rights for that or any other provision.
 
 
-15. Governing Law and Jurisdiction
+15. Governing Law
 
-This License shall be governed by and construed in accordance with
-the laws of the jurisdiction in which the Project Copyright Holder
-resides, without regard to its conflict-of-laws principles. Any
-dispute arising under or in connection with this License shall be
-subject to the exclusive jurisdiction of the competent courts of that
-jurisdiction.
+This License, and any non-contractual obligations arising out of or
+in connection with it, shall be governed by and construed in
+accordance with the laws of the Hong Kong Special Administrative
+Region of the People's Republic of China ("Hong Kong"), without
+regard to its conflict-of-laws principles. The United Nations
+Convention on Contracts for the International Sale of Goods (CISG)
+is hereby expressly disclaimed and shall not apply.
+
+
+16. Dispute Resolution
+
+Any dispute, controversy, or claim arising out of, relating to, or
+in connection with this License, including any question regarding
+its existence, validity, interpretation, performance, breach, or
+termination (a "Dispute"), shall be referred to and finally
+resolved by arbitration administered by the **Hong Kong
+International Arbitration Centre (HKIAC)** in accordance with the
+HKIAC Administered Arbitration Rules in force at the time of filing
+(the "Rules"), which Rules are deemed to be incorporated by
+reference into this Section 16.
+
+  (a) **Seat (legal place) of arbitration**: Hong Kong.
+  (b) **Venue (physical hearing)**: Hong Kong, unless the parties
+      agree otherwise or the tribunal orders otherwise.
+  (c) **Number of arbitrators**: one (1), unless the amount in
+      dispute exceeds USD 1,000,000 in which case three (3).
+  (d) **Language of arbitration**: English, with the right of any
+      party to submit Chinese-language documentary evidence without
+      translation, at the tribunal's discretion.
+  (e) **Governing procedural law**: the Hong Kong Arbitration
+      Ordinance (Cap. 609) and the Rules.
+  (f) **Confidentiality**: the arbitration shall be confidential,
+      and any award shall be confidential, except as required by
+      law or for the purpose of enforcement.
+  (g) **Interim relief**: nothing in this Section 16 prevents any
+      party from seeking interim or injunctive relief from any
+      court of competent jurisdiction to preserve the status quo or
+      prevent irreparable harm (in particular, trademark
+      infringement or unauthorized Commercial Use of the Brand),
+      pending the constitution of the tribunal.
+  (h) **Class-action waiver**: any arbitration shall be conducted
+      on an individual basis only. Disputes may not be consolidated
+      or arbitrated on a class, representative, or private
+      attorney-general basis.
+  (i) **Small-claims carve-out**: either party may bring an
+      individual action in a court of competent jurisdiction for
+      disputes within the scope of that court's small-claims or
+      equivalent summary procedure, if available.
+
+The arbitral award shall be final and binding on the parties and
+may be enforced in any court of competent jurisdiction under, among
+others, the Arrangement for Reciprocal Enforcement of Judgments in
+Civil and Commercial Matters between the Mainland and Hong Kong
+(2019), the New York Convention on the Recognition and Enforcement
+of Foreign Arbitral Awards (1958), and the Hague Convention on the
+Recognition and Enforcement of Foreign Judgments in Civil or
+Commercial Matters (2019/2023).
+
+
+17. Commercial License Terms — Term, Devices, Upgrades
+
+Where a commercial license is granted under Section 4, the
+following defaults apply unless the executed commercial agreement
+expressly states otherwise:
+
+  (a) **Term**: one (1) year from the Effective Date stated in the
+      commercial agreement, renewable for successive one-year
+      terms unless either party gives at least sixty (60) days'
+      written notice of non-renewal before the end of the current
+      term.
+
+  (b) **Devices**: the number of devices, named users, regions, or
+      other usage metric stated in the commercial agreement. Use
+      beyond the licensed metric requires an upgrade addendum and
+      pro-rated fee; continued over-deployment after written
+      notice is a material breach.
+
+  (c) **Upgrades**: during the term, the licensee is entitled to
+      patches, minor releases (e.g. v2.6 → v2.7), and security
+      updates at no additional charge. Major-version upgrades
+      (e.g. v2.x → v3.x) are NOT automatic; the licensee may
+      extend coverage to a new major version by paying an upgrade
+      fee, which the Project Copyright Holder will quote on
+      request. Use of a new major version without the upgrade
+      addendum reverts that version to OIE-PCS-1.0.
+
+  (d) **Beta / pre-release**: pre-release versions made available
+      to the licensee are provided "AS IS" and may be subject to a
+      separate pre-release agreement; they are NOT warranted.
+
+
+18. Commercial License Terms — Pricing, Payment, Taxes
+
+  (a) **Pricing model**: the indicative tiers set out in
+      COMMERCIAL-LICENSE.md form the starting point for
+      negotiation. The actual fees are stated in the executed
+      commercial agreement. The Project Copyright Holder reserves
+      the right to revise pricing for new agreements and renewals
+      on thirty (30) days' written notice; in-flight agreements
+      are unaffected.
+
+  (b) **Payment terms**: invoices are due net thirty (30) days
+      from the invoice date unless otherwise stated. Late payment
+      accrues interest at the lesser of (i) 1.5% per month
+      (compounded monthly) and (ii) the maximum rate permitted by
+      applicable law.
+
+  (c) **Taxes**: all fees are exclusive of applicable taxes,
+      duties, and levies (including VAT, GST, sales tax, and
+      withholding tax). The licensee is responsible for any taxes
+      associated with the commercial license, except for taxes on
+      the Project Copyright Holder's net income.
+
+  (d) **Refunds**: fees are non-refundable except as expressly
+      stated in the executed commercial agreement or required by
+      applicable law.
+
+
+19. Technical Support
+
+Unless the executed commercial agreement includes a support SLA,
+no technical support is provided under the commercial license.
+The following defaults apply to any support that IS provided:
+
+  (a) **Support channels**: GitHub private vulnerability reporting
+      (security issues), GitHub issue tracker (general bugs), and
+      the contact email listed in COMMERCIAL-LICENSE.md
+      (commercial-only matters).
+  (b) **Response targets**: see SECURITY.md for security-related
+      targets; commercial-SLA targets (if any) are stated in the
+      executed commercial agreement.
+  (c) **Scope**: support covers the unmodified, currently
+      supported release of the Software running on a supported
+      platform (Windows / Linux / macOS as listed in the
+      README). Customization, integration, and on-call support
+      require a separate engagement.
+  (d) **No guarantee**: support does not guarantee that any
+      particular bug will be fixed, that any particular feature
+      will be added, or that the Software is fit for any
+      particular purpose.
+
+
+20. Breach and Remedies
+
+  (a) **Notification of breach**: if either party becomes aware of
+      a material breach of this License by the other party, the
+      non-breaching party shall give written notice describing the
+      breach with reasonable specificity.
+
+  (b) **Cure period for general breach**: except as provided in
+      Section 20(c), the breaching party has thirty (30) days from
+      receipt of the written notice to cure the breach to the
+      reasonable satisfaction of the non-breaching party.
+
+  (c) **No-cure / immediate termination**: the following are
+      material breaches that are NOT subject to the cure period and
+      result in immediate termination of all rights granted under
+      this License upon written notice:
+
+      (i)  any Commercial Use of the Software without a valid
+           commercial license;
+      (ii) unauthorized use of any Brand element in commerce;
+      (iii) Distribution of modified Core Components under LICENSE
+            §3 without making the corresponding source code
+            available;
+      (iv) any breach of LICENSE §7 (No Patent Grant) initiated
+           by patent litigation against the Project Copyright
+           Holder or any contributor.
+
+  (d) **Reinstatement after cure**: if the breach is cured within
+      the cure period, the non-breaching party may, at its sole
+      discretion, reinstate the breaching party's rights under
+      this License. Reinstatement is not automatic and may be
+      conditioned on the breaching party's written acknowledgement
+      of the breach and agreement not to repeat.
+
+  (e) **Cumulative remedies**: termination of this License does
+      not waive any other remedy available to the Project
+      Copyright Holder at law or in equity, including injunctive
+      relief, damages, account of profits, statutory damages
+      (where applicable), and the recovery of reasonable legal
+      fees and costs.
+
+  (f) **Equitable relief**: the parties acknowledge that damages
+      alone may be inadequate to remedy certain breaches (in
+      particular, unauthorized Commercial Use of the Brand or
+      Distribution of modified Core Components without source
+      disclosure). The Project Copyright Holder shall be entitled
+      to seek injunctive or other equitable relief without
+      requirement of posting a bond, in addition to any other
+      remedies.
+
+
+21. Notices
+
+  (a) **Form**: notices under this License must be in writing
+      and delivered by (i) email with delivery receipt requested
+      and acknowledged, or (ii) internationally recognized courier
+      with tracking, to the addresses set out below or such other
+      address as the notifying party designates by notice.
+
+  (b) **Project Copyright Holder address**: see
+      COMMERCIAL-LICENSE.md, "Contact" section. Updates to the
+      notice address become effective seven (7) days after posting
+      in COMMERCIAL-LICENSE.md.
+
+  (c) **Licensee address**: for users without a commercial
+      agreement, the address is the email associated with the
+      user's GitHub account or, failing that, the contact channel
+      of record. For commercial licensees, the address is the
+      one stated in the executed commercial agreement.
+
+  (d) **Effective date of notice**: a notice is deemed received
+      (i) on the date of email acknowledgement, or (ii) on the
+      third business day after dispatch by courier, or (iii) when
+      posted in COMMERCIAL-LICENSE.md (for changes to the
+      Project Copyright Holder's notice address).
+
+
+22. Personal Data and Privacy
+
+This License does not by itself require the Project Copyright
+Holder to collect, store, or process personal data of Licensees.
+Where any personal data is collected (for example, in connection
+with a commercial agreement, support interaction, or community
+contribution), such collection is governed by a separate privacy
+policy or data-processing agreement, not by this License.
+
+The Software itself is designed to run locally and does NOT
+telemetry the user's usage, prompts, or data to the Project
+Copyright Holder by default. Where the Software does initiate
+outbound network calls (for example, to LLM provider APIs or to
+babelspan.com for the brand-update notifier), such calls are
+described in THIRD-PARTY-NOTICES and in the Software's settings
+panel. The user retains the right to disable outbound calls
+where feasible.
+
+
+23. Miscellaneous
+
+  (a) **Entire Agreement**: this License, together with the
+      documents incorporated by reference (CORE-COMPONENTS.md,
+      LICENSE-POLICY.md, TRADEMARKS.md, COMMERCIAL-LICENSE.md,
+      THIRD-PARTY-NOTICES, SECURITY.md, and any executed
+      commercial agreement), constitutes the entire agreement
+      between the parties with respect to the Software and
+      supersedes all prior or contemporaneous understandings on
+      the subject.
+
+  (b) **Severability**: if any provision is held to be
+      unenforceable, the remaining provisions continue in full
+      force, and the unenforceable provision shall be modified
+      only to the minimum extent necessary to make it enforceable.
+
+  (c) **No Waiver**: failure to enforce any provision is not a
+      waiver of future enforcement of that or any other
+      provision.
+
+  (d) **Assignment**: the Licensee may NOT assign or transfer
+      rights or obligations under this License without the
+      Project Copyright Holder's prior written consent. The
+      Project Copyright Holder may assign this License and any
+      rights under it to any successor in interest.
+
+  (e) **No third-party beneficiaries**: except as expressly stated
+      in LICENSE §6 (Third-Party Components) and §10 (downstream
+      recipients), this License does not confer rights on any
+      non-party.
+
+  (f) **Headings**: section headings are for convenience only
+      and do not affect interpretation.
+
+  (g) **Language**: this License is published in English. A
+      Chinese translation may be provided for reference; in case
+      of conflict, the English version prevails.
+
+  (h) **Counterparts and electronic execution**: this License may
+      be accepted electronically (for example, by clicking "I
+      agree" in an installer, or by cloning, building, or
+      Distributing the Software). Acceptance is deemed effective
+      on the date of such act.
 
 
 END OF LICENSE
@@ -265,3 +540,12 @@ END OF LICENSE
 This License is intentionally NOT an OSI-approved Open Source License
 because it restricts Commercial Use and reserves Brand rights. It is
 a Source-Available license with commercial licensing pathways.
+
+The body of this License is 23 sections covering: definitions,
+personal license grant, source availability for Core Components,
+Commercial Use, trademarks, third-party components, no patent grant,
+future relicensing, no warranty, termination, reservation of rights,
+governing law, dispute resolution, commercial license defaults
+(term / devices / upgrades / pricing / payment / taxes / support),
+breach and remedies, notices, personal data and privacy, and
+miscellaneous.
