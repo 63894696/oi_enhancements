@@ -120,8 +120,7 @@ LICENSE §3, provided such modifications are not Distributed as part
 of Commercial Use without a commercial license.
 
 ### 文档
-- `README.md`, `ARCHITECTURE-*.md`, `INVENTORY-*.md`, `docs/`
-- `*.md` at any depth
+- `README.md`, `*.md` at any depth
 - `chatroom.html`                           — 客户端页面 UI(纯前端)
 - `CORE-COMPONENTS.md`, `LICENSE`, `LICENSE-APACHE`, `LICENSE-POLICY.md`
 - `TRADEMARKS.md`, `COMMERCIAL-LICENSE.md`, `CONTRIBUTING.md`, `SECURITY.md`

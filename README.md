@@ -5,9 +5,9 @@
 这是 `oi_enhancements` 仓库,包含 Prisir AI、oiagent、prisr_findex、
 prisr_fcontent、fastlane、aureon 等子项目。
 
-更详细的架构说明请阅读 [ARCHITECTURE-2026-07-03.md](./ARCHITECTURE-2026-07-03.md)
-与 [INVENTORY-2026-07-03.md](./INVENTORY-2026-07-03.md)。仓库根目录还有
-按子项目组织的 `docs/` 目录,提供设计与计划文档。
+更详细的架构说明请阅读源码中的注释与 docstring。
+本仓库不含内部设计文档;内部设计文档归档于私有仓
+(联系维护者获取访问权限)。
 
 
 ## 子项目概览
@@ -24,7 +24,6 @@ prisr_fcontent、fastlane、aureon 等子项目。
 | `e2e_share_a2h/`, `e2e_share_rot/` | 配对 / 局域网 / 遥控 |
 | `assets/` | 项目图标与 UI 资源(受 TRADEMARKS.md 约束) |
 | `installer/` | 安装/卸载脚本(Windows NSIS + Linux bash) |
-| `docs/` | 设计与计划文档 |
 
 ## 平台
 

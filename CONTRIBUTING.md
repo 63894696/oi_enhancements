@@ -104,7 +104,7 @@ days. We may ask for changes, additional tests, or documentation.
 | Performance improvement | yes | include before/after numbers |
 | New tool / connector | yes | if it fits the project scope |
 | New LLM provider in fastlane | yes | add adapter + tests |
-| Translation (UI strings) | yes | PRs to docs/ and assets |
+| Translation (UI strings) | yes | PRs to assets/ |
 | New icon / logo | discuss first | Brand policy applies |
 | Major architectural change | discuss first | open an issue first |
 | Anything that adds a network call to a third-party server | discuss first | privacy / egress discipline |
