@@ -9,6 +9,13 @@
 > 必须丢弃并重新 clone**;之后所有 PR 仅接受基于新 master 的内容。
 > 旧 commits 通过 `git fetch origin '+refs/pull/*/head:refs/remotes/origin/pr/*'`
 > 也无法取回(已被 GC)。
+>
+> **后续补入**(同一日,fast-forward,无 SHA 变更):
+> `b55083d` 增补 `.gitignore`(11 类本地产物/凭证/兄弟仓);
+> `21a6ec7` 批量补入 167 份业务代码 + 13 份 Brand 资产
+> (prisir-browser / agent_economy / oiagent_coworker / securedm-shell /
+>  wasm_meter / memory / a2 测试向量 / 根目录 simplex_*.py 等)。
+> 跟踪文件从 329 → 492。**a2/ 私钥/totp/integrity 注册表一律不入仓**。
 
 这是 `oi_enhancements` 仓库,包含 Prisir AI、oiagent、prisr_findex、
 prisr_fcontent、fastlane、aureon 等子项目。
