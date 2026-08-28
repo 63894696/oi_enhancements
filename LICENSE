@@ -1,0 +1,267 @@
+OI Enhancements Personal and Commercial Source License
+Version 1.0 (OIE-PCS-1.0)
+
+SPDX-License-Identifier: LicenseRef-OI-Enhancements-PCS-1.0
+
+Copyright (c) 2026 63894696 (GitHub)
+All rights reserved.
+
+
+1. Definitions
+
+"Software" means the source code, object code, build scripts, configuration
+files, and documentation of the OI Enhancements project distributed under
+this License, excluding any third-party components identified in
+THIRD-PARTY-NOTICES.
+
+"Core Components" means the files and directories explicitly listed in
+CORE-COMPONENTS.md at the root of this repository. These are the files
+whose modifications, when distributed or served, must be made available
+under the terms of this License.
+
+"Personal Non-Commercial Use" means use by a natural person for personal,
+educational, research, entertainment, or other non-revenue-generating
+purposes. Use by employees of a for-profit organization, even on personal
+devices, is NOT Personal Non-Commercial Use.
+
+"Commercial Use" means any use by a company, organization, contractor,
+service provider, or any use connected with revenue, paid services,
+advertising, subscriptions, support contracts, internal business
+operations, customer delivery, paid cloud services, or commercial
+products. Internal deployment within a for-profit organization for any
+business purpose is Commercial Use regardless of whether a fee is
+charged to the end user.
+
+"You" means the individual or entity exercising rights under this License.
+
+"Modify" means any copy, adaptation, derivative work, translation,
+port, patch, or any other change to the Software, in whole or in part.
+
+"Distribute" means any conveyance of copies of the Software, modified or
+unmodified, to a third party by any means, including but not limited to
+physical media, network download, software marketplace, app store,
+container image, firmware bundle, or installation package.
+
+"Network Service" means providing functionality to third parties as a
+service over a network, whether via API, web UI, remote desktop, CLI,
+or any other interface, regardless of whether the third party pays.
+
+"Brand" means the project name "oi_enhancements", the product names
+"Prisir AI", "Prisir(湃睿思) AI", "oiagent", "prisraiclass", the
+associated logos, icons, marks, domain names, and any other distinctive
+signs of origin.
+
+"Future License" means any additional or different license that the
+Project Copyright Holder may, at its sole discretion and subject to
+applicable law and the rights of third parties, make the Software
+available under in the future.
+
+
+2. Personal License Grant
+
+Subject to the terms of this License, the Project Copyright Holder
+grants each individual user a royalty-free, non-exclusive,
+non-transferable license to:
+
+  (a) use, reproduce, and run the Software for Personal Non-Commercial
+      Use;
+  (b) Modify the Software for Personal Non-Commercial Use;
+  (c) compile and build the Software for Personal Non-Commercial Use;
+  (d) Distribute the original, unmodified Software to other individuals
+      for Personal Non-Commercial Use, provided that this License,
+      the copyright notice, and any accompanying LICENSE-POLICY.md or
+      NOTICE files are preserved.
+
+You may not Distribute any modified version of the Software to any
+third party under this Section 2. Any such Distribution must instead
+comply with Section 3 (Source Availability for Core Components) and,
+if applicable, Section 4 (Commercial Use).
+
+
+3. Source Availability for Core Components
+
+If You Distribute, or make available as a Network Service, a version
+of the Software that contains modifications to any file or directory
+listed in CORE-COMPONENTS.md, then You must:
+
+  (a) make the corresponding source code of those modified Core
+      Components available under this License (OIE-PCS-1.0) to all
+      recipients of the Distributed Software or to all users of the
+      Network Service;
+  (b) clearly identify which Core Components have been modified and
+      the nature of those modifications;
+  (c) provide reasonable instructions for obtaining the corresponding
+      source code; and
+  (d) retain this License, the copyright notice, and the LICENSE-POLICY.md
+      in any redistribution.
+
+Modifications to files and directories NOT listed in CORE-COMPONENTS.md
+are not subject to the source-availability obligations of this Section
+when Distributed without Commercial Use, but remain subject to
+Section 4 when Distributed as part of Commercial Use.
+
+Private internal modification of Core Components that is never
+Distributed and never made available as a Network Service is not
+subject to the source-availability obligation of this Section.
+
+
+4. Commercial Use
+
+Commercial Use is NOT permitted under this License. To engage in any
+Commercial Use, You must obtain a separate written commercial license
+from the Project Copyright Holder.
+
+A commercial license may, at the Project Copyright Holder's discretion,
+grant rights including closed-source integration, internal deployment,
+commercial distribution, commercial Network Services, technical
+support, redistribution with modifications, and other uses.
+
+Unless expressly waived in writing by the Project Copyright Holder,
+the source-availability obligations of Section 3 for modified Core
+Components remain in full force for any commercial licensee.
+
+Pricing, scope, term, device count, and renewal terms of commercial
+licenses are described in COMMERCIAL-LICENSE.md at the root of this
+repository. Contact information for commercial licensing inquiries is
+provided in that file.
+
+
+5. Trademarks and Branding
+
+This License does NOT grant You any right to use any Brand of the
+OI Enhancements project, including the names "oi_enhancements",
+"Prisir AI", "Prisir(湃睿思) AI", "oiagent", "prisraiclass", the
+Prisir flame logo, the prisiraiclass GTK icon, the application icons
+in the assets/ directory, or any associated marks.
+
+Use of any Brand requires a separate written permission or a
+separate commercial trademark license from the Project Copyright
+Holder.
+
+You MAY, however, make truthful factual references to the project
+(including the unmodified name) in academic papers, reviews, tutorials,
+and bug reports, provided such reference does not suggest endorsement,
+sponsorship, or affiliation.
+
+
+6. Third-Party Components
+
+The Software may include or interoperate with third-party libraries,
+models, APIs, fonts, icons, drivers, and other materials identified in
+THIRD-PARTY-NOTICES. Such third-party components are NOT relicensed
+by this License and remain governed by their respective licenses and
+terms. You are responsible for complying with the terms of each
+third-party component You use.
+
+
+7. No Patent Grant
+
+Except as expressly stated in a separate written agreement, this
+License does NOT grant any patent license, express or implied. Any
+patent claims that would be infringed by the Software are licensed
+only for Personal Non-Commercial Use under Section 2 and only as
+permitted in a commercial license under Section 4.
+
+If You initiate patent litigation (including cross-claims and
+counterclaims) against the Project Copyright Holder or any contributor
+alleging that the Software infringes a patent, any rights granted to
+You under this License terminate as of the date such litigation is
+filed.
+
+
+8. Future Relicensing
+
+Subject to applicable copyright law and the rights of all copyright
+holders and third-party licensors, the Project Copyright Holder
+reserves the right, at its sole discretion, to make this Software,
+or any specific release of this Software, available under additional
+or different license terms in the future, including but not limited
+to the Apache License 2.0.
+
+Any Future License granted for a specific release is ADDITIONAL to
+the rights granted under this License. Users of that specific release
+may, at their option, choose to rely on either this License or the
+Future License for that release only.
+
+The grant of any Future License does NOT revoke, reduce, or invalidate
+any rights previously granted under this License or any other Future
+License.
+
+Detailed policy on when and how Future Licenses may be applied is
+described in LICENSE-POLICY.md.
+
+
+9. No Warranty
+
+THE SOFTWARE IS PROVIDED "AS IS" AND "AS AVAILABLE", WITHOUT WARRANTY
+OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE,
+NON-INFRINGEMENT, AND TITLE. THE ENTIRE RISK AS TO THE QUALITY AND
+PERFORMANCE OF THE SOFTWARE IS WITH YOU.
+
+THE PROJECT COPYRIGHT HOLDER AND CONTRIBUTORS SHALL NOT BE LIABLE FOR
+ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE,
+INCLUDING BUT NOT LIMITED TO LOSS OF DATA, SYSTEM DAMAGE, SECURITY
+INCIDENTS, UNAUTHORIZED ACTIONS, OR SERVICE INTERRUPTION.
+
+
+10. Termination
+
+Your rights under this License terminate automatically upon any
+material breach of any of its terms. Rights may be reinstated at the
+Project Copyright Holder's sole discretion if the breach is cured
+within thirty (30) days after You receive written notice of the
+breach from the Project Copyright Holder.
+
+Termination does not affect the rights of any recipient who has
+already received the Software from You under this License, provided
+that recipient is not themselves in breach.
+
+
+11. Reservation of Rights
+
+All rights not expressly granted under this License are reserved by
+the Project Copyright Holder.
+
+
+12. Entire Agreement
+
+This License, together with CORE-COMPONENTS.md, LICENSE-POLICY.md,
+TRADEMARKS.md, COMMERCIAL-LICENSE.md, and THIRD-PARTY-NOTICES,
+constitutes the entire agreement between You and the Project
+Copyright Holder with respect to the Software and supersedes all
+prior or contemporaneous understandings on the subject.
+
+
+13. Severability
+
+If any provision of this License is held to be unenforceable, the
+remaining provisions shall continue in full force and effect, and the
+unenforceable provision shall be modified only to the minimum extent
+necessary to make it enforceable.
+
+
+14. No Waiver
+
+Failure by the Project Copyright Holder to enforce any provision of
+this License shall not constitute a waiver of future enforcement
+rights for that or any other provision.
+
+
+15. Governing Law and Jurisdiction
+
+This License shall be governed by and construed in accordance with
+the laws of the jurisdiction in which the Project Copyright Holder
+resides, without regard to its conflict-of-laws principles. Any
+dispute arising under or in connection with this License shall be
+subject to the exclusive jurisdiction of the competent courts of that
+jurisdiction.
+
+
+END OF LICENSE
+
+This License is intentionally NOT an OSI-approved Open Source License
+because it restricts Commercial Use and reserves Brand rights. It is
+a Source-Available license with commercial licensing pathways.
