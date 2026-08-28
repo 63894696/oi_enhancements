@@ -148,4 +148,52 @@ prisir_findex/findex.db
 prisir_findex/findex.db-shm
 prisir_findex/findex.db-wal
 
+# e2e_share_a2h / e2e_share_rot — sqlite 运行时数据 + invite/peer token
+e2e_share_a2h/
+e2e_share_rot/
+
+# prisIr_ime_tsf — TSF 编译产物 + 词库缓存(589 MB,运行时再生成)
+prisIr_ime_tsf/
+# tiktoken 编码缓存(运行时下载)
+tiktoken_data/
+
+# mcp_oiagent plan 输出 / 自检产物(非业务代码)
+mcp_oiagent_v3_plan_parallel/
+mcp_oiagent_v2_self_fix/
+# 旧版本 server.py 备份
+mcp_oiagent_server/server.py.bak.v0.38-dynamic
+
+# Sibling GitHub 仓的本地镜像(同名仓库已托管,不入主仓)
+custom-hover-translate/
+prisir-video-study/
+securedm-extension/
+
+# 本地凭证 / token / 私钥(绝不入仓)
+lan_token.txt
+integrity_pubkeys.json.bak-*
+tests/_f1_steward_key.pem
+# 调试 / 探针 / benchmark 产物
+tests/allsrc.txt
+tests/m1_*
+tests/_probe_*
+tests/m1-instance-info.json
+# harness / 自检 / dev 工具临时输出
+harness_run_*.json
+harness_test_battery.py
+main-baseline.js
+oiagent_harness_assessment_2026-07-23.md
+v0.5_smartos_workflow_report_2026-07-23.md
+# 临时 JSON / CSV / 文本
+nr.csv
+tmp3p.txt
+cb[0-9].json
+cb[0-9][0-9].json
+co[0-9].json
+co[0-9][0-9].json
+chat_*.json
+download_dir.txt
+# prisir_asr 调试脚本
+prisir_asr/_cdp_*
+prisir_asr/_live_test.*
+
 
