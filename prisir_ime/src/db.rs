@@ -24,7 +24,11 @@ fn next_prefix(prefix: &str) -> String {
         i -= 1;
     }
     if i < 0 {
-        return format!("{}a", prefix);
+        // 全是 z(或单字母 z):没有可 +1 的前缀字符。拼音 key 全是 ASCII 小写字母,
+        // 'z' 之后用 '{'(0x7B,z 的下一个 ASCII)作开区间上界,覆盖所有 z* 音节
+        // (z/za/zai/.../zuo/zh/zha/.../zhuo)。2026-09-02 修:旧返回 "za" 把范围缩成
+        // [z,za),单字母 z 只剩 1 个候选(在),前缀高权桶失效。
+        return "{".to_string();
     }
     chars[i as usize] = std::char::from_u32(chars[i as usize] as u32 + 1).unwrap_or(chars[i as usize]);
     chars[..=i as usize].iter().collect()
@@ -40,6 +44,13 @@ impl CikuDb {
     pub fn all_phrase_rows(&self) -> SqlResult<Vec<Row>> {
         let mut st = self.conn.prepare("SELECT key, value, weight FROM phrase")?;
         let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+        Ok(rows.filter_map(|x| x.ok()).collect())
+    }
+
+    /// 全部词组带简拼 (jp,key,value,weight),供混拼内存索引构建(2026-09-02)。
+    pub fn all_phrase_rows_with_jp(&self) -> SqlResult<Vec<(String, String, String, i64)>> {
+        let mut st = self.conn.prepare("SELECT jp, key, value, weight FROM phrase")?;
+        let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?;
         Ok(rows.filter_map(|x| x.ok()).collect())
     }
 
@@ -67,6 +78,21 @@ impl CikuDb {
             "SELECT value, weight FROM pinyin WHERE jp=?1 AND LENGTH(value)=1 ORDER BY weight DESC LIMIT ?2",
         )?;
         let rows = st.query_map(rusqlite::params![jp, limit as i64], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        Ok(rows.filter_map(|x| x.ok()).collect())
+    }
+
+    /// 单字母前缀高权单字桶(2026-09-02):key 以该字母开头的所有音节里,按权重取高权单字。
+    /// 对齐外挂内存路径的「前缀节点高权桶」语义(z→在/张/中/这/再…),取代只查 jp='z' 的窄覆盖。
+    /// 范围比较 key>=p AND key<next(p) 走索引;过滤 LENGTH(value)=1 防词组混入。
+    pub fn query_pinyin_prefix_top(&self, prefix: &str, limit: usize) -> SqlResult<Vec<Weighted>> {
+        let mut st = self.conn.prepare(
+            "SELECT value, weight FROM pinyin WHERE key >= ?1 AND key < ?2 AND LENGTH(value)=1 \
+             ORDER BY weight DESC LIMIT ?3",
+        )?;
+        let rows = st.query_map(
+            rusqlite::params![prefix, next_prefix(prefix), limit as i64],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
         Ok(rows.filter_map(|x| x.ok()).collect())
     }
 

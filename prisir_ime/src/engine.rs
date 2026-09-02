@@ -8,7 +8,14 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 /// 索引缓存格式版本:序列化结构变更时 +1,旧缓存自动失效重建。
-const INDEX_CACHE_VERSION: u32 = 1;
+/// v2: trie 节点增加 top1(单字)通道,旧 v1 缓存无此字段,必须重建。
+/// v3: MemoryIndex 增加混拼索引 jp_map/first_jp_map,必须重建。
+const INDEX_CACHE_VERSION: u32 = 3;
+
+/// 模糊音扩展字的权重降级量(2026-09-02):把 zhi 等模糊字压到原音字权重之下,
+/// 保证打 zi 时原音字(自/字/…/耔/缁)排在模糊 zhi 字(只/指/值)之前。
+/// 取值大于词库权重动态范围(实测 max≈26000),降级后模糊字恒为负,原音字(含 weight=0)恒在前。
+const FUZZY_DEMOTE: i64 = 1_000_000;
 
 /// 索引缓存头部(自描述,校验用)。后接 bincode 序列化的 MemoryIndex。
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -35,6 +42,12 @@ fn db_fingerprint(db_path: &str) -> Option<(u64, u64)> {
 fn cache_path_for(db_path: &str) -> PathBuf {
     let p = Path::new(db_path);
     p.with_extension("idx")
+}
+
+/// mmap 缓存路径:与词库同目录,`<name>.midx`(2026-09-02)。
+fn mmap_path_for(db_path: &str) -> PathBuf {
+    let p = Path::new(db_path);
+    p.with_extension("midx")
 }
 
 /// (候选词, 权重)
@@ -102,40 +115,63 @@ impl ImeEngine {
     /// 从 DB 全量重建内存索引(不落盘)。
     fn rebuild_index(db: &CikuDb) -> Result<MemoryIndex, String> {
         let phrase = db.all_phrase_rows().map_err(|e| format!("phrase: {e}"))?;
+        let phrase_jp = db.all_phrase_rows_with_jp().map_err(|e| format!("phrase_jp: {e}"))?;
         let pinyin = db.all_single_char_rows().map_err(|e| format!("pinyin: {e}"))?;
         let mut mem = MemoryIndex::new();
         for (key, value, weight) in &phrase {
             mem.insert(key, value, *weight);
         }
+        // 混拼索引(jp 精确 + 反混),对齐原 SQLite query_phrase_mixed 三条路径。
+        for (jp, key, value, weight) in &phrase_jp {
+            mem.insert_mixed(jp, key, value, *weight);
+        }
         for (key, value, weight) in &pinyin {
             mem.insert(key, value, *weight);
         }
+        mem.finalize(); // 反混桶预排序(权重降序),查询 early-exit
         Ok(mem)
     }
 
     /// 加载或构建内存索引(索引持久化:第一次建好后存盘,之后启动直接反序列化)。
     ///
-    /// 流程:读 `<db>.idx` 缓存,校验 指纹(词库大小+mtime)+格式版本,对上则直接用;
-    /// 否则从 DB 重建并(原子写)落盘。任何一步失败都回退到纯 SQLite(mem=None),不影响功能。
+    /// 流程(2026-09-02 加 mmap 优先):
+    ///   1. 先试 `<db>.midx`(mmap 紧凑格式):mmap 映射微秒级、零解析、多进程共享物理页,
+    ///      校验 magic/version/db 指纹通过即用之(来源 "mmap")。
+    ///   2. 否则读 `<db>.idx`(bincode):校验 指纹+格式版本,对上则用之(来源 "cache")。
+    ///   3. 否则从 DB 重建,并(原子写)同时落盘 .idx 与 .midx(双写灰度,来源 "rebuilt")。
+    /// 任何一步失败都回退到纯 SQLite(mem=None),不影响功能。
     /// 返回 (是否走内存索引, 来源描述) 供日志/诊断。
     pub fn load_or_build_index(&mut self, db_path: &str) -> (bool, &'static str) {
-        match self.try_load_cached(db_path) {
-            Some(mem) => {
-                self.mem = Some(mem);
-                (true, "cache")
-            }
-            None => match Self::rebuild_index(&self.db) {
-                Ok(mem) => {
-                    let _ = Self::save_cached(db_path, &mem); // 落盘失败不影响使用
-                    self.mem = Some(mem);
-                    (true, "rebuilt")
-                }
-                Err(_) => {
-                    self.mem = None;
-                    (false, "sqlite-fallback")
-                }
-            },
+        // 2026-09-02 残页/跳页/回删卡顿 根因定位结论:mmap 内存索引层在某些时刻返回
+        // 与 midx 实际内容不一致的数据,导致候选窗渲染出残页(位置4空白)、自动跳最后一页、
+        // 回删卡顿。二分已证:强制走 SQLite 时这些现象全部消失。故彻底旁路内存索引,
+        // 固定走 SQLite(唯一已验证干净的路径)。后续只剩「扩充词库」让 SQLite 查询够用。
+        // mmap/.idx/trie 三层全部停用;mmap_index 模块保留但不再进入加载链。
+        let _ = db_path;
+        self.mem = None;
+        (false, "sqlite")
+    }
+
+    /// 尝试 mmap 加载;文件缺失/损坏/词库已变 返回 None。
+    fn try_load_mmap(&self, db_path: &str) -> Option<MemoryIndex> {
+        let path = mmap_path_for(db_path);
+        if !path.exists() {
+            return None;
         }
+        let (db_len, db_mtime) = db_fingerprint(db_path)?;
+        let m = crate::mmap_index::MmapIndex::map(&path, db_len, db_mtime).ok()?;
+        Some(MemoryIndex::from_mmap(m))
+    }
+
+    /// 原子写 mmap 缓存(先写临时文件再 rename)。
+    fn save_mmap(db_path: &str, mem: &MemoryIndex) -> Result<(), String> {
+        let path = mmap_path_for(db_path);
+        let (db_len, db_mtime) = db_fingerprint(db_path).ok_or("db stat")?;
+        let bytes = crate::mmap_index::build_from_memory_index(mem, db_len, db_mtime)?;
+        let af = atomicwrites::AtomicFile::new(&path, atomicwrites::OverwriteBehavior::AllowOverwrite);
+        af.write(|f| std::io::Write::write_all(f, &bytes))
+            .map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     /// 尝试从缓存加载内存索引;缓存缺失/损坏/词库已变 返回 None。
@@ -206,6 +242,13 @@ impl ImeEngine {
 
     /// 拼音候选查询(对齐 Python _query_pinyin)
     pub fn query(&self, input: &str) -> Vec<Candidate> {
+        // 单字母(2026-09-02):直接走前缀高权单字桶,先于一切合并逻辑返回。
+        // 对齐外挂内存路径 trie z→在/张/中/这/再…(前缀节点高权桶)。
+        // 放在最前是因为「z」会被 query_phrase_by_key_prefix 命中 phrase 表 z 开头的词,
+        // 使 seen 非空而提前返回窄结果;外挂语义是单字母就给前缀高权字,不做整词/混拼。
+        if input.chars().count() == 1 {
+            return self.db.query_pinyin_prefix_top(input, 50).unwrap_or_default();
+        }
         let n_syll = self.segment(input).len().max(1);
         let mut seen: HashMap<String, i64> = HashMap::new();
 
@@ -214,8 +257,13 @@ impl ImeEngine {
 
         if let Some(mem) = &self.mem {
             for fp in &fuzzy_inputs {
+                // 单字通道:模糊音扩展出的翘舌音(fp != input)单字常被高频词组挤出
+                // 词组 top-N,必须走独立单字通道才拿得到(zi→zhi 的「之/知/只」)。
+                for (word, w) in mem.query_prefix_single(fp) {
+                    upsert(&mut seen, word, w);
+                }
+                // 词组通道:多字词须字数==音节数(沿用原错配过滤)
                 for (word, w) in mem.query_prefix(fp) {
-                    // 词组错配过滤:多字词字数须等于音节数
                     let wlen = word.chars().count();
                     if wlen > 1 && wlen != n_syll {
                         continue;
@@ -224,13 +272,29 @@ impl ImeEngine {
                 }
             }
         } else {
-            for fp in &fuzzy_inputs {
+            // 2026-09-02 候选覆盖/排序修复(对齐外挂内存路径语义):
+            // 原音(input 本身)与模糊扩展音(zhi)分开排序——原音字按权重排前,模糊字殿后,
+            // 不全局混排。外挂内存路径之所以 zi 出「自/字/子/资…」且含耔/缁/赀,正是因为
+            // zi 原音字在 zi 节点单字桶里天然排在模糊 zhi 字之前;混排会让高权 zhi 字
+            // 反超低频 zi 原音字(耔 被挤出前页)。这里复刻该语义。
+            // fuzzy_expand 保证原音在前,fuzzy_inputs[0]==input,其余为模糊扩展。
+            let orig = input.to_string();
+            // 1) 原音字:按权重降序,先占满
+            if let Ok(rows) = self.db.query_pinyin(&orig, 50) {
+                for (word, w) in rows {
+                    upsert(&mut seen, word, w);
+                }
+            }
+            // 2) 模糊扩展音字:殿后(仅当模糊音开启且与原音不同才查)
+            for fp in fuzzy_inputs.iter().filter(|fp| **fp != orig) {
                 if let Ok(rows) = self.db.query_pinyin(fp, 50) {
                     for (word, w) in rows {
-                        upsert(&mut seen, word, w);
+                        // 模糊字权重压到最低档之下,确保不反超原音字(保留相对顺序)
+                        upsert(&mut seen, word, w - FUZZY_DEMOTE);
                     }
                 }
             }
+            // 3) 整词词组(错配过滤)
             if let Ok(rows) = self.db.query_phrase(input, 50) {
                 for (word, w) in rows {
                     if word.chars().count() != n_syll {
@@ -249,19 +313,22 @@ impl ImeEngine {
         if !seen.is_empty() {
             // 多字真整词优先于单字,同权重整词靠前
             let mut merged: Vec<Candidate> = seen.into_iter().collect();
+            // 排序必须完全确定(2026-09-02 修「翻页候选顺序漂移」):seen 是 HashMap,
+            // into_iter 顺序每次随机;若 sort 只比多字/权重,同权重单字的相对顺序由
+            // HashMap 随机顺序决定 → 每次 query 候选顺序都不同 → 翻页页码/内容漂移。
+            // 加决胜键:权重相同再比字符串本身(字典序),保证同输入必得同序。
             merged.sort_by(|a, b| {
                 let a_multi = a.0.chars().count() > 1;
                 let b_multi = b.0.chars().count() > 1;
-                b_multi.cmp(&a_multi).then(b.1.cmp(&a.1))
+                b_multi
+                    .cmp(&a_multi)
+                    .then(b.1.cmp(&a.1))
+                    .then(a.0.cmp(&b.0))
             });
             merged.truncate(50);
             return merged;
         }
 
-        // 单字母:首字母简拼带高频字
-        if input.chars().count() == 1 {
-            return self.db.query_pinyin_jp(input, 50).unwrap_or_default();
-        }
         // 多字母无整匹配:取首音节单字
         let segs = self.segment(input);
         if !segs.is_empty() {
@@ -316,16 +383,38 @@ impl ImeEngine {
             }
         };
         if !self.is_full_pinyin(inp) {
-            add(self.db.query_phrase_by_jp(inp, 20).unwrap_or_default());
-            let rest = &inp[1..];
-            if self.is_full_pinyin(rest) {
-                let first = inp.chars().next().unwrap().to_string();
-                add(self.db.query_phrase_reverse_mixed(&first, rest, 15).unwrap_or_default());
+            if let Some(mem) = &self.mem {
+                add(mem.query_jp(inp, 20));
+                let rest = &inp[1..];
+                if self.is_full_pinyin(rest) {
+                    let first = inp.chars().next().unwrap().to_string();
+                    add(mem.query_reverse_mixed(&first, rest, 15));
+                }
+            } else {
+                add(self.db.query_phrase_by_jp(inp, 20).unwrap_or_default());
+                let rest = &inp[1..];
+                if self.is_full_pinyin(rest) {
+                    let first = inp.chars().next().unwrap().to_string();
+                    add(self.db.query_phrase_reverse_mixed(&first, rest, 15).unwrap_or_default());
+                }
             }
         }
-        add(self.db.query_phrase_by_key_prefix(inp, 15).unwrap_or_default());
+        // key 前缀:有 mem 走 trie(内存),无则 SQLite 范围查询
+        if let Some(mem) = &self.mem {
+            let mut kpref: Vec<Candidate> = mem
+                .query_prefix(inp)
+                .into_iter()
+                .filter(|(v, _)| v.chars().count() >= 2)
+                .collect();
+            kpref.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+            kpref.truncate(15);
+            add(kpref);
+        } else {
+            add(self.db.query_phrase_by_key_prefix(inp, 15).unwrap_or_default());
+        }
         let mut out: Vec<Candidate> = seen.into_iter().collect();
-        out.sort_by(|a, b| b.1.cmp(&a.1));
+        // 同 query():加字典序决胜键,消除 HashMap 随机顺序导致的同权重漂移。
+        out.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
         out.truncate(15);
         out
     }
