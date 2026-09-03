@@ -32,6 +32,7 @@ windows = { version = "0.58", features = [
     "Win32_Storage_FileSystem",          # T25: DllGetClassObject 入口日志(CreateFileW/WriteFile)
     "Win32_System_IO",                   # T25: WriteFile 需要
     "Win32_System_SystemInformation",    # 2026-09-03: GetTickCount 日志时间戳
+    "Win32_UI_Input_Ime",                # 2026-09-03: IMM32 .ime 导出(TRANSMSG/IMEINFO/ImmInstallIMEW)
     "implement",
 ] }
 windows-core = "0.58"
@@ -49,6 +50,10 @@ winres = "0.1"
 [features]
 # T25: DllGetClassObject 入口日志(写 C:\Temp\prisir_dll_log.txt),诊断 ctfmon 是否调 DLL
 dllentry_log = []
+# 2026-09-03: 纯 IMM 引擎导出(零 COM)→ prisir_ime_imm.ime,对标搜狗 SogouPY.ime。
+# 根因:双导出单文件(COM+IMM)被 SearchApp IMM 加载器拒激活,ImeProcessKey 永不被调。
+# 拆两份:TSF 用 prisir_ime_tsf.dll(COM),IMM 用 prisir_ime_imm.ime(纯 IMM)。
+imm_only = []
 
 [[bin]]
 name = "prisir_tsfsvc"

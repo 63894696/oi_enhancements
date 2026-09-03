@@ -16,12 +16,40 @@ fn main() {
         let mut res = winres::WindowsResource::new();
         // pinyin.ico 在仓库根。winres 会把第一个 set_icon 编成 IDI_ICON=1 的主图标。
         res.set_icon("pinyin.ico");
+
+        // 2026-09-03 IMM32:`.ime` 必须带 VFT_DRV(0x3) + VFT2_DRV_INPUTMETHOD(0xB) 版本资源,
+        // 否则 IMM32!ImmLoadLayout 拒载(记忆 prisirtip-imm32-research)。winres 有
+        // set_version_info(FILETYPE/FILESUBTYPE),直接用。
+        res.set_version_info(winres::VersionInfo::FILETYPE, 0x3);   // VFT_DRV
+        res.set_version_info(winres::VersionInfo::FILESUBTYPE, 0xB); // VFT2_DRV_INPUTMETHOD
+        res.set("FileDescription", "Prisir IME (TSF + IMM32 dual-stack)");
+        res.set("ProductName", "Prisir IME");
+        res.set_language(0x0804); // 简体中文
+
         if let Err(e) = res.compile() {
             // 编译失败不 panic — 打印 warning,让 DLL 仍能 build(只是没图标)。
             // 真机部署时若缺图标,AddItem 仍会 E_FAIL,日志能看出来。
             println!("cargo:warning=winres compile failed (icon not embedded): {e}");
         }
+
+        // 2026-09-03 IMM32:把 .def 传给 cdylib 链接器。
+        // imm_only feature:用纯 IMM 的 .def(零 COM 导出)→ 产 prisir_ime_imm.ime(对标搜狗 SogouPY.ime)。
+        // 默认(TSF):双导出 .def → prisir_ime_tsf.dll(COM) + 旧双栈 .ime。
+        // MSVC 链接器吃 /DEF:<path>。用 manifest 目录绝对路径,避免相对路径在增量/不同 cwd 下失效。
+        let def_name = if std::env::var("CARGO_FEATURE_IMM_ONLY").is_ok() {
+            "prisir_ime_imm.def"
+        } else {
+            "prisir_ime_tsf.def"
+        };
+        let def = format!(
+            "cargo:rustc-cdylib-link-arg=/DEF:{}\\{}",
+            std::env::var("CARGO_MANIFEST_DIR").unwrap(),
+            def_name
+        );
+        println!("{def}");
     }
     // ico 变化时触发重编。
     println!("cargo:rerun-if-changed=pinyin.ico");
+    println!("cargo:rerun-if-changed=prisir_ime_tsf.def");
+    println!("cargo:rerun-if-changed=prisir_ime_imm.def");
 }

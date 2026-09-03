@@ -75,6 +75,12 @@ impl PrisirEditSession_Impl {
         #[cfg(feature = "dllentry_log")]
         crate::com_class_factory::log_dll_entry(&format!("EditSession: UpdateComposition display='{}'", display));
 
+        // 取 context(供后面 SetSelection 把光标设到拼音串末尾)。
+        let ctx_for_sel = {
+            let g = self.this.st.context.lock().unwrap();
+            g.clone()
+        };
+
         // 1. composition 不存在 → StartComposition
         if self.this.st.composition.lock().unwrap().is_none() {
             let ctx = {
@@ -86,9 +92,29 @@ impl PrisirEditSession_Impl {
                 crate::com_class_factory::log_dll_entry("EditSession: no context, skip StartComposition");
                 return Ok(());
             };
-            // GetStart 拿文档起点 → Clone 出独立 range 给 composition
-            let start = unsafe { ctx.GetStart(ec) }?;
-            let range = unsafe { start.Clone() }?;
+            // 修「按 s 光标跳回你好前面」(2026-09-03 真根因):旧代码用 ctx.GetStart() 拿**文档
+            // 起点**建 composition → 每次新 composition 都落在文档开头(「你好」前面),新拼音
+            // 插到已上屏文字之前。必须用**当前 selection(光标)**位置建 composition。
+            // GetSelection(TF_DEFAULT_SELECTION) 拿光标 range → 折叠到末尾(光标处)→ 在此建 composition。
+            let range = {
+                let mut fetched: u32 = 0;
+                let mut selbuf: [TF_SELECTION; 1] = [TF_SELECTION::default()];
+                let got = unsafe { ctx.GetSelection(ec, TF_DEFAULT_SELECTION, &mut selbuf, &mut fetched) };
+                if got.is_ok() && fetched > 0 {
+                    // 取 selection 的 range(ManuallyDrop 包裹,克隆出独立 range),折叠到末尾 = 光标插入点。
+                    let r: Option<ITfRange> = unsafe { core::mem::ManuallyDrop::take(&mut selbuf[0].range) };
+                    if let Some(r) = r {
+                        let _ = unsafe { r.Collapse(ec, TF_ANCHOR_END) };
+                        r
+                    } else {
+                        // 拿不到 selection range → 退回文档起点(保底,不该发生)。
+                        unsafe { ctx.GetStart(ec)? }
+                    }
+                } else {
+                    // GetSelection 失败 → 退回文档起点(保底)。
+                    unsafe { ctx.GetStart(ec)? }
+                }
+            };
             let ctx_comp: ITfContextComposition = ctx.cast()?;
             // composition 终止 sink:用 TsfInputProcessor 本体不必要,这里传一个简单的 sink 也行,
             // 但 StartComposition 要求非 null sink。复用主对象的 ITfCompositionSink 会引入循环,
@@ -98,24 +124,59 @@ impl PrisirEditSession_Impl {
             *self.this.st.composition.lock().unwrap() = Some(comp);
             *self.this.st.composition_range.lock().unwrap() = Some(range);
             #[cfg(feature = "dllentry_log")]
-            crate::com_class_factory::log_dll_entry("EditSession: StartComposition OK");
+            crate::com_class_factory::log_dll_entry("EditSession: StartComposition(at selection) OK");
         }
 
-        // 2. 把 display 写进 composition range
-        let range = {
-            let g = self.this.st.composition_range.lock().unwrap();
+        // 2. 把 display 写进 composition range。
+        //    2026-09-03 真根因(字母累积 + 光标卡最前 + ShiftStart=0 移不动):
+        //    之前缓存 StartComposition 时的 range 反复复用,但 SetText 会把它塌成末尾空 range,
+        //    下次 SetText 变纯插入 → 拼音叠加;缓存 range 的锚点又被 composition 锁定,ShiftStart
+        //    拉不回(实测 moved=0)。正确做法(对齐 rime/weasel):**每次从 composition.GetRange()
+        //    现拿当前真实覆盖的活 range**,它始终指着 composition 实际区间,SetText 是真替换,
+        //    光标随 composition 末尾走。不再复用缓存 range。
+        let comp = {
+            let g = self.this.st.composition.lock().unwrap();
             g.clone()
         };
-        if let Some(range) = range {
-            let wide: Vec<u16> = display.encode_utf16().collect();
-            unsafe { range.SetText(ec, 0, &wide) }?;
-            #[cfg(feature = "dllentry_log")]
-            crate::com_class_factory::log_dll_entry("EditSession: SetText OK");
+        if let Some(comp) = comp {
+            match unsafe { comp.GetRange() } {
+                Ok(range) => {
+                    let wide: Vec<u16> = display.encode_utf16().collect();
+                    unsafe { range.SetText(ec, 0, &wide) }?;
+                    #[cfg(feature = "dllentry_log")]
+                    crate::com_class_factory::log_dll_entry("EditSession: SetText(GetRange) OK");
+
+                    // 修「光标钉在拼音最前」(2026-09-03):composition 内容对了,但 selection 光标
+                    // 一直没主动设,宿主默认把它放在 composition 起点 → 字母在光标后方长。
+                    // 显式把 selection 设为 composition range 末尾(clone → Collapse(END) → SetSelection,
+                    // ase=TF_AE_END 表示活动端在末尾),光标即跟到拼音串尾。
+                    if let Some(ctx) = &ctx_for_sel {
+                        if let Ok(sel_range) = unsafe { range.Clone() } {
+                            let _ = unsafe { sel_range.Collapse(ec, TF_ANCHOR_END) };
+                            let sel = TF_SELECTION {
+                                range: core::mem::ManuallyDrop::new(Some(sel_range)),
+                                style: TF_SELECTIONSTYLE { ase: TF_AE_END, fInterimChar: BOOL(0) },
+                            };
+                            let r = unsafe { ctx.SetSelection(ec, &[sel]) };
+                            #[cfg(feature = "dllentry_log")]
+                            crate::com_class_factory::log_dll_entry(&format!("EditSession: SetSelection(end) ok={}", r.is_ok()));
+                        }
+                    }
+                }
+                Err(e) => {
+                    #[cfg(feature = "dllentry_log")]
+                    crate::com_class_factory::log_dll_entry(&format!("EditSession: GetRange FAIL {e}"));
+                }
+            }
         }
         Ok(())
     }
 
-    /// 上屏:在当前 selection 插入 text + EndComposition + 清句柄。
+    /// 上屏:把结果写进 composition range(替换拼音)→ EndComposition finalize 结果 → 清句柄。
+    /// 2026-09-03 修「Explorer 搜索 你好nihao 叠加」:旧流程是 EndComposition(把拼音 finalize
+    /// 留在文档) + InsertTextAtSelection(再插结果) → 宿主把拼音残留 + 结果叠加成「你好nihao」。
+    /// 正确做法:composition range 还指着拼音时,直接 SetText 替换成结果串,再 EndComposition
+    /// finalize —— 文档里只有结果,无拼音残留。range 不存在(极少)才退回 InsertTextAtSelection。
     fn commit(&self, ec: u32, text: &str) -> Result<()> {
         #[cfg(feature = "dllentry_log")]
         crate::com_class_factory::log_dll_entry(&format!("EditSession: Commit text='{}'", text));
@@ -130,24 +191,67 @@ impl PrisirEditSession_Impl {
             return Ok(());
         };
 
-        // 先结束 composition(若有),否则插入文本会落在 composition 内部。
+        let wide: Vec<u16> = text.encode_utf16().collect();
+
+        // 优先:composition 的活 range 上直接写结果串(替换拼音),再 EndComposition finalize。
         let comp = {
             let mut g = self.this.st.composition.lock().unwrap();
             g.take()
         };
+        // 缓存的 composition_range 一并清掉(update 已改用 GetRange,不再维护它)。
+        self.this.st.composition_range.lock().unwrap().take();
         if let Some(comp) = comp {
+            // 用 composition.GetRange() 现拿当前真实覆盖的活 range(同 update_composition 的修法),
+            // SetText 真替换拼音为结果串;EndComposition finalize 时光标随 composition 末尾走,
+            // 落在结果串之后(修「世界你好」倒置 + 缓存 range 塌掉导致 ShiftStart=0 移不动)。
+            match unsafe { comp.GetRange() } {
+                Ok(range) => {
+                    if let Err(e) = unsafe { range.SetText(ec, 0, &wide) } {
+                        #[cfg(feature = "dllentry_log")]
+                        crate::com_class_factory::log_dll_entry(&format!("EditSession: Commit SetText FAIL {e}"));
+                    }
+                    // EndComposition 前把 selection 设到结果串末尾,finalize 后光标落在结果串后,
+                    // 下次输入接在后面(修「世界你好」倒置)。
+                    if let Ok(sel_range) = unsafe { range.Clone() } {
+                        let _ = unsafe { sel_range.Collapse(ec, TF_ANCHOR_END) };
+                        let sel = TF_SELECTION {
+                            range: core::mem::ManuallyDrop::new(Some(sel_range)),
+                            style: TF_SELECTIONSTYLE { ase: TF_AE_END, fInterimChar: BOOL(0) },
+                        };
+                        let r = unsafe { ctx.SetSelection(ec, &[sel]) };
+                        #[cfg(feature = "dllentry_log")]
+                        crate::com_class_factory::log_dll_entry(&format!("EditSession: Commit SetSelection(end) ok={}", r.is_ok()));
+                    }
+                }
+                Err(e) => {
+                    #[cfg(feature = "dllentry_log")]
+                    crate::com_class_factory::log_dll_entry(&format!("EditSession: Commit GetRange FAIL {e}"));
+                }
+            }
             let _ = unsafe { comp.EndComposition(ec) };
-            self.this.st.composition_range.lock().unwrap().take();
+            #[cfg(feature = "dllentry_log")]
+            crate::com_class_factory::log_dll_entry("EditSession: Commit EndComposition OK");
+            return Ok(());
         }
 
-        // 在当前 selection 插入提交文本。
+        // 兜底:无 composition(英文模式逐字母上屏) → 在 selection 插入。
+        // 2026-09-03 修「英文连续输入后字母在前」:InsertTextAtSelection 返回插入串的 range,
+        // 但不主动设 selection 时宿主光标停在插入串起点 → 下一个字母插到前一个前面(ab→ba)。
+        // 用返回的 range 把光标设到刚插入串末尾。
         let insert_at: ITfInsertAtSelection = ctx.cast()?;
-        let wide: Vec<u16> = text.encode_utf16().collect();
-        unsafe {
+        let inserted = unsafe {
             insert_at.InsertTextAtSelection(ec, INSERT_TEXT_AT_SELECTION_FLAGS(0), &wide)
         }?;
+        if let Ok(sel_range) = unsafe { inserted.Clone() } {
+            let _ = unsafe { sel_range.Collapse(ec, TF_ANCHOR_END) };
+            let sel = TF_SELECTION {
+                range: core::mem::ManuallyDrop::new(Some(sel_range)),
+                style: TF_SELECTIONSTYLE { ase: TF_AE_END, fInterimChar: BOOL(0) },
+            };
+            let _ = unsafe { ctx.SetSelection(ec, &[sel]) };
+        }
         #[cfg(feature = "dllentry_log")]
-        crate::com_class_factory::log_dll_entry("EditSession: InsertTextAtSelection OK");
+        crate::com_class_factory::log_dll_entry("EditSession: Commit InsertTextAtSelection(fallback) OK");
         Ok(())
     }
 

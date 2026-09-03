@@ -135,6 +135,7 @@ fn main() {
             run_query_test(pinyin, &db);
         }
         Some("--register") => run_register(args.get(2).cloned()),
+        Some("--register-imm") => prisir_ime_tsf::register_imm::run_register_imm(),
         Some("--register-elevated") => run_register_elevated(),
         Some("--register-status") => run_register_status(),
         Some("--unregister") => run_unregister(),

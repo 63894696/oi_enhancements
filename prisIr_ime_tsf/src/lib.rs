@@ -34,6 +34,8 @@ pub mod about;
 pub mod langbar;
 pub mod elevate;
 pub mod register_export;
+pub mod imm32;
+pub mod register_imm;
 
 pub use tsf_input_processor::TsfInputProcessor;
 pub use tsf_text_store::TsfTextStore;
