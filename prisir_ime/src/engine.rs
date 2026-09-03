@@ -310,17 +310,22 @@ impl ImeEngine {
             upsert(&mut seen, word, w);
         }
 
-        // 学习权重合并(2026-09-03):user.db 里用户学过的词加权提到前面。
-        // 学习权重**叠加**到已有候选上(越学越靠前 = 「常用字自动靠前,文字跟手」);
+        // 学习权重合并(2026-09-03 引入,2026-09-04 改学成置顶+位置锁定):
+        // user.db 里用户学过的词提到最前。学成词给固定权重 LEARN_PIN_WEIGHT(>词库 max≈26000),
+        // **不再叠加 base+lw、不再 +1 累积、不做时间衰减** → 学成词一旦学会位置永久锁定,
+        // 解决「偶尔用的词位置老变、无法固化调用」(用户 2026-09-04 明确不要衰减)。
+        // 多个学成词按 user_words_for 返回的 seq(学习先后)升序稳定排序,先学在前。
         // 学习库独有的新词(主库没有的自造词)也补进来。user.db 只读查询,微秒级。
-        for (word, lw) in self.db.user_words_for(input) {
-            match seen.get(&word) {
-                Some(&base) => { seen.insert(word, base + lw); } // 已学过:叠加提频
-                None => { seen.insert(word, lw); }               // 新词:直接进候选
+        // seen 是 HashMap<String, i64>,为保住学成词的 seq 次序,单独收集学成词再前置。
+        let user_words = self.db.user_words_for(input);
+        if !user_words.is_empty() {
+            // 学成词从 seen 移除(若在),稍后按 seq 序前置,避免被 HashMap 随机序打乱。
+            for (word, _seq) in &user_words {
+                seen.remove(word);
             }
         }
 
-        if !seen.is_empty() {
+        if !seen.is_empty() || !user_words.is_empty() {
             // 多字真整词优先于单字,同权重整词靠前
             let mut merged: Vec<Candidate> = seen.into_iter().collect();
             // 排序必须完全确定(2026-09-02 修「翻页候选顺序漂移」):seen 是 HashMap,
@@ -335,8 +340,16 @@ impl ImeEngine {
                     .then(b.1.cmp(&a.1))
                     .then(a.0.cmp(&b.0))
             });
-            merged.truncate(50);
-            return merged;
+            // 学成词按 seq 升序前置到候选最前(位置锁定:固定权重 + 学习次序)。
+            // user_words_for 已按 seq ASC 返回,直接前插即得稳定次序。
+            let pinned: Vec<Candidate> = user_words
+                .into_iter()
+                .map(|(word, _seq)| (word, crate::db::LEARN_PIN_WEIGHT))
+                .collect();
+            let mut out = pinned;
+            out.extend(merged);
+            out.truncate(50);
+            return out;
         }
 
         // 多字母无整匹配:取首音节单字

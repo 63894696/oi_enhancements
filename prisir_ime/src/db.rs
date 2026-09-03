@@ -16,6 +16,14 @@ pub struct CikuDb {
 pub type Weighted = (String, i64);
 /// (key, value, weight)
 pub type Row = (String, String, i64);
+/// (value, seq) — 学习词:学成置顶固定权重 + 学习次序(位置锁定用)
+pub type UserWord = (String, i64);
+
+/// 学成置顶固定权重(2026-09-04):必须大于词库静态权重动态范围(实测 max≈26000),
+/// 让用户第一次选某词就一步跳到该拼音下学成词第一梯队。之后 weight 不再变
+/// (不再 +1 累积、不做时间衰减)→ 位置永久锁定,解决「偶尔用的词位置老变、
+/// 无法固化调用」。多个学成词按 seq(学习先后)稳定排序,先学在前。
+pub const LEARN_PIN_WEIGHT: i64 = 100_000;
 
 fn next_prefix(prefix: &str) -> String {
     // shij -> shik,用于 key >= p AND key < next(p) 走索引的范围查询。
@@ -56,7 +64,7 @@ impl CikuDb {
         Ok(CikuDb { conn, user_conn })
     }
 
-    /// 打开/创建学习库 user.db,并确保 user_word 表存在。
+    /// 打开/创建学习库 user.db,并确保 user_word 表存在(含 seq 学习次序列)。
     fn open_user_db(main_path: &str) -> SqlResult<Connection> {
         let user_path = std::path::Path::new(main_path).with_extension("user.db");
         let uc = Connection::open(user_path)?;
@@ -65,10 +73,19 @@ impl CikuDb {
                 key TEXT NOT NULL,
                 value TEXT NOT NULL,
                 weight INTEGER NOT NULL DEFAULT 0,
+                seq INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY(key, value)
             );",
         )?;
+        // 对 2026-09-04 之前建的旧 user.db(无 seq 列)补列;已存在则忽略错误。
+        let _ = uc.execute_batch("ALTER TABLE user_word ADD COLUMN seq INTEGER NOT NULL DEFAULT 0;");
         Ok(uc)
+    }
+
+    /// 下一个学习次序号(现有 max(seq)+1,从 1 起)。学成词按 seq 升序锁定位置。
+    fn next_seq(uc: &Connection) -> i64 {
+        uc.query_row("SELECT COALESCE(MAX(seq),0)+1 FROM user_word", [], |r| r.get(0))
+            .unwrap_or(1)
     }
 
     /// 全部词组 (key,value,weight),供内存索引构建。
@@ -186,26 +203,34 @@ impl CikuDb {
 
     /// 学习:写独立 user.db 的 user_word 表(2026-09-03 改,不再碰主库 phrase/pinyin)。
     /// 主库只读后,任何 UPDATE/INSERT 主库都会返错;学习记录统一进 user.db,
-    /// 查询时由 engine 合并(常用字靠前)。user_conn 为 None(打开失败)时静默跳过。
-    pub fn add_user_word(&self, pinyin: &str, word: &str, weight: i64) -> SqlResult<()> {
+    /// 查询时由 engine 合并(学成词置顶)。user_conn 为 None(打开失败)时静默跳过。
+    ///
+    /// 2026-09-04 学成置顶+位置锁定:
+    /// - 新词首次学:weight 固定 = LEARN_PIN_WEIGHT(不再从 1 起累积),seq 取学习次序。
+    /// - 已学词再选:**只刷新 seq 不动 weight** — 权重不累积 → 学成词位置永久锁定,
+    ///   解决「偶尔用的词位置老变、无法固化调用」(用户 2026-09-04 明确不要时间衰减)。
+    /// `weight` 参数保留兼容旧调用(传 1),本函数内部忽略之,统一用 LEARN_PIN_WEIGHT。
+    pub fn add_user_word(&self, pinyin: &str, word: &str, _weight: i64) -> SqlResult<()> {
         let Some(uc) = &self.user_conn else {
             return Ok(()); // user.db 不可用:学习失效但不影响打字
         };
+        let seq = Self::next_seq(uc);
         uc.execute(
-            "INSERT INTO user_word(key,value,weight) VALUES(?1,?2,?3)
-             ON CONFLICT(key,value) DO UPDATE SET weight=weight+excluded.weight",
-            rusqlite::params![pinyin, word, weight],
+            "INSERT INTO user_word(key,value,weight,seq) VALUES(?1,?2,?3,?4)
+             ON CONFLICT(key,value) DO UPDATE SET seq=excluded.seq",
+            rusqlite::params![pinyin, word, LEARN_PIN_WEIGHT, seq],
         )?;
         Ok(())
     }
 
-    /// 查学习权重:某拼音下用户学过的所有词(key → [(value, weight)])。
-    /// 供 engine 查询合并用(常用字靠前)。无 user.db 时返空。
-    pub fn user_words_for(&self, pinyin: &str) -> Vec<Weighted> {
+    /// 查学习词:某拼音下用户学过的所有词 → [(value, seq)](按 seq 升序,先学在前)。
+    /// 供 engine 查询合并用(学成置顶+位置锁定)。无 user.db 时返空。
+    /// 返回的 weight 由 engine 统一给 LEARN_PIN_WEIGHT,这里只带 seq 用于稳定排序。
+    pub fn user_words_for(&self, pinyin: &str) -> Vec<UserWord> {
         let Some(uc) = &self.user_conn else {
             return Vec::new();
         };
-        let mut st = match uc.prepare("SELECT value, weight FROM user_word WHERE key=?1") {
+        let mut st = match uc.prepare("SELECT value, seq FROM user_word WHERE key=?1 ORDER BY seq ASC") {
             Ok(s) => s,
             Err(_) => return Vec::new(),
         };
@@ -214,5 +239,120 @@ impl CikuDb {
             Err(_) => return Vec::new(),
         };
         rows.filter_map(|x| x.ok()).collect()
+    }
+
+    /// 删除指定学习词(词库管理窗口用)。返受影响行数。
+    pub fn remove_user_word(&self, pinyin: &str, word: &str) -> SqlResult<usize> {
+        let Some(uc) = &self.user_conn else {
+            return Ok(0);
+        };
+        uc.execute(
+            "DELETE FROM user_word WHERE key=?1 AND value=?2",
+            rusqlite::params![pinyin, word],
+        )
+    }
+
+    /// 清空全部学习记录(词库管理窗口「清空学习」用)。
+    pub fn clear_user_words(&self) -> SqlResult<()> {
+        let Some(uc) = &self.user_conn else {
+            return Ok(());
+        };
+        uc.execute("DELETE FROM user_word", [])?;
+        Ok(())
+    }
+
+    /// 列出全部学习词(词库管理窗口列表用) → [(key, value, weight, seq)] 按 seq 升序。
+    pub fn list_user_words(&self) -> Vec<(String, String, i64, i64)> {
+        let Some(uc) = &self.user_conn else {
+            return Vec::new();
+        };
+        let mut st = match uc.prepare("SELECT key, value, weight, seq FROM user_word ORDER BY seq ASC") {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
+        let rows = match st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))) {
+            Ok(r) => r,
+            Err(_) => return Vec::new(),
+        };
+        rows.filter_map(|x| x.ok()).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 建一个空的临时主库(只需存在,user.db 与之同目录派生),返回 (CikuDb, 临时目录)。
+    /// 主库不必有 phrase/pinyin 表——学习路径只写 user.db,本测试不查主库。
+    /// 目录名用全局原子计数器:同进程各测试独占目录(并发安全),不会互相清/串行残留。
+    /// (曾用 temp_dir+pid:同进程多测试共享 → 并发互删 user.db → 间歇 3/4 假败,2026-09-04 修)
+    fn temp_db() -> (CikuDb, std::path::PathBuf) {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static N: AtomicU64 = AtomicU64::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "prisir_dbtest_{}_{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_dir_all(&dir); // 清掉同目录历史残留
+        std::fs::create_dir_all(&dir).unwrap();
+        let main = dir.join("ciku.db");
+        // 空主库文件(占位,只读打开用)
+        Connection::open(&main).unwrap().execute_batch("CREATE TABLE IF NOT EXISTS phrase(jp TEXT,key TEXT,value TEXT,weight INTEGER);").unwrap();
+        let db = CikuDb::open(main.to_str().unwrap()).unwrap();
+        (db, dir)
+    }
+
+    #[test]
+    fn learn_pins_word_at_fixed_weight() {
+        let (db, _d) = temp_db();
+        db.add_user_word("nihao", "你好", 1).unwrap();
+        let words = db.user_words_for("nihao");
+        assert_eq!(words.len(), 1);
+        assert_eq!(words[0].0, "你好");
+        // 学成置顶:固定权重写进库,直接读校验
+        let all = db.list_user_words();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].2, LEARN_PIN_WEIGHT, "学成词权重必须=LEARN_PIN_WEIGHT(置顶)");
+        assert!(LEARN_PIN_WEIGHT > 26000, "LEARN_PIN_WEIGHT 必须大于词库静态 max");
+    }
+
+    #[test]
+    fn relearn_does_not_accumulate_weight_position_locked() {
+        let (db, _d) = temp_db();
+        db.add_user_word("nihao", "你好", 1).unwrap();
+        // 重复学习多次:weight 不累积(位置锁定)
+        for _ in 0..5 {
+            db.add_user_word("nihao", "你好", 1).unwrap();
+        }
+        let all = db.list_user_words();
+        assert_eq!(all.len(), 1, "重复学习不应产生多行");
+        assert_eq!(all[0].2, LEARN_PIN_WEIGHT, "重复学习 weight 不累积,保持置顶固定值");
+    }
+
+    #[test]
+    fn multiple_learned_words_ordered_by_seq() {
+        let (db, _d) = temp_db();
+        db.add_user_word("ni", "你", 1).unwrap();
+        db.add_user_word("ni", "泥", 1).unwrap();
+        db.add_user_word("ni", "尼", 1).unwrap();
+        let words = db.user_words_for("ni");
+        let vals: Vec<&str> = words.iter().map(|(v, _)| v.as_str()).collect();
+        assert_eq!(vals, vec!["你", "泥", "尼"], "学成词按学习先后(seq)稳定排序");
+    }
+
+    #[test]
+    fn remove_and_clear_user_words() {
+        let (db, _d) = temp_db();
+        db.add_user_word("nihao", "你好", 1).unwrap();
+        db.add_user_word("nihao", "泥嚎", 1).unwrap();
+        assert_eq!(db.user_words_for("nihao").len(), 2);
+        let n = db.remove_user_word("nihao", "泥嚎").unwrap();
+        assert_eq!(n, 1);
+        let rest = db.user_words_for("nihao");
+        assert_eq!(rest.len(), 1);
+        assert_eq!(rest[0].0, "你好");
+        db.clear_user_words().unwrap();
+        assert_eq!(db.user_words_for("nihao").len(), 0, "清空后无学成词");
     }
 }
