@@ -1,0 +1,60 @@
+[package]
+name = "prisir_ime_tsf"
+version = "0.7.0"
+edition = "2021"
+description = "Prisir 输入法 TSF COM 实现 — ITfTextInputProcessor + ITextStoreACP + 拼音查询 FFI 桥 + CTF HKCU 注册(T4) + daemon WTS + DLL 热重载(T5) + stdio JSON-RPC server(T6) + 拼音/五笔输入法切换(T7) + WTS 真消息循环 + hidden HWND(T10) + admin 提升 + DllRegisterServer (T24)"
+
+[lib]
+name = "prisir_ime_tsf"
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+windows = { version = "0.58", features = [
+    "Win32_UI_TextServices",
+    "Win32_UI_Input_KeyboardAndMouse",  # T25: ITfInputProcessorProfileMgr::ActivateProfile 的 HKL 参数
+    "Win32_System_Com",
+    "Win32_Foundation",
+    "Win32_System_Registry",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_Console",     # T4: SetConsoleCtrlHandler for --daemon
+    "Win32_Security",           # T4: RegCreateKeyExW 需要 SECURITY_ATTRIBUTES 类型
+    "Win32_System_StationsAndDesktops",  # T5: WTS注册接口(T6 升级用)
+    "Win32_System_RemoteDesktop",        # T5: WTSGetActiveConsoleSessionId 在这里
+    "Win32_Graphics_Gdi",                # T10: WNDCLASSEXW + RegisterClassExW (HBRUSH/HICON/HCURSOR 字段需要)
+    "Win32_Graphics_Direct2D",           # 彩色 emoji: ID2D1HwndRenderTarget 画到面板
+    "Win32_Graphics_Direct2D_Common",    # D2D1_COLOR_F / D2D1_RECT_F / D2D1_PIXEL_FORMAT
+    "Win32_Graphics_DirectWrite",        # 彩色 emoji: IDWriteFactory + DrawTextLayout 走 COLR
+    "Win32_Graphics_Dxgi_Common",        # DXGI_FORMAT_B8G8R8A8_UNORM (像素格式)
+    "Foundation_Numerics",               # D2D 部分方法(CreateSolidColorBrush/DrawTextLayout)的 cfg 门槛
+    "Win32_UI_Shell",                    # T24 P2: ShellExecuteExW "runas" 自动 UAC 提升
+    "Win32_System_Threading",            # T24 P2: GetCurrentProcess / OpenProcessToken / GetTokenInformation
+    "Win32_Storage_FileSystem",          # T25: DllGetClassObject 入口日志(CreateFileW/WriteFile)
+    "Win32_System_IO",                   # T25: WriteFile 需要
+    "Win32_System_SystemInformation",    # 2026-09-03: GetTickCount 日志时间戳
+    "implement",
+] }
+windows-core = "0.58"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# T3/#88 LangBar: 把 pinyin.ico 编成 DLL 图标资源。
+# 根因(2026-09-01 诊断): ITfLangBarItemMgr::AddItem 据 GetInfo.clsidService 反查
+# profile 的 IconFile(C:\PrisirIME\prisir_ime_tsf.dll) 提取图标,我们 DLL 无图标资源
+# → ExtractIcon 失败 → AddItem 返 E_FAIL 0x80004005(且永远走不到 GetIcon)。
+# 嵌入后 IconIndex 0x0 即资源里第一个图标,任务栏/LangBar 都能取到。
+[build-dependencies]
+winres = "0.1"
+
+[features]
+# T25: DllGetClassObject 入口日志(写 C:\Temp\prisir_dll_log.txt),诊断 ctfmon 是否调 DLL
+dllentry_log = []
+
+[[bin]]
+name = "prisir_tsfsvc"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

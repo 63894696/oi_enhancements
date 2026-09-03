@@ -310,6 +310,16 @@ impl ImeEngine {
             upsert(&mut seen, word, w);
         }
 
+        // 学习权重合并(2026-09-03):user.db 里用户学过的词加权提到前面。
+        // 学习权重**叠加**到已有候选上(越学越靠前 = 「常用字自动靠前,文字跟手」);
+        // 学习库独有的新词(主库没有的自造词)也补进来。user.db 只读查询,微秒级。
+        for (word, lw) in self.db.user_words_for(input) {
+            match seen.get(&word) {
+                Some(&base) => { seen.insert(word, base + lw); } // 已学过:叠加提频
+                None => { seen.insert(word, lw); }               // 新词:直接进候选
+            }
+        }
+
         if !seen.is_empty() {
             // 多字真整词优先于单字,同权重整词靠前
             let mut merged: Vec<Candidate> = seen.into_iter().collect();

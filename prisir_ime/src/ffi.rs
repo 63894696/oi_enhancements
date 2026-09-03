@@ -39,6 +39,9 @@ pub extern "C" fn prisir_ime_load(db_path: *const c_char, build_index: i32) -> *
         Ok(e) => e,
         Err(_) => return std::ptr::null_mut(),
     };
+    // 默认开模糊音(2026-09-02,对齐外挂式 ime_config.FUZZY_RULES): 平翘舌 z/zh c/ch s/sh。
+    // 仅单音节单字查询时扩展(engine.query 内 fuzzy_expand),不影响多音节整句。
+    engine.set_fuzzy_rules(vec!["z_zh", "c_ch", "s_sh"]);
     if build_index != 0 {
         let (_ok, src) = engine.load_or_build_index(path);
         eprintln!("[prisir_ime] index source: {src}");

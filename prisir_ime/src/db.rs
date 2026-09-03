@@ -2,10 +2,14 @@
 //! 表:phrase(jp,key,value,weight) pinyin(jp,key,value,weight) wubi86(key,value,weight)。
 //! 注意:pinyin 表上游混入约 31 万词组,查单字必须 LENGTH(value)=1 过滤。
 
-use rusqlite::{Connection, Result as SqlResult};
+use rusqlite::{Connection, OpenFlags, Result as SqlResult};
 
 pub struct CikuDb {
     conn: Connection,
+    /// 学习记录独立连接(2026-09-03):写 user.db,不碰主库 ciku.db。
+    /// 主库只读 → 文件大小/mtime 永不变 → 索引指纹稳定 → 切换即打不重建。
+    /// None = user.db 打开失败(学习静默失效,不影响打字)。
+    user_conn: Option<Connection>,
 }
 
 /// (value, weight)
@@ -36,8 +40,35 @@ fn next_prefix(prefix: &str) -> String {
 
 impl CikuDb {
     pub fn open(path: &str) -> SqlResult<Self> {
-        let conn = Connection::open(path)?;
-        Ok(CikuDb { conn })
+        // 主库只读打开(2026-09-03 修「学习写库→索引失效重建 69s」):
+        // 之前 Connection::open 是读写模式,即使只 SELECT,SQLite 在某些情况下也会刷
+        // 主文件 mtime;更严重的是 learn() 每次上屏 UPDATE/INSERT 直接改主库内容,
+        // 大小+mtime 一变,load_or_build_index 的指纹(大小+mtime)就对不上 → 全量重建
+        // 322MB 索引(69s)→ 切换输入法后要等几十秒才能打字。
+        // 只读打开后主库物理上不可写,指纹永久稳定,索引建好一次永久秒开。
+        let conn = Connection::open_with_flags(
+            path,
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
+        // 学习记录走独立 user.db(与主库同目录,`<name>.user.db`)。打开失败不致命——
+        // 学习静默失效,打字/查询完全不受影响(满足「切换即打」优先于学习)。
+        let user_conn = Self::open_user_db(path).ok();
+        Ok(CikuDb { conn, user_conn })
+    }
+
+    /// 打开/创建学习库 user.db,并确保 user_word 表存在。
+    fn open_user_db(main_path: &str) -> SqlResult<Connection> {
+        let user_path = std::path::Path::new(main_path).with_extension("user.db");
+        let uc = Connection::open(user_path)?;
+        uc.execute_batch(
+            "CREATE TABLE IF NOT EXISTS user_word(
+                key TEXT NOT NULL,
+                value TEXT NOT NULL,
+                weight INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY(key, value)
+            );",
+        )?;
+        Ok(uc)
     }
 
     /// 全部词组 (key,value,weight),供内存索引构建。
@@ -153,44 +184,35 @@ impl CikuDb {
         Ok(rows.filter_map(|x| x.ok()).collect())
     }
 
-    /// 学习:词组写 phrase(存在则加权),单字更新 pinyin 权重。
+    /// 学习:写独立 user.db 的 user_word 表(2026-09-03 改,不再碰主库 phrase/pinyin)。
+    /// 主库只读后,任何 UPDATE/INSERT 主库都会返错;学习记录统一进 user.db,
+    /// 查询时由 engine 合并(常用字靠前)。user_conn 为 None(打开失败)时静默跳过。
     pub fn add_user_word(&self, pinyin: &str, word: &str, weight: i64) -> SqlResult<()> {
-        if word.chars().count() > 1 {
-            let mut st = self
-                .conn
-                .prepare("SELECT weight FROM phrase WHERE key=?1 AND value=?2")?;
-            let existing: Option<i64> = st.query_row(rusqlite::params![pinyin, word], |r| r.get(0)).ok();
-            if let Some(w) = existing {
-                self.conn.execute(
-                    "UPDATE phrase SET weight=?1 WHERE key=?2 AND value=?3",
-                    rusqlite::params![w + weight, pinyin, word],
-                )?;
-            } else {
-                // 简拼由调用方(engine)算好传入会更准;此处简化为首字母拼接
-                let jp = crate::engine::to_jianpin(pinyin);
-                self.conn.execute(
-                    "INSERT OR REPLACE INTO phrase (jp, key, value, weight) VALUES (?1,?2,?3,?4)",
-                    rusqlite::params![jp, pinyin, word, weight],
-                )?;
-            }
-            return Ok(());
-        }
-        let mut st = self
-            .conn
-            .prepare("SELECT weight FROM pinyin WHERE key=?1 AND value=?2")?;
-        let existing: Option<i64> = st.query_row(rusqlite::params![pinyin, word], |r| r.get(0)).ok();
-        if let Some(w) = existing {
-            self.conn.execute(
-                "UPDATE pinyin SET weight=?1 WHERE key=?2 AND value=?3",
-                rusqlite::params![w + weight, pinyin, word],
-            )?;
-        } else {
-            let jp = crate::engine::to_jianpin(pinyin);
-            self.conn.execute(
-                "INSERT INTO pinyin (jp, key, value, weight) VALUES (?1,?2,?3,?4)",
-                rusqlite::params![jp, pinyin, word, weight],
-            )?;
-        }
+        let Some(uc) = &self.user_conn else {
+            return Ok(()); // user.db 不可用:学习失效但不影响打字
+        };
+        uc.execute(
+            "INSERT INTO user_word(key,value,weight) VALUES(?1,?2,?3)
+             ON CONFLICT(key,value) DO UPDATE SET weight=weight+excluded.weight",
+            rusqlite::params![pinyin, word, weight],
+        )?;
         Ok(())
+    }
+
+    /// 查学习权重:某拼音下用户学过的所有词(key → [(value, weight)])。
+    /// 供 engine 查询合并用(常用字靠前)。无 user.db 时返空。
+    pub fn user_words_for(&self, pinyin: &str) -> Vec<Weighted> {
+        let Some(uc) = &self.user_conn else {
+            return Vec::new();
+        };
+        let mut st = match uc.prepare("SELECT value, weight FROM user_word WHERE key=?1") {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
+        let rows = match st.query_map(rusqlite::params![pinyin], |r| Ok((r.get(0)?, r.get(1)?))) {
+            Ok(r) => r,
+            Err(_) => return Vec::new(),
+        };
+        rows.filter_map(|x| x.ok()).collect()
     }
 }

@@ -153,8 +153,9 @@ prisir_findex/findex.db-wal
 e2e_share_a2h/
 e2e_share_rot/
 
-# prisIr_ime_tsf — TSF 编译产物 + 词库缓存(589 MB,运行时再生成)
-prisIr_ime_tsf/
+# prisIr_ime_tsf — 源码纳入 git(2026-09-03);仅排除 Rust 编译产物 + 临时报告
+prisIr_ime_tsf/target/
+prisIr_ime_tsf/.tmp_*.md
 # tiktoken 编码缓存(运行时下载)
 tiktoken_data/
 

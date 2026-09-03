@@ -12,6 +12,7 @@
 pub mod syllable;
 pub mod db;
 pub mod trie;
+pub mod mmap_index;
 pub mod engine;
 pub mod ffi;
 
