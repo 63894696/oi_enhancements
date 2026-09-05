@@ -2274,6 +2274,15 @@ _PAGE = r"""<!DOCTYPE html>
   .todo-card .todo-item.s-completed { color:var(--gh-ink-faint); text-decoration:line-through; }
   .todo-card .todo-item.s-in_progress { color:var(--gh-ink); font-weight:600; }
   .todo-card .todo-item.s-in_progress .tk { color:var(--gh-green-deep); }
+  /* 一期② case 故事卡:文科概念的情境叙事块(区别于代码块的暖色叙事卡) */
+  .case-card { background:linear-gradient(135deg, rgba(201,138,46,.10), rgba(201,138,46,.04));
+    border:1px solid rgba(201,138,46,.40); border-left:4px solid rgba(201,138,46,.65);
+    border-radius:10px; padding:14px 16px; margin:12px 0; box-shadow:var(--gh-shadow); }
+  .case-card .case-tag { display:inline-block; font-size:11px; font-weight:700; letter-spacing:.5px;
+    color:#a05a12; background:rgba(201,138,46,.16); border:1px solid rgba(201,138,46,.45);
+    border-radius:4px; padding:1px 7px; margin-bottom:8px; }
+  .case-card .case-body { color:var(--gh-ink); font-size:14px; line-height:1.8; white-space:pre-wrap;
+    word-break:break-word; }
 </style>
 <!-- 壳三件套②③:md 标准渲染 + XSS 防护(版本钉死)。仅渲染 assistant 正文;user 保持纯文本。 -->
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
@@ -2752,6 +2761,30 @@ function _renderQuizIn(el) {
   }
 }
 
+// 一期② case 故事卡:把 ```case 块换成暖色叙事卡。文科概念讲解专用,
+// 区别于代码块——叙事内容,不是可执行代码。放在 quiz 渲染之前执行
+// (case 块内若带 quiz 块,先换 case 卡再让 quiz 在里面渲染)。
+function _renderCaseIn(el) {
+  if (!el) return;
+  for (const pre of Array.from(el.querySelectorAll('pre'))) {
+    const code = pre.querySelector('code');
+    const langCls = code ? (code.className || '') : '';
+    if (!/language-case|\bcase\b/.test(langCls)) continue;
+    const raw = (code ? code.textContent : pre.textContent) || '';
+    const card = document.createElement('div');
+    card.className = 'case-card';
+    const tag = document.createElement('div');
+    tag.className = 'case-tag';
+    tag.textContent = (typeof LANG !== 'undefined' && LANG === 'zh') ? '📖 情境案例' : '📖 Case';
+    const body = document.createElement('div');
+    body.className = 'case-body';
+    body.textContent = raw.trim();
+    card.appendChild(tag);
+    card.appendChild(body);
+    pre.replaceWith(card);
+  }
+}
+
 function addMsg(role, text, followups) {
   const box = document.getElementById('messages');
   if (role === 'tool') {
@@ -2801,6 +2834,7 @@ function addMsg(role, text, followups) {
     box.appendChild(d);
     _highlightCodeIn(d);  // ⑤代码高亮(含 diff)
     _renderMermaidIn(d);  // ④mermaid 图 → SVG(异步,append 后才能量尺寸)
+    _renderCaseIn(d);     // 一期②文科 case 故事卡(```case → 暖色叙事卡)
     _renderQuizIn(d);     // ⑥教学 quiz 卡(```quiz JSON → 交互选择题)
   } else {
     d.textContent = text;  // user 保持纯文本,不解析(防注入)
