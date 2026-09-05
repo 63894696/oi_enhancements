@@ -21,6 +21,8 @@ pub mod tsf_input_processor;
 pub mod edit_session;
 pub mod candidate_window;
 pub mod panels;
+pub mod userdict_window;
+pub mod handwriting_panel;
 pub mod conversion_mode;
 pub mod status_bar;
 pub mod tsf_text_store;
@@ -31,11 +33,17 @@ pub mod register;
 pub mod daemon;
 pub mod ipc;
 pub mod about;
+pub mod about_window;
+pub mod active_signal;   // 每日活跃信号(学 PrisirAI updates.json 轮询)
+pub mod feedback;        // ⚙反馈问题诊断包(学 PrisirAI _build_feedback_zip)
+pub mod plugin;          // 进程外插件框架(plugins.json + 动态菜单/按钮 + 命名事件 toggle)
 pub mod langbar;
 pub mod elevate;
 pub mod register_export;
-pub mod imm32;
-pub mod register_imm;
+// 2026-09-04: IMM32 分支(进系统搜索框)已停用。「Prisir 拼音」IMM 布局从架构移除。
+// imm32.rs / register_imm.rs 源文件保留(编译剔除),日后要回滚 IMM 路径再重新挂载。
+// pub mod imm32;
+// pub mod register_imm;
 
 pub use tsf_input_processor::TsfInputProcessor;
 pub use tsf_text_store::TsfTextStore;

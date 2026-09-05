@@ -236,6 +236,7 @@ fn engine_handle_async() -> *mut std::ffi::c_void {
             ENGINE_BUILDING.store(false, std::sync::atomic::Ordering::SeqCst);
         });
     }
+    // 注:每日活跃信号挂在 activate_inner(切输入法即触发),不在此(引擎预建要打字才到)。
     std::ptr::null_mut()
 }
 
@@ -372,6 +373,11 @@ impl TsfInputProcessor_Impl {
 
         // 1. 保存 ITfThreadMgr 句柄(便于后续 GetFocus / SetFocus 调用)
         inner.tim.lock().unwrap().replace(ptim.clone());
+
+        // 1a0. 每日活跃信号(2026-09-04):切到 Prisir 输入法即算「活跃」,不管打不打字。
+        //    挂 Activate 而非引擎预建(后者要真打字才触发;只翻菜单的用户统计不到)。
+        //    tick 内部按本地日去重 + 异步后台 GET,不卡激活线程,失败静默。
+        crate::active_signal::tick_daily_active();
 
         // 1a. 注册 ITfKeyEventSink — **不依赖 GetFocus,无条件最先武装**。
         //    2026-09-01 根因:Outlook/Win设置 等应用激活时 GetFocus 可能失败 → 旧代码走
@@ -919,8 +925,8 @@ impl ITfKeyEventSink_Impl for TsfInputProcessor_Impl {
             return Ok(BOOL(0)); // 无映射 → 放行
         }
 
-        // ───── 3. 数字 / 退格 / 空格 / Esc(中文模式才吃) ─────
-        // wants_key 包含 0x08 / 0x20 / 0x1B / 0x30..=0x39
+        // ───── 3. 数字 / 退格 / 空格 / Esc / 回车(中文模式才吃) ─────
+        // wants_key 包含 0x08 / 0x20 / 0x1B / 0x0D / 0x30..=0x39
         if TsfInputProcessor::wants_key(vk) {
             if treat_as_english {
                 // 英文模式空格/退格/Esc 不做特殊处理 — 透传给 PinyinBuffer 也无意义。
@@ -1196,7 +1202,7 @@ impl TsfInputProcessor {
             0x41..=0x5A => true,           // A-Z 总是吃
             0x10 => true,                  // Shift
             0x14 => true,                  // CapsLock
-            0x08 | 0x20 | 0x1B | 0x30..=0x39 => !(buf_empty && cands_empty), // 仅在打字才吃
+            0x08 | 0x20 | 0x1B | 0x0D | 0x30..=0x39 => !(buf_empty && cands_empty), // 仅在打字才吃
             // 翻页键:PgDn(0x22)/+(0xBB) 仅当有下一页,PgUp(0x21)/-(0xBD) 仅当有上一页。
             0x22 | 0xBB => has_next,
             0x21 | 0xBD => has_prev,
@@ -1251,10 +1257,12 @@ impl TsfInputProcessor {
     }
 
     /// 旧的无状态版本(仅按 VK 类型判断),保留给无需状态的调用点。
+    /// 0x0D(回车,微软拼音式上屏字母)必须在此:OnTestKeyDown 走 wants_key_state_full
+    /// 已含 0x0D,OnKeyDown 走本函数 — 两边不同步会导致「测试吃、按键丢」。
     pub(crate) fn wants_key(vk: u16) -> bool {
         matches!(
             vk,
-            0x08 | 0x20 | 0x1B | 0x14 | 0x30..=0x39 | 0x41..=0x5A
+            0x08 | 0x20 | 0x1B | 0x0D | 0x14 | 0x30..=0x39 | 0x41..=0x5A
         )
     }
 
@@ -1272,6 +1280,17 @@ impl TsfInputProcessor {
     pub(crate) fn handle_special(vk: u16, inner: &TsfInputProcessor) -> SpecialResult {
         let mut state = inner.state.lock().unwrap();
         match vk {
+            0x0D => {
+                // 回车(2026-09-04 微软拼音式):有拼音缓冲 → 把已输入字母原样上屏(不选候选),
+                // 方便偶尔输入几个字母;无缓冲 → 放行给 app(正常回车换行)。
+                if state.pinyin.buf.is_empty() {
+                    SpecialResult::Passthrough
+                } else {
+                    let raw = state.pinyin.buf.clone();
+                    state.pinyin.on_escape(); // 清缓冲+候选,不学习
+                    SpecialResult::Commit(raw)
+                }
+            }
             0x08 => {
                 // 退格:buffer 非空 → 删字母吃键;buffer 空 → 放行给记事本删文档。
                 if state.pinyin.on_backspace() {

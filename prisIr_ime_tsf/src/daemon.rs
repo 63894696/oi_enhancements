@@ -335,6 +335,9 @@ pub fn run_daemon(config: DaemonConfig) -> Result<(), String> {
                     );
                 }
             }
+            // 2026-09-04: 每日活跃信号(学 PrisirAI updates.json 轮询)。
+            // 内部按「本地日」去重,一日至多一次 HTTPS GET,失败静默。
+            let _ = crate::active_signal::tick_daily_active();
         }
     });
 

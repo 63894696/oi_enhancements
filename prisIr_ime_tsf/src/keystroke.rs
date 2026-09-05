@@ -29,11 +29,14 @@ use crate::hotkey::InputMethod;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Candidate {
     pub word: String,
-    pub weight: u64,
+    // weight 必须 i64(2026-09-04 修 shou=0):引擎权重是 i64,模糊音降级
+    // (w - FUZZY_DEMOTE)会产生负权重;u64 接不住 → serde_json 反序列化失败
+    // → 静默 unwrap_or_default 返空 → 候选清空字母上屏。
+    pub weight: i64,
 }
 
 impl Candidate {
-    pub fn new(word: impl Into<String>, weight: u64) -> Self {
+    pub fn new(word: impl Into<String>, weight: i64) -> Self {
         Self { word: word.into(), weight }
     }
 }

@@ -13,10 +13,18 @@
   fx.status()                        # {enabled, indexed_count, ...}
   fx.disable()                       # 清空索引
 """
-import ctypes, json, os, threading, time
+import ctypes, json, os, sys, threading, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DLL = os.path.join(HERE, "target", "release", "prisir_findex.dll")
+# 2026-08-28 跨平台:Win 取 .dll,Linux 取 .so,macOS 取 .dylib。
+# 装包脚本应把预编译产物放在 target/release/ 下,文件名按 OS 区分。
+if sys.platform.startswith("linux"):
+    _LIB_NAME = "libprisir_findex.so"
+elif sys.platform == "darwin":
+    _LIB_NAME = "libprisir_findex.dylib"
+else:  # win32 / cygwin
+    _LIB_NAME = "prisir_findex.dll"
+DLL = os.path.join(HERE, "target", "release", _LIB_NAME)
 DEFAULT_DB = os.path.join(HERE, "findex.db")
 
 
@@ -27,7 +35,7 @@ class Findex:
 
     @classmethod
     def shared(cls, db_path=None):
-        """进程内单例(oiagent_web 多路由共用)。"""
+        """进程内单例(prisiragent_web 多路由共用)。"""
         with cls._lock:
             if cls._instance is None:
                 cls._instance = cls(db_path or DEFAULT_DB)
@@ -35,7 +43,7 @@ class Findex:
 
     def __init__(self, db_path=DEFAULT_DB):
         if not os.path.exists(DLL):
-            raise RuntimeError(f"未编译 prisir_findex.dll: {DLL}")
+            raise RuntimeError(f"未编译 {_LIB_NAME}: {DLL}")
         lib = ctypes.CDLL(DLL)
         lib.findex_open.restype = ctypes.c_void_p
         lib.findex_open.argtypes = [ctypes.c_char_p]

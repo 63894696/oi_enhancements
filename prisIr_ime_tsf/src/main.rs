@@ -135,7 +135,8 @@ fn main() {
             run_query_test(pinyin, &db);
         }
         Some("--register") => run_register(args.get(2).cloned()),
-        Some("--register-imm") => prisir_ime_tsf::register_imm::run_register_imm(),
+        // 2026-09-04: IMM32 分支停用(用户拍板「Prisir 拼音」布局从架构移除)。
+        // --register-imm 分发已摘;register_imm.rs/imm32.rs 源文件保留以便日后回滚。
         Some("--register-elevated") => run_register_elevated(),
         Some("--register-status") => run_register_status(),
         Some("--unregister") => run_unregister(),

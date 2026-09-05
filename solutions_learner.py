@@ -23,8 +23,8 @@ import sqlite3
 import time
 from pathlib import Path
 
-# 与 oiagent_web._PRESET_KEYWORDS 的 18 类保持一致(learn prompt 据此归类)。
-# 不 import oiagent_web(避免循环/打包牵连),这里独立维护一份类目名清单。
+# 与 prisiragent_web._PRESET_KEYWORDS 的 18 类保持一致(learn prompt 据此归类)。
+# 不 import prisiragent_web(避免循环/打包牵连),这里独立维护一份类目名清单。
 CATEGORIES: tuple[str, ...] = (
     "输入法问题", "装包问题", "VM 通道问题", "对话链问题", "浏览器问题",
     "文件搜索问题", "协作问题", "权限问题", "密信问题", "翻译问题",
@@ -245,7 +245,7 @@ def learned_block(hit_categories: list[str] | None = None, max_items: int = 8) -
 # ---------------------------------------------------------------------------
 # 主题聚类提示(纯本地关键词匹配,不调 LLM,60s 缓存)
 # ---------------------------------------------------------------------------
-# 复用与 _PRESET_KEYWORDS 相同的关键词表(独立维护一份,避免 import oiagent_web)。
+# 复用与 _PRESET_KEYWORDS 相同的关键词表(独立维护一份,避免 import prisiragent_web)。
 _TOPIC_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("输入法", ("输入法", "候选词", "拼音", "五笔", "语音输入", "打字", "灵犀")),
     ("装包", ("装包", "安装包", "NSIS", "PyInstaller", "打包", "Setup", "卸载")),

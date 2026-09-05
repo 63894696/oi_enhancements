@@ -17,6 +17,7 @@ windows = { version = "0.58", features = [
     "Win32_System_Registry",
     "Win32_System_LibraryLoader",
     "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Controls",                 # Step2: 词库管理窗口 SetScrollInfo(原生滚动条)
     "Win32_System_Console",     # T4: SetConsoleCtrlHandler for --daemon
     "Win32_Security",           # T4: RegCreateKeyExW 需要 SECURITY_ATTRIBUTES 类型
     "Win32_System_StationsAndDesktops",  # T5: WTS注册接口(T6 升级用)
@@ -33,11 +34,20 @@ windows = { version = "0.58", features = [
     "Win32_System_IO",                   # T25: WriteFile 需要
     "Win32_System_SystemInformation",    # 2026-09-03: GetTickCount 日志时间戳
     "Win32_UI_Input_Ime",                # 2026-09-03: IMM32 .ime 导出(TRANSMSG/IMEINFO/ImmInstallIMEW)
+    "Win32_UI_TabletPC",                 # 2026-09-04 手写改 Windows Ink: IInkDisp/IInkRecognizerContext
+    "Win32_System_Variant",              # InitVariantFromInt32Array(笔画坐标 SAFEARRAY→VARIANT)
+    "Win32_System_Ole",                  # TabletPC CreateStroke 的 VARIANT/SAFEARRAY 支持
+    "Win32_Graphics_Imaging",            # 状态栏彩色 emoji: WIC 内存位图承载 D2D,再 BitBlt 贴回 GDI
+    "Win32_Networking_WinHttp",          # 每日活跃信号: WinHttpOpen/WinHttpSendRequest GET updates.json
+    "Win32_System_Environment",          # 诊断包: GetComputerNameW 拿主机名(system_info.txt)
     "implement",
 ] }
 windows-core = "0.58"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+# 手写识别独立进程(prisir_hw):ort 推理 ochw MobileNetV2。load-dynamic 运行时加载
+# onnxruntime 动态库(随安装包带 ort dll),不在编译期静态链接。
+ort = { version = "2.0.0-rc.13", default-features = false, features = ["load-dynamic"], optional = true }
 
 # T3/#88 LangBar: 把 pinyin.ico 编成 DLL 图标资源。
 # 根因(2026-09-01 诊断): ITfLangBarItemMgr::AddItem 据 GetInfo.clsidService 反查
@@ -54,10 +64,20 @@ dllentry_log = []
 # 根因:双导出单文件(COM+IMM)被 SearchApp IMM 加载器拒激活,ImeProcessKey 永不被调。
 # 拆两份:TSF 用 prisir_ime_tsf.dll(COM),IMM 用 prisir_ime_imm.ime(纯 IMM)。
 imm_only = []
+# 手写 bin 需要 ort;主 DLL / prisir_tsfsvc 不依赖 ort(--bin prisir_hw 单独拉)。
+hw = ["dep:ort"]
 
 [[bin]]
 name = "prisir_tsfsvc"
 path = "src/main.rs"
+
+# 手写识别独立推理进程(2026-09-04):ort 载 ochw 模型,stdio JSON-RPC 收笔画轨迹返 topN。
+# 独立进程 → IME DLL 不背 28MB 模型;首次识别懒加载,之后常驻。
+# required-features = hw → 只有 --features hw 才编这个 bin(主 DLL/其它 bin 不背 ort)。
+[[bin]]
+name = "prisir_hw"
+path = "src/bin/prisir_hw.rs"
+required-features = ["hw"]
 
 [profile.release]
 opt-level = 3

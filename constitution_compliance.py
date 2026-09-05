@@ -7,14 +7,14 @@
 # 与既有 harness 的关系(并入,不重复):
 #   - harness_test_battery.py   = 自然语言题集(H1-H8),发给 cursor background agent
 #                                 做,靠人工/模型读报告判对错 —— 没有确定性判分。
-#   - mcp_oiagent_v3_plan_parallel/harness.py = plan→parallel→loop 执行引擎,不是判分器。
+#   - mcp_prisiragent_v3_plan_parallel/harness.py = plan→parallel→loop 执行引擎,不是判分器。
 #   - 本模块                     = 确定性静态扫描器:给定一段产出文本(方案/代码草稿),
 #                                 输出 PASS / FAIL + 命中的宪法条款。是上面两者缺的「判分」层。
 #
 # 三个用途:
 #   1) 质量闸门:dev-consumer / 团队产出进编译收口前,先过 scan_text,FAIL 即打回。
 #   2) 回归测试:VERIFIED_CASES 存「本次 570-585 实测确认」的正/反样本,防检测器本身漂移。
-#   3) 测试能力评估:评估 oiagent/团队 agent 能否检出已知违宪(见 评估用法)。
+#   3) 测试能力评估:评估 prisiragent/团队 agent 能否检出已知违宪(见 评估用法)。
 #
 # 评估用法(测某个 reviewer 的测试能力是否到位):
 #   - 检出率(召回) = 被测 reviewer 报出的违宪数 / 注入的已知违宪数(EXPECTED_MIN_HITS)

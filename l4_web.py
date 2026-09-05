@@ -6,7 +6,7 @@
 
 本模块是一个 stdlib-only 的 Web 对话窗:
   - 单页对话界面(嵌入式 HTML/CSS/JS,无构建步骤)。
-  - 后端只做**薄代理**:把用户意图转发给 L3 daemon(aureon-oiagent, action=ask),
+  - 后端只做**薄代理**:把用户意图转发给 L3 daemon(aureon-prisiragent, action=ask),
     把 daemon 的工具执行结果渲染成结构化反馈。
   - L4↔L3 契约(§3.1):{做了什么(tool trace), 结果(answer), 是否需要确认, 可追问的选项}。
   - 副作用工具的审批在 L3 已完成(policy_check_daemon);L4 依据工具结果里的
@@ -31,7 +31,7 @@ from typing import Any
 # 上下文窗口估算(P0 本地核心·上下文用量):复用壳端零成本 token 估算 + 窗口表。
 # 模块与 localllm 同目录(oi_enhancements),直接 import;失败则用量接口退化(仅消息条数)。
 try:
-    import oiagent_context as _ctx
+    import prisiragent_context as _ctx
 except Exception:  # noqa: BLE001
     _ctx = None
 
@@ -40,7 +40,7 @@ DAEMON_URL = "http://127.0.0.1:18791/"
 # L4 自身监听(默认本地回环;远程接入经 SSH 隧道,不直接绑公网)
 L4_HOST = os.environ.get("L4_HOST", "127.0.0.1")
 L4_PORT = 18800
-# 当前模型(与 aureon-oiagent DEFAULT_MODEL 对齐,用于上下文窗口估算)。
+# 当前模型(与 aureon-prisiragent DEFAULT_MODEL 对齐,用于上下文窗口估算)。
 # daemon 每轮回包也带 model,此处仅作 /api/context_usage 的查询基准。
 L4_MODEL = os.environ.get("L4_MODEL", "claude-opus-4-8")
 
@@ -186,7 +186,7 @@ def _read_receipts(session_id: str) -> list[dict[str, Any]]:
 # P0 本地核心(2026-08-26):多会话列表 / 上下文用量 / estop-cancel
 # 设计:session 管理下沉 l4_web(方案 b),让 adb reverse 离线也能多会话。
 #   - 多会话:历史即 <sid>.jsonl 文件,枚举目录即会话列表;切换=对话壳换 session_id。
-#   - 上下文用量:复用 oiagent_context 零成本 token 估算 + 窗口表,不依赖 daemon。
+#   - 上下文用量:复用 prisiragent_context 零成本 token 估算 + 窗口表,不依赖 daemon。
 #   - estop-cancel:l4_web 是同步等待(无流式事件边界),无法真正中断 daemon 工具链;
 #     故做「客户端放弃等待」(cancel),连接标记可关闭,daemon 结果到达即丢弃,UI 立即解锁。
 #     真正中断工具链(ollama abort / tool 边界)留待后续(需 daemon 流式接口)。
@@ -238,11 +238,11 @@ def _list_sessions() -> list[dict[str, Any]]:
 
 
 def _context_usage(session_id: str) -> dict[str, Any]:
-    """当前会话上下文用量(估算)。复用 oiagent_context;缺模块则退化为条数统计。"""
+    """当前会话上下文用量(估算)。复用 prisiragent_context;缺模块则退化为条数统计。"""
     hist = _get_history(session_id)
     if _ctx is None:
         return {"ok": True, "session_id": session_id, "messages": len(hist),
-                "known": False, "advise": "oiagent_context 模块不可用,仅统计条数"}
+                "known": False, "advise": "prisiragent_context 模块不可用,仅统计条数"}
     u = _ctx.usage_for(hist, L4_MODEL)
     return {
         "ok": True,
@@ -395,7 +395,7 @@ def _ask_daemon(session_id: str, user_text: str) -> dict[str, Any]:
         return {
             "ok": False,
             "error": f"无法连接 L3 daemon({DAEMON_URL}): {e}",
-            "diagnosable": "确认 aureon-oiagent daemon 在跑: GET http://127.0.0.1:18791/health",
+            "diagnosable": "确认 aureon-prisiragent daemon 在跑: GET http://127.0.0.1:18791/health",
         }
     except Exception as e:  # 读端被 close() 中断等
         with _CHAT_CONN_LOCK, _CHAT_PENDING_LOCK:
@@ -726,7 +726,7 @@ class L4Handler(BaseHTTPRequestHandler):
                 return
             self._json({"ok": True, "sessions": _list_sessions()})
         elif path == "/api/context_usage":
-            # P0 上下文用量:零成本估算(oiagent_context)
+            # P0 上下文用量:零成本估算(prisiragent_context)
             if not self._require_auth():
                 return
             from urllib.parse import parse_qs

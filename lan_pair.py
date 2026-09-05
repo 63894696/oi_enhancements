@@ -1,6 +1,6 @@
 """lan_pair — 安卓×Win 联动的局域网配对/令牌/mDNS 模块(P1,2026-08-25)。
 
-定位:oiagent_web 的局域网远程指挥支撑。设计文档 docs/prisir-android-win-link-2026-08-25.md。
+定位:prisiragent_web 的局域网远程指挥支撑。设计文档 docs/prisir-android-win-link-2026-08-25.md。
 
 红线落地:
 - 不要账号:配对用一次性二维码令牌换持久令牌,无用户 ID。
@@ -175,7 +175,7 @@ class LanPair:
             self._bc_stop.wait(_BROADCAST_INTERVAL)
 
 
-# 进程内单例(由 oiagent_web 在 --lan 时初始化)。
+# 进程内单例(由 prisiragent_web 在 --lan 时初始化)。
 _INSTANCE: LanPair | None = None
 
 

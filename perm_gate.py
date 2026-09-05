@@ -5,7 +5,7 @@
 的 SYNC 决策,返回 {allow, requires_approval, risk_level, reason}。
 
 设计要点:
-- 懒加载单例:oiagent_web 启动时 init(workdir, audit_dir) 一次;未 init 则 fail-closed
+- 懒加载单例:prisiragent_web 启动时 init(workdir, audit_dir) 一次;未 init 则 fail-closed
   (写/执行类一律需确认,只读类放行)。
 - 审计:每次 check 落一行 JSONL 到 logs/audit/permission_stream.jsonl(复用 W3 观察窗约定);
   sink 永不抛(引擎已 best-effort 包裹,这里再兜底)。
@@ -20,7 +20,7 @@ import json
 import logging
 from pathlib import Path
 
-from oiagent_coworker.permissions import (
+from prisiragent_coworker.permissions import (
     Action,
     OIagentCoworkerPermissionEngine,
     PermissionContext,
@@ -77,7 +77,7 @@ def _audit_sink(decision) -> None:
 
 
 def init(workdir: str, audit_dir: str) -> None:
-    """初始化引擎单例。oiagent_web 启动时调用一次;重复调用会按新 workdir 重建。"""
+    """初始化引擎单例。prisiragent_web 启动时调用一次;重复调用会按新 workdir 重建。"""
     global _engine, _audit_path
     _audit_path = Path(audit_dir) / "permission_stream.jsonl"
     _engine = OIagentCoworkerPermissionEngine(

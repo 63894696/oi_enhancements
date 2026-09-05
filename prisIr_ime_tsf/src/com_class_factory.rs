@@ -75,10 +75,16 @@ impl IClassFactory_Impl for PrisirImeClassFactory_Impl {
     }
 }
 
-/// T25 诊断:把一行日志追加到 C:\Temp\prisir_dll_log.txt。
-/// 用于定位 ctfmon 是否真的调用 DllGetClassObject(TIPC 是否尝试加载 Prisir)。
+/// 诊断日志:把一行追加到 C:\Temp\prisir_dll_log.txt。
+/// 用于定位 ctfmon 是否真的调用 DllGetClassObject(TIPC 是否尝试加载 Prisir),
+/// 以及击键/候选/上屏全链路时序。反馈问题(feedback.rs)打包此文件供我们诊断。
+///
+/// 2026-09-05: 改为**恒开**(原 dllentry_log feature 门控删除)。
+/// 原因:正式 release 若用默认 cargo build --release(不带 feature)出包,
+/// dll 会零日志 → 用户点「反馈问题」打的 zip 没有日志,我们无法诊断。
+/// 此函数每次击键仅一次 打开-写-关 文本追加,无常驻句柄/无网络/无敏感内容,
+/// 开销可忽略,诊断价值极高,故不再用 feature 关闭。
 /// 不依赖任何初始化,只用 Win32 文件 API,ctfmon/LocalService 上下文也能写 C:\Temp。
-#[cfg(feature = "dllentry_log")]
 pub(crate) fn log_dll_entry(msg: &str) {
     use std::os::windows::ffi::OsStrExt;
     use windows::Win32::Storage::FileSystem::{

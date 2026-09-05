@@ -78,7 +78,12 @@ if ! command -v python3 >/dev/null 2>&1; then
     echo "ERR: python3 未装,Debian/Ubuntu: sudo apt install -y python3 python3-pip" >&2; exit 1
 fi
 if ! command -v node >/dev/null 2>&1; then
-    echo "ERR: node 未装(electron 需要)" >&2; exit 1
+    # 2026-08-29 bebian 教训:electron 自带 Node.js 运行时,运行 main.js 不需要
+    # 系统级 node。Win 端用户安装时 NSIS 不要求 node,Linux 端也不该硬性要求。
+    # 改成 WARN:仅当用户改 main.js / npm install / 改 electron 版本时才需要 node。
+    echo "WARN: 系统未装 node。运行 electron 不需要(electron 自带运行时)。"
+    echo "      但若你以后想改 main.js / 重新 npm install / 改 electron 版本,"
+    echo "      需要 node。Debian/Ubuntu: sudo apt install -y nodejs npm"
 fi
 
 # ---------- 架构检查:仅支持 x86_64 ----------
@@ -101,7 +106,7 @@ echo "  架构: x86_64 ✓"
 
 # ---------- 0. 系统依赖 ----------
 if [[ "$SKIP_DEPS" != "1" ]]; then
-    echo "[1/9] 装系统依赖 (apt)..."
+    echo "[1/10] 装系统依赖 (apt)..."
     if command -v apt-get >/dev/null 2>&1; then
         SUDO=""
         [[ $EUID -ne 0 ]] && SUDO="sudo"
@@ -110,7 +115,7 @@ if [[ "$SKIP_DEPS" != "1" ]]; then
             python3-pip python3-venv \
             libx11-6 libxcb1 libxshmfence1 libnss3 libatk-bridge2.0-0 \
             libgtk-3-0 libdrm2 libgbm1 libasound2t64 fonts-noto-cjk \
-            xdg-utils
+            unzip xdg-utils file
         echo "  apt 依赖装好"
     else
         echo "WARN: 不是 apt 系,跳过系统包。请手动装: libx11 libxcb libnss3 libgtk-3 fonts-noto-cjk" >&2
@@ -118,15 +123,19 @@ if [[ "$SKIP_DEPS" != "1" ]]; then
 fi
 
 # ---------- 1. Python 依赖 ----------
-echo "[2/9] 装 Python 依赖..."
+echo "[2/10] 装 Python 依赖..."
 pip install --break-system-packages --quiet \
     pypdf rapidocr_onnxruntime opencv-python-headless Pillow || {
     echo "WARN: pip install 部分失败,fcontent/截图 OCR 功能可能不可用,对话主链不受影响" >&2
 }
 
-# ---------- 2. Rust toolchain (findex 引擎编译) ----------
+# ---------- 2. Rust toolchain 检查(findex .so 已在 tarball 里,不再现场编译) ----------
+# 2026-08-28 装好即用改造:
+#   - libprisir_findex.so 已在仓库侧用 WSL Ubuntu-24.04 预编译并打包进 tarball
+#   - 装包脚本不再 cargo build,也不要求本机装 rustup
+#   - 若用户显式 WITH_RUST=1 仍会装(给后续自己改源码重编用)
 if [[ "$WITH_RUST" == "1" ]]; then
-    echo "[3/9] 装 Rust toolchain (rustup)..."
+    echo "[3/10] 装 Rust toolchain (rustup) — 仅当你打算改 Rust 源码才需要..."
     if ! command -v cargo >/dev/null 2>&1; then
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
             --default-toolchain stable --profile minimal
@@ -137,47 +146,106 @@ if [[ "$WITH_RUST" == "1" ]]; then
         echo "  cargo 已有: $(cargo --version)"
     fi
 else
-    if ! command -v cargo >/dev/null 2>&1; then
-        echo "ERR: WITH_RUST=0 但 cargo 也没装,无法编译 findex 引擎" >&2; exit 1
-    fi
-    # shellcheck disable=SC1091
-    source "$HOME/.cargo/env" 2>/dev/null || true
+    echo "[3/10] Rust toolchain — 跳过(.so 已在 tarball 内预编译)"
 fi
 
 # ---------- 3. 部署项目文件 ----------
-echo "[4/9] 部署项目文件到 $INSTALL_DIR..."
+echo "[4/10] 部署项目文件到 $INSTALL_DIR..."
 mkdir -p "$INSTALL_DIR"
 
-# 复制仓库根的运行时文件(由调用方决定怎么塞过来;这里假设 git clone 后
-# 仓库根是当前 cwd,拷 oiagent-shell/ oiagent_web.py prisir_findex/ prisir_fcontent/ assets/)
+# tarball 根 = PrisirAI-Linux-x86_64-VERSION/,内部含 installer/、oiagent-shell/...
+# 故 REPO_ROOT 应是 tarball 解压后的根(linux-install.sh 同级的上一层)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # 必需文件
-for item in oiagent-shell oiagent_web.py prisir_findex prisir_fcontent assets; do
-    if [[ -e "$REPO_ROOT/$item" ]]; then
-        cp -r "$REPO_ROOT/$item" "$INSTALL_DIR/"
-        echo "  复制 $item"
-    else
-        echo "WARN: 仓库缺 $item,跳过" >&2
-    fi
-done
+# 2026-08-29 bebian 教训:之前的白名单只复制 4 个子目录 + oiagent_web.py,
+# 漏了 fastlane/、oiagent_coworker/ 子包和仓根 oiagent_cli.py / oiagent_context.py
+# / lan_pair.py / perm_gate.py 等,导致装包后 web 端 import 全炸。
+# 修法:tarball 阶段(build_linux_tarball.py)已经把仓根的 _xxx.py / .tmp_xxx.py
+# 草稿、深层 node_modules deps、target/release/build 等中间产物全砍了,
+# 这里直接 cp -r REPO_ROOT/. INSTALL_DIR/ 全拷就够,不再白名单。
+echo "  复制整个仓库根($REPO_ROOT)→ $INSTALL_DIR"
+cp -r "$REPO_ROOT/." "$INSTALL_DIR/"
 
-# ---------- 4. 编译 Rust findex 引擎 ----------
-echo "[5/9] 编译 prisir_findex (Rust → .so)..."
-if [[ -d "$INSTALL_DIR/prisir_findex/src" ]]; then
-    (cd "$INSTALL_DIR/prisir_findex" && cargo build --release 2>&1 | tail -5)
-    if [[ -f "$INSTALL_DIR/prisir_findex/target/release/libprisir_findex.so" ]]; then
-        echo "  libprisir_findex.so 编译好 ($(du -h "$INSTALL_DIR/prisir_findex/target/release/libprisir_findex.so" | cut -f1))"
-    else
-        echo "ERR: 编译失败,看上方 cargo 输出" >&2; exit 1
-    fi
+# ---------- 4. 验证 findex .so(预编译)就位 ----------
+echo "[5/10] 验证预编译 libprisir_findex.so..."
+if [[ -f "$INSTALL_DIR/prisir_findex/target/release/libprisir_findex.so" ]]; then
+    echo "  libprisir_findex.so 就位 ($(du -h "$INSTALL_DIR/prisir_findex/target/release/libprisir_findex.so" | cut -f1))"
 else
-    echo "WARN: 缺 prisir_findex/src,跳过编译,findex 搜索功能不可用" >&2
+    echo "ERR: tarball 缺 prisir_findex/target/release/libprisir_findex.so" >&2
+    echo "      可能装包不完整,请重新下载 PrisirAI-Linux-x86_64-${APP_VERSION}.tar.gz" >&2
+    exit 1
+fi
+
+# ---------- 4b. 验证 Electron Linux 二进制(从 npmjs 兜底下载) ----------
+# 2026-08-28 装好即用改造:
+#   tarball 已带 node_modules/(含 electron npm 包)以及 Linux ELF electron 二进制,
+#   这里正常情况是直接跳过(仅 chmod 回 setuid 位,防 tar 跨机丢权限)。
+#   兜底:若 tarball 里 dist/electron 仍是 Win .exe(本机构建者忘了预下),从
+#   npmjs 官方 CDN 拉 Linux x64 二进制解压。可改 ELECTRON_MIRROR 走 npmmirror。
+echo "[6/10] 装 Electron Linux 二进制..."
+ELECTRON_VER=$(grep '"version"' "$INSTALL_DIR/oiagent-shell/node_modules/electron/package.json" | head -1 | sed 's/.*"version": *"\([^"]*\)".*/\1/')
+ELECTRON_DIST="$INSTALL_DIR/oiagent-shell/node_modules/electron/dist"
+ELECTRON_BIN="$ELECTRON_DIST/electron"
+
+if [[ -z "$ELECTRON_VER" ]]; then
+    echo "WARN: 读不到 electron 版本号(node_modules 缺 package.json),跳过 electron 二进制安装" >&2
+elif [[ -f "$ELECTRON_BIN" ]] && file "$ELECTRON_BIN" 2>/dev/null | grep -q "ELF"; then
+    # chrome-sandbox 是 setuid 二进制,electron 必须以 root+suid 才能起 sandbox;
+    # tar 保留权限,但跨机器/不同 umask 偶尔丢;此处强制回写。
+    chmod 4755 "$ELECTRON_DIST/chrome-sandbox" 2>/dev/null || true
+    chmod +x   "$ELECTRON_BIN" "$ELECTRON_DIST/chrome_crashpad_handler" 2>/dev/null || true
+    echo "  Electron $ELECTRON_VER Linux ELF 已就位 ($(du -h "$ELECTRON_BIN" | cut -f1),chrome-sandbox setuid)"
+else
+    echo "  Electron $ELECTRON_VER Linux x64 二进制未在 tarball,从 npmjs 拉取..."
+    # npmjs 官方源(可改 ELECTRON_MIRROR 走 npmmirror):
+    # https://registry.npmjs.org/electron/-/electron-v{ver}-linux-x64.zip
+    ELECTRON_ZIP_URL="${ELECTRON_MIRROR:-https://registry.npmjs.org/electron/-}/electron-v${ELECTRON_VER}-linux-x64.zip"
+    TMP_ZIP="$(mktemp /tmp/electron-XXXXXX.zip)"
+    if ! curl -sSL -m 300 -o "$TMP_ZIP" "$ELECTRON_ZIP_URL"; then
+        echo "ERR: 下载 electron Linux 二进制失败: $ELECTRON_ZIP_URL" >&2
+        rm -f "$TMP_ZIP"
+        exit 1
+    fi
+    # 解压到 electron/dist/(覆盖 Win 二进制)
+    # 用 unzip 安静模式;--no-same-owner 避免权限问题
+    if command -v unzip >/dev/null 2>&1; then
+        unzip -q -o "$TMP_ZIP" -d "$ELECTRON_DIST.tmp" && \
+            cp -r "$ELECTRON_DIST.tmp/." "$ELECTRON_DIST/" && \
+            rm -rf "$ELECTRON_DIST.tmp"
+    else
+        echo "ERR: 系统缺 unzip(apt install -y unzip)" >&2
+        rm -f "$TMP_ZIP"
+        exit 1
+    fi
+    rm -f "$TMP_ZIP"
+    chmod +x "$ELECTRON_BIN" 2>/dev/null || true
+    if [[ -f "$ELECTRON_BIN" ]] && file "$ELECTRON_BIN" 2>/dev/null | grep -q "ELF"; then
+        echo "  Electron $ELECTRON_VER Linux ELF 装好 ($(du -h "$ELECTRON_BIN" | cut -f1))"
+    else
+        echo "ERR: Electron Linux 二进制装好后验证失败" >&2
+        exit 1
+    fi
+fi
+
+# ---------- 4c. 修正 electron/path.txt(2026-08-29 bebian 教训) ----------
+# oiagent-shell/node_modules/electron/path.txt 是 npm 装 electron 时
+# install.js 写下的二进制相对路径。本仓库 Win 主机打包时 path.txt = "electron.exe"
+# (Win 路径),Linux 跑的话 cli.js 会 spawn electron.exe ENOENT,electron shell 起不来。
+# 强制改成 "electron"(无扩展名),且不带换行(用 printf,不能用 echo,否则
+# path.txt 会变成 "electron\n",electron cli.js 拼出来是 ".../dist/electron\n"
+# 加 ENOENT)。
+ELECTRON_PATH_TXT="$INSTALL_DIR/oiagent-shell/node_modules/electron/path.txt"
+if [[ -f "$ELECTRON_PATH_TXT" ]]; then
+    if [[ "$(cat "$ELECTRON_PATH_TXT")" != "electron" ]]; then
+        printf 'electron' > "$ELECTRON_PATH_TXT"
+        echo "  electron/path.txt 已改写为 'electron'(原 Win 路径 electron.exe 不适用 Linux)"
+    fi
 fi
 
 # ---------- 5. GTK theme 图标(xfwm4 标题栏图标) ----------
-echo "[6/9] 装 GTK theme 图标..."
+echo "[7/10] 装 GTK theme 图标..."
 ICON_SRC="$INSTALL_DIR/assets/prisIr-flame-256.png"
 if [[ ! -f "$ICON_SRC" ]]; then
     # 退而求其次:用 48px
@@ -203,7 +271,7 @@ else
 fi
 
 # ---------- 6. .desktop entry ----------
-echo "[7/9] 装 .desktop entry..."
+echo "[8/10] 装 .desktop entry..."
 DESKTOP_DIR="$HOME/.local/share/applications"
 mkdir -p "$DESKTOP_DIR"
 cat > "$DESKTOP_DIR/PrisirAI.desktop" <<EOF
@@ -232,7 +300,7 @@ fi
 echo "  .desktop entry: $DESKTOP_DIR/PrisirAI.desktop"
 
 # ---------- 7. systemd user services ----------
-echo "[8/9] 装 systemd user services..."
+echo "[9/10] 装 systemd user services..."
 SYSTEMD_DIR="$HOME/.config/systemd/user"
 mkdir -p "$SYSTEMD_DIR"
 

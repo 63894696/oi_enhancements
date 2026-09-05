@@ -36,6 +36,20 @@ type FnSmart = unsafe extern "C" fn(*mut c_void, *const c_char) -> *mut c_char;
 type FnLearn = unsafe extern "C" fn(*mut c_void, *const c_char, *const c_char);
 type FnFreeStr = unsafe extern "C" fn(*mut c_char);
 type FnFree = unsafe extern "C" fn(*mut c_void);
+// 学习词库管理(Step 2,2026-09-04):引擎侧新增 4 导出。
+type FnUserList = unsafe extern "C" fn(*mut c_void) -> *mut c_char;
+type FnUserAdd = unsafe extern "C" fn(*mut c_void, *const c_char, *const c_char) -> i32;
+type FnUserRemove = unsafe extern "C" fn(*mut c_void, *const c_char, *const c_char) -> i32;
+type FnUserClear = unsafe extern "C" fn(*mut c_void) -> i32;
+// 主词库搜索(只读)。
+type FnDictSearch = unsafe extern "C" fn(*mut c_void, *const c_char) -> *mut c_char;
+// 主词库分页搜索 + 计数(2026-09-04 灵犀式分页)。
+type FnDictSearchPage = unsafe extern "C" fn(*mut c_void, *const c_char, i32, i32) -> *mut c_char;
+type FnDictCount = unsafe extern "C" fn(*mut c_void, *const c_char) -> i64;
+// 主库可写(2026-09-04,删/加/改权重)。
+type FnMainDelete = unsafe extern "C" fn(*mut c_void, *const c_char, *const c_char) -> i32;
+type FnMainUpsert = unsafe extern "C" fn(*mut c_void, *const c_char, *const c_char, i64) -> i32;
+type FnMainMaxWeight = unsafe extern "C" fn(*mut c_void, *const c_char) -> i64;
 
 // ============================================================
 // ImeDll — 包装好的 DLL 句柄 + 函数指针集合
@@ -50,6 +64,17 @@ pub(crate) struct ImeDll {
     learn: FnLearn,
     free_string: FnFreeStr,
     free: FnFree,
+    // 学习词库管理(Step 2):旧引擎 DLL 可能没这 4 个导出 → Option,None 时词库管理窗口提示升级引擎。
+    user_list: Option<FnUserList>,
+    user_add: Option<FnUserAdd>,
+    user_remove: Option<FnUserRemove>,
+    user_clear: Option<FnUserClear>,
+    dict_search: Option<FnDictSearch>,
+    dict_search_page: Option<FnDictSearchPage>,
+    dict_count: Option<FnDictCount>,
+    main_delete: Option<FnMainDelete>,
+    main_upsert: Option<FnMainUpsert>,
+    main_max_weight: Option<FnMainMaxWeight>,
 }
 
 // `HMODULE` 内部是 `*mut c_void`,不天然 Send/Sync。但本 IME 是进程内 COM 单线程服务,
@@ -100,6 +125,16 @@ unsafe fn try_load_ime_dll() -> Result<ImeDll, String> {
         }};
     }
 
+    // 学习词库管理 4 导出单独容忍缺失(Option):旧引擎 DLL 无这些符号时,
+    // 核心打字 5 导出已齐仍可用,词库管理窗口另提示「引擎过旧请升级」。
+    macro_rules! sym_opt {
+        ($name:literal, $ty:ty) => {{
+            let bytes = concat!($name, "\0").as_bytes();
+            GetProcAddress(h, PCSTR(bytes.as_ptr()))
+                .map(|p| std::mem::transmute::<_, $ty>(p as *const ()))
+        }};
+    }
+
     Ok(ImeDll {
         _handle: h,
         load: sym!("prisir_ime_load", FnLoad),
@@ -108,6 +143,16 @@ unsafe fn try_load_ime_dll() -> Result<ImeDll, String> {
         learn: sym!("prisir_ime_learn", FnLearn),
         free_string: sym!("prisir_ime_free_string", FnFreeStr),
         free: sym!("prisir_ime_free", FnFree),
+        user_list: sym_opt!("prisir_ime_user_list", FnUserList),
+        user_add: sym_opt!("prisir_ime_user_add", FnUserAdd),
+        user_remove: sym_opt!("prisir_ime_user_remove", FnUserRemove),
+        user_clear: sym_opt!("prisir_ime_user_clear", FnUserClear),
+        dict_search: sym_opt!("prisir_ime_dict_search", FnDictSearch),
+        dict_search_page: sym_opt!("prisir_ime_dict_search_page", FnDictSearchPage),
+        dict_count: sym_opt!("prisir_ime_dict_count", FnDictCount),
+        main_delete: sym_opt!("prisir_ime_main_delete", FnMainDelete),
+        main_upsert: sym_opt!("prisir_ime_main_upsert", FnMainUpsert),
+        main_max_weight: sym_opt!("prisir_ime_main_max_weight", FnMainMaxWeight),
     })
 }
 
@@ -254,6 +299,140 @@ pub extern "C" fn prisir_tsf_free_engine(handle: *mut c_void) {
 pub extern "C" fn prisir_tsf_version() -> *const c_char {
     // 静态 C 字符串,带 \0 终止符,作为进程内常量返回。
     concat!("prisir_ime_tsf 0.2.0 (T3 + ffi bridge to prisIr_ime.dll)\0").as_ptr() as *const c_char
+}
+
+// ============================================================
+// 学习词库管理 crate 内 API(Step 2 词库管理窗口用,2026-09-04)
+// 惰性复用 load_engine_with_default_db() 拿到的引擎句柄(缓存于 OnceLock),
+// 词库管理窗口无需自己再 LoadLibrary/加载词库。引擎过旧缺导出 → 返回 None。
+// ============================================================
+
+/// 惰性拿词库管理用引擎句柄(进程级缓存)。
+/// 存 usize 而非 *mut c_void(原始指针非 Send/Sync,进不了 OnceLock)。
+/// SAFETY: 句柄来自 Box::into_raw,引擎进程级常驻,读出后转回指针只读使用。
+fn mgmt_engine() -> Option<*mut c_void> {
+    static H: OnceLock<usize> = OnceLock::new();
+    let h = *H.get_or_init(|| load_engine_with_default_db() as usize);
+    if h == 0 { None } else { Some(h as *mut c_void) }
+}
+
+/// 学习词库管理是否可用(引擎 DLL 已加载且带 user_* 导出)。
+pub(crate) fn user_dict_available() -> bool {
+    match (load_ime_dll(), mgmt_engine()) {
+        (Ok(dll), Some(_)) => dll.user_list.is_some(),
+        _ => false,
+    }
+}
+
+/// 列出全部学习词(JSON 数组字符串)。不可用/失败 → None。
+pub(crate) fn user_dict_list_json() -> Option<String> {
+    let dll = load_ime_dll().ok()?;
+    let h = mgmt_engine()?;
+    let f = dll.user_list?;
+    let ptr = unsafe { f(h) };
+    if ptr.is_null() {
+        return Some("[]".to_string());
+    }
+    let s = unsafe { CStr::from_ptr(ptr) }.to_string_lossy().into_owned();
+    unsafe { (dll.free_string)(ptr) };
+    Some(s)
+}
+
+/// 手动加词。可用且成功 → true。
+pub(crate) fn user_dict_add(pinyin: &str, word: &str) -> bool {
+    let (Ok(dll), Some(h)) = (load_ime_dll(), mgmt_engine()) else { return false; };
+    let Some(f) = dll.user_add else { return false; };
+    let (Ok(p), Ok(w)) = (CString::new(pinyin), CString::new(word)) else { return false; };
+    unsafe { f(h, p.as_ptr(), w.as_ptr()) == 1 }
+}
+
+/// 删除某条学习词,返回删除行数。不可用 → 0。
+pub(crate) fn user_dict_remove(pinyin: &str, word: &str) -> i32 {
+    let (Ok(dll), Some(h)) = (load_ime_dll(), mgmt_engine()) else { return 0; };
+    let Some(f) = dll.user_remove else { return 0; };
+    let (Ok(p), Ok(w)) = (CString::new(pinyin), CString::new(word)) else { return 0; };
+    unsafe { f(h, p.as_ptr(), w.as_ptr()) }
+}
+
+/// 清空全部学习记录。可用且成功 → true。
+pub(crate) fn user_dict_clear() -> bool {
+    let (Ok(dll), Some(h)) = (load_ime_dll(), mgmt_engine()) else { return false; };
+    let Some(f) = dll.user_clear else { return false; };
+    unsafe { f(h) == 1 }
+}
+
+/// 搜索主词库(JSON 数组字符串)。不可用/失败 → None。
+pub(crate) fn dict_search_json(term: &str) -> Option<String> {
+    let dll = load_ime_dll().ok()?;
+    let h = mgmt_engine()?;
+    let f = dll.dict_search?;
+    let t = CString::new(term).ok()?;
+    let ptr = unsafe { f(h, t.as_ptr()) };
+    if ptr.is_null() {
+        return Some("[]".to_string());
+    }
+    let s = unsafe { CStr::from_ptr(ptr) }.to_string_lossy().into_owned();
+    unsafe { (dll.free_string)(ptr) };
+    Some(s)
+}
+
+/// 分页搜索主词库(JSON 数组)。不可用 → None。
+pub(crate) fn dict_search_page_json(term: &str, limit: i32, offset: i32) -> Option<String> {
+    let dll = load_ime_dll().ok()?;
+    let h = mgmt_engine()?;
+    let f = dll.dict_search_page?;
+    let t = CString::new(term).ok()?;
+    let ptr = unsafe { f(h, t.as_ptr(), limit, offset) };
+    if ptr.is_null() {
+        return Some("[]".to_string());
+    }
+    let s = unsafe { CStr::from_ptr(ptr) }.to_string_lossy().into_owned();
+    unsafe { (dll.free_string)(ptr) };
+    Some(s)
+}
+
+/// 主库匹配总条数。不可用 → 0。
+pub(crate) fn dict_count(term: &str) -> i64 {
+    let (Ok(dll), Some(h)) = (load_ime_dll(), mgmt_engine()) else { return 0; };
+    let Some(f) = dll.dict_count else { return 0; };
+    let Ok(t) = CString::new(term) else { return 0; };
+    unsafe { f(h, t.as_ptr()) }
+}
+
+// ============================================================
+// 主库可写 crate 内 API(2026-09-04,词库管理「全部词库」tab 删/加/改用)
+// ============================================================
+
+/// 主库删除词条。返回删除行数(0=不可用/不存在/失败)。
+pub(crate) fn main_dict_delete(pinyin: &str, word: &str) -> i32 {
+    let (Ok(dll), Some(h)) = (load_ime_dll(), mgmt_engine()) else { return 0; };
+    let Some(f) = dll.main_delete else { return 0; };
+    let (Ok(p), Ok(w)) = (CString::new(pinyin), CString::new(word)) else { return 0; };
+    unsafe { f(h, p.as_ptr(), w.as_ptr()) }
+}
+
+/// 主库 upsert 词条(加词/改权重)。成功 → true。
+pub(crate) fn main_dict_upsert(pinyin: &str, word: &str, weight: i64) -> bool {
+    let (Ok(dll), Some(h)) = (load_ime_dll(), mgmt_engine()) else { return false; };
+    let Some(f) = dll.main_upsert else { return false; };
+    let (Ok(p), Ok(w)) = (CString::new(pinyin), CString::new(word)) else { return false; };
+    unsafe { f(h, p.as_ptr(), w.as_ptr(), weight) == 1 }
+}
+
+/// 同 key 主库 phrase 最高词频(改权重参考)。不可用 → 0。
+pub(crate) fn main_dict_max_weight(pinyin: &str) -> i64 {
+    let (Ok(dll), Some(h)) = (load_ime_dll(), mgmt_engine()) else { return 0; };
+    let Some(f) = dll.main_max_weight else { return 0; };
+    let Ok(p) = CString::new(pinyin) else { return 0; };
+    unsafe { f(h, p.as_ptr()) }
+}
+
+/// 主库可写是否可用(引擎带 main_* 导出)。
+pub(crate) fn main_dict_writable() -> bool {
+    match (load_ime_dll(), mgmt_engine()) {
+        (Ok(dll), Some(_)) => dll.main_delete.is_some() && dll.main_upsert.is_some(),
+        _ => false,
+    }
 }
 
 /// T2 阶段用作最小烟囱的 echo — T3 阶段保留作 ABI smoke。

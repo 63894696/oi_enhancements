@@ -35,11 +35,12 @@ use windows::Win32::UI::TextServices::{
 /// Prisir IME 的 CLSID(字符串形态, 注入注册表用)。
 pub const CLSID_PRISIR_IME_STR: &str = "{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}";
 
-/// 在 Windows 设置 → 输入法列表里显示的名字(纯英文,避免 ANSI 兼容问题)。
-pub const DISPLAY_NAME: &str = "Prisir IME";
+/// 在 Windows 设置 → 输入法列表里显示的名字(2026-09-04 改为「Prisir 灵犀拼音」)。
+/// UTF-16 注册表值,中文正常显示;早期「避免中文」的顾虑已被 mojibake 修复(null 结尾)覆盖。
+pub const DISPLAY_NAME: &str = "Prisir 灵犀拼音";
 
 /// CTF TIP 注册表的 Description 字段。
-pub const DESCRIPTION: &str = "Prisir IME";
+pub const DESCRIPTION: &str = "Prisir 灵犀拼音";
 
 /// LANGID for zh-CN(windows hex 0804)。
 pub const LANGID_ZH_CN: &str = "0804";
@@ -90,6 +91,27 @@ pub const CATEGORY_TIP_KEYBOARD2: &str =
     "{2E4B07D4-B8F4-4D8C-8C50-C25BF6E5A4B8}";
 pub const CATEGORY_TIP_KEYBOARD3: &str =
     "{13A016DF-560B-46CD-947A-4C3AF1E0E35D}";
+
+// =====================================================================
+// 2026-09-05: HKCU CTF\Assemblies 运行时映射(装完即用)
+// =====================================================================
+/// 键盘布局类 GUID(GUID_TFCAT_TIP_KEYBOARD) — Assemblies 下 0x<LANGID> 的子键名。
+const ASM_LAYOUT_GUID: &str = "{34745C63-B2F0-4784-8B67-5E12C8701A31}";
+/// Assemblies 下 zh-CN 语言目录名(注册表存的是 8 位 hex 大写)。
+const ASM_LANGID_DIR: &str = "0x00000804";
+/// KeyboardLayout DWORD 值 = 0x08040804(LANGID + 布局 id)。
+const ASM_KEYBOARD_LAYOUT: u32 = 0x0804_0804;
+/// 原占用者备份的 HKLM 键路径(SYSTEM/用户同视图, 跨上下文可读)。
+const ASM_BACKUP_HKLM: &str = r"SOFTWARE\LingxiIME";
+/// 原占用者备份的 HKLM 位置(2026-09-05)。
+///
+/// **为什么不能存 HKCU TIP 树根**: 安装器(nsi)以 elevated 上下文调
+/// `prisir_tsfsvc --register`, 该进程常跑在 **SYSTEM token** 下, 此时
+/// `RegOpenCurrentUser` 打开的是 **SYSTEM 的 HKCU**, 不是登录用户的 HKCU。
+/// 备份写进 SYSTEM\HKCU 后, 卸载(同样可能 SYSTEM)读得到、但抢占/恢复写的
+/// 用户 HKCU 又是另一份 → 跨上下文读不到备份, 恢复失败(实测 beta.4 卸载后
+/// Assemblies 仍 Prisir)。HKLM 对 SYSTEM/用户同一视图且跨会话持久,
+/// 卸载时无论谁跑都能读到。卸载后 do_unregister 删掉。
 
 // =====================================================================
 // 纯函数 — smoke test 直接验
@@ -256,7 +278,7 @@ pub fn build_reg_tree(dll_path: &str) -> Vec<RegEntry> {
         // ---- COM InprocServer32 ----
         RegEntry::Sz(
             format!(r"SOFTWARE\Classes\CLSID\{clsid}\(Default)"),
-            "Prisir IME".to_string(),
+            "Prisir 灵犀拼音".to_string(),
         ),
         RegEntry::Sz(
             format!(r"SOFTWARE\Classes\CLSID\{clsid}\InprocServer32\(Default)"),
@@ -408,6 +430,181 @@ fn migrate_legacy_profile_guids() {
     }
 }
 
+/// 捕获 `HKCU\CTF\Assemblies\0x0804\{layout}` 当前的占用者(Default/Profile),
+/// 供卸载时恢复。返回 `(default_clsid, profile_guid)`;没有占用者(全新机器)返 None。
+/// 只读,不改任何值。失败/无值不致命。
+fn capture_asm_incumbent() -> Option<(String, String)> {
+    let path = format!(
+        r"SOFTWARE\Microsoft\CTF\Assemblies\{ASM_LANGID_DIR}\{ASM_LAYOUT_GUID}"
+    );
+    let read_sz = |name: &str| -> Option<String> {
+        let hkcu = open_hkcu(KEY_READ.0).ok()?;
+        let mut key: HKEY = HKEY::default();
+        let path_w = to_wide(&path);
+        let st = unsafe { RegOpenKeyExW(hkcu, PCWSTR(path_w.as_ptr()), 0, KEY_READ, &mut key) };
+        if st != ERROR_SUCCESS {
+            let _ = unsafe { RegCloseKey(hkcu) };
+            return None;
+        }
+        let name_w = to_wide(name);
+        // 先查类型+长度, 再读。
+        let mut kind = REG_VALUE_TYPE(0);
+        let mut len: u32 = 0;
+        let q = unsafe {
+            RegQueryValueExW(key, PCWSTR(name_w.as_ptr()), None, Some(&mut kind), None, Some(&mut len))
+        };
+        if q != ERROR_SUCCESS || kind != REG_SZ || len == 0 {
+            let _ = unsafe { RegCloseKey(key) };
+            let _ = unsafe { RegCloseKey(hkcu) };
+            return None;
+        }
+        let mut buf: Vec<u16> = vec![0u16; (len as usize / 2) + 1];
+        let q2 = unsafe {
+            RegQueryValueExW(
+                key,
+                PCWSTR(name_w.as_ptr()),
+                None,
+                None,
+                Some(buf.as_mut_ptr() as *mut u8),
+                Some(&mut len),
+            )
+        };
+        let _ = unsafe { RegCloseKey(key) };
+        let _ = unsafe { RegCloseKey(hkcu) };
+        if q2 != ERROR_SUCCESS {
+            return None;
+        }
+        let s = String::from_utf16_lossy(&buf)
+            .trim_end_matches('\0')
+            .to_string();
+        if s.is_empty() { None } else { Some(s) }
+    };
+    let default = read_sz("Default")?;
+    let profile = read_sz("Profile").unwrap_or_default();
+    Some((default, profile))
+}
+
+/// 把 `HKCU\CTF\Assemblies\0x0804\{layout}` 的 Default/Profile 改成指定 TIP。
+/// `prev` 为 None 时写 Prisir 自己; Some((clsid, profile)) 时恢复该占用者。
+/// 这是「装完即用」的核心: ctfmon 运行时读这条映射, 写完任务栏输入法即变,
+/// 不需要重启 explorer。0x0804 布局键同一时刻只绑一个 TIP(与搜狗共存互斥)。
+/// 失败不致命(WARN) — 注册表主体已写, 注销重登后 TIPC 仍会枚举生效。
+fn write_asm_map(prev: Option<(&str, &str)>) -> Result<(), String> {
+    let (clsid, profile) = match prev {
+        Some((c, p)) => (c.to_string(), p.to_string()),
+        None => (
+            CLSID_PRISIR_IME_STR.to_string(),
+            PROFILE_GUID.to_string(),
+        ),
+    };
+    let path = format!(
+        r"SOFTWARE\Microsoft\CTF\Assemblies\{ASM_LANGID_DIR}\{ASM_LAYOUT_GUID}"
+    );
+    let hkcu = open_hkcu(KEY_WRITE.0)
+        .map_err(|e| format!("RegOpenCurrentUser 失败: {:?}", WIN32_ERROR(e.0)))?;
+    let path_w = to_wide(&path);
+    let mut key: HKEY = HKEY::default();
+    let st = unsafe {
+        RegCreateKeyExW(
+            hkcu,
+            PCWSTR(path_w.as_ptr()),
+            0,
+            None,
+            REG_OPTION_NON_VOLATILE,
+            KEY_WRITE,
+            None,
+            &mut key,
+            None,
+        )
+    };
+    if st != ERROR_SUCCESS {
+        let _ = unsafe { RegCloseKey(hkcu) };
+        return Err(format!("RegCreateKeyExW({path}) 失败: {:?}", WIN32_ERROR(st.0)));
+    }
+    let r = (|| -> Result<(), String> {
+        unsafe {
+            write_sz(key, "Default", &clsid)?;
+            if !profile.is_empty() {
+                write_sz(key, "Profile", &profile)?;
+            }
+            write_dword(key, "KeyboardLayout", ASM_KEYBOARD_LAYOUT)?;
+        }
+        Ok(())
+    })();
+    let _ = unsafe { RegCloseKey(key) };
+    let _ = unsafe { RegCloseKey(hkcu) };
+    r
+}
+
+/// 卸载时恢复 Assemblies 布局键给安装前的占用者(搜狗等)。
+/// 在 do_unregister 里, 删 Prisir 注册表之前调用(此时还能读到当前 Default=Prisir)。
+/// 策略:
+///  - 当前 Default 不是 Prisir → 已被别的 IME 抢走, 不动(避免误伤)。
+///  - 当前是 Prisir, 且我们存过原占用者 → 写回原占用者。
+///  - 当前是 Prisir 但没存过(全新机器) → 清空为占位 0-GUID(与 host 干净态一致)。
+/// 失败不致命(WARN)。
+fn restore_asm_incumbent() {
+    let path = format!(
+        r"SOFTWARE\Microsoft\CTF\Assemblies\{ASM_LANGID_DIR}\{ASM_LAYOUT_GUID}"
+    );
+    let cur = capture_asm_incumbent();
+    let cur_default = cur.as_ref().map(|(d, _)| d.clone()).unwrap_or_default();
+    let prisir = CLSID_PRISIR_IME_STR.trim_matches('{').trim_matches('}').to_uppercase();
+    if !cur_default.to_uppercase().contains(&prisir) {
+        eprintln!("[unregister] Assemblies 布局键当前占用者不是 Prisir({cur_default}), 不动。");
+        return;
+    }
+    // 读我们存的备份(HKLM, 跨 SYSTEM/用户可读, 见 ASM_BACKUP_HKLM 注释)。
+    let read_backup = |name: &str| -> Option<String> {
+        let mut key: HKEY = HKEY::default();
+        let pw = to_wide(ASM_BACKUP_HKLM);
+        if unsafe { RegOpenKeyExW(HKEY_LOCAL_MACHINE, PCWSTR(pw.as_ptr()), 0, KEY_READ, &mut key) } != ERROR_SUCCESS {
+            return None;
+        }
+        let nw = to_wide(name);
+        let mut kind = REG_VALUE_TYPE(0);
+        let mut len: u32 = 0;
+        if unsafe { RegQueryValueExW(key, PCWSTR(nw.as_ptr()), None, Some(&mut kind), None, Some(&mut len)) } != ERROR_SUCCESS || kind != REG_SZ || len == 0 {
+            let _ = unsafe { RegCloseKey(key) };
+            return None;
+        }
+        let mut buf: Vec<u16> = vec![0u16; (len as usize / 2) + 1];
+        let ok = unsafe {
+            RegQueryValueExW(key, PCWSTR(nw.as_ptr()), None, None, Some(buf.as_mut_ptr() as *mut u8), Some(&mut len))
+        };
+        let _ = unsafe { RegCloseKey(key) };
+        if ok != ERROR_SUCCESS { return None; }
+        let s = String::from_utf16_lossy(&buf).trim_end_matches('\0').to_string();
+        if s.is_empty() { None } else { Some(s) }
+    };
+    let prev_default = read_backup("AsmPrevDefault");
+    let prev_profile = read_backup("AsmPrevProfile").unwrap_or_default();
+    let target = match prev_default {
+        Some(d) if !d.is_empty() => Some((d, prev_profile)),
+        _ => None,
+    };
+    match target {
+        Some((d, p)) => {
+            if let Err(e) = write_asm_map(Some((&d, &p))) {
+                eprintln!("[unregister] WARN: 恢复 Assemblies 占用者失败(不致命): {e}");
+            } else {
+                eprintln!("[unregister] 已恢复 Assemblies 布局键给原输入法: {d}");
+            }
+        }
+        None => {
+            // 全新机器无原占用者 — 清空为占位 0-GUID(host 干净态就是这样)。
+            if let Err(e) = write_asm_map(Some((
+                "{00000000-0000-0000-0000-000000000000}",
+                "{00000000-0000-0000-0000-000000000000}",
+            ))) {
+                eprintln!("[unregister] WARN: 清空 Assemblies 布局键失败(不致命): {e}");
+            } else {
+                eprintln!("[unregister] Assemblies 布局键已清空(无原占用者)。");
+            }
+        }
+    }
+}
+
 /// 把 `build_reg_tree(dll_path)` 全部写入 HKCU。
 ///
 /// 错误: 任一 key 创不出来 / value 设不上就立刻返回 Err, 已经写入的不会回滚
@@ -514,6 +711,39 @@ pub fn do_register(dll_path: &str) -> Result<RegisterResult, String> {
 
     let _ = unsafe { RegCloseKey(hkcu) };
 
+    // ---- 2026-09-05: 装完即用 — 占 0x0804 布局键, 写 HKCU Assemblies 映射 ----
+    //
+    // 用户决策(2026-09-05): 学搜狗, 装完就让 Prisir 上屏, 之后切不切是用户的事。
+    // 机制: ctfmon 运行时读 HKCU\CTF\Assemblies\0x0804\{layout} 的 Default/Profile,
+    // 写完任务栏输入法即变, 不需要重启 explorer。0x0804 布局键同一时刻只绑一个 TIP,
+    // 我们占它 = 把当前默认输入法临时换成 Prisir(卸载时恢复原占用者, 见 do_unregister)。
+    //
+    // 步骤: 1) 捕获现有占用者存到 HKLM(跨 SYSTEM/用户可读, 见 ASM_BACKUP_HKLM 注释);
+    //       2) 写 Prisir 为占用者(写当前进程看到的 HKCU)。
+    // 失败不致命(WARN) — 注册表主体已写, 注销重登后 TIPC 仍会枚举生效。
+    let incumbent = capture_asm_incumbent();
+    if let Some((d, p)) = &incumbent {
+        let pw = to_wide(ASM_BACKUP_HKLM);
+        let mut bkey: HKEY = HKEY::default();
+        let st = unsafe {
+            RegCreateKeyExW(HKEY_LOCAL_MACHINE, PCWSTR(pw.as_ptr()), 0, None, REG_OPTION_NON_VOLATILE, KEY_WRITE, None, &mut bkey, None)
+        };
+        if st == ERROR_SUCCESS {
+            let _ = unsafe { write_sz(bkey, "AsmPrevDefault", d) };
+            let _ = unsafe { write_sz(bkey, "AsmPrevProfile", p) };
+            let _ = unsafe { RegCloseKey(bkey) };
+            eprintln!("[register] 已记录 Assemblies 原占用者到 HKLM(卸载时恢复): {d}");
+        } else {
+            eprintln!("[register] WARN: 备份原占用者到 HKLM 失败(不致命, 卸载将无法自动恢复): {:?}", WIN32_ERROR(st.0));
+        }
+    }
+    if let Err(e) = write_asm_map(None) {
+        eprintln!("[register] WARN: 写 Assemblies 装完即用映射失败(不致命): {e}");
+        eprintln!("[register]   注销重登后 TIPC 仍会枚举生效; 装完即用失效。");
+    } else {
+        eprintln!("[register] 已占 0x0804 布局键, 写入装完即用 Assemblies 映射(任务栏即时生效)");
+    }
+
     // ---- T17 → T24: 同步写 HKLM\Classes\CLSID (TIPC 枚举关键) ----
     //
     // 实测:vm-sata 上 HKCU\Classes\CLSID\{Prisir}\InprocServer32 写全了,
@@ -566,6 +796,11 @@ pub fn do_register(dll_path: &str) -> Result<RegisterResult, String> {
         ));
     }
     eprintln!("[register] HKLM\\..\\TIP 树已写入(系统级 TIPC 枚举可见)");
+
+    // ---- 2026-09-05: 清历史误写的 HKLM\..\CTF\Assemblies\{Prisir CLSID} 裸键 ----
+    // 见 cleanup_malformed_hklm_assemblies 注释 — 该裸键非本代码写入,是历史残留,
+    // 与 Sogou 状态不一致。幂等 + best-effort,不致命。
+    cleanup_malformed_hklm_assemblies();
 
     // ---- T15: 调 ITfInputProcessorProfiles::Register 写 HKCU\CTF\Assemblies ----
     //
@@ -751,7 +986,7 @@ fn write_hklm_com_class(dll_path: &str) -> Result<(), String> {
             let _ = RegCloseKey(classes);
             return Err(format!("RegCreateKeyExW(HKLM CLSID\\{}) 失败: {:?}", clsid, WIN32_ERROR(s1.0)));
         }
-        let default_str = to_wide("Prisir IME");
+        let default_str = to_wide("Prisir 灵犀拼音");
         let default_bytes: Vec<u8> = default_str.iter().flat_map(|w| w.to_le_bytes()).collect();
         let s1b = RegSetValueExW(clsid_key, PCWSTR(std::ptr::null()), 0, REG_SZ, Some(&default_bytes));
         if s1b != ERROR_SUCCESS {
@@ -1059,7 +1294,41 @@ unsafe fn write_dword(key: HKEY, name: &str, value: u32) -> Result<(), String> {
 /// HKLM 半截状态。今天起两边一起删。
 ///
 /// HKLM 删除需 admin(失败时 WARN 但不 Err — 用户可能本就没 admin)。
+/// 2026-09-05 防御: 清掉历史误写的 HKLM\..\CTF\Assemblies\{Prisir CLSID} 裸键。
+///
+/// 真因: Sogou/MS 拼音的 HKLM\..\CTF\Assemblies 下**没有任何 TIP 的裸 CLSID 键**,
+/// 真正的运行时映射在 **HKCU**\..\CTF\Assemblies\0x<LANGID>\{layout-GUID}(见
+/// memory prisirtip-assemblies-runtime-activation-2026-09-05)。历史上某次
+/// (旧版注册器或手动 reg add)错在 HKLM 下写了
+/// `HKLM\..\CTF\Assemblies\{A1B2C3D4-..}` 裸键 + 默认值=dll路径,结构全错,
+/// 与 Sogou 状态不一致,可能干扰 TIPC 枚举。当前 register.rs 已无此写入(全仓 grep
+/// 无 HKLM Assemblies 写入点,已验证 --register 后不再复活),这里只是**清理旧残留**。
+///
+/// 幂等 + 不致命: key 不存在(ERROR_FILE_NOT_FOUND=2)视为成功; 删失败(如无 admin)
+/// 仅 WARN 不 Err — 清理是 best-effort,不影响主注册路径。
+fn cleanup_malformed_hklm_assemblies() {
+    let key_path = format!(
+        r"SOFTWARE\Microsoft\CTF\Assemblies\{CLSID_PRISIR_IME_STR}"
+    );
+    let w = to_wide(&key_path);
+    unsafe {
+        let status = RegDeleteTreeW(HKEY_LOCAL_MACHINE, PCWSTR(w.as_ptr()));
+        match status.0 {
+            0 => eprintln!("[register] 已清理历史误写 HKLM\\..\\CTF\\Assemblies\\{CLSID_PRISIR_IME_STR} 裸键"),
+            2 => {} // 不存在 = 干净, 静默
+            code => eprintln!(
+                "[register] WARN: 清理 HKLM Assemblies 裸键失败 {:?}(不致命, 仅残留历史误写)",
+                WIN32_ERROR(code)
+            ),
+        }
+    }
+}
+
 pub fn do_unregister() -> Result<(), String> {
+    // 2026-09-05: 先恢复 Assemblies 布局键给原占用者 — 必须在删 HKCU TIP 树之前调,
+    // 因为恢复的备份(AsmPrevDefault/AsmPrevProfile)存在 TIP 树根下,删树就没了。
+    restore_asm_incumbent();
+
     let hkcu = open_hkcu(KEY_WRITE.0)
         .map_err(|e| format!("RegOpenCurrentUser(KEY_WRITE) 失败: {:?}", WIN32_ERROR(e.0)))?;
 
@@ -1090,6 +1359,8 @@ pub fn do_unregister() -> Result<(), String> {
         let hklm_keys = [
             format!(r"SOFTWARE\Microsoft\CTF\TIP\{CLSID_PRISIR_IME_STR}"),
             format!(r"SOFTWARE\Classes\CLSID\{CLSID_PRISIR_IME_STR}"),
+            // 2026-09-05: Assemblies 原占用者备份(ASM_BACKUP_HKLM), 卸载后清掉。
+            ASM_BACKUP_HKLM.to_string(),
         ];
         for k in &hklm_keys {
             let w = to_wide(k);
@@ -1103,6 +1374,9 @@ pub fn do_unregister() -> Result<(), String> {
                 );
             }
         }
+
+        // 2026-09-05: 顺带清历史误写的 HKLM Assemblies 裸键(幂等,见该 fn 注释)。
+        cleanup_malformed_hklm_assemblies();
     }
 
     match last_err {

@@ -13,7 +13,7 @@ pub const CONTACT_EMAIL: &str = "lsjdlijie@outlook.com";
 /// 关于页 4 段正文 — 跟 Android 端 UserDictActivity.java:425-436 一字不差。
 pub const ABOUT_BODY: &str = "灵犀拼音输入法 for Windows 是 Prisir(湃睿思) AI 出品的用户隐私保护软件,纯本地运行,不强制联网,没有账号体系,支持用户百分百管理自己词库,根据使用词频自动跳第一页显示,方便快捷录入。";
 
-pub const PRIVACY_BODY: &str = "灵犀拼音输入法 for Windows 是 Prisir(湃睿思) AI 出品的用户隐私保护软件,纯本地运行,不强制联网,支持用户百分百管理自己词库,不收集遥测,不做行为分析,不设账号。";
+pub const PRIVACY_BODY: &str = "灵犀拼音输入法 for Windows 是 Prisir(湃睿思) AI 出品的用户隐私保护软件,纯本地运行,词库存本机不外发,支持用户百分百管理自己词库,不做行为分析,不设账号。唯一的联网行为:每日一次匿名更新检查(向我们的网站 GET 一个 updates.json,不含任何身份/内容/使用数据,仅用于统计大致活跃数,与 PrisirAI 同口径)。";
 
 pub const TERMS_BODY: &str = "灵犀拼音输入法 for Windows 是 Prisir(湃睿思) AI 出品的用户隐私保护软件,本软件的轻量条款核心是「本地工具,自负其责」,使用本输入法即视为同意:词库存本机,不外发。";
 

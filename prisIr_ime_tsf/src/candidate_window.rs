@@ -363,6 +363,21 @@ unsafe extern "system" fn candidate_wnd_proc(
         }
         // 不抢焦点:点击/激活全部吃掉,不转发。
         WM_MOUSEACTIVATE => LRESULT(MA_NOACTIVATE as isize),
+        WM_LBUTTONDOWN => {
+            // 「✎手写」入口命中(右上角拼音行右侧)。命中 → 弹手写画板。
+            // 标签绘制在 win_w - hw_sz.cx - 12 .. win_w - 12,py_y..py_y+行高。
+            let x = (lparam.0 & 0xFFFF) as i16 as i32;
+            let y = ((lparam.0 >> 16) & 0xFFFF) as i16 as i32;
+            let mut rc = RECT::default();
+            let _ = GetClientRect(hwnd, &mut rc);
+            let win_w = rc.right - rc.left;
+            // 手写标签约 3 字宽(-17 字体 ≈ 51px) + 右侧留白 12;给足热区。
+            let hw_left = win_w - 70;
+            if x >= hw_left && y >= 0 && y <= PYINYIN_ROW_H {
+                crate::handwriting_panel::toggle_panel(None);
+            }
+            LRESULT(0)
+        }
         _ => DefWindowProcW(hwnd, msg, wparam, lparam),
     }
 }
