@@ -1,0 +1,35 @@
+# 灵犀拼音输入法 — Android 端版本号单一来源
+#
+# 字段:
+#   PRIMARY_VERSION     语义化版本号 (MAJOR.MINOR.PATCH[-PRERELEASE])
+#   PRIMARY_VERSION_CODE Android versionCode 整数 (单调递增)
+#   RELEASE_CHANNEL     通道: stable | beta | dev
+#   BUILD_DATE          构建日期 (YYYY-MM-DD, 由 build.sh 自动刷新)
+#   GIT_COMMIT          提交哈希或 HEAD 占位 (后续 CI 接入)
+#
+# versionCode 计算规则:
+#   MAJOR * 100000 + MINOR * 1000 + PATCH * 10 + channelOffset
+#   channelOffset: stable=0, beta=1..8 (同一基线 N 个 beta), dev=9
+#
+# 例:
+#   1.0.0       stable → 100000  "1.0.0 stable"
+#   1.0.0-beta.1 beta  → 100001  "1.0.0-beta.1 beta"
+#   1.0.0-beta.2 beta  → 100002  "1.0.0-beta.2 beta"
+#   1.0.1       stable → 100010  "1.0.1 stable"
+#   1.1.0       stable → 101000  "1.1.0 stable"
+#   1.0.0-dev   dev    → 100009  "1.0.0-dev dev"
+#   2.0.0       stable → 200000  "2.0.0 stable"
+#
+# 通道规则:
+#   stable: 正式版, 给最终用户
+#   beta:   内部测试版, versionCode 比同名 stable 高 1..8
+#   dev:    开发快照, versionCode = stable + 9
+#
+# 升版注意: stable → stable 必须 versionCode 严格递增, 否则 PackageManager 拒升级;
+#           beta 用户升级到 stable 时, stable 的 versionCode 必须 > 已装 beta 的 code.
+
+PRIMARY_VERSION=1.0.0-beta.1
+PRIMARY_VERSION_CODE=100001
+RELEASE_CHANNEL=beta
+BUILD_DATE=2026-09-04
+GIT_COMMIT=HEAD
