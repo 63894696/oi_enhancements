@@ -47,6 +47,9 @@ _KIND = {
     "read_file_lines": "read_file",
     "git_status": "read_file",
     "git_diff": "read_file",
+    "glob_search": "read_file",
+    "web_fetch": "read_file",
+    "todo_write": "read_file",
 }
 
 # 需要过闸的工具(写/执行/删除)。只读类(read/list/search/file_reputation)直接放行不过闸。
@@ -57,7 +60,8 @@ GATED_TOOLS = frozenset({"run_shell", "run_code", "write_file", "edit_file", "de
 _READONLY_SAFE = frozenset({"read_file", "list_files", "search_files", "read_file_head",
                              "read_file_lines", "grep_search", "local_file_search",
                              "local_content_search", "anytxt_search", "web_search",
-                             "file_reputation", "git_status", "git_diff"})
+                             "file_reputation", "git_status", "git_diff",
+                             "glob_search", "web_fetch", "todo_write"})
 
 
 def _audit_sink(decision) -> None:

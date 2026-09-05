@@ -52,9 +52,43 @@ def truncate_tool_output(text: str, limit: int = TOOL_STORE_MAX) -> str:
 def _t_read_file(path: str) -> str:
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
-            return f.read()
+            data = f.read()
+        _mark_read(path)
+        return data
     except Exception as e:  # noqa: BLE001
         return f"[read_file error] {e}"
+
+
+# 编辑前必读追踪(2026-09-05 P4,对标 Claude Code Edit-must-Read):
+# 改已存在文件前,本会话需先读过 → 防模型不看内容就盲改/覆盖已有文件。
+# 只拦「改已存在文件」:新建文件不要求读(本来就没内容可读)。
+_READ_SET: set = set()
+
+
+def _mark_read(path: str) -> None:
+    try:
+        _READ_SET.add(os.path.normcase(os.path.abspath(path)))
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _has_read(path: str) -> bool:
+    try:
+        return os.path.normcase(os.path.abspath(path)) in _READ_SET
+    except Exception:  # noqa: BLE001
+        return True  # 追踪自身故障 → 放行(不阻塞编辑主功能)
+
+
+def _need_read_first(path: str) -> str:
+    """已存在且未读过 → 返回拦截文案;否则返回 ''。"""
+    try:
+        if os.path.isfile(path) and not _has_read(path):
+            return (f"[edit 被拦截] 文件已存在但本会话尚未读取: {path}\n"
+                    f"为避免盲改,请先用 read_file / read_file_lines 查看该文件内容,"
+                    f"再发起编辑。")
+    except Exception:  # noqa: BLE001
+        pass
+    return ""
 
 
 # 写入追踪(2026-08-24):成品对话链的「落盘校验」detect 层。开发链靠任务显式声明
@@ -73,6 +107,10 @@ def pop_written_files(workdir: str) -> list:
 
 
 def _t_write_file(path: str, content: str, workdir: str = "") -> str:
+    # P4 编辑前必读:覆盖已存在文件前需先读过(新建文件不拦)
+    block = _need_read_first(path)
+    if block:
+        return block
     try:
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
@@ -545,6 +583,10 @@ def _t_edit_file(path: str, old_string: str, new_string: str,
     try:
         if not os.path.isfile(path):
             return f"[edit_file error] 文件不存在: {path}"
+        # P4 编辑前必读:改已存在文件前需先读过
+        block = _need_read_first(path)
+        if block:
+            return block
         with open(path, encoding="utf-8", errors="replace") as f:
             content = f.read()
 
@@ -1052,6 +1094,7 @@ def _t_read_file_head(path: str, max_chars: int = 4000) -> str:
     try:
         with open(p, encoding="utf-8", errors="replace") as f:
             data = f.read(max(200, min(int(max_chars or 4000), 20000)))
+        _mark_read(p)
         return data
     except Exception as e:  # noqa: BLE001
         return f"[read_file_head error] {e}"
@@ -1077,6 +1120,7 @@ def _t_read_file_lines(path: str, offset: int = 1, limit: int = 200) -> str:
     try:
         with open(p, encoding="utf-8", errors="replace") as f:
             lines = f.readlines()
+        _mark_read(p)
     except Exception as e:  # noqa: BLE001
         return f"[read_file_lines error] {e}"
     total = len(lines)
@@ -1092,6 +1136,148 @@ def _t_read_file_lines(path: str, offset: int = 1, limit: int = 200) -> str:
     body = "".join(f"{i + 1:>{width}}\t{ln}" for i, ln in enumerate(window, start))
     truncated = "" if end >= total else f"\n... (共 {total} 行,已显示到第 {end} 行)"
     return f"[read_file_lines ok] {p} 第 {offset}-{end} 行 / 共 {total} 行\n{body}{truncated}"
+
+
+# ---------- P4(2026-09-05):glob_search / web_fetch / todo_write ----------
+# 对标 Claude Code:Glob(通配找文件)、WebFetch(URL 正文)、TaskCreate(任务清单)。
+
+
+def _t_glob_search(pattern: str, path: str = ".", workdir: str = "") -> str:
+    """通配符文件匹配:**/*.py 递归、*.md 单层。在 path(相对 workdir)下匹配。
+    返回匹配文件的相对路径(按修改时间新→旧),只读。"""
+    import glob as _glob  # noqa: PLC0415
+    pat = (pattern or "").strip()
+    if not pat:
+        return "[glob_search error] empty pattern"
+    base = path if os.path.isabs(path) else os.path.join(workdir or ".", path)
+    if not os.path.isdir(base):
+        return f"[glob_search error] 目录不存在: {base}"
+    try:
+        full = os.path.join(base, pat)
+        hits = _glob.glob(full, recursive=True)
+        files = [h for h in hits if os.path.isfile(h)]
+        # 按修改时间新→旧
+        files.sort(key=lambda f: os.path.getmtime(f), reverse=True)
+        rel = [os.path.relpath(f, workdir or base) for f in files]
+        cap = 200
+        shown = rel[:cap]
+        more = f"\n... (共 {len(rel)} 个,已显示前 {cap} 个)" if len(rel) > cap else ""
+        return (f"[glob_search ok] {pat} → {len(rel)} 个匹配\n" +
+                ("\n".join(shown) if shown else "(无匹配)") + more)
+    except Exception as e:  # noqa: BLE001
+        return f"[glob_search error] {e}"
+
+
+def _t_web_fetch(url: str, max_chars: int = 6000) -> str:
+    """抓取 URL 正文:HTML 转纯文本(去 script/style/标签/折叠空白),截断。
+    只读、不入权限闸。补 web_search 只有摘要的短板——拿到链接后读全文。"""
+    u = (url or "").strip()
+    if not u:
+        return "[web_fetch error] empty url"
+    if not u.startswith(("http://", "https://")):
+        u = "https://" + u
+    try:
+        import urllib.request as _ur  # noqa: PLC0415
+        req = _ur.Request(u, headers={"User-Agent": "Mozilla/5.0 (PrisirAgent)"})
+        with _ur.urlopen(req, timeout=20) as r:
+            raw = r.read()
+            ctype = (r.headers.get("Content-Type") or "").lower()
+        # 非 HTML(纯文本/JSON/markdown)直接解码;HTML 需剥标签
+        text = raw.decode("utf-8", "replace")
+        if "html" in ctype or text.lstrip().startswith(("<", "<!")):
+            text = _html_to_text(text)
+        text = text.strip()
+        if not text:
+            return f"[web_fetch 空内容] {u} 抓取成功但正文为空(可能是 JS 渲染页/需登录)。"
+        cap = max(500, min(int(max_chars or 6000), 20000))
+        truncated = text[:cap]
+        more = (f"\n\n... (正文共 {len(text)} 字符,已截断到 {cap};"
+                f"可用 max_chars 调大或分段)" if len(text) > cap else "")
+        return f"[web_fetch ok] {u}\n{truncated}{more}"
+    except Exception as e:  # noqa: BLE001
+        return f"[web_fetch error] {u}: {type(e).__name__}: {e}"
+
+
+def _html_to_text(html: str) -> str:
+    """极简 HTML→纯文本:去 script/style/head,剥标签,&实体;折叠空白。零依赖。"""
+    import re as _re  # noqa: PLC0415
+    import html as _htmlmod  # noqa: PLC0415
+    t = html
+    # 去脚本/样式/注释
+    t = _re.sub(r"(?is)<(script|style|head|noscript)[^>]*>.*?</\1>", " ", t)
+    t = _re.sub(r"(?is)<!--.*?-->", " ", t)
+    # 块级标签换行
+    t = _re.sub(r"(?i)</?(p|div|br|li|tr|h[1-6]|section|article|table|ul|ol|blockquote)[^>]*>",
+                "\n", t)
+    # 剥剩余标签
+    t = _re.sub(r"(?s)<[^>]+>", " ", t)
+    t = _htmlmod.unescape(t)
+    # 折叠空白:行内多空格→单,多换行→两
+    lines = [_re.sub(r"[ \t]+", " ", ln).strip() for ln in t.splitlines()]
+    out, blank = [], 0
+    for ln in lines:
+        if ln:
+            out.append(ln); blank = 0
+        else:
+            blank += 1
+            if blank <= 1:
+                out.append("")
+    return "\n".join(out).strip()
+
+
+# todo_write:AI 自管任务清单(对标 TaskCreate/Update)。多步任务先列清单,
+# 每完成一项更新状态,前端渲染进度卡。会话级(内存),随会话生命周期。
+_TODOS: dict[str, list] = {}   # session_id -> [{content, status, activeForm}]
+
+
+def _t_todo_write(todos, session_id: str = "default") -> str:
+    """写入/全量替换本会话任务清单。todos: [{content, status, activeForm?}]
+    status ∈ pending|in_progress|completed|deleted。返回渲染后的清单文本。
+    规则:同时最多一个 in_progress;completed 不删(留进度痕迹)。"""
+    if not isinstance(todos, list):
+        return "[todo_write error] todos 必须是数组"
+    norm = []
+    in_prog = 0
+    for t in todos:
+        if not isinstance(t, dict):
+            continue
+        content = str(t.get("content") or t.get("subject") or "").strip()
+        if not content:
+            continue
+        status = str(t.get("status") or "pending").strip()
+        if status not in ("pending", "in_progress", "completed", "deleted"):
+            status = "pending"
+        if status == "in_progress":
+            in_prog += 1
+            if in_prog > 1:
+                status = "pending"  # 超出一个 in_progress 降级
+        item = {"content": content, "status": status}
+        af = str(t.get("activeForm") or "").strip()
+        if af:
+            item["activeForm"] = af
+        norm.append(item)
+    _TODOS[session_id] = norm
+    return get_todos_text(session_id)
+
+
+def get_todos(session_id: str = "default") -> list:
+    return _TODOS.get(session_id, [])
+
+
+def get_todos_text(session_id: str = "default") -> str:
+    todos = _TODOS.get(session_id, [])
+    if not todos:
+        return "[todo_write ok] 清单已清空"
+    mark = {"pending": "☐", "in_progress": "▶", "completed": "✓", "deleted": "✗"}
+    lines = [f"[todo_write ok] 任务清单({len(todos)} 项)"]
+    for i, t in enumerate(todos, 1):
+        if t["status"] == "deleted":
+            continue
+        label = t.get("activeForm") if t["status"] == "in_progress" and t.get("activeForm") else t["content"]
+        lines.append(f"{mark.get(t['status'],'☐')} {i}. {label}")
+    done = sum(1 for t in todos if t["status"] == "completed")
+    lines.append(f"进度: {done}/{sum(1 for t in todos if t['status']!='deleted')} 完成")
+    return "\n".join(lines)
 
 
 def _t_file_reputation(path: str) -> str:
@@ -1358,6 +1544,31 @@ TOOLS = [
             "questions": {"type": "array", "items": {"type": "string"},
                           "description": "2-4 mutually independent sub-questions"}},
             "required": ["questions"]}}},
+    {"type": "function", "function": {
+        "name": "glob_search",
+        "description": "Find files by glob pattern (e.g. '**/*.py', 'src/**/*.ts', '*.md'). Use to locate files by name/extension across a directory tree — '**' recurses. Returns relative paths sorted by modification time (newest first). Read-only. Faster than list_files when you know the file pattern but not its location.",
+        "parameters": {"type": "object", "properties": {
+            "pattern": {"type": "string", "description": "glob pattern, e.g. '**/*.py'"},
+            "path": {"type": "string", "description": "directory to search in (relative to workdir), default '.'"}},
+            "required": ["pattern"]}}},
+    {"type": "function", "function": {
+        "name": "web_fetch",
+        "description": "Fetch a URL and return its readable text content (HTML is converted to plain text: scripts/styles/tags stripped, whitespace collapsed). Use AFTER web_search gives you a link, to read the full page — or when the user pastes a URL and asks about its content. Read-only. Truncated (default 6000 chars). If empty, the page is likely JS-rendered or needs login — say so honestly.",
+        "parameters": {"type": "object", "properties": {
+            "url": {"type": "string", "description": "the URL to fetch"},
+            "max_chars": {"type": "integer", "description": "max content chars, default 6000, max 20000"}},
+            "required": ["url"]}}},
+    {"type": "function", "function": {
+        "name": "todo_write",
+        "description": "Create/update a task list to track progress on a multi-step task. Use when a task has 3+ distinct steps or needs careful planning: list the steps first, then update status as you complete each. Pass the FULL list each time (it replaces the previous). status: pending / in_progress / completed / deleted. Keep exactly ONE in_progress at a time. The UI renders this as a live progress card so the user sees where you are. Don't use for trivial single-step requests.",
+        "parameters": {"type": "object", "properties": {
+            "todos": {"type": "array", "items": {"type": "object", "properties": {
+                "content": {"type": "string", "description": "the task description (imperative, e.g. 'Fix the bug')"},
+                "status": {"type": "string", "description": "pending | in_progress | completed | deleted"},
+                "activeForm": {"type": "string", "description": "present-continuous label shown while in_progress, e.g. 'Fixing the bug'"},
+                }, "required": ["content", "status"]},
+                      "description": "the full task list (replaces previous)"}},
+            "required": ["todos"]}}},
 ]
 
 
@@ -1461,6 +1672,13 @@ def dispatch(name: str, args: dict, workdir: str, on_confirm=None, model: str = 
         return _t_file_reputation(args.get("path", ""))
     if name == "parallel_ask":
         return _t_parallel_ask(args.get("questions") or [], model, workdir)
+    if name == "glob_search":
+        return _t_glob_search(args.get("pattern", ""), args.get("path", "."), workdir)
+    if name == "web_fetch":
+        return _t_web_fetch(args.get("url", ""), args.get("max_chars", 6000))
+    if name == "todo_write":
+        sid = _SPAWN_CONTEXT.get("session_id", "default")
+        return _t_todo_write(args.get("todos"), sid)
     return f"[unknown tool {name}]"
 
 
@@ -1509,6 +1727,16 @@ SYSTEM_CHAT = (
     "or benefits from a different model or a restricted tool set. Give the sub-agent a self-contained task "
     "description. It runs its own tool loop and returns its result to you. Do NOT spawn for simple one-step "
     "questions — answer those yourself. Sub-agents cannot spawn further agents.\n\n"
+    "Task lists: for any task with 3+ distinct steps, FIRST call todo_write to lay out the plan, "
+    "then work through it, marking each item in_progress → completed as you go (re-send the full list "
+    "each update, exactly ONE in_progress at a time). The user sees a live progress card. Skip todo_write "
+    "for trivial one-step requests.\n\n"
+    "File edits: before editing or overwriting an EXISTING file, you must read it first in this session "
+    "(read_file / read_file_lines / read_file_head) — the system blocks edits to files you haven't read, "
+    "to prevent blind changes. New files need no read.\n\n"
+    "Web & files: use web_fetch to read a page's full text after web_search surfaces a link, or when the "
+    "user pastes a URL. Use glob_search (e.g. '**/*.py') to locate files by pattern when you don't know "
+    "the exact path; prefer grep_search for content.\n\n"
     "Hooks: if the working directory has a hooks.json, the user has declared shell commands to run on events "
     "(pre_tool / post_tool / on_response / on_error). A pre_tool hook returning non-zero will BLOCK that tool — "
     "you'll see the block reason as the tool result; treat it as a hard refusal and adjust (don't retry the same "

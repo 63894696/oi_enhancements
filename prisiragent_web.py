@@ -1051,6 +1051,8 @@ def _run_chat_thread(sid: str, user_text: str, strategy: str, model: str, workdi
         try:
             import prisiragent_cli as _cli  # noqa: PLC0415
             _cli._SPAWN_CONTEXT["on_event"] = _on_tool_event
+            # P4 todo_write 会话隔离:把 sid 透传给 cli,todo 按会话存
+            _cli._SPAWN_CONTEXT["session_id"] = sid
         except Exception:  # noqa: BLE001
             pass
 
@@ -2261,6 +2263,17 @@ _PAGE = r"""<!DOCTYPE html>
     display:none; line-height:1.6; }
   .quiz-explain.show { display:block; }
   .quiz-multi-hint { font-size:12px; color:var(--gh-ink-faint); margin-bottom:6px; }
+  /* P4 todo 进度卡 */
+  .todo-card { background:var(--gh-surface); border:1px solid var(--gh-line); border-radius:10px;
+    padding:12px 14px; margin:10px 0; box-shadow:var(--gh-shadow); font-size:13.5px; }
+  .todo-card .todo-title { font-weight:600; color:var(--gh-ink); margin-bottom:8px; }
+  .todo-card .todo-bar { height:6px; background:var(--gh-line); border-radius:3px; overflow:hidden; margin-bottom:10px; }
+  .todo-card .todo-bar > i { display:block; height:100%; background:var(--gh-green-deep); transition:width .3s; }
+  .todo-card .todo-item { display:flex; align-items:flex-start; gap:8px; padding:3px 0; color:var(--gh-ink-soft); }
+  .todo-card .todo-item .tk { flex:0 0 16px; text-align:center; }
+  .todo-card .todo-item.s-completed { color:var(--gh-ink-faint); text-decoration:line-through; }
+  .todo-card .todo-item.s-in_progress { color:var(--gh-ink); font-weight:600; }
+  .todo-card .todo-item.s-in_progress .tk { color:var(--gh-green-deep); }
 </style>
 <!-- 壳三件套②③:md 标准渲染 + XSS 防护(版本钉死)。仅渲染 assistant 正文;user 保持纯文本。 -->
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
@@ -3226,6 +3239,34 @@ function renderLiveToolEvent(ev){
   box.scrollTop = box.scrollHeight;
 }
 
+// P4 todo 进度卡:固定在消息流末尾(独立于 tool 事件),status 轮询带 todos 即刷新。
+// 幂等更新(同一 #todo-card 容器),清单空则移除。
+function renderTodoCard(todos){
+  const box = document.getElementById('messages');
+  if (!box) return;
+  let card = document.getElementById('todo-card');
+  const live = (todos || []).filter(t => t && t.status !== 'deleted');
+  if (!live.length) { if (card) card.remove(); return; }
+  if (!card) {
+    card = document.createElement('div');
+    card.id = 'todo-card';
+    card.className = 'todo-card';
+    box.appendChild(card);
+  }
+  const done = live.filter(t => t.status === 'completed').length;
+  const pct = live.length ? Math.round(100 * done / live.length) : 0;
+  const mark = {pending:'☐', in_progress:'▶', completed:'✓', deleted:'✗'};
+  let html = '<div class="todo-title">📋 ' + (LANG==='zh'?'任务进度':'Tasks') +
+             ' <span style="color:var(--gh-ink-faint);font-weight:400">' + done + '/' + live.length + '</span></div>' +
+             '<div class="todo-bar"><i style="width:' + pct + '%"></i></div>';
+  for (const t of live) {
+    const label = (t.status === 'in_progress' && t.activeForm) ? t.activeForm : t.content;
+    html += '<div class="todo-item s-' + esc(t.status) + '"><span class="tk">' +
+            (mark[t.status] || '☐') + '</span><span>' + esc(label) + '</span></div>';
+  }
+  card.innerHTML = html;
+}
+
 async function pollResult() {
   polling = true;
   const eb = document.getElementById('estop-btn');
@@ -3234,6 +3275,7 @@ async function pollResult() {
     await new Promise(r => setTimeout(r, 900));
     const r = await api('/status?session_id=' + sessionId);
     if (r.events && r.events.length) r.events.forEach(renderLiveToolEvent);
+    if (r.todos) renderTodoCard(r.todos);
     if (r.meta && r.meta.context_usage) renderCtxUsage(r.meta.context_usage);
     // 档位3:近满时后台已预提炼交接摘要 → 亮「开新窗接续」按钮并提示
     if (r.meta && r.meta.handoff_ready) {
@@ -4660,7 +4702,15 @@ class Handler(BaseHTTPRequestHandler):
                 cur = _event_cursor.get(sid, 0)
                 new_ev = all_ev[cur:]
                 _event_cursor[sid] = len(all_ev)
-            self._json({"running": running, "meta": _get_meta(sid), "events": new_ev})
+            # P4 todo:带上当前会话任务清单,前端渲染进度卡
+            todos = []
+            try:
+                import prisiragent_cli as _cli  # noqa: PLC0415
+                todos = _cli.get_todos(sid)
+            except Exception:  # noqa: BLE001
+                pass
+            self._json({"running": running, "meta": _get_meta(sid), "events": new_ev,
+                        "todos": todos})
         elif path == "/prisiragent/api/context_usage":
             # 切会话/加载时即算一次用量(不依赖 chat 后的 meta)。
             # model 未知时用 DEFAULT_MODEL 估;若 meta 已有 last_model 用之更准。
