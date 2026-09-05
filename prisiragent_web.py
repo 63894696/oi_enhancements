@@ -1202,6 +1202,30 @@ def _get_meta(sid: str) -> dict:
     return _SESS_META.get(sid, {})
 
 
+def _effective_model(sid: str = "") -> str:
+    """当前默认模型的 litellm 串 —— 实时路由结果,不是历史快照(2026-09-06 用户拍板)。
+
+    语义(用户纠正):窗口显示与自动压缩都应基于「当前模型」的处理能力 ——
+    后续每条对话都是当前模型在跑,压缩阈值当然该跟着它。记录开会话那一刻的
+    模型窗口没有意义(配置可能中途改)。故**永远优先实时路由**;仅当路由不可用
+    (没配平台/路由异常)时才回退 last_model(该会话上次真实用过的),再退 DEFAULT_MODEL。
+
+    sid 仅用于最后的兜底取 last_model;实时路由路径与 sid 无关。
+    """
+    try:
+        if _router.available_platforms():
+            pick = _router.route([{"role": "user", "content": ""}], DEFAULT_STRATEGY)
+            return _litellm_model_for(pick["platform"], pick["cfg"], pick["task_type"])
+    except Exception:
+        pass
+    # 路由不可用兜底:该会话上次真实模型 → 全局默认
+    if sid:
+        lm = _get_meta(sid).get("last_model")
+        if lm:
+            return lm
+    return DEFAULT_MODEL
+
+
 # ============================================================
 # #58 分屏浏览器操作 — 壳↔扩展通道(2026-08-21 契约 §A)
 # ============================================================
@@ -3552,7 +3576,10 @@ document.getElementById('sl-merge').addEventListener('click', () => exitSplit())
 (async () => {
   applyI18n();   // 多语言:页面静态文案按浏览器语言替换(zh/en,其他→en)
   const r = await api('/info');
-  document.getElementById('strategy-label').textContent = T('routing') + r.strategy + (r.platforms.length ? ' · ' + r.platforms.join('/') : T('no_key'));
+  // 路由标签:策略 · 平台/当前真实模型(2026-09-06:只显平台名看不到在用哪个型号,补 current_model)
+  let routeTxt = T('routing') + r.strategy + (r.platforms.length ? ' · ' + r.platforms.join('/') : T('no_key'));
+  if (r.current_model) routeTxt += ' · ' + String(r.current_model).split('/').pop();
+  document.getElementById('strategy-label').textContent = routeTxt;
   await loadSessions();
   if (sessions.length) switchSession(sessions[0].id);
 })();
@@ -4725,6 +4752,7 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/prisiragent/api/info":
             self._json({"strategy": DEFAULT_STRATEGY, "workdir": _WORKDIR["path"],
                         "platforms": _router.available_platforms(),
+                        "current_model": _effective_model(),  # 透出当前真实模型(路由结果),前端路由标签用
                         "port": WEB_PORT, "lan_ip": _lan_ip(),
                         "lan_enabled": lan_pair.instance() is not None})
         elif path == "/prisiragent/api/pair/offer":
@@ -4793,13 +4821,14 @@ class Handler(BaseHTTPRequestHandler):
                         "todos": todos, "plan_mode": plan_mode})
         elif path == "/prisiragent/api/context_usage":
             # 切会话/加载时即算一次用量(不依赖 chat 后的 meta)。
-            # model 未知时用 DEFAULT_MODEL 估;若 meta 已有 last_model 用之更准。
+            # 用 _effective_model:已聊过取 last_model,新会话按当前配置路由出真实模型,
+            # 不再用写死的 DEFAULT_MODEL(qwen 131k)兜底 → 显示/压缩阈值贴合真实模型窗口。
             sid = (qs.get("session_id") or [""])[0]
             msgs = get_messages(sid)
-            meta = _get_meta(sid)
-            model = meta.get("last_model") or DEFAULT_MODEL
+            model = _effective_model(sid)
             u = usage_for([{"role": m["role"], "content": m["content"]} for m in msgs], model)
             u["will_mask"] = bool(u.pop("mask"))  # 加载时仅预估,未真正遮蔽
+            u["model"] = model  # 透出真实模型名,前端/排查可见「当前在用哪个模型」
             self._json({"context_usage": u})
         elif path == "/prisiragent/api/handoff":
             # 交接摘要(手动触发):LLM 优先,规则式兜底。同步 LLM 调用。

@@ -40,6 +40,11 @@ CONTEXT_WINDOWS = {
     "gpt-5": 1000000,
     "gemini-2.5-pro": 1000000,
     "gemini-2.5-flash": 1000000,
+    # 2026-09-06:Kimi K3(moonshot 最新旗舰,用户实际配置 openai/k3 走 kimi.com 端点)。
+    # 官方技术报告(arXiv 2607.24653)标称 1M context = 1048576 tokens。
+    # 放 kimi-k2(128000)之前,子串匹配先命中本行,避免被 k2 抢先。
+    "k3": 1048576,
+    "kimi-k3": 1048576,
     "qwen3-coder-plus": 131072,   # dashscope 默认(dashscope/qwen3-coder-plus-*)
     "qwen-max": 32000,
     "qwen-plus": 131072,
@@ -47,8 +52,8 @@ CONTEXT_WINDOWS = {
     "deepseek-v": 64000,          # deepseek-v3/v3.1 等
 }
 DEFAULT_WINDOW = 8000            # 未知模型保守默认
-WARN_RATIO = 0.75                # 用到 75% 即提醒"建议开新会话"
-MASK_RATIO = 0.70                # 用到 70% 触发 observation masking(略早于预警)
+WARN_RATIO = 0.90                # 用到 90% 即提醒/触发压缩(2026-09-06 用户拍板:1M 窗口下 75% 太保守)
+MASK_RATIO = 0.85                # 用到 85% 触发 observation masking(略早于预警)
 KEEP_RECENT_TOOL = 6             # masking 时保留最近 N 条 tool 输出原样
 
 # 建议的大上下文模型(未知/小窗口模型时提示用户)

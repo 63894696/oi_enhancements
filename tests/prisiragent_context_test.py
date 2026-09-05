@@ -66,15 +66,15 @@ def test_usage_for():
     check("未知模型 advise 非空", bool(u2["advise"]))
 
     # 超大用量触发 near_full + mask(用一个 8000 窗口模型塞爆)
-    big = [{"role": "user", "content": "字" * 7000}]  # 7000 CJK ≈ 7000 tok
+    big = [{"role": "user", "content": "字" * 7300}]  # 7300 CJK ≈ 7300 tok ≈ 0.9125
     u3 = oc.usage_for(big, "moonshot-v1-8k")
-    check("7000/8000 → near_full=True", u3["near_full"] is True)
-    check("7000/8000 → mask=True", u3["mask"] is True)
+    check("7300/8000 → near_full=True", u3["near_full"] is True)
+    check("7300/8000 → mask=True", u3["mask"] is True)
 
-    # 阈值边界: ratio >= MASK_RATIO(0.70) 即 mask
-    border = [{"role": "user", "content": "字" * 5600}]  # 5600/8000 = 0.70
+    # 阈值边界: ratio >= MASK_RATIO(0.85) 即 mask
+    border = [{"role": "user", "content": "字" * 6800}]  # 6800/8000 = 0.85
     u4 = oc.usage_for(border, "moonshot-v1-8k")
-    check("0.70 边界 → mask=True", u4["mask"] is True)
+    check("0.85 边界 → mask=True", u4["mask"] is True)
 
 
 def test_mask_old_tool_outputs():
@@ -173,7 +173,7 @@ def test_tool_ingestion_activates_masking():
     for i in range(6):
         msgs.append({"role": "user", "content": f"处理文件{i}"})
         msgs.append({"role": "assistant", "content": f"调用工具读取{i}"})
-        msgs.append({"role": "tool", "content": f"[🔧 read_file]\n" + ("内容" * 500)})  # ~1000 CJK
+        msgs.append({"role": "tool", "content": f"[🔧 read_file]\n" + ("内容" * 700)})  # ~1400 CJK
     win = "moonshot-v1-8k"
     before = oc.usage_for(msgs, win)
     check("工具入库后历史超阈值", before["mask"] is True)
