@@ -101,7 +101,7 @@ _phone_*.png
 # 开发者模式资产已随「纯用户安装包」决策移除(2026-08-25)
 installer/_dev_assets/
 
-# 装包 staging 暂存区(含编译产物、icon 资源、clean oiagent-shell)
+# 装包 staging 暂存区(含编译产物、icon 资源、clean prisiragent-shell)
 # 体积大且可重生成,不进仓库
 installer/_staging/
 installer/_staging2/
@@ -159,11 +159,11 @@ prisIr_ime_tsf/.tmp_*.md
 # tiktoken 编码缓存(运行时下载)
 tiktoken_data/
 
-# mcp_oiagent plan 输出 / 自检产物(非业务代码)
-mcp_oiagent_v3_plan_parallel/
-mcp_oiagent_v2_self_fix/
+# mcp_prisiragent plan 输出 / 自检产物(非业务代码)
+mcp_prisiragent_v3_plan_parallel/
+mcp_prisiragent_v2_self_fix/
 # 旧版本 server.py 备份
-mcp_oiagent_server/server.py.bak.v0.38-dynamic
+mcp_prisiragent_server/server.py.bak.v0.38-dynamic
 
 # Sibling GitHub 仓的本地镜像(同名仓库已托管,不入主仓)
 custom-hover-translate/
@@ -189,7 +189,7 @@ tests/m1-instance-info.json
 harness_run_*.json
 harness_test_battery.py
 main-baseline.js
-oiagent_harness_assessment_2026-07-23.md
+prisiragent_harness_assessment_2026-07-23.md
 v0.5_smartos_workflow_report_2026-07-23.md
 # 临时 JSON / CSV / 文本
 nr.csv

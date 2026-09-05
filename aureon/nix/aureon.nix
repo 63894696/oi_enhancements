@@ -1,7 +1,7 @@
 # Aureon v0.20.1 NixOS derivation — 真工程实现
 #
 # 走"工具不重复"原则:
-# - 不重写 Prisiragent(走 v0.18 真 ship)— mcp_oiagent + adb + curl
+# - 不重写 Prisiragent(走 v0.18 真 ship)— mcp_prisiragent + adb + curl
 # - 不重写 LLM proxy(走 cc-switch 15721)— v0.15+ 已 ship
 # - 不重写 multi-agent(走 v0.17 真 ship)— multi_agent_collab.py
 # - 不重写 Everything portable(走 voidtools 真ship zip)
@@ -62,7 +62,7 @@ in
       heartbeat-interval = 5;        # 5s heartbeat(走 v0.18 真 ship)
       llm-proxy = "http://127.0.0.1:15721";
       llm-model = "claude-opus-4-8";
-      emulator = "oiagent_test";
+      emulator = "prisiragent_test";
       devices = [ "127.0.0.1:5555" "emulator-5556" ];
       # v0.20.1 新:把 Everything 的 HTTP URL 写入 Prisiragent 环境
       everything-http-url = "http://127.0.0.1:8765/";
