@@ -36,10 +36,6 @@ use windows::Win32::Graphics::DirectWrite as DW;
 use windows::Win32::Graphics::Dxgi::Common as DXGI;
 use windows::Win32::Graphics::Imaging as WIC;
 use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_APARTMENTTHREADED};
-// 语音按钮:命名事件触发本机灵犀语音(lingxi_app)on_alt toggle;未运行则 ShellExecute 拉起。
-use windows::Win32::System::Threading::{OpenEventW, SetEvent, EVENT_MODIFY_STATE};
-use windows::Win32::UI::Shell::ShellExecuteW;
-use windows::Win32::Storage::FileSystem::GetFileAttributesW;
 
 // ── 布局常量 ────────────────────────────────────────────────────────────────
 const BAR_CLASS: &str = "PrisirStatusBar";
@@ -49,13 +45,14 @@ const BAR_H: i32 = 34;
 const ICON_W: i32 = 34;
 /// 每个功能按钮宽。
 const BTN_W: i32 = 38;
-/// 功能按钮数量(中/英, 标点, 符, emoji, 写, 词, 语音)。
-const N_BTNS: i32 = 7;
-/// 内置区总宽(图标 + 7 内置按钮)。保持编译期常量 → 创建/命中/默认位置/圆角零回归。
+/// 功能按钮数量(中/英, 标点, 符, emoji, 写, 词)。
+// 内置 6 按钮。语音听写改为进程外插件(plugins.json 声明,追加在右侧)。
+const N_BTNS: i32 = 6;
+/// 内置区总宽(图标 + N_BTNS 内置按钮)。保持编译期常量 → 创建/命中/默认位置/圆角零回归。
 const BAR_W: i32 = ICON_W + BTN_W * N_BTNS;
 
 // ── 进程外插件按钮(2026-09-05 插件框架)─────────────────────────────────────
-// 内置 7 按钮不动;plugins.json 里带 button 字段的已安装插件,追加在右侧。
+// 内置 6 按钮不动;plugins.json 里带 button 字段的已安装插件,追加在右侧。
 // 运行时动态宽度 = BAR_W + 插件数*BTN_W,窗口创建后 SetWindowPos 调宽。
 /// 缓存当前可见的插件按钮(避免每次 WM_PAINT/命中都重读 plugins.json)。
 static PLUGIN_BTNS: Mutex<Option<Vec<crate::plugin::PluginSpec>>> = Mutex::new(None);
@@ -90,7 +87,7 @@ const BTN_SYM: i32 = 2;    // 符(符号大全)
 const BTN_EMOJI: i32 = 3;  // 😀(emoji 面板)
 const BTN_HAND: i32 = 4;   // 写(手写,兜底刚需)
 const BTN_VOCAB: i32 = 5;  // 词(词库)
-const BTN_VOICE: i32 = 6;  // 语(语音听写,触发本机灵犀语音)
+// 语音听写不再是内置按钮:改由 plugins.json 声明为进程外插件,追加在内置按钮右侧。
 // 栏位可勾选(搜狗式菜单打钩)排后续;当前默认全显。
 
 /// 本 DLL 内嵌主图标资源 ID(winres set_icon 第一个 = IDI_ICON 1)。
@@ -103,7 +100,7 @@ const IDM_HAND: u32 = 1003;
 const IDM_SYM: u32 = 1004;
 const IDM_VOCAB: u32 = 1005;
 const IDM_EMOJI: u32 = 1006;
-const IDM_VOICE: u32 = 1007;
+// 语音听写菜单 ID 已移除:语音改为进程外插件,走 IDM_PLUGIN_BASE 动态菜单项。
 // 关于四页(对齐 Android 端 UserDictActivity)。
 const IDM_ABOUT: u32 = 1010;
 const IDM_PRIVACY: u32 = 1011;
@@ -428,58 +425,8 @@ fn log_entry(name: &str) {
     crate::com_class_factory::log_dll_entry(&format!("StatusBar: {} clicked (TODO 实现面板)", name));
 }
 
-// ── 语音听写触发(激活调用本机灵犀语音)────────────────────────────────────────
-// 命名事件与 lingxi_app.py 的 _VOICE_EVENT 一致。点击「语」按钮:
-//   1) 打开命名事件 SetEvent → 已运行的 lingxi_app _voice_listener 收到 → on_alt() toggle 听写。
-//   2) 打开失败(ERROR_FILE_NOT_FOUND= lingxi 没在跑)→ ShellExecute 拉 start_lingxi.bat 启动。
-// 推理/录音/上屏全在 lingxi_app,本侧只发信号,零重写。
-const VOICE_EVENT_NAME: &str = "PrisirLingXi_VoiceToggle_Event";
-const LINGXI_BAT: &str = r"C:\Users\Administrator\voice_input\start_lingxi.bat";
-
-/// 解析语音启动器路径(2026-09-05 语音打包进安装器):
-///   1) 本 DLL 同目录的 voice\lingxi_voice.exe(安装器落 Program Files\PrisirIME\voice\);
-///   2) 开发机回退 start_lingxi.bat。
-/// 返回 None 表示两处都没有。
-fn resolve_voice_launcher() -> Option<Vec<u16>> {
-    // 本 DLL 所在目录(GetModuleFileNameEx 太繁,用惰性静态缓存 GetModuleHandle 路径)
-    // 简化:用安装目录固定候选 + 开发机回退。
-    for cand in [
-        r"C:\Program Files\PrisirIME\voice\lingxi_voice.exe",
-        LINGXI_BAT,
-    ] {
-        let w: Vec<u16> = cand.encode_utf16().chain(std::iter::once(0)).collect();
-        if unsafe { GetFileAttributesW(PCWSTR(w.as_ptr())) } != u32::MAX {
-            return Some(w);
-        }
-    }
-    None
-}
-
-fn trigger_voice() {
-    unsafe {
-        let name: Vec<u16> = VOICE_EVENT_NAME.encode_utf16().chain(std::iter::once(0)).collect();
-        match OpenEventW(EVENT_MODIFY_STATE, false, PCWSTR(name.as_ptr())) {
-            Ok(h) if !h.is_invalid() => {
-                let _ = SetEvent(h);
-                let _ = CloseHandle(h);
-                #[cfg(feature = "dllentry_log")]
-                crate::com_class_factory::log_dll_entry("Voice: signaled running lingxi app");
-            }
-            _ => {
-                // 灵犀语音未运行 → 拉起安装目录的 lingxi_voice.exe(或开发机 bat 回退)。
-                if let Some(launcher) = resolve_voice_launcher() {
-                    let open: Vec<u16> = "open".encode_utf16().chain(std::iter::once(0)).collect();
-                    let r = ShellExecuteW(None, PCWSTR(open.as_ptr()), PCWSTR(launcher.as_ptr()), PCWSTR::null(), PCWSTR::null(), SW_HIDE);
-                    #[cfg(feature = "dllentry_log")]
-                    crate::com_class_factory::log_dll_entry(&format!("Voice: launched launcher ret={:?}", r));
-                } else {
-                    #[cfg(feature = "dllentry_log")]
-                    crate::com_class_factory::log_dll_entry("Voice: lingxi app not running and no launcher found");
-                }
-            }
-        }
-    }
-}
+// 语音听写触发逻辑已迁出:不再写死,改由 plugins.json 声明为进程外插件,
+// 统一走 crate::plugin::trigger_plugin(命名事件 toggle / 未运行拉起 exe)。
 
 // ── 按钮行为 ────────────────────────────────────────────────────────────────
 fn on_button(hwnd: HWND, idx: i32) {
@@ -490,7 +437,6 @@ fn on_button(hwnd: HWND, idx: i32) {
         BTN_EMOJI => crate::panels::toggle_panel(crate::panels::PanelKind::Emoji, Some(hwnd)),
         BTN_HAND => crate::handwriting_panel::toggle_panel(Some(hwnd)),
         BTN_VOCAB => crate::userdict_window::toggle(),
-        BTN_VOICE => trigger_voice(),
         _ => {}
     }
     let _ = hwnd;
@@ -525,7 +471,6 @@ fn show_menu(hwnd: HWND) {
         let sym_label: Vec<u16> = "符号大全".encode_utf16().chain(std::iter::once(0)).collect();
         let emoji_label: Vec<u16> = "Emoji 表情".encode_utf16().chain(std::iter::once(0)).collect();
         let vocab_label: Vec<u16> = "词库管理".encode_utf16().chain(std::iter::once(0)).collect();
-        let voice_label: Vec<u16> = "语音听写".encode_utf16().chain(std::iter::once(0)).collect();
         let about_label: Vec<u16> = "关于".encode_utf16().chain(std::iter::once(0)).collect();
         let privacy_label: Vec<u16> = "隐私说明".encode_utf16().chain(std::iter::once(0)).collect();
         let terms_label: Vec<u16> = "使用条款".encode_utf16().chain(std::iter::once(0)).collect();
@@ -538,7 +483,6 @@ fn show_menu(hwnd: HWND) {
         let _ = AppendMenuW(menu, MF_STRING, IDM_SYM as usize, PCWSTR(sym_label.as_ptr()));
         let _ = AppendMenuW(menu, MF_STRING, IDM_EMOJI as usize, PCWSTR(emoji_label.as_ptr()));
         let _ = AppendMenuW(menu, MF_STRING, IDM_VOCAB as usize, PCWSTR(vocab_label.as_ptr()));
-        let _ = AppendMenuW(menu, MF_STRING, IDM_VOICE as usize, PCWSTR(voice_label.as_ptr()));
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
         let _ = AppendMenuW(menu, MF_STRING, IDM_ABOUT as usize, PCWSTR(about_label.as_ptr()));
         let _ = AppendMenuW(menu, MF_STRING, IDM_PRIVACY as usize, PCWSTR(privacy_label.as_ptr()));
@@ -584,7 +528,6 @@ fn show_menu(hwnd: HWND) {
             IDM_SYM => crate::panels::toggle_panel(crate::panels::PanelKind::Symbols, Some(hwnd)),
             IDM_EMOJI => crate::panels::toggle_panel(crate::panels::PanelKind::Emoji, Some(hwnd)),
             IDM_VOCAB => crate::userdict_window::toggle(),
-            IDM_VOICE => trigger_voice(),
             IDM_ABOUT => crate::about_window::show("about"),
             IDM_PRIVACY => crate::about_window::show("privacy"),
             IDM_TERMS => crate::about_window::show("terms"),
@@ -959,7 +902,6 @@ fn paint_bar(hwnd: HWND) {
             ("😀", BAR_COL_TEXT),
             ("写", BAR_COL_TEXT),
             ("词", BAR_COL_TEXT),
-            ("语", BAR_COL_TEXT),
         ];
         // emoji 格(BTN_EMOJI)留给 D2D 画彩色,GDI 跳过不画单色轮廓。
         for (i, (text, color)) in labels.iter().enumerate() {

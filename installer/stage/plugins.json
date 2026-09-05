@@ -1,0 +1,12 @@
+{
+  "plugins": [
+    {
+      "id": "voice",
+      "name": "语音听写",
+      "exe": "plugins/voice/lingxi_voice.exe",
+      "event": "PrisirLingXi_VoiceToggle_Event",
+      "button": "语",
+      "enabled": true
+    }
+  ]
+}
