@@ -1047,6 +1047,13 @@ def _run_chat_thread(sid: str, user_text: str, strategy: str, model: str, workdi
             # P2 SSE 推流:工具进度实时推给已配对移动端(--lan 时)。
             _sse_broadcast({"type": "tool_event", "session_id": sid, "ev": ev})
 
+        # P3 spawn_subagent:把 on_event 注入 spawn 上下文,子代工具进度回传父级
+        try:
+            import prisiragent_cli as _cli  # noqa: PLC0415
+            _cli._SPAWN_CONTEXT["on_event"] = _on_tool_event
+        except Exception:  # noqa: BLE001
+            pass
+
         if use_router:
             res = run_conversation(send_msgs, lm, workdir,
                                    think_level=think_level, system_extra=sys_extra,
@@ -2095,6 +2102,11 @@ _PAGE = r"""<!DOCTYPE html>
   .msg.tool.live .lv-prev { margin-top:4px; }
   .msg.tool.live .lv-prev pre { margin:4px 0 0; max-height:180px; overflow:auto;
     white-space:pre-wrap; word-break:break-word; font-size:11.5px; color:var(--gh-ink-soft); }
+  /* P3:子代理事件层级缩进 + 标记 */
+  .msg.tool.live[data-agent="sub"] { margin-left:26px; border-left:3px solid rgba(201,138,46,.55);
+    background:rgba(201,138,46,.05); }
+  .msg.tool.live .lv-sub { color:var(--gh-seal); font-weight:700; font-size:11px;
+    border:1px solid var(--gh-seal); border-radius:4px; padding:0 4px; margin-right:4px; }
 
   /* 壳三件套②:assistant md 渲染容器(覆盖 white-space:pre-wrap,交由 md 排版) */
   .msg.md { white-space:normal; }
@@ -3186,24 +3198,30 @@ function clearLiveProgress(){
 function renderLiveToolEvent(ev){
   const box = document.getElementById('messages');
   if (!box) return;
+  // P3:子代理事件(ev.agent==='sub')缩进嵌套 + 「子」标记,与父级工具区分层级。
+  const isSub = ev.agent === 'sub';
+  const subTag = isSub ? '<span class="lv-sub">子</span>' : '';
+  const key = (isSub ? 'sub:' : '') + ev.name;
   if (ev.type === 'tool_start') {
     const d = document.createElement('div');
     d.className = 'msg tool live';
     d.dataset.live = '1';
-    d.dataset.tool = ev.name;
-    d.innerHTML = '<span class="spinner"></span> 🔧 ' + T('calling_tool') + '<b>' + esc(ev.name) + '</b>' +
+    d.dataset.tool = key;
+    if (isSub) d.dataset.agent = 'sub';
+    d.innerHTML = '<span class="spinner"></span> ' + subTag + '🔧 ' + T('calling_tool') + '<b>' + esc(ev.name) + '</b>' +
       (ev.args_preview ? ' <span class="lv-args">' + esc(ev.args_preview) + '</span>' : '');
     box.appendChild(d);
   } else if (ev.type === 'tool_end') {
     // 找同名进行中的卡,更新为完成态(✓/✗ + 耗时 + 输出预览折叠)
-    const card = box.querySelector('[data-live][data-tool="' + ev.name + '"]');
+    const card = box.querySelector('[data-live][data-tool="' + key + '"]');
     const done = '<span class="' + (ev.ok ? 'lv-ok' : 'lv-err') + '">' + (ev.ok ? '✓' : '✗') + '</span>' +
-      ' 🔧 <b>' + esc(ev.name) + '</b> <span class="lv-ms">' + ev.ms + 'ms</span>' +
+      ' ' + subTag + '🔧 <b>' + esc(ev.name) + '</b> <span class="lv-ms">' + ev.ms + 'ms</span>' +
       (ev.output_preview ? '<details class="lv-prev"><summary>' + T('output_preview') + '</summary><pre>' +
         esc(ev.output_preview) + '</pre></details>' : '');
     if (card) { card.innerHTML = done; }
     else { const d = document.createElement('div'); d.className='msg tool live';
-           d.dataset.live='1'; d.dataset.tool=ev.name; d.innerHTML=done; box.appendChild(d); }
+           d.dataset.live='1'; d.dataset.tool=key; if (isSub) d.dataset.agent='sub';
+           d.innerHTML=done; box.appendChild(d); }
   }
   box.scrollTop = box.scrollHeight;
 }
@@ -4970,6 +4988,16 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:  # noqa: BLE001
                 pass
             self._json({"ok": True, "workdir": p})
+        elif path == "/prisiragent/api/hooks_status":
+            # P3 hooks:报告当前 workdir 的 hooks.json 摘要(设置面板/调试)。
+            try:
+                import hooks as _hk  # noqa: PLC0415
+                wd = _WORKDIR.get("path", "")
+                self._json({"ok": True, "workdir": wd,
+                            "summary": _hk.describe(wd),
+                            "hooks": _hk.load_hooks(wd)})
+            except Exception as e:  # noqa: BLE001
+                self._json({"ok": False, "error": str(e)}, 500)
         elif path == "/prisiragent/api/experience":
             # 经验提炼存 Obsidian(路线 B)。同步 LLM 调用,前端已置 loading。
             sid = body.get("session_id", "")

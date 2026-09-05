@@ -246,6 +246,140 @@ def _t_run_code(code: str, language: str = "python", workdir: str = "") -> str:
                 pass
 
 
+# ---------- P3 spawn_subagent(2026-09-05):自主子代 / loop / goal ------------
+# 模型自主决策派生子代理独立执行任务,结果回传父级。三种模式:
+#   普通:  单轮答复(子代跑 run_conversation 一轮到文本)
+#   goal:  目标模式(子代带「DONE 契约」自主多轮工具调用直到产出 DONE)
+#   loop:  循环模式(跑完判定 loop_until,未达标把结果反馈续跑,到达标/上限)
+#
+# 红线:
+#   - 子代不能再 spawn(防递归):子代 TOOLS 里剔除 spawn_subagent
+#   - 子代权限闸独立:on_confirm 经父级透传(用户仍需逐次批准),不继承父级已批准
+#   - model 指定用户 key_store 已配平台(经 web 层 _litellm_model_for 解析,
+#     key 不出本机);缺省继承父级当前模型
+#   - skills 过滤子代工具子集(白名单);空=全量(除 spawn 自身)
+_SUBAGENT_MAX_TURNS = 30
+_SUBAGENT_MAX_LOOPS = 5
+
+
+def _subagent_tools(skills: list | None) -> list:
+    """子代工具集:全量剔除 spawn_subagent(防递归),再按 skills 白名单过滤。"""
+    pool = [t for t in TOOLS if t["function"]["name"] != "spawn_subagent"]
+    if not skills:
+        return pool
+    allow = {str(s).strip() for s in skills if str(s).strip()}
+    return [t for t in pool if t["function"]["name"] in allow]
+
+
+def _resolve_subagent_model(model: str, parent_model: str) -> str:
+    """解析子代模型:空=继承父级;否则当平台名经 web 层 key_store 解析。
+    解析失败(平台未配/web 层不在)回退父级,不阻塞。"""
+    m = (model or "").strip()
+    if not m:
+        return parent_model
+    try:
+        import prisiragent_web as _w  # noqa: PLC0415
+        rec = _w._key_store.get_key(m)
+        if rec:
+            cfg = {"model": rec.get("model", ""), "api_key": rec.get("api_key", ""),
+                   "base_url": rec.get("base_url", ""), "meta": rec.get("meta", {})}
+            return _w._litellm_model_for(m, cfg, "general")
+    except Exception:  # noqa: BLE001 — 解析失败回退父级模型
+        pass
+    return parent_model
+
+
+def _run_subagent_once(task: str, model: str, workdir: str, tools: list,
+                       goal: bool, on_event, on_confirm, extra_msgs: list | None) -> dict:
+    """跑子代一轮。goal=True 用自主 DONE 契约系统提示;否则用对话系统提示。"""
+    if goal:
+        sys_prompt = (
+            "You are a sub-agent spawned by Prisir AI to complete ONE task autonomously. "
+            "Work fully autonomously with the provided tools. "
+            "When the task is 100% complete, end your reply with the single word DONE on its own line. "
+            "If you cannot complete it, explain what blocks you — do NOT fake DONE.")
+        msgs = [{"role": "system", "content": sys_prompt},
+                {"role": "user", "content": task}]
+    else:
+        msgs = [{"role": "user", "content": task}]
+    if extra_msgs:
+        msgs += extra_msgs
+    # 直接调 run_conversation,但替换其 TOOLS 为子代过滤集(临时全局换,
+    # 因 run_conversation 读全局 TOOLS;子线程隔离,父级不受影响——
+    # 同一进程并发 spawn 共享 TOOLS 全局,需加锁串行化 spawn 执行)
+    with _SPAWN_LOCK:
+        global TOOLS
+        saved = TOOLS
+        TOOLS = tools
+        try:
+            return run_conversation(msgs, model, workdir,
+                                    max_turns=_SUBAGENT_MAX_TURNS,
+                                    think_level="", on_event=on_event,
+                                    on_confirm=on_confirm)
+        finally:
+            TOOLS = saved
+
+
+_SPAWN_LOCK = __import__("threading").Lock()
+
+# spawn 上下文暂存:dispatch 签名只有 on_confirm,on_event 由 web 层在调用
+# run_conversation 前注入这里,spawn_subagent 透传给子代(进度事件回父级)。
+_SPAWN_CONTEXT: dict = {}
+
+
+def _t_spawn_subagent(task: str, model: str = "", skills=None,
+                      goal: bool = False, loop_until: str = "",
+                      max_iterations: int = 1,
+                      workdir: str = "", on_event=None, on_confirm=None,
+                      parent_model: str = "") -> str:
+    """派生子代理独立执行任务,结果回传。父级工具循环内同步等待。"""
+    task = (task or "").strip()
+    if not task:
+        return "[spawn_subagent error] empty task"
+    lm = _resolve_subagent_model(model, parent_model)
+    tools = _subagent_tools(skills if isinstance(skills, list) else None)
+    skill_note = f"(工具 {len(tools)} 个)" if skills else ""
+    header = f"[spawn_subagent] 模型 {lm} {skill_note}" + (" [goal 模式]" if goal else "")
+
+    def _ev(ev):
+        if on_event:
+            try:
+                ev2 = dict(ev)
+                ev2["agent"] = "sub"
+                on_event(ev2)
+            except Exception:  # noqa: BLE001
+                pass
+
+    # loop 模式:跑完判定 loop_until,未达标把结果+判定标准反馈续跑
+    loop_until = (loop_until or "").strip()
+    if loop_until:
+        max_iterations = max(1, min(int(max_iterations or 3), _SUBAGENT_MAX_LOOPS))
+        prev_out = ""
+        for i in range(1, max_iterations + 1):
+            prompt = task if i == 1 else (
+                f"上一轮结果未达标。判定标准:{loop_until}\n"
+                f"上一轮输出:\n{prev_out[:2000]}\n\n请改进后重试原任务:{task}")
+            res = _run_subagent_once(prompt, lm, workdir, tools, goal,
+                                     _ev, on_confirm, None)
+            prev_out = res.get("out", "")
+            # 判定:loop_until 关键词/正则命中输出即算达标;否则续跑。
+            import re as _re
+            try:
+                hit = bool(_re.search(loop_until, prev_out))
+            except _re.error:
+                hit = loop_until in prev_out
+            if hit:
+                return (f"{header} [loop {i}/{max_iterations} 达标]\n{prev_out}")
+        return (f"{header} [loop {max_iterations} 轮仍未达标 "
+                f"'{loop_until}',返回最后一轮结果]\n{prev_out}")
+
+    # goal / 普通:单轮(goal 带 DONE 契约自主多轮)
+    res = _run_subagent_once(task, lm, workdir, tools, goal, _ev, on_confirm, None)
+    out = res.get("out", "")
+    rc_note = "" if res.get("rc") == 0 else f" [rc={res.get('rc')}]"
+    return f"{header}{rc_note}\n{out}"
+
+
 def _t_list_files(path: str, workdir: str) -> str:
     try:
         base = os.path.join(workdir, path) if not os.path.isabs(path) else path
@@ -1122,6 +1256,18 @@ TOOLS = [
             "language": {"type": "string", "description": "python or javascript, default python"}},
             "required": ["code"]}}},
     {"type": "function", "function": {
+        "name": "spawn_subagent",
+        "description": "Spawn a sub-agent to execute a task independently, then return its result. Use for: complex multi-step subtasks that would clutter this conversation, parallel work, tasks needing a different model, or isolated trial-and-error. The sub-agent gets its own conversation and tool loop; it CANNOT spawn further agents. goal=true makes it run autonomously until DONE. loop_until=<pattern> re-runs until output matches (max_iterations cap). model names a configured platform (empty = inherit your model); skills limits its tool subset.",
+        "parameters": {"type": "object", "properties": {
+            "task": {"type": "string", "description": "the task for the sub-agent, self-contained"},
+            "model": {"type": "string", "description": "configured platform name to use (empty = inherit current model)"},
+            "skills": {"type": "array", "items": {"type": "string"},
+                       "description": "limit sub-agent tools to this subset (empty = all tools except spawn)"},
+            "goal": {"type": "boolean", "description": "run autonomously until task DONE, default false (single reply)"},
+            "loop_until": {"type": "string", "description": "regex/keyword: re-run until output matches (loop mode)"},
+            "max_iterations": {"type": "integer", "description": "loop mode cap, default 1, max 5"}},
+            "required": ["task"]}}},
+    {"type": "function", "function": {
         "name": "git_status",
         "description": "Show git repo status: current branch, upstream ahead/behind, staged/unstaged/untracked files, last 3 commits. Read-only. Use before reviewing changes or writing commit messages.",
         "parameters": {"type": "object", "properties": {}}}},
@@ -1275,6 +1421,15 @@ def dispatch(name: str, args: dict, workdir: str, on_confirm=None, model: str = 
         return _t_run_shell(args.get("command", ""), workdir)
     if name == "run_code":
         return _t_run_code(args.get("code", ""), args.get("language", "python"), workdir)
+    if name == "spawn_subagent":
+        # 经 web 层 on_event/on_confirm 透传(子代进度+权限确认);
+        # 此处 dispatch 签名没有 on_event,从闭包取不到 → 经模块级暂存由 web 层注入。
+        return _t_spawn_subagent(
+            args.get("task", ""), args.get("model", ""),
+            args.get("skills"), bool(args.get("goal", False)),
+            args.get("loop_until", ""), args.get("max_iterations", 1),
+            workdir, on_event=_SPAWN_CONTEXT.get("on_event"),
+            on_confirm=on_confirm, parent_model=model)
     if name == "git_status":
         return _t_git_status(workdir)
     if name == "git_diff":
@@ -1348,7 +1503,17 @@ SYSTEM_CHAT = (
     "answer is the 0-indexed correct option; for multiple-answer questions use an array like [0, 2]. "
     "Always include topic (short subject label) — it feeds the learner's mastery tracking. "
     "The chat UI renders it as an interactive card with answer checking. Use at most 1-2 quizzes per reply, "
-    "only when they genuinely aid learning — never pad every reply with quizzes."
+    "only when they genuinely aid learning — never pad every reply with quizzes.\n\n"
+    "Sub-agents: you can spawn_subagent to delegate work to an independent sub-agent. Use it when a subtask "
+    "is complex/multi-step (would clutter this conversation with many tool calls), needs isolated trial-and-error, "
+    "or benefits from a different model or a restricted tool set. Give the sub-agent a self-contained task "
+    "description. It runs its own tool loop and returns its result to you. Do NOT spawn for simple one-step "
+    "questions — answer those yourself. Sub-agents cannot spawn further agents.\n\n"
+    "Hooks: if the working directory has a hooks.json, the user has declared shell commands to run on events "
+    "(pre_tool / post_tool / on_response / on_error). A pre_tool hook returning non-zero will BLOCK that tool — "
+    "you'll see the block reason as the tool result; treat it as a hard refusal and adjust (don't retry the same "
+    "blocked call verbatim). You don't invoke hooks yourself; they fire automatically. If the user asks to set up "
+    "automation, you can write/edit hooks.json for them (it is a plain JSON file in the workdir)."
 )
 
 
@@ -1371,6 +1536,15 @@ def _load_project_md(workdir: str) -> str:
         except Exception:  # noqa: BLE001 — 读不到就当没有,绝不阻塞对话
             continue
     return ""
+
+
+def _run_hook(event: str, workdir: str, ctx: dict) -> str | None:
+    """hooks.py 软依赖包装:模块缺失/异常一律放行(None),绝不阻塞对话。"""
+    try:
+        import hooks as _hooks  # noqa: PLC0415
+        return _hooks.run_hooks(event, workdir, ctx)
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def run_conversation(messages: list, model: str, workdir: str, max_turns: int = 20,
@@ -1421,6 +1595,8 @@ def run_conversation(messages: list, model: str, workdir: str, max_turns: int = 
                 kwargs.update(tools=tools, tool_choice="auto")
             resp = _completion_with_temperature_fallback(**kwargs)
         except Exception as e:  # noqa: BLE001
+            _run_hook("on_error", workdir,
+                      {"error": f"{type(e).__name__}: {e}", "model": model})
             return {"rc": 2, "out": f"[llm error] {type(e).__name__}: {e}", "turns": turns,
                     "ms": int((time.time() - t0) * 1000), "trace": trace}
         msg = resp.choices[0].message
@@ -1435,7 +1611,10 @@ def run_conversation(messages: list, model: str, workdir: str, max_turns: int = 
 
         if not tcs:
             # 无工具调用 → 这就是答复,返回
-            return {"rc": 0, "out": (msg.content or "").strip(), "turns": turns,
+            out = (msg.content or "").strip()
+            _run_hook("on_response", workdir,
+                      {"model": model, "output": out[:500]})
+            return {"rc": 0, "out": out, "turns": turns,
                     "ms": int((time.time() - t0) * 1000), "trace": trace}
 
         for tc in tcs:
@@ -1450,9 +1629,23 @@ def run_conversation(messages: list, model: str, workdir: str, max_turns: int = 
                 _ap = json.dumps(args, ensure_ascii=False)
                 on_event({"type": "tool_start", "name": _tname,
                           "args_preview": _ap[:200]})
-            _te0 = time.time()
-            result = dispatch(_tname, args, workdir, on_confirm=on_confirm, model=model)
-            _tms = int((time.time() - _te0) * 1000)
+            # P3 hook:pre_tool 钩子可阻断该工具(非零 rc → 结果回喂模型,不真执行)。
+            # 子代事件不外发(子代权限已独立管控);hooks.json 由 workdir 声明。
+            _blocked = _run_hook("pre_tool", workdir,
+                                 {"tool": _tname,
+                                  "args": json.dumps(args, ensure_ascii=False)[:400],
+                                  "path": str(args.get("path", ""))[:300]})
+            if _blocked is not None:
+                result = _blocked
+                _tms = 0
+            else:
+                _te0 = time.time()
+                result = dispatch(_tname, args, workdir, on_confirm=on_confirm, model=model)
+                _tms = int((time.time() - _te0) * 1000)
+                _run_hook("post_tool", workdir,
+                          {"tool": _tname,
+                           "path": str(args.get("path", ""))[:300],
+                           "output": result[:400]})
             msgs.append({"role": "tool", "tool_call_id": tc.id,
                          "name": _tname, "content": result})
             # 轨迹(供壳入库激活跨轮 masking): 截断后存,带工具名保可追溯
