@@ -1,7 +1,7 @@
 ﻿; PrisirAI v1.0 NSIS 安装脚本
 ;
-; 目标:把 dist/PrisirAI.exe + dist/assets + oiagent-shell/ 装到目标机,
-; 创建桌面 + 开始菜单快捷方式(指向 launcher.bat,图标 oiagent-shell/icon.ico),
+; 目标:把 dist/PrisirAI.exe + dist/assets + prisiragent-shell/ 装到目标机,
+; 创建桌面 + 开始菜单快捷方式(指向 launcher.bat,图标 prisiragent-shell/icon.ico),
 ; 注册卸载器。
 ;
 ; 编译: makensis prisirai.nsi → ../dist/PrisirAI-Setup-1.0.0.exe
@@ -44,8 +44,8 @@ ShowUninstDetails show
 !include "MUI2.nsh"
 
 !define MUI_ABORTWARNING
-!define MUI_ICON "..\oiagent-shell\icon.ico"
-!define MUI_UNICON "..\oiagent-shell\icon.ico"
+!define MUI_ICON "..\prisiragent-shell\icon.ico"
+!define MUI_UNICON "..\prisiragent-shell\icon.ico"
 
 ; MUI 界面文案走 LangString(安装器运行时按 $LANGUAGE 取值);LangString 在 MUI_LANGUAGE 后定义
 
@@ -171,12 +171,12 @@ Section "$(SECTION_CORE)"
   File "..\dist\PrisirAI.exe"
 
   ; 资源 — 从 installer/_staging2/ 拷(2026-08-25 重建的干净 staging)。
-  ; 旧 _staging/ 曾被手工 cp -r 弄出嵌套 oiagent-shell\oiagent-shell,且其 default_app.asar
-  ; 被残留 electron 进程持久锁住删不掉、/x 排除也不可靠 → 直接从干净源(仓库根 oiagent-shell)
+  ; 旧 _staging/ 曾被手工 cp -r 弄出嵌套 prisiragent-shell\prisiragent-shell,且其 default_app.asar
+  ; 被残留 electron 进程持久锁住删不掉、/x 排除也不可靠 → 直接从干净源(仓库根 prisiragent-shell)
   ; 重建全新 _staging2/,根源无嵌套,无需任何 /x 排除或编译期删除。
   SetOutPath "$INSTDIR"
   File /r "_staging2\assets"
-  File /r "_staging2\oiagent-shell"
+  File /r "_staging2\prisiragent-shell"
 
   ; 启动器(快捷方式目标)
   SetOutPath "$INSTDIR"
@@ -199,12 +199,12 @@ Section "$(SECTION_CORE)"
 
   ; 桌面快捷方式(2026-08-24 改:指向 PrisirAI.vbs 无窗启动,不再闪 CMD 黑窗)
   CreateShortcut "$DESKTOP\Prisir AI.lnk" \
-    "$INSTDIR\PrisirAI.vbs" "" "$INSTDIR\oiagent-shell\icon.ico" 0
+    "$INSTDIR\PrisirAI.vbs" "" "$INSTDIR\prisiragent-shell\icon.ico" 0
 
   ; 开始菜单
   CreateDirectory "$SMPROGRAMS\PrisirAI"
   CreateShortcut "$SMPROGRAMS\PrisirAI\Prisir AI.lnk" \
-    "$INSTDIR\PrisirAI.vbs" "" "$INSTDIR\oiagent-shell\icon.ico" 0
+    "$INSTDIR\PrisirAI.vbs" "" "$INSTDIR\prisiragent-shell\icon.ico" 0
 
   ; 写卸载器(放在最后,这样 Uninstall.exe 不会与 $INSTDIR 冲突)
   WriteUninstaller "$INSTDIR\Uninstall.exe"

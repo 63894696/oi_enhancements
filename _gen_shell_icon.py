@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""用 agnesai 端点按 Prisir 铜光金属圆环视觉规范生成 oiagent-shell(F7)对话壳图标候选(2026-08-20)
+"""用 agnesai 端点按 Prisir 铜光金属圆环视觉规范生成 prisiragent-shell(F7)对话壳图标候选(2026-08-20)
 
 视觉母版(与灵犀语音/拼音/五笔同一母版,见 voice_input/gen_lingxi_icon.py、
 gen_pinyin_icon.py 与 docs/visual-identity-proposal §3.1):

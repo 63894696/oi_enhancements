@@ -1,6 +1,6 @@
 """simplex_rotation.py — Agent-First OS L2 功能块③:会话轮换 / 短生命周期(抗纵向去匿名化)
 
-设计依据:Documents/oiagent-os-integration/capability-03-session-rotation.md;社区 #6940。
+设计依据:Documents/prisiragent-os-integration/capability-03-session-rotation.md;社区 #6940。
 长命 agent 通道会把数月消息链接到同一标识(职业/城市/机构拼起来就识别了人)。本块让
 agent 定期"换脸"——同连接内换假名(rename),切断纵向可链接性,用户零干预(agent 自动化 OPSEC)。
 
@@ -49,7 +49,7 @@ def _require_running() -> dict[str, Any] | None:
     return None
 
 
-def _new_alias(base: str = "oiagent") -> str:
+def _new_alias(base: str = "prisiragent") -> str:
     """生成随机后缀的新假名,避免与旧名语义关联。"""
     return f"{base}-{secrets.token_hex(2)}"
 

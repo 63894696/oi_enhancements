@@ -20,7 +20,7 @@ import json
 import logging
 from pathlib import Path
 
-from oiagent_coworker.permissions import (
+from prisiragent_coworker.permissions import (
     Action,
     OIagentCoworkerPermissionEngine,
     PermissionContext,

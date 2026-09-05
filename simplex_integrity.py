@@ -83,12 +83,12 @@ def _resolve_db_prefix(rt: SimplexRuntime, *, allow_fallback: bool = True) -> st
 
     铁律(红线 1):身份来源只用 `rt._db_prefix`(getattr 兜底 env),绝不靠
     DM_IDENTITY/SECUREDM_INSTANCE env 猜 —— bob 是 argv 覆写模块全局、不写 env,
-    读 env 会回退 oiagent 导致 oiagent/bob 共用一把身份钥(这错误我们已犯过一次)。
+    读 env 会回退 prisiragent 导致 prisiragent/bob 共用一把身份钥(这错误我们已犯过一次)。
 
     `allow_fallback=True`(仅下载目录等**非密钥**场景)才允许回退到共享默认目录;
     身份密钥/对方公钥这类**绝不能串**的场景必须 `allow_fallback=False`:
     一旦 `_db_prefix` 与 env 都给不出一个**实例专属** prefix,立刻 raise,
-    绝不静默落到共享默认目录 —— 那正是 oiagent/bob 串钥(「⚠ 公钥变更」)的根。
+    绝不静默落到共享默认目录 —— 那正是 prisiragent/bob 串钥(「⚠ 公钥变更」)的根。
     """
     prefix = (getattr(rt, "_db_prefix", "") or "").strip()
     if prefix:
@@ -99,12 +99,12 @@ def _resolve_db_prefix(rt: SimplexRuntime, *, allow_fallback: bool = True) -> st
     if not allow_fallback:
         raise RuntimeError(
             "db_prefix 为空:无法为身份密钥确定实例专属隔离目录,"
-            "拒绝回退到共享默认目录(防 oiagent/bob 串钥)。"
+            "拒绝回退到共享默认目录(防 prisiragent/bob 串钥)。"
             "请确保 setup 传入非空 db_prefix(不要用空字符串 argv)。"
         )
     return str(
         Path.home() / ".local" / "share" / "aureon" / "simplex"
-        / f"{os.environ.get('SECUREDM_INSTANCE') or os.environ.get('DM_IDENTITY', 'oiagent')}_simplex"
+        / f"{os.environ.get('SECUREDM_INSTANCE') or os.environ.get('DM_IDENTITY', 'prisiragent')}_simplex"
     )
 
 
@@ -479,7 +479,7 @@ def simplex_verify_received_file(contact: str, path: str, timeout: float = 20.0)
             items = []
         # 只取对方(dir=="them")的消息:本窗口自己发出的 trust 公告(dir=="me")也会在
         # 同一对话里,若一并消费,会把"自己的身份钥"错钉成"对方公钥"——这正是
-        # "两窗口交换发文件都来自 bob"的根因(oiagent 把 bob 的钥钉成了对方公钥)。
+        # "两窗口交换发文件都来自 bob"的根因(prisiragent 把 bob 的钥钉成了对方公钥)。
         # manifest 同样只认对方发的,自己的回声不算。
         texts = [it.get("text", "") for it in items if it.get("dir") == "them"]
         # 先扫描本轮 trust 公告(不立即消费),拿到"对方经 E2E 公告的公钥"集合。
@@ -603,7 +603,7 @@ def _candidate_download_dirs(rt: SimplexRuntime) -> list[Path]:
     securedm_web,避免循环依赖):download_dir.txt = Path(db_prefix).parent / "download_dir.txt"。
     db_prefix 直接取本进程 runtime 的 `_db_prefix`(同进程单例,setup 时已按实例身份/CLI argv
     正确设置)——**不靠 env 猜 identity**:bob 这类实例的 DM_IDENTITY/DM_DB_PREFIX 是
-    securedm_web.__main__ 用 argv 覆写的模块全局、不写进 env,读 env 会回退 "oiagent" 而找错。
+    securedm_web.__main__ 用 argv 覆写的模块全局、不写进 env,读 env 会回退 "prisiragent" 而找错。
     `_db_prefix` 缺失时回退 env DM_DB_PREFIX 的同规则解析作兜底。
     未设自定义目录时仅返回默认目录,行为与原单目录逻辑一致(回归安全)。
     """
@@ -612,7 +612,7 @@ def _candidate_download_dirs(rt: SimplexRuntime) -> list[Path]:
     dirs.append(default)
     db_prefix = getattr(rt, "_db_prefix", "") or os.environ.get("DM_DB_PREFIX", "") or str(
         Path.home() / ".local" / "share" / "aureon" / "simplex"
-        / f"{os.environ.get('SECUREDM_INSTANCE') or os.environ.get('DM_IDENTITY', 'oiagent')}_simplex"
+        / f"{os.environ.get('SECUREDM_INSTANCE') or os.environ.get('DM_IDENTITY', 'prisiragent')}_simplex"
     )
     txt = Path(db_prefix).parent / "download_dir.txt"
     try:

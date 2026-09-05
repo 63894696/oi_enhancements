@@ -1,4 +1,4 @@
-"""oiagent 团队协作能力接入(F3):把根目录 oiagent 的任务队列暴露为 PrisirWork 能力。
+"""prisiragent 团队协作能力接入(F3):把根目录 prisiragent 的任务队列暴露为 PrisirWork 能力。
 
 定位(见 prisirwork-foundation-integration-design §4 / F3):
 - 浏览器/agent 经能力门面 submit/list 任务,底层路由到根目录 memory.task_queue。
@@ -36,7 +36,7 @@ def _queue():
 
 
 def available() -> bool:
-    """探 oiagent 团队栈是否可用(memory 包 + db 可建)。"""
+    """探 prisiragent 团队栈是否可用(memory 包 + db 可建)。"""
     try:
         _queue()
         return True
@@ -46,7 +46,7 @@ def available() -> bool:
 
 def submit(title: str, content: str = "", priority: int = 0,
            depends_on: list | None = None, namespace: str = "tasks") -> dict:
-    """派单(L1):提交一个任务进 oiagent 队列。返回 {ok, task_id, status}。
+    """派单(L1):提交一个任务进 prisiragent 队列。返回 {ok, task_id, status}。
 
     改代码类任务由调用方在 content 里写「改动文件: ...」并派 namespace='tasks-code'
     (走主会话认领);纯文本(方案/审查/调研)派 'tasks'(走 consumer)。本层不替调用方
@@ -60,7 +60,7 @@ def submit(title: str, content: str = "", priority: int = 0,
             depends_on=depends_on or [], priority=int(priority or 0),
             namespace=namespace or "tasks",
         )
-        return {"ok": r.get("ok", False), "team": "oiagent", **{k: v for k, v in r.items() if k != "ok"}}
+        return {"ok": r.get("ok", False), "team": "prisiragent", **{k: v for k, v in r.items() if k != "ok"}}
     except Exception as e:
         return {"ok": False, "error": "team_unavailable", "detail": type(e).__name__}
 
@@ -77,6 +77,6 @@ def list_tasks(status: str = "ready", limit: int = 10, namespace: str = "tasks")
             items = q.list_by_status(status, limit=int(limit), namespace=namespace)
         out = [{"task_id": t.id, "title": t.title, "status": t.status,
                 "priority": t.priority} for t in items]
-        return {"ok": True, "team": "oiagent", "status": status, "count": len(out), "tasks": out}
+        return {"ok": True, "team": "prisiragent", "status": status, "count": len(out), "tasks": out}
     except Exception as e:
         return {"ok": False, "error": "team_unavailable", "detail": type(e).__name__}

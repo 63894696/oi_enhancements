@@ -1227,7 +1227,7 @@ def run_conversation(messages: list, model: str, workdir: str, max_turns: int = 
 def _chat_db_path() -> str:
     """Locate the shared chat DB.  Prefers the same env override the web app
     honours, then falls back to the standard user-data location."""
-    p = os.environ.get("OIAGENT_CHAT_DB", "")
+    p = os.environ.get("PRISIRAGENT_CHAT_DB", "") or os.environ.get("OIAGENT_CHAT_DB", "")
     if p:
         return p
     base = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
@@ -1388,7 +1388,7 @@ def main():
     ap.add_argument("--message-file", help="read prompt from file")
     ap.add_argument("--message", help="prompt string")
     ap.add_argument("--model",
-                    default=os.environ.get("SPIKE2_OIAGENT_MODEL", "openrouter/deepseek/deepseek-chat"),
+                    default=os.environ.get("PRISIRAGENT_MODEL", os.environ.get("SPIKE2_OIAGENT_MODEL", "openrouter/deepseek/deepseek-chat")),
                     help="litellm model string")
     ap.add_argument("--max-turns", type=int, default=MAX_TURNS_DEFAULT)
     ap.add_argument("--workdir", default=os.getcwd())

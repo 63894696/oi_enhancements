@@ -30,7 +30,7 @@ SCOPES = [
     "User.Read",
 ]
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT}"
-TOKEN_CACHE_PATH = Path(os.environ.get("APPDATA", str(Path.home()))) / "oiagent" / "outlook_token.json"
+TOKEN_CACHE_PATH = Path(os.environ.get("APPDATA", str(Path.home()))) / "prisiragent" / "outlook_token.json"
 
 IMAP_HOST = "outlook.office365.com"
 IMAP_PORT = 993

@@ -38,7 +38,7 @@ struct IdentityRoot {
 // 每个用途一个子密钥:密信签名 / capability E2E / agent 代理 / at-rest 口令源。
 // 子密钥公钥公开;私钥由原生层持有(代签),不经 Mojo 暴露。
 struct DerivedKey {
-  string key_id;         // 子密钥 id(如 "mixin-sign" / "agent-oiagent" / "at-rest")
+  string key_id;         // 子密钥 id(如 "mixin-sign" / "agent-prisiragent" / "at-rest")
   string kind;           // "ed25519-sign" | "x25519-kem" | "agent-proxy" | "sqlcipher-source"
   string pub_key;        // 子密钥公钥(b64)
   string fingerprint;    // 子密钥公钥指纹(b64url16)
@@ -50,11 +50,11 @@ struct DerivedKey {
 // agent 不是独立身份,是用户身份根下的「代理子密钥」+ 外部可达地址(邮箱/社交)。
 // 用户在语义上拥有 agent;agent 以用户代理名义对外(发信/发帖/收 token 券)。
 struct AgentIdentity {
-  string agent_id;        // agent 标识(如 "oiagent")
+  string agent_id;        // agent 标识(如 "prisiragent")
   string key_id;          // 其代理子密钥 id(对应 DerivedKey.key_id, kind="agent-proxy")
   string pub_key;         // agent 公钥(b64,对外公布,他人可验签)
   string fingerprint;     // agent 公钥指纹(他人核对「这是不是你的 agent」)
-  string mailbox;         // agent 专属邮箱(如 oiagent@agentmail.to,可空)
+  string mailbox;         // agent 专属邮箱(如 prisiragent@agentmail.to,可空)
   string social_handle;   // agent 社交身份(如 mastodon handle,可空)
   bool active;            // 是否启用(用户可停用一个 agent 的对外能力)
 };

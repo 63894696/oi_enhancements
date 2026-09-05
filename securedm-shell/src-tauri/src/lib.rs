@@ -1,5 +1,5 @@
 // SecureDM 本地壳 — 桌面端(Tauri + WebView2)
-// 设计见 Documents/oiagent-os-integration/securedm-shell-design.md
+// 设计见 Documents/prisiragent-os-integration/securedm-shell-design.md
 // 壳 = 能力增强的浏览器:加载现有 securedm_web.py 前端的 HTTP 端点,零改动复用。
 
 use std::path::PathBuf;
@@ -56,7 +56,7 @@ fn read_token() -> String {
         })
 }
 
-/// 后端 HTTP base。默认本机 18801(oiagent 实例);可用 SECUREDM_BASE 覆盖
+/// 后端 HTTP base。默认本机 18801(prisiragent 实例);可用 SECUREDM_BASE 覆盖
 /// (如指向 bob 实例 18802,或远程中继)。
 fn base_url() -> String {
     std::env::var("SECUREDM_BASE").unwrap_or_else(|_| "http://127.0.0.1:18801".to_string())
@@ -69,7 +69,7 @@ pub fn run() {
     // 之后同源 /dm/api/* 自动带 X-L4-Token(securedm_web.py:340)。
     let probe = std::env::var("SECUREDM_PROBE").is_ok();
 
-    // 多实例:SECUREDM_INSTANCE 给实例名(如 oiagent/bob)。
+    // 多实例:SECUREDM_INSTANCE 给实例名(如 prisiragent/bob)。
     // ① 独立 user-data-folder —— 隔离 localStorage/cookie,更关键:隔离 WebView2
     //    媒体设备锁。单进程多窗口会互抢摄像头,独立进程+独立数据目录才能多开视频通话。
     // ② 窗口标题带实例名,同屏多开时区分身份。

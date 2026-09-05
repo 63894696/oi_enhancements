@@ -18,26 +18,26 @@ The following paths are Core Components. Modifications inside these
 paths, when Distributed or made available as a Network Service, must
 be made available under OIE-PCS-1.0.
 
-### oiagent runtime (Python 后端)
-- `oiagent_web.py`                          — 主 Web 后端(国画风聊天 UI + 路由 + LLM 代理)
-- `oiagent_cli.py`                          — CLI 入口
-- `oiagent_context.py`                      — 上下文用量统计
+### prisiragent runtime (Python 后端)
+- `prisiragent_web.py`                      — 主 Web 后端(国画风聊天 UI + 路由 + LLM 代理)
+- `prisiragent_cli.py`                      — CLI 入口
+- `prisiragent_context.py`                  — 上下文用量统计
 - `l4_web.py`                               — l4 工具/Web 后端(v0.5 起下沉到主仓)
 - `policy_engine.py`                        — 策略引擎
 - `demo_agent_loop.py`, `demo_gui_loop.py`  — 端到端演示回路
 
-### oiagent-shell (Electron 对话壳)
-- `oiagent-shell/main.js`                   — 主进程(后端 spawn + 窗口/托盘/全局热键)
-- `oiagent-shell/mini-main.js`              — 极简主进程(轻量打包入口)
-- `oiagent-shell/preload.js`                — 渲染层 preload(白名单 IPC)
-- `oiagent-shell/package.json`              — 壳依赖与打包配置
-- `oiagent-shell/make_shortcut.ps1`         — Windows 桌面快捷方式
+### prisiragent-shell (Electron 对话壳)
+- `prisiragent-shell/main.js`                   — 主进程(后端 spawn + 窗口/托盘/全局热键)
+- `prisiragent-shell/mini-main.js`              — 极简主进程(轻量打包入口)
+- `prisiragent-shell/preload.js`                — 渲染层 preload(白名单 IPC)
+- `prisiragent-shell/package.json`              — 壳依赖与打包配置
+- `prisiragent-shell/make_shortcut.ps1`         — Windows 桌面快捷方式
 
-### oiagent router / shared memory / 端侧 Agent
+### prisiragent router / shared memory / 端侧 Agent
 - `dynamic_router/router.py`                — 动态路由
 - `shared_memory/`                          — 进程间共享内存层
 - `shared_memory_recompile/`                — shared_memory 重编译版
-- `mcp_oiagent_server/`                     — oiagent MCP 服务端(供外部 Agent 调用)
+- `mcp_prisiragent_server/`                     — prisiragent MCP 服务端(供外部 Agent 调用)
 - `subagent_depth/`                         — 子 Agent 深度治理
 
 ### agent_shell / 端侧对话壳

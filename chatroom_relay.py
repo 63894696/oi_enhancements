@@ -1,7 +1,7 @@
 """chatroom_relay.py — Agent-First OS 3.B 群聊中继(房间 + 服务器定序 + 成员 + 历史)
 
 在 ws_signal_server(纯转发、无状态、人走房消)基础上,按 3.B 群聊设计惯例扩展为
-**群聊房间服务器**。设计依据:Documents/oiagent-os-integration/stage3-selfhosted-im-design.md §6
+**群聊房间服务器**。设计依据:Documents/prisiragent-os-integration/stage3-selfhosted-im-design.md §6
 与记忆 stage3b-chatroom-design-conventions-2026-07-22。
 
 与 ws_signal_server 的本质差异:

@@ -1,6 +1,6 @@
-"""policy_engine.py — OIagent 共享审批仲裁层(单源)
+"""policy_engine.py — Prisiragent 共享审批仲裁层(单源)
 
-v0.44 从 harness.py 抽出,供 harness(MCP) 与 aureon-oiagent daemon 共用。
+v0.44 从 harness.py 抽出,供 harness(MCP) 与 aureon-prisiragent daemon 共用。
 
 背景:harness.py 与 daemon 是两套独立系统。P0-3/P0-4 最初建在 harness.py,
 但 daemon 执行任务的工具落地(bash/shell/write_file/edit_file)走自己的

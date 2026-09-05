@@ -55,9 +55,9 @@ MAX_FILE_BYTES = 1_000_000
 # ── 3a) docs/ 纯内部文档(暴露内部流程/基建/外宣,对改代码无用)──
 EXCLUDE_DOCS = {
     # 内部团队分工/issues/代行 —— 内部协作流程
-    "oiagent-team-division-2026-08-13.md",
-    "oiagent-team-issues-2026-08-13.md",
-    "oiagent-action-delegate-plan-2026-08-12.md",
+    "prisiragent-team-division-2026-08-13.md",
+    "prisiragent-team-issues-2026-08-13.md",
+    "prisiragent-action-delegate-plan-2026-08-12.md",
     # 外宣语料策略 —— 内部运营
     "prisir-outreach-corpus-plan-2026-08-13.md",
     # 含云实例 id 的编译工单/交接 —— 暴露内部基础设施

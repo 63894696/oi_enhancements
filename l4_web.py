@@ -443,7 +443,7 @@ _PAGE = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OIagent · 对话</title>
+<title>Prisir AI · 对话</title>
 <style>
   :root { --bg:#eaf5ff; --panel:#ffffff; --bubble-u:#2f9df4; --bubble-a:#ffffff;
           --txt:#1f2937; --dim:#5b6b7c; --accent:#2f9df4; --ok:#1e9e5a; --warn:#c47f2a; }

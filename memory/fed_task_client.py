@@ -2,7 +2,7 @@
 """fed_task_client.py — v0.28 Federation task queue 多节点实跑客户端
 
 在 VPS 本地跑(走 127.0.0.1:18791),用 node-win-home 身份签名调本节点 daemon。
-模拟"本机 Claude → VPS OIagent"的 Federation task 调用链。
+模拟"本机 Claude → VPS Prisiragent"的 Federation task 调用链。
 
 用法(在 VPS 上):
     python3 fed_task_client.py submit "title" "content"
@@ -16,7 +16,7 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 
-# cryptography 应该装了(aureon-oiagent.py 依赖)
+# cryptography 应该装了(aureon-prisiragent.py 依赖)
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives import serialization
 

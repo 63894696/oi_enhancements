@@ -1,4 +1,4 @@
-//! 每日活跃信号(2026-09-04)——学 PrisirAI oiagent-shell 的 checkBrandUpdates。
+//! 每日活跃信号(2026-09-04)——学 PrisirAI prisiragent-shell 的 checkBrandUpdates。
 //!
 //! **口径**:每日(本地日切换)仅向我们自己的网站发一个 HTTPS GET
 //! `https://www.babelspan.com/updates.json`,不带任何 ID/内容/参数。

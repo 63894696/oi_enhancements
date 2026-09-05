@@ -1,6 +1,6 @@
 """simplex_files.py — Agent-First OS L2 功能块①:SimpleX 语音/文件发送(XFTP)
 
-设计依据:Documents/oiagent-os-integration/capability-01-voice-file-send.md。
+设计依据:Documents/prisiragent-os-integration/capability-01-voice-file-send.md。
 绕开官方缺失的 apiSendFile:文件作为 ComposedMessage.fileSource 随 /_send 发出,
 libsimplex 自动加密 + XFTP 上传(enableSndFiles=True 已开),并监听
 sndFileCompleteXFTP / sndFileError 确认送达。

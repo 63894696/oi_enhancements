@@ -76,7 +76,7 @@ res["cap_search_付款"]     = req("/cap/search", token=TOKEN, method="POST", bo
 res["cap_exec_payto"]      = req("/cap/execute", token=TOKEN, method="POST",
                                  body={"id": "wallet.payto", "args": {"address": "tb1qx", "amount": 0.1}})  # 期望经门面,L3 标注
 
-# F3 oiagent 团队协作:派单(L1)+ 查状态(L0),OI_HOME 已隔离
+# F3 prisiragent 团队协作:派单(L1)+ 查状态(L0),OI_HOME 已隔离
 res["team_submit_无token"] = req("/team/submit", method="POST", body={"title": "x"})             # 期望 401
 res["team_submit"]         = req("/team/submit", token=TOKEN, method="POST",
                                  body={"title": "p0 测试派单", "content": "验证 F3"})            # 期望 200 + task_id
@@ -159,7 +159,7 @@ checks = {
   "cap/execute wallet.payto 带 L3 标注": res["cap_exec_payto"][0] == 200 and
       res["cap_exec_payto"][1].get("capability") == "wallet.payto" and
       res["cap_exec_payto"][1].get("risk") == "L3",
-  # F3 oiagent 团队协作
+  # F3 prisiragent 团队协作
   "team/submit 无 token 401": res["team_submit_无token"][0] == 401,
   "team/submit 派单成功返回 task_id": res["team_submit"][0] == 200 and
       res["team_submit"][1].get("ok") is True and

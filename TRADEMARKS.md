@@ -20,7 +20,8 @@ and are reserved by the Project Copyright Holder:
 - "oi_enhancements"
 - "Prisir AI"
 - "Prisir(湃睿思) AI" / "Prisir (湃睿思) AI"
-- "oiagent"
+- "oiagent" (legacy name, superseded by "prisiragent")
+- "prisiragent"
 - "prisraiclass"
 - "prisIr" (in any capitalization)
 - "PrisirAI" (in any capitalization)
@@ -32,17 +33,17 @@ and are reserved by the Project Copyright Holder:
   application icon)
 - the round-prisiraiclass mark
 - any logo, word mark, or combination mark used to identify
-  PrisirAI, oiagent, or any sub-product
+  PrisirAI, prisiragent, or any sub-product
 
 ### Icons
 - any PNG/SVG/ICO/XPM file in `assets/` whose filename begins with
-  `prisIr-`, `prisiraiclass`, `PrisirAI`, `oiagent`, or `prisir_`
+  `prisIr-`, `prisiraiclass`, `PrisirAI`, `prisiragent`, or `prisir_`
 - the GTK theme icon named `prisiraiclass.png` and its aliases
   `PrisirAI.png`, `prisirai.png`
 
 ### Domain names and online identifiers
 - any domain name registered by or on behalf of the Project
-  Copyright Holder that contains "prisir", "oiagent", or any
+  Copyright Holder that contains "prisir", "prisiragent", or any
   confusingly similar term
 - any GitHub organization or account name containing the same
 - any social media handle or app store listing owned by the Project

@@ -47,7 +47,7 @@ and reserves Brand rights.
    licensing strategy.
 
 5. Brand and trademarks — including the names "Prisir AI",
-   "oiagent", "prisraiclass", the Prisir flame logo, and the icons
+   "prisiragent", "prisraiclass", the Prisir flame logo, and the icons
    in `assets/` — are NOT licensed by OIE-PCS-1.0. See
    TRADEMARKS.md. Use of the Brand for commercial purposes requires
    a separate Brand license.
@@ -88,7 +88,7 @@ OIE-PCS-1.0 是「源码可见」(source-available) 协议。由于限制了商�
 4. 过往版本可能另行按 Apache License 2.0 提供。延迟宽松许可策
    略见 LICENSE-POLICY.md。
 
-5. 品牌与商标 — 包括名称 "Prisir AI"、"oiagent"、"prisraiclass"、
+5. 品牌与商标 — 包括名称 "Prisir AI"、"prisiragent"、"prisraiclass"、
    湃睿思火焰标识,以及 `assets/` 中的图标 — 不通过 OIE-PCS-1.0
    授权。商业目的的品牌使用需另行取得品牌许可,详见 TRADEMARKS.md。
 

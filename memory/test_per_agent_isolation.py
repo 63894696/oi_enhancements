@@ -185,7 +185,7 @@ def test_session_tools_agent_id_passthrough(monkeypatch, tmp_path):
     """memory_namespace_set/list 的 agent_id 自报应透传到 store/list_by_layer。"""
     import json as _json
 
-    mcp_dir = Path("C:/Users/Administrator/oi_enhancements/mcp_oiagent_server")
+    mcp_dir = Path("C:/Users/Administrator/oi_enhancements/mcp_prisiragent_server")
     if str(mcp_dir) not in sys.path:
         sys.path.insert(0, str(mcp_dir))
     import session_tools  # noqa: E402

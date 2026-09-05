@@ -2,13 +2,13 @@
 """把选定的 dialog_flame 对话壳图标切成六档 ICO(禁拉伸,逐档 LANCZOS)。
 
 源:_agnes_icons/shell_dialog_flame.png(1024x1024,母版风格已是圆角徽章铺满)
-出:oiagent-shell/icon.ico(16/24/32/48/64/256)+ icon.png(256 供 Electron 用)
+出:prisiragent-shell/icon.ico(16/24/32/48/64/256)+ icon.png(256 供 Electron 用)
 """
 from PIL import Image
 import os
 
 SRC = r"C:\Users\Administrator\oi_enhancements\_agnes_icons\shell_dialog_flame.png"
-SHELL_DIR = r"C:\Users\Administrator\oi_enhancements\oiagent-shell"
+SHELL_DIR = r"C:\Users\Administrator\oi_enhancements\prisiragent-shell"
 ICO = os.path.join(SHELL_DIR, "icon.ico")
 PNG = os.path.join(SHELL_DIR, "icon.png")
 

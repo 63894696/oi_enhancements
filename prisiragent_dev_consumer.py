@@ -157,7 +157,7 @@ def _build_graph() -> dict:
                     # 直连百炼(cc-switch 15721 只是 health 端点,不是模型代理 — 见
                     # team_lead_tools.ENDPOINT_MAP 注释)。代码任务按路由表走 qwen3-coder 系。
                     # base_url 取 BAILIAN_BASE_URL(节点已兼容带不带 /v1)。
-                    "model": os.environ.get("OIAGENT_DEV_MODEL", "qwen3-coder-flash"),
+                    "model": os.environ.get("PRISIRAGENT_DEV_MODEL", os.environ.get("OIAGENT_DEV_MODEL", "qwen3-coder-flash")),
                     "base_url": os.environ.get(
                         "BAILIAN_BASE_URL",
                         "https://dashscope.aliyuncs.com/compatible-mode/v1"),
@@ -201,7 +201,7 @@ def _record_lesson(title_suffix: str, clause: str, pathology: str, content: str)
         if pathology:
             tags.append(f"pathology:{pathology}")
         # 当前 consumer 模型(产生该教训时的模型),供跨模型标注
-        model = os.environ.get("OIAGENT_DEV_MODEL", "qwen3-coder-flash")
+        model = os.environ.get("PRISIRAGENT_DEV_MODEL", os.environ.get("OIAGENT_DEV_MODEL", "qwen3-coder-flash"))
         tags.append(f"model:{model}")
         OIMemory().store(
             layer="L2",
@@ -456,7 +456,7 @@ def install(workers: int) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--workers", type=int, default=int(os.environ.get("OIAGENT_DEV_WORKERS", "3")))
+    ap.add_argument("--workers", type=int, default=int(os.environ.get("PRISIRAGENT_DEV_WORKERS", os.environ.get("OIAGENT_DEV_WORKERS", "3"))))
     ap.add_argument("--idle-sleep", type=float, default=20.0)
     ap.add_argument("--daemon", action="store_true")
     ap.add_argument("--install", action="store_true")

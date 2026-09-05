@@ -1,4 +1,4 @@
-"""oiagent / Claude 整合 adapter
+"""prisiragent / Claude 整合 adapter
 
 2026-07-04 v0.0.1
 

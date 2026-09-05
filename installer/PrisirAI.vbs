@@ -13,10 +13,10 @@ Set shell = CreateObject("WScript.Shell")
 
 ' 脚本自身所在目录 = $INSTDIR
 scriptDir = fso.GetParentFolderName(WScript.ScriptFullName)
-electronExe = scriptDir & "\oiagent-shell\node_modules\electron\dist\electron.exe"
-shellDir = scriptDir & "\oiagent-shell"
+electronExe = scriptDir & "\prisiragent-shell\node_modules\electron\dist\electron.exe"
+shellDir = scriptDir & "\prisiragent-shell"
 
-' 切到 oiagent-shell 目录再启动 electron(等价于 launcher.bat 的 cd /d)
+' 切到 prisiragent-shell 目录再启动 electron(等价于 launcher.bat 的 cd /d)
 shell.CurrentDirectory = shellDir
 
 ' 0 = 隐藏窗口, False = 不等待子进程

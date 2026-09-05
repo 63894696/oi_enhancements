@@ -57,8 +57,9 @@ pub struct ImeEngine {
     pub db: CikuDb,
     pub syll: Syllables,
     pub mem: Option<MemoryIndex>,
-    /// 模糊音规则集(对齐 ime_config.FUZZY_RULES)
-    pub fuzzy_rules: Vec<&'static str>,
+    /// 模糊音规则集(对齐 ime_config.FUZZY_RULES)。String 持有,支持从配置文件
+    /// 动态读入(2026-09-04 模糊音设置功能,见 ffi.rs load_fuzzy_rules)。
+    pub fuzzy_rules: Vec<String>,
 }
 
 /// 模糊音映射:规则名 -> [(源,目标)](对齐 Python _FUZZY_MAP)
@@ -218,7 +219,7 @@ impl ImeEngine {
             .map_err(|e| format!("atomic write: {e}"))
     }
 
-    pub fn set_fuzzy_rules(&mut self, rules: Vec<&'static str>) {
+    pub fn set_fuzzy_rules(&mut self, rules: Vec<String>) {
         self.fuzzy_rules = rules;
     }
 
@@ -368,8 +369,8 @@ impl ImeEngine {
         };
         let mut results: Vec<String> = vec![inp.to_string()];
         for rule in self.fuzzy_rules.clone() {
-            for (src, dst) in fuzzy_map(rule) {
-                if fuzzy_is_initial(rule) {
+            for (src, dst) in fuzzy_map(&rule) {
+                if fuzzy_is_initial(&rule) {
                     if let Some(rest) = inp.strip_prefix(*src) {
                         let cand = format!("{dst}{rest}");
                         if valid(&cand) && !results.contains(&cand) {
@@ -510,6 +511,60 @@ impl ImeEngine {
             return;
         }
         let _ = self.db.add_user_word(input, selected, 1);
+    }
+
+    // ── 学习词库管理(Step 2 词库管理窗口,2026-09-04)────────────────────────
+    // 直通 db 层 user.db 操作。user.db 打开失败时这些方法静默无效(词库管理窗口
+    // 按返回空/false 提示「学习库不可用」),不影响打字。
+
+    /// 列出全部学习词 → [(key, value, weight, seq)] 按学习先后升序。
+    pub fn user_list(&self) -> Vec<(String, String, i64, i64)> {
+        self.db.list_user_words()
+    }
+
+    /// 手动加词(走学成置顶固定权重)。
+    pub fn user_add(&self, pinyin: &str, word: &str) -> Result<(), String> {
+        self.db.add_user_word(pinyin, word, 1).map_err(|e| e.to_string())
+    }
+
+    /// 删除某条学习词,返回删除行数。
+    pub fn user_remove(&self, pinyin: &str, word: &str) -> Result<usize, String> {
+        self.db.remove_user_word(pinyin, word).map_err(|e| e.to_string())
+    }
+
+    /// 清空全部学习记录。
+    pub fn user_clear(&self) -> Result<(), String> {
+        self.db.clear_user_words().map_err(|e| e.to_string())
+    }
+
+    /// 搜索主词库(只读)→ [(key, value, weight, source)]。供词库管理窗口「全部词库」查询。
+    pub fn search_main_dict(&self, term: &str, limit: usize) -> Vec<(String, String, i64, String)> {
+        self.db.search_main_dict(term, limit)
+    }
+
+    /// 分页搜索主词库(2026-09-04 灵犀式分页)。
+    pub fn search_main_dict_page(&self, term: &str, limit: usize, offset: usize) -> Vec<(String, String, i64, String)> {
+        self.db.search_main_dict_page(term, limit, offset)
+    }
+
+    /// 主库匹配总条数(分页「共 N 条」)。
+    pub fn main_dict_count(&self, term: &str) -> usize {
+        self.db.search_main_dict_count(term)
+    }
+
+    /// 主库删除词条(2026-09-04 主库可写)。返回删除行数。
+    pub fn main_delete_word(&self, pinyin: &str, word: &str) -> Result<usize, String> {
+        self.db.main_delete_word(pinyin, word)
+    }
+
+    /// 主库 upsert 词条(加词/改权重)。返回 true=成功。
+    pub fn main_upsert_word(&self, pinyin: &str, word: &str, weight: i64) -> Result<bool, String> {
+        self.db.main_upsert_word(pinyin, word, weight)
+    }
+
+    /// 同 key 主库 phrase 最高词频(改权重参考)。
+    pub fn main_max_weight(&self, pinyin: &str) -> i64 {
+        self.db.dict_max_weight(pinyin)
     }
 }
 

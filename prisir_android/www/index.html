@@ -91,12 +91,12 @@ function showStatus(msg, ok) {
 
 // ---------- 发现 PC ----------
 // 两路:① 试本机回环(模拟器/和 PC 同机时,10.0.2.2 是模拟器访问宿主的别名);
-//       ② 扫手机局域网网段(取常见端口,探 /oiagent/api/info)。
+//       ② 扫手机局域网网段(取常见端口,探 /prisiragent/api/info)。
 // 手输 IP/端口始终是主力(异地固定公网 IP/域名场景),扫描只是同 Wi-Fi 的便利补充。
 const SCAN_PORTS = [18802, 18891];
 async function probePc(ip, port, timeoutMs) {
   try {
-    const r = await fetch(`http://${ip}:${port}/oiagent/api/info`,
+    const r = await fetch(`http://${ip}:${port}/prisiragent/api/info`,
                           {signal: AbortSignal.timeout(timeoutMs || 1500)});
     if (!r.ok) return null;
     const info = await r.json();
@@ -175,7 +175,7 @@ function addPcItem(ip, port, name, isSaved) {
 async function connectPc(ip, port, name) {
   showStatus(`连接 ${ip}:${port}…`, true);
   try {
-    const r = await fetch(`http://${ip}:${port}/oiagent/api/info`, {signal: AbortSignal.timeout(4000)});
+    const r = await fetch(`http://${ip}:${port}/prisiragent/api/info`, {signal: AbortSignal.timeout(4000)});
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const info = await r.json();
     showStatus(`已连接 ${ip}:${port}(${info.strategy || 'smart'})`, true);
@@ -203,7 +203,7 @@ document.getElementById('btnConfirm').addEventListener('click', async () => {
   if (!ip) { showStatus('请先连接 PC(上面填地址点「连接」)', false); return; }
   if (!offer) { showStatus('请填 PC 屏幕上的 6 位配对码', false); return; }
   try {
-    const r = await fetch(`http://${ip}:${port}/oiagent/api/pair/confirm`, {
+    const r = await fetch(`http://${ip}:${port}/prisiragent/api/pair/confirm`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({offer}),
@@ -240,7 +240,7 @@ function showChatPage(ip, port, token) {
 let _es = null;
 function connectEvents(ip, port, token) {
   if (_es) { try { _es.close(); } catch(e){} }
-  const url = `http://${ip}:${port}/oiagent/events?token=${encodeURIComponent(token)}`;
+  const url = `http://${ip}:${port}/prisiragent/events?token=${encodeURIComponent(token)}`;
   _es = new EventSource(url);
   _es.onopen = () => console.log('[sse] connected');
   _es.onmessage = (ev) => {

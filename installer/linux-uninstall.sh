@@ -17,10 +17,10 @@ echo "REMOVE_DATA       = $REMOVE_DATA(改 =1 才会删)"
 
 # ---------- 停服务 ----------
 echo "[1/5] 停 systemd user services..."
-systemctl --user disable --now oiagent-shell.service 2>/dev/null || true
-systemctl --user disable --now oiagent-web.service   2>/dev/null || true
-rm -f "$HOME/.config/systemd/user/oiagent-web.service"
-rm -f "$HOME/.config/systemd/user/oiagent-shell.service"
+systemctl --user disable --now prisiragent-shell.service 2>/dev/null || true
+systemctl --user disable --now prisiragent-web.service   2>/dev/null || true
+rm -f "$HOME/.config/systemd/user/prisiragent-web.service"
+rm -f "$HOME/.config/systemd/user/prisiragent-shell.service"
 systemctl --user daemon-reload
 echo "  services 停 + 卸"
 
@@ -57,7 +57,7 @@ fi
 echo "[5/5] 用户数据 ~/.local/share/prisir ..."
 if [[ "$REMOVE_DATA" == "1" ]]; then
     rm -rf "$HOME/.local/share/prisir"
-    rm -rf "$HOME/.config/PrisirAI" "$HOME/.config/oiagent-shell"
+    rm -rf "$HOME/.config/PrisirAI" "$HOME/.config/prisiragent-shell"
     echo "  已删"
 else
     echo "  保留(REMOVE_DATA=1 才删) — 含 findex.db / fcontent.db / 聊天记录"

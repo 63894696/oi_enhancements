@@ -38,7 +38,7 @@ from simplex_runtime import SimplexRuntime  # noqa: E402
 DM_HOST = os.environ.get("DM_HOST", "127.0.0.1")
 DM_PORT = int(os.environ.get("DM_PORT", "18801"))
 # 实例身份(多实例部署时区分):DM_IDENTITY=显示名,DM_DB=该实例独立的 simplex 数据目录前缀
-DM_IDENTITY = os.environ.get("DM_IDENTITY", "oiagent")
+DM_IDENTITY = os.environ.get("DM_IDENTITY", "prisiragent")
 DM_DB_PREFIX = os.environ.get("DM_DB_PREFIX", "")
 _TOKEN_FILE = Path.home() / ".local" / "share" / "aureon" / "l4_token"
 
@@ -4372,8 +4372,8 @@ class DMHandler(BaseHTTPRequestHandler):
         except Exception:  # noqa: BLE001
             return self._json({"ok": False, "error": "invalid json"}, 400)
         if path == "/dm/api/setup":
-            # 缺省传 ""(不是 "oiagent"):让 api_setup 的 "display_name or DM_IDENTITY" 生效,
-            # 否则硬编码缺省值永远覆盖 DM_IDENTITY,bob 实例被错建成 oiagent。
+            # 缺省传 ""(不是 "prisiragent"):让 api_setup 的 "display_name or DM_IDENTITY" 生效,
+            # 否则硬编码缺省值永远覆盖 DM_IDENTITY,bob 实例被错建成 prisiragent。
             return self._json(api_setup(req.get("display_name", "")))
         if path == "/dm/api/create_invite":
             return self._json(api_create_invite())

@@ -1,4 +1,4 @@
-"""task_queue.py — v0.25 OIagent 任务队列
+"""task_queue.py — v0.25 Prisiragent 任务队列
 
 设计原则:
 - 不重写 OIMemory,只是把 store/recall/list_by_layer 包成 task 友好接口
@@ -10,7 +10,7 @@ API:
     from memory.task_queue import TaskQueue, Task
     tq = TaskQueue(OIMemory())
     tid = tq.submit("test", "跑 cognee 验证")  # 返回 task_id
-    ready = tq.list_ready(limit=10)  # OIagent 调度入口
+    ready = tq.list_ready(limit=10)  # Prisiragent 调度入口
     blocked = tq.list_blocked(limit=20)  # Claude 拉取入口
     tq.mark_running(tid)
     tq.mark_done(tid, result="cognee 真跑成功")
@@ -67,7 +67,7 @@ class TaskQueue:
 
     设计要点:
     - submit():Claude 写 task,自动判 depends_on 决定初始 status
-    - list_ready():OIagent 调度入口,返 depends_on 全 done 的 pending task
+    - list_ready():Prisiragent 调度入口,返 depends_on 全 done 的 pending task
     - list_blocked():Claude 拉取入口,返 status=blocked 的 task
     - list_by_status():通用按 status 过滤
     - mark_running/done/blocked:状态机推进
@@ -136,7 +136,7 @@ class TaskQueue:
     # 读取侧
     # ============================================================
     def list_ready(self, limit: int = 10, namespace: str = TASK_NAMESPACE_PREFIX) -> list[Task]:
-        """OIagent 调度入口:返 depends_on 全 done 的 pending task,按 priority DESC"""
+        """Prisiragent 调度入口:返 depends_on 全 done 的 pending task,按 priority DESC"""
         pending = self.mem.list_by_layer("L2", limit=200, namespace=namespace, status="pending")
         ready = []
         for m in pending:
@@ -162,7 +162,7 @@ class TaskQueue:
         return self._to_task(m)
 
     # ============================================================
-    # 状态机推进(OIagent 调用)
+    # 状态机推进(Prisiragent 调用)
     # ============================================================
     def mark_running(self, task_id: int) -> dict:
         try:
@@ -198,7 +198,7 @@ class TaskQueue:
             return _err("mark_cancelled", exc)
 
     def increment_retry(self, task_id: int, error_msg: str = "") -> dict:
-        """OIagent 跑失败时调:retry_count+1,超 max_retries 自动转 blocked
+        """Prisiragent 跑失败时调:retry_count+1,超 max_retries 自动转 blocked
 
         Returns:
             {"ok": True, "task_id": int, "retry_count": int, "max_retries": int,
@@ -224,7 +224,7 @@ class TaskQueue:
                     "error_msg": error_msg,
                 }
             else:
-                # 重试时把 status 重置回 pending(OIagent 重新拉)
+                # 重试时把 status 重置回 pending(Prisiragent 重新拉)
                 self.mem.update_status(task_id, "pending")
                 return {
                     "ok": True,

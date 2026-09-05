@@ -1,6 +1,6 @@
 """prisiragent_web.py — Prisir AI 对话模式 web UI(无账号、本地持久化、Perplexity 式导出)
 
-对话模式(用户指令:"OIagent一定要设置为对话模式,对话页面要仿造做出截图箭头中的导出"):
+对话模式(用户指令:"Prisir AI 一定要设置为对话模式,对话页面要仿造做出截图箭头中的导出"):
   - 多轮对话,历史持久化到本地 SQLite(刷新/重启不丢)
   - ⋯ 菜单仿 Perplexity: 固定的 / 重命名会话 / 导出为PDF / 衍生为Markdown / 导出为DOCX / 删除
   - 每次 AI 回答末尾自动带 2-5 个延续话题(学 Perplexity)
@@ -69,7 +69,7 @@ from fastlane.providers.llm_prisir import (  # noqa: E402
 import lan_pair  # noqa: E402
 
 WEB_HOST = "127.0.0.1"
-WEB_PORT = int(os.environ.get("OIAGENT_WEB_PORT", "18802"))
+WEB_PORT = int(os.environ.get("PRISIRAGENT_WEB_PORT", os.environ.get("OIAGENT_WEB_PORT", "18802")))
 
 
 def _lan_ip() -> str:
@@ -82,8 +82,8 @@ def _lan_ip() -> str:
             return sk.getsockname()[0]
     except OSError:
         return ""
-DEFAULT_MODEL = os.environ.get("OIAGENT_MODEL", "dashscope/qwen3-coder-plus-2025-09-23")
-DEFAULT_WORKDIR = os.environ.get("OIAGENT_WORKDIR", os.getcwd())
+DEFAULT_MODEL = os.environ.get("PRISIRAGENT_MODEL", os.environ.get("OIAGENT_MODEL", "dashscope/qwen3-coder-plus-2025-09-23"))
+DEFAULT_WORKDIR = os.environ.get("PRISIRAGENT_WORKDIR", os.environ.get("OIAGENT_WORKDIR", os.getcwd()))
 DEFAULT_STRATEGY = os.environ.get("PRISIR_STRATEGY", "smart")
 
 # 2026-08-25 版本号(About 页用)。单点真源在 installer/prisirai.nsi !define APP_VERSION,
@@ -211,7 +211,7 @@ _router = PrisirRouter(_key_store)
 #   - docs/prisir-dev-constitution.md(契约,同 prisiragent_dev_consumer._load_constitution)
 #   - memory/oi_memory.py OIMemory.recall(dev_lessons/历史上下文,同 oi_memory_hooks)
 # 对话壳不是开发团队执行 agent,故注入「壳适配」的纪律提示而非完整开发宪法;
-# 记忆召回默认开(OIAGENT_RECALL=0 关),失败一律静默不阻塞对话。
+# 记忆召回默认开(PRISIRAGENT_RECALL=0 关),失败一律静默不阻塞对话。
 # ============================================================
 _REPO_ROOT = Path(__file__).resolve().parent
 _CONSTITUTION_PATH = _REPO_ROOT / "docs" / "prisir-dev-constitution.md"
@@ -449,7 +449,7 @@ def _shell_system_prompt(user_text: str, sid: str = "") -> str:
     except Exception:  # noqa: BLE001
         pass
     # 记忆召回:按本轮问题召回相关历史/dev_lessons
-    if os.environ.get("OIAGENT_RECALL", "1") != "0":
+    if os.environ.get("PRISIRAGENT_RECALL", os.environ.get("OIAGENT_RECALL", "1")) != "0":
         mem = _get_oi_memory()
         if mem is not None and user_text.strip():
             try:
@@ -1298,8 +1298,9 @@ def _perm_on_confirm(payload: dict) -> bool:
         _PENDING_PERM.pop(task_id, None)  # 一次性,用完即清
     return bool(approved and status == "approved")
 _PAIR_SETTINGS = Path(os.environ.get(
-    "OIAGENT_SHELL_SETTINGS",
-    str(Path(os.environ.get("APPDATA", str(Path.home()))) / "prisiragent-shell" / "settings.json")))
+    "PRISIRAGENT_SHELL_SETTINGS",
+    os.environ.get("OIAGENT_SHELL_SETTINGS",
+    str(Path(os.environ.get("APPDATA", str(Path.home()))) / "prisiragent-shell" / "settings.json"))))
 
 
 def _pair_load_token() -> str:

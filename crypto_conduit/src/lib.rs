@@ -3,7 +3,7 @@
 //! 独立于任何 IM 的第二层端到端加密。明文进、不透明字节包出;
 //! IM 对它是纯管道,它对 IM 是纯载荷。
 //!
-//! 设计文档:`Documents/oiagent-os-integration/capability-04-e2e-overlay.md`
+//! 设计文档:`Documents/prisiragent-os-integration/capability-04-e2e-overlay.md`
 //!
 //! 模块:
 //! - [`identity`] 跨 IM 可移植身份(Ed25519,TOFU+指纹)

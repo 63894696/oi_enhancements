@@ -5,7 +5,7 @@ Usage:
     python outlook_auth.py
 
 首次运行:在浏览器登录 outlook 账号,授权"读取邮件"
-Token 缓存到:%APPDATA%/oiagent/outlook_token.json(自动 refresh)
+Token 缓存到:%APPDATA%/prisiragent/outlook_token.json(自动 refresh)
 """
 import os
 import sys
@@ -41,7 +41,7 @@ SCOPES_FOR_SILENT = [
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT}"
 
 # Token 存储位置
-TOKEN_CACHE_PATH = Path(os.environ.get("APPDATA", str(Path.home()))) / "oiagent" / "outlook_token.json"
+TOKEN_CACHE_PATH = Path(os.environ.get("APPDATA", str(Path.home()))) / "prisiragent" / "outlook_token.json"
 
 
 def main():

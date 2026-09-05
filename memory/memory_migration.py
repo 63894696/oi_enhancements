@@ -1,18 +1,18 @@
 """memory_migration.py — v0.26 MEMORY.md 瘦身迁移工具
 
-把 MEMORY.md 链接对应的 .md 文件批量迁到 OIagent namespace。
+把 MEMORY.md 链接对应的 .md 文件批量迁到 Prisiragent namespace。
 
 策略:
 - 双存:原 .md 不删(其他工具可能引用),MEMORY.md 还指原路径
 - 按文件名 namespace 分类(自动)
-- 每条用 task_submit 写到 OIagent(可走 v0.25 task queue)
+- 每条用 task_submit 写到 Prisiragent(可走 v0.25 task queue)
 - 沙箱验证:recall 测试召回质量
 
 用法:
     # 1. 扫 MEMORY.md,列出所有待迁条目
     python memory_migration.py scan
 
-    # 2. 批量迁到 OIagent(走 namespace)
+    # 2. 批量迁到 Prisiragent(走 namespace)
     python memory_migration.py migrate
 
     # 3. 验证召回质量
@@ -62,7 +62,7 @@ MEMORY_KEEP_FILE_PATTERNS = {
     "v022-federation-shipped",  # v0.22 Federation + WireGuard
     # 常驻 daemon / 工具
     "aureon-v0195b-4-providers-active",  # v0.19.5b 4 provider
-    "mcp-oiagent-v061-everything-shipped",  # mcp_oiagent v0.6.1
+    "mcp-prisiragent-v061-everything-shipped",  # mcp_oiagent v0.6.1
     "everything-gui-registry-fix",  # Everything GUI fix
     "win10-shell-association-fix",  # Win10 shell fix
     # 决策类
@@ -83,7 +83,7 @@ log = logging.getLogger("v026.migration")
 
 
 def _filename_to_namespace(fname: str) -> str:
-    """把 .md 文件名映射到 OIagent namespace"""
+    """把 .md 文件名映射到 Prisiragent namespace"""
     f = fname.replace(".md", "")
     # aureon 系列
     if re.search(r"v?0?(18|19|20|21|22|23|24|25)", f) and "aureon" in f.lower():
@@ -120,8 +120,8 @@ def _filename_to_namespace(fname: str) -> str:
         return "tool-integration"
     if "mumu" in f.lower() or "avd" in f.lower():
         return "android-emulator"
-    if "oiagent" in f or "oi-" in f or "mcp" in f.lower() or "oi_memory" in f:
-        return "oiagent-integration"
+    if "prisiragent" in f or "oi-" in f or "mcp" in f.lower() or "oi_memory" in f:
+        return "prisiragent-integration"
     # 决策 / 原则
     if "原则" in f or "feedback" in f or "偏好" in f:
         return "principles"
@@ -157,12 +157,12 @@ def cmd_scan():
     keep = [e for e in entries if e["keep_in_memory_md"]]
     migrate = [e for e in entries if not e["keep_in_memory_md"]]
     print(f"  MEMORY.md 保留: {len(keep)} 条")
-    print(f"  迁 OIagent: {len(migrate)} 条")
+    print(f"  迁 Prisiragent: {len(migrate)} 条")
     # 按 namespace 分组
     ns_count: dict = {}
     for e in migrate:
         ns_count[e["namespace"]] = ns_count.get(e["namespace"], 0) + 1
-    print(f"\n=== 迁 OIagent 的 namespace 分布 ===")
+    print(f"\n=== 迁 Prisiragent 的 namespace 分布 ===")
     for ns, n in sorted(ns_count.items(), key=lambda x: -x[1]):
         print(f"  {ns}: {n} 条")
     print(f"\n=== 待保留条目(MEMORY_KEEP_FILE_PATTERNS 匹配)===")
@@ -172,7 +172,7 @@ def cmd_scan():
 
 
 def cmd_migrate(dry_run: bool = True):
-    """批量迁:每条写到 OIagent namespace"""
+    """批量迁:每条写到 Prisiragent namespace"""
     entries = [e for e in scan_memory_md() if not e["keep_in_memory_md"]]
     mem = OIMemory()
     print(f"\n=== {'DRY RUN' if dry_run else '真跑'}迁 {len(entries)} 条 ===\n")
@@ -269,7 +269,7 @@ def main():
 
     sub.add_parser("scan", help="扫 MEMORY.md,显示保留/迁分组")
 
-    p_mig = sub.add_parser("migrate", help="批量迁到 OIagent")
+    p_mig = sub.add_parser("migrate", help="批量迁到 Prisiragent")
     p_mig.add_argument("--dry-run", action="store_true", default=True)
     p_mig.add_argument("--real", action="store_true", help="真跑(默认 dry_run)")
 

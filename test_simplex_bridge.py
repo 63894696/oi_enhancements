@@ -12,7 +12,7 @@ from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-sys.path.insert(0, str(HERE / "mcp_oiagent_server"))
+sys.path.insert(0, str(HERE / "mcp_prisiragent_server"))
 
 
 class TestSimplexBridge(unittest.TestCase):
@@ -174,7 +174,7 @@ class TestDynamicRegistryExtraction(unittest.TestCase):
     def test_extract_via_dynamic_registry(self):
         import importlib
         import dynamic_registry as dr
-        entry = HERE / "mcp_oiagent_server" / "simplex_bridge_tools.py"
+        entry = HERE / "mcp_prisiragent_server" / "simplex_bridge_tools.py"
         code = entry.read_text(encoding="utf-8")
         g = {
             "__name__": "simplex_bridge_tools", "__file__": str(entry),

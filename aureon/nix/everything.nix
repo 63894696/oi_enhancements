@@ -4,14 +4,14 @@
 # - 不重写 Everything 本身(走官方 portable zip,不编)
 # - 不重写 NTFS 索引逻辑(走 voidtools native)
 # - 不重写 HKCU Run / LLM probe / 一切跟 Everything 启动后行为耦合的 wrappers
-# - ✅ 新:把这套组合(Aureon host service + Everything HTTP server + OIagent tool)
+# - ✅ 新:把这套组合(Aureon host service + Everything HTTP server + Prisiragent tool)
 #   描述为单个 Nix expression,方便任意 Linux/WSL/NixOS 主机可复现
 #
 # v0.20.1 真核心:用 Nix 描述"声明式索引服务"
 # - voidtools Everything 1.4.1.969 portable(Win x64 zip)
 # - HTTP server port 8765(本地 loopback)
 # - HKCU Run -startup 拉起(用户登录即托管)
-# - OIagent 通过 everything_launcher.py wrapper 调用 http://127.0.0.1:8765/
+# - Prisiragent 通过 everything_launcher.py wrapper 调用 http://127.0.0.1:8765/
 
 { pkgs ? import <nixpkgs> {} }:
 
@@ -51,7 +51,7 @@ let
     run_as_admin=1
     allow_http_server=1
     allow_etp_server=0
-    ; OIagent / Aureon 调的统一 HTTP 端口(Windos 80 通常被占用 → 用 8765)
+    ; Prisiragent / Aureon 调的统一 HTTP 端口(Windos 80 通常被占用 → 用 8765)
     http_server_enabled=1
     http_server_port=8765
     ; 排除系统/临时目录以减少索引负担
@@ -116,14 +116,14 @@ let
   '';
 
   # ============================================================================
-  # OIagent Host Service 补丁 — 在已有 v0.19 systemd unit 上加 After/Requires
-  # 让 Aureon OIagent 启动后能看到 Everything port 8765
+  # Prisiragent Host Service 补丁 — 在已有 v0.19 systemd unit 上加 After/Requires
+  # 让 Aureon Prisiragent 启动后能看到 Everything port 8765
   # ============================================================================
-  aureon-oiagent-service-with-everything = pkgs.writeTextFile {
-    name = "aureon-oiagent.service";
+  aureon-prisiragent-service-with-everything = pkgs.writeTextFile {
+    name = "aureon-prisiragent.service";
     text = ''
       [Unit]
-      Description=Aureon v0.20.1 OIagent Host Service (with Everything tool)
+      Description=Aureon v0.20.1 Prisiragent Host Service (with Everything tool)
       Documentation=https://github.com/aureon/aureon
       After=network.target aureon-everything.service
       Requires=aureon-everything.service
@@ -133,7 +133,7 @@ let
       User=aureon
       Group=aureon
       WorkingDirectory=/var/lib/aureon
-      ExecStart=${oiagent}/bin/aureon-oiagent --host 127.0.0.1 --port 18791
+      ExecStart=${prisiragent}/bin/aureon-prisiragent --host 127.0.0.1 --port 18791
       Restart=on-failure
       RestartSec=5
       Environment="AUREON_HOME=/var/lib/aureon"
@@ -144,8 +144,8 @@ let
       WantedBy=multi-user.target
     '';
 
-    # 把 oiagent 表达式从 auron.nix 同目录取
-    oiagent = pkgs.callPackage ./oiagent.nix { };
+    # 把 prisiragent 表达式从 auron.nix 同目录取
+    prisiragent = pkgs.callPackage ./prisiragent.nix { };
   };
 in
 {
@@ -174,16 +174,16 @@ in
   };
 
   # ============================================================================
-  # OIagent host service 的 systemd unit 升级版 — 自动带上 Everything dep
+  # Prisiragent host service 的 systemd unit 升级版 — 自动带上 Everything dep
   # ============================================================================
-  services.aureon.oiagent.service-file =
-    aureon-oiagent-service-with-everything;
+  services.aureon.prisiragent.service-file =
+    aureon-prisiragent-service-with-everything;
 
   # ============================================================================
-  # 暴露给 LLM 的 tool schema — 跟 OIagent BUILTIN_TOOLS 形状一致
-  # 这是声明式描述,真机由 aureon-oiagent.py 加载
+  # 暴露给 LLM 的 tool schema — 跟 Prisiragent BUILTIN_TOOLS 形状一致
+  # 这是声明式描述,真机由 aureon-prisiragent.py 加载
   # ============================================================================
-  services.aureon.oiagent.tools.builtin = [
+  services.aureon.prisiragent.tools.builtin = [
     {
       name = "everything_status";
       kind = "python";

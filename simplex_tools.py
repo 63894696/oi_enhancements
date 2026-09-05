@@ -59,7 +59,7 @@ def _runtime() -> SimplexRuntime:
 # 工具实现
 # ────────────────────────────────────────────────────────────────────── #
 
-def simplex_setup(display_name: str = "oiagent",
+def simplex_setup(display_name: str = "prisiragent",
                   smp_server: str = DEFAULT_SMP_SERVER,
                   db_prefix: str | None = None) -> dict[str, Any]:
     """初始化 SimpleX 身份并连接 SMP 服务器(幂等)。"""
@@ -372,7 +372,7 @@ def get_tools() -> list[dict[str, Any]]:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "display_name": {"type": "string", "description": "本机身份显示名", "default": "oiagent"},
+                        "display_name": {"type": "string", "description": "本机身份显示名", "default": "prisiragent"},
                         "smp_server": {"type": "string", "description": "SMP 服务器地址", "default": DEFAULT_SMP_SERVER},
                     },
                     "required": [],

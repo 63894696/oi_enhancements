@@ -1,6 +1,6 @@
 # AgentMail + Parallel Helper
 
-零依赖(纯 stdlib `urllib`),oiagent 的邮箱 + 网页搜索基础设施。
+零依赖(纯 stdlib `urllib`),prisiragent 的邮箱 + 网页搜索基础设施。
 
 ## 安装
 无需 pip。两个 env var 已在用户环境配好:
@@ -39,7 +39,7 @@ python helper.py search "your query"
 4. Parallel 必填字段叫 **`objective`**(不是 `input`)
 5. 控制台禁止用 `@agentmail.to` 邮箱注册账号(那是给 agent 用的)
 
-## 与 oiagent 对接点
-- 主 inbox:`oiagent@agentmail.to`
+## 与 prisiragent 对接点
+- 主 inbox:`prisiragent@agentmail.to`
 - MCP server:`agentmail-mcp`(GitHub `agentmail-to/agentmail-mcp`)可装,让 Claude 直接发件
-- 订阅工作流:Jack 转发通讯到 `oiagent@agentmail.to` → 定时拉取 → 分类进 Obsidian
+- 订阅工作流:Jack 转发通讯到 `prisiragent@agentmail.to` → 定时拉取 → 分类进 Obsidian

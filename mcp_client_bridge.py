@@ -1,9 +1,9 @@
-"""mcp_client_bridge.py — OIagent 的 MCP client 桥(路线 B)
+"""mcp_client_bridge.py — Prisiragent 的 MCP client 桥(路线 B)
 
-v0.45 把本地起的第三方 MCP server 的工具并入 OIagent 工具体系。
+v0.45 把本地起的第三方 MCP server 的工具并入 Prisiragent 工具体系。
 
 架构要点:
-- OIagent daemon 是同步架构(ThreadingHTTPServer + threading),
+- Prisiragent daemon 是同步架构(ThreadingHTTPServer + threading),
   而官方 mcp python sdk 的 ClientSession 是 async(anyio)。
 - 桥的做法:常驻一个后台 asyncio event loop 线程,所有 async MCP 调用
   用 asyncio.run_coroutine_threadsafe 提交过去,包成同步接口给 daemon 用。
@@ -288,7 +288,7 @@ class MCPBridge:
                 log.info(f"MCP 桥加载 {len(self._servers)} 个 server: {list(self._servers)}")
 
     def refresh_tools(self) -> list[dict]:
-        """拉取所有 server 的工具并更新索引。返回 OIagent 格式工具列表。"""
+        """拉取所有 server 的工具并更新索引。返回 Prisiragent 格式工具列表。"""
         self.load()
         all_tools: list[dict] = []
         self._tool_index.clear()
@@ -347,7 +347,7 @@ def get_bridge() -> MCPBridge:
 
 
 def get_mcp_tools() -> list[dict]:
-    """给 daemon get_all_tools 用:返回所有 MCP server 的工具(OIagent schema)。"""
+    """给 daemon get_all_tools 用:返回所有 MCP server 的工具(Prisiragent schema)。"""
     if not _MCP_AVAILABLE:
         return []
     try:

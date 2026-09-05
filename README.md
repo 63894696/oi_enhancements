@@ -13,12 +13,12 @@
 > **后续补入**(同一日,fast-forward,无 SHA 变更):
 > `b55083d` 增补 `.gitignore`(11 类本地产物/凭证/兄弟仓);
 > `21a6ec7` 批量补入 167 份业务代码 + 13 份 Brand 资产
-> (prisir-browser / agent_economy / oiagent_coworker / securedm-shell /
+> (prisir-browser / agent_economy / prisiragent_coworker / securedm-shell /
 >  wasm_meter / memory / a2 测试向量 / 根目录 simplex_*.py 等)。
 > 跟踪文件从 329 → 492。**a2/ 私钥/totp/integrity 注册表一律不入仓**。
 
-这是 `oi_enhancements` 仓库,包含 Prisir AI、oiagent、prisr_findex、
-prisr_fcontent、fastlane、aureon 等子项目。
+这是 `oi_enhancements` 仓库,包含 Prisir AI (prisiragent)、prisir_findex、
+prisir_fcontent、fastlane、aureon 等子项目。
 
 更详细的架构说明请阅读源码中的注释与 docstring。
 本仓库不含内部设计文档;内部设计文档归档于私有仓
@@ -29,8 +29,8 @@ prisr_fcontent、fastlane、aureon 等子项目。
 
 | 子项目 | 说明 |
 | ------ | ---- |
-| `oiagent_web.py` | 主 Web 后端(国画风聊天 UI + LLM 路由 + SQLite 持久化) |
-| `oiagent-shell/` | Electron 对话壳(系统托盘常驻,全局热键,自启动) |
+| `prisiragent_web.py` | 主 Web 后端(国画风聊天 UI + LLM 路由 + SQLite 持久化) |
+| `prisiragent-shell/` | Electron 对话壳(系统托盘常驻,全局热键,自启动) |
 | `prisir_findex/` | Rust 本机文件搜索引擎(类 Everything,只索引元数据) |
 | `prisir_fcontent/` | 文件内容索引与 OCR(支持翻译、截图识图) |
 | `fastlane/` | LLM provider 路由(Anthropic / OpenAI / 兼容 API) |
@@ -75,7 +75,7 @@ the **OI Enhancements Personal and Commercial Source License v1.0
   under OIE-PCS-1.0 when Distributed or made available as a Network
   Service.
 - **Brand and trademarks** — including the names "Prisir AI",
-  "oiagent", "prisraiclass", the Prisir flame logo, and the icons in
+  "prisiragent", "prisraiclass", the Prisir flame logo, and the icons in
   `assets/` — are **not** licensed by OIE-PCS-1.0. See
   [TRADEMARKS.md](./TRADEMARKS.md).
 - **Past versions** may be additionally available under the Apache

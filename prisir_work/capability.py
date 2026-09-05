@@ -1,7 +1,7 @@
 """能力门面层(F1):把端点白名单升级为「能力注册表」,对外统一 search/execute。
 
 定位(见 prisirwork-foundation-integration-design §3):
-- 浏览器/agent 不需知道背后是 wallet 还是 oiagent 团队——一律 search 发现、execute 调用。
+- 浏览器/agent 不需知道背后是 wallet 还是 prisiragent 团队——一律 search 发现、execute 调用。
 - 权限门槛不新造:能力标注 risk(L0-L3)+ auth,实际执行仍走 endpoints 白名单 + token,
   本层只做「能力抽象 + 发现 + 路由」,不绕过红线③。
 
@@ -10,7 +10,7 @@
 - 每个能力绑定一个 endpoint path(底层 connector 实现);打包成 plugin 是 F6 的事。
 
 能力 entry:
-  id          : 点分能力名("wallet.status" / "oiagent.dispatch" …)
+  id          : 点分能力名("wallet.status" / "prisiragent.dispatch" …)
   title       : 一句话人话描述(agent 发现时展示)
   risk        : "L0" 只读免确认 / "L1" 内嵌卡 / "L2" 全回显 / "L3" 安全对话框(口令/A2H)
   auth        : 是否需 X-OI-Token(与端点一致;L3 另由授权门把守,见设计 §4)

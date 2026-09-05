@@ -4,6 +4,10 @@
 
 use rusqlite::{Connection, OpenFlags, Result as SqlResult};
 
+/// 主库写互斥(2026-09-04 主库可写):防止用户连点「删/加/改」并发开多个写连接撞 SQLITE_BUSY。
+/// 进程内单例;词库管理是低频操作,串行无性能问题。
+pub(crate) static MAIN_WRITE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 pub struct CikuDb {
     conn: Connection,
     /// 学习记录独立连接(2026-09-03):写 user.db,不碰主库 ciku.db。
@@ -261,6 +265,65 @@ impl CikuDb {
         Ok(())
     }
 
+    /// 搜索主词库(只读,词库管理窗口「全部词库」查询用,2026-09-04)。
+    /// term 全为字母 → 按拼音(phrase.key + pinyin.key)前缀匹配;含非字母 → 按词 value 子串匹配。
+    /// 返回 [(key, value, weight, source)],source ∈ phrase/pinyin。主库只读,只能查不能改。
+    pub fn search_main_dict(&self, term: &str, limit: usize) -> Vec<(String, String, i64, String)> {
+        self.search_main_dict_page(term, limit, 0)
+    }
+
+    /// 分页搜索(对齐灵犀 dict_list 2026-09-04):
+    ///   - keyword 非空:`WHERE key LIKE %k% OR value LIKE %k%`(拼音/文字一条语句同搜)
+    ///   - keyword 空:`ORDER BY weight DESC` 全表 top(初始铺一批高频词)
+    ///   - offset 跳过前 N 条(分页)。
+    pub fn search_main_dict_page(&self, term: &str, limit: usize, offset: usize) -> Vec<(String, String, i64, String)> {
+        let t = term.trim();
+        let mut out: Vec<(String, String, i64, String)> = Vec::new();
+        if t.is_empty() {
+            if let Ok(mut st) = self.conn.prepare(
+                "SELECT key, value, weight FROM phrase ORDER BY weight DESC LIMIT ?1 OFFSET ?2",
+            ) {
+                if let Ok(rows) = st.query_map(rusqlite::params![limit as i64, offset as i64], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?))
+                }) {
+                    for r in rows.flatten() {
+                        out.push((r.0, r.1, r.2, "phrase".to_string()));
+                    }
+                }
+            }
+        } else {
+            let like = format!("%{}%", t);
+            if let Ok(mut st) = self.conn.prepare(
+                "SELECT key, value, weight FROM phrase WHERE key LIKE ?1 OR value LIKE ?1 ORDER BY weight DESC LIMIT ?2 OFFSET ?3",
+            ) {
+                if let Ok(rows) = st.query_map(rusqlite::params![like, limit as i64, offset as i64], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?))
+                }) {
+                    for r in rows.flatten() {
+                        out.push((r.0, r.1, r.2, "phrase".to_string()));
+                    }
+                }
+            }
+        }
+        out.truncate(limit);
+        out
+    }
+
+    /// 匹配总条数(对齐灵犀 dict_count,分页「共 N 条」用)。空 = 全表总数。
+    pub fn search_main_dict_count(&self, term: &str) -> usize {
+        let t = term.trim();
+        let total: i64 = if t.is_empty() {
+            self.conn.query_row("SELECT COUNT(*) FROM phrase", [], |r| r.get::<_, i64>(0)).unwrap_or(0)
+        } else {
+            let like = format!("%{}%", t);
+            self.conn.query_row(
+                "SELECT COUNT(*) FROM phrase WHERE key LIKE ?1 OR value LIKE ?1",
+                rusqlite::params![like], |r| r.get::<_, i64>(0),
+            ).unwrap_or(0)
+        };
+        total.max(0) as usize
+    }
+
     /// 列出全部学习词(词库管理窗口列表用) → [(key, value, weight, seq)] 按 seq 升序。
     pub fn list_user_words(&self) -> Vec<(String, String, i64, i64)> {
         let Some(uc) = &self.user_conn else {
@@ -275,6 +338,124 @@ impl CikuDb {
             Err(_) => return Vec::new(),
         };
         rows.filter_map(|x| x.ok()).collect()
+    }
+
+    // ============================================================
+    // 主库可写(2026-09-04,恢复外挂式删/加/改权重,用户拍板)
+    //
+    // 语义复用 lingxi_ime/backend/database.py:
+    //   dict_delete(pinyin,word)        → DELETE FROM phrase WHERE key AND value
+    //   dict_upsert(pinyin,word,weight) → 存在改 weight+jp,不存在 INSERT(jp 由音节首字母算)
+    //   dict_max_weight(pinyin)         → 同 key 最高词频(新词提频排第一)
+    //
+    // **架构(多进程安全)**:打字引擎保持只读(切换秒开),主库写**不走 self.conn**,
+    // 每次写都独立开一个短时读写连接(开→写→立即 Drop 关),配 busy_timeout 等读锁,
+    // 并由 MAIN_WRITE_LOCK 进程内互斥。这样多宿主进程(notepad/explorer)各自只读
+    // 不受影响,只有词库管理这一个低频操作短时持写锁。
+    //
+    // **一致性**:运行时引擎纯 SQLite(mem 索引恒 None,见 engine.rs load_or_build_index),
+    // 所以写后主库内容即刻对新查询生效;但同进程 self.conn 是只读旧连接,新建查询
+    // 连接才读到最新。失效的 .idx/.midx 缓存索引由 invalidate_main_index_caches 清理。
+    // ============================================================
+
+    /// 主库路径(从只读连接的 db 文件名取,供短时写连接用)。
+    fn main_db_path(&self) -> SqlResult<String> {
+        self.conn
+            .query_row("PRAGMA database_list", [], |r| r.get::<_, String>(2))
+            .map_err(|e| e)
+    }
+
+    /// 开一个短时主库读写连接(busy_timeout 5s 等读锁释放)。调用方须立即用立即 Drop。
+    fn open_main_writable(&self) -> SqlResult<Connection> {
+        let path = self.main_db_path()?;
+        let c = Connection::open_with_flags(
+            &path,
+            OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
+        c.busy_timeout(std::time::Duration::from_millis(5000));
+        Ok(c)
+    }
+
+    /// 同 key 下 phrase 最高词频(改权重/新词提频参考)。词库管理 UI 用。
+    pub fn dict_max_weight(&self, pinyin: &str) -> i64 {
+        self.conn
+            .query_row(
+                "SELECT MAX(weight) FROM phrase WHERE key=?1",
+                rusqlite::params![pinyin],
+                |r| r.get(0),
+            )
+            .ok()
+            .flatten()
+            .unwrap_or(0)
+    }
+
+    /// 删除主库词条(phrase)。返回删除行数。多进程安全(独立短时可写连接+互斥)。
+    pub fn main_delete_word(&self, pinyin: &str, word: &str) -> Result<usize, String> {
+        let _g = MAIN_WRITE_LOCK.lock().map_err(|e| e.to_string())?;
+        let c = self.open_main_writable().map_err(|e| e.to_string())?;
+        let n = c
+            .execute(
+                "DELETE FROM phrase WHERE key=?1 AND value=?2",
+                rusqlite::params![pinyin, word],
+            )
+            .map_err(|e| e.to_string())?;
+        drop(c); // 立即关写连接,释放写锁
+        self.invalidate_main_index_caches();
+        Ok(n)
+    }
+
+    /// 主库 upsert 词条(phrase):存在改 weight+jp,不存在插入。
+    /// 外挂「改权重」= 对同 (key,value) upsert 新 weight(等效先删旧词再插新权重词)。
+    /// 返回 true=成功。
+    pub fn main_upsert_word(&self, pinyin: &str, word: &str, weight: i64) -> Result<bool, String> {
+        let _g = MAIN_WRITE_LOCK.lock().map_err(|e| e.to_string())?;
+        let c = self.open_main_writable().map_err(|e| e.to_string())?;
+        let jp = Self::to_jianpin(pinyin);
+        let exists: bool = c
+            .query_row(
+                "SELECT 1 FROM phrase WHERE key=?1 AND value=?2",
+                rusqlite::params![pinyin, word],
+                |_| Ok(()),
+            )
+            .is_ok();
+        if exists {
+            c.execute(
+                "UPDATE phrase SET weight=?1, jp=?2 WHERE key=?3 AND value=?4",
+                rusqlite::params![weight, jp, pinyin, word],
+            )
+            .map_err(|e| e.to_string())?;
+        } else {
+            c.execute(
+                "INSERT INTO phrase (jp, key, value, weight) VALUES (?1,?2,?3,?4)",
+                rusqlite::params![jp, pinyin, word, weight],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        drop(c);
+        self.invalidate_main_index_caches();
+        Ok(true)
+    }
+
+    /// 写主库后清缓存索引(.idx/.midx):指纹已变,留着只会让别的进程误判或重建。
+    /// 运行时纯 SQLite,删掉它们无副作用(下次需要时按需重建,但当前链不用)。
+    fn invalidate_main_index_caches(&self) {
+        if let Ok(path) = self.main_db_path() {
+            for ext in ["idx", "midx"] {
+                let p = std::path::Path::new(&path).with_extension(ext);
+                let _ = std::fs::remove_file(p);
+            }
+        }
+    }
+
+    /// 拼音转简拼(每音节首字母),对齐 database.py _to_jianpin。
+    /// 用标准音节表切分后取各音节首字母;切不出则退化为整串首字母。
+    pub fn to_jianpin(pinyin: &str) -> String {
+        let sy = crate::syllable::Syllables::new();
+        let segs = sy.segment(pinyin);
+        if segs.is_empty() {
+            return pinyin.chars().next().map(|c| c.to_string()).unwrap_or_default();
+        }
+        segs.iter().filter_map(|s| s.chars().next()).collect()
     }
 }
 

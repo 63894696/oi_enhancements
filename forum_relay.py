@@ -65,7 +65,7 @@ BOARDS: dict[str, list[tuple[str, str, str]]] = {
         ("agent",       "智能体",     "M3 agent 操作层 / 连续代行"),
         ("findex",      "文件搜索",   "prisir_findex 本机文件搜索引擎"),
         ("ime",         "灵犀输入法", "拼音 / 五笔 / 语音"),
-        ("shell",       "PrisirAI 对话", "PrisirAI 对话壳(本地名 oiagent-shell)Electron 壳 / v2.0 装包器反馈落地"),
+        ("shell",       "PrisirAI 对话", "PrisirAI 对话壳(本地名 prisiragent-shell)Electron 壳 / v2.0 装包器反馈落地"),
         ("forum",       "论坛本体",   "chrome://forum 页面与协议本身"),
     ],
     "babelspan": [  # 内容站,按书籍类型分版(随尺规分类扩展)

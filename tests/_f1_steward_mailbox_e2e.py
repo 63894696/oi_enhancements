@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 # F1 管家反馈网络-邮箱最小环 — 接管验证脚本(2026-08-14)
-# oiagent 团队未启动(task 569 无消费者),本会话主动介入接手验证 F1 链路。
+# prisiragent 团队未启动(task 569 无消费者),本会话主动介入接手验证 F1 链路。
 #
-# 验证内容(对齐 docs/oiagent-task-f1-steward-mailbox-2026-08-14.md 验收):
+# 验证内容(对齐 docs/prisiragent-task-f1-steward-mailbox-2026-08-14.md 验收):
 #   ① 生成/加载管家反馈身份(Ed25519,本地落盘 — 模拟 identity.mojom AgentSign)
 #   ② 组签名信封(body_raw 逐字原文 + category + agent_fp + AgentSign 签名)
-#   ③ 中文原文经 send_chinese(PNG)发到运营方邮箱 oiagent@agentmail.to
+#   ③ 中文原文经 send_chinese(PNG)发到运营方邮箱 prisiragent@agentmail.to
 #   ④ 回读收件箱确认收到,验签通过
 # 红线:原文逐字不改写;category 另起字段;API key 走 env;审计脱敏。
 # 测试数据带唯一 TAG,跑完自清理(删除测试邮件如需)。
@@ -90,13 +90,13 @@ def main():
         f"签名(sig):{sig}\n"
         f"测试 TAG:{TAG}"
     )
-    print(f"[3] 发送到 oiagent@agentmail.to (subject={subject!r}, 中文走 PNG)...")
-    res = am.send_chinese("oiagent@agentmail.to", subject, human)
+    print(f"[3] 发送到 prisiragent@agentmail.to (subject={subject!r}, 中文走 PNG)...")
+    res = am.send_chinese("prisiragent@agentmail.to", subject, human)
     print(f"    发送返回: {json.dumps(res, ensure_ascii=False)[:200]}")
 
     # ④ 回读确认收到
     time.sleep(4)
-    msgs = am.list_messages("oiagent@agentmail.to", limit=10)
+    msgs = am.list_messages("prisiragent@agentmail.to", limit=10)
     lst = msgs.get("messages", msgs if isinstance(msgs, list) else [])
     found = None
     for m in lst:

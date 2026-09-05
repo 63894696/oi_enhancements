@@ -1,6 +1,6 @@
 """simplex_a2h.py — Agent-First OS L2/L3 功能块②:A2H 审批通道(Agent-to-Human)
 
-设计依据:Documents/oiagent-os-integration/capability-02-a2h-approval.md。
+设计依据:Documents/prisiragent-os-integration/capability-02-a2h-approval.md。
 agent 执行敏感操作前,经 SimpleX 加密通道向受信任审批人推确认卡片,人端回复
 'yes/no <request_id>' 裁决,fail-closed(超时/异常=拒绝)。零官方依赖,纯应用层
 协议,复用 simplex_send_message(发卡片)+ 收件箱事件流(读裁决)。

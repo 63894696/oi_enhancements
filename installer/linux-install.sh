@@ -48,7 +48,7 @@ if [[ "$ACCEPT_LICENSE" != "1" ]]; then
         echo "2. 商业使用需另行取得商业许可(COMMERCIAL-LICENSE.md)。"
         echo "3. 修改 Core Components(CORE-COMPONENTS.md 列出的路径)且"
         echo "   分发 / 作为网络服务时,必须按 OIE-PCS-1.0 公开。"
-        echo "4. 品牌商标(Prisir AI / oiagent / 火焰标识 / assets/ 图标)"
+        echo "4. 品牌商标(Prisir AI / prisiragent / 火焰标识 / assets/ 图标)"
         echo "   不通过 OIE-PCS-1.0 授权,商业使用需品牌许可。"
         echo "5. 适用法律:香港特别行政区法律;争议由 HKIAC 仲裁。"
     fi
@@ -153,14 +153,14 @@ fi
 echo "[4/10] 部署项目文件到 $INSTALL_DIR..."
 mkdir -p "$INSTALL_DIR"
 
-# tarball 根 = PrisirAI-Linux-x86_64-VERSION/,内部含 installer/、oiagent-shell/...
+# tarball 根 = PrisirAI-Linux-x86_64-VERSION/,内部含 installer/、prisiragent-shell/...
 # 故 REPO_ROOT 应是 tarball 解压后的根(linux-install.sh 同级的上一层)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # 必需文件
-# 2026-08-29 bebian 教训:之前的白名单只复制 4 个子目录 + oiagent_web.py,
-# 漏了 fastlane/、oiagent_coworker/ 子包和仓根 oiagent_cli.py / oiagent_context.py
+# 2026-08-29 bebian 教训:之前的白名单只复制 4 个子目录 + prisiragent_web.py,
+# 漏了 fastlane/、prisiragent_coworker/ 子包和仓根 prisiragent_cli.py / prisiragent_context.py
 # / lan_pair.py / perm_gate.py 等,导致装包后 web 端 import 全炸。
 # 修法:tarball 阶段(build_linux_tarball.py)已经把仓根的 _xxx.py / .tmp_xxx.py
 # 草稿、深层 node_modules deps、target/release/build 等中间产物全砍了,
@@ -185,8 +185,8 @@ fi
 #   兜底:若 tarball 里 dist/electron 仍是 Win .exe(本机构建者忘了预下),从
 #   npmjs 官方 CDN 拉 Linux x64 二进制解压。可改 ELECTRON_MIRROR 走 npmmirror。
 echo "[6/10] 装 Electron Linux 二进制..."
-ELECTRON_VER=$(grep '"version"' "$INSTALL_DIR/oiagent-shell/node_modules/electron/package.json" | head -1 | sed 's/.*"version": *"\([^"]*\)".*/\1/')
-ELECTRON_DIST="$INSTALL_DIR/oiagent-shell/node_modules/electron/dist"
+ELECTRON_VER=$(grep '"version"' "$INSTALL_DIR/prisiragent-shell/node_modules/electron/package.json" | head -1 | sed 's/.*"version": *"\([^"]*\)".*/\1/')
+ELECTRON_DIST="$INSTALL_DIR/prisiragent-shell/node_modules/electron/dist"
 ELECTRON_BIN="$ELECTRON_DIST/electron"
 
 if [[ -z "$ELECTRON_VER" ]]; then
@@ -230,13 +230,13 @@ else
 fi
 
 # ---------- 4c. 修正 electron/path.txt(2026-08-29 bebian 教训) ----------
-# oiagent-shell/node_modules/electron/path.txt 是 npm 装 electron 时
+# prisiragent-shell/node_modules/electron/path.txt 是 npm 装 electron 时
 # install.js 写下的二进制相对路径。本仓库 Win 主机打包时 path.txt = "electron.exe"
 # (Win 路径),Linux 跑的话 cli.js 会 spawn electron.exe ENOENT,electron shell 起不来。
 # 强制改成 "electron"(无扩展名),且不带换行(用 printf,不能用 echo,否则
 # path.txt 会变成 "electron\n",electron cli.js 拼出来是 ".../dist/electron\n"
 # 加 ENOENT)。
-ELECTRON_PATH_TXT="$INSTALL_DIR/oiagent-shell/node_modules/electron/path.txt"
+ELECTRON_PATH_TXT="$INSTALL_DIR/prisiragent-shell/node_modules/electron/path.txt"
 if [[ -f "$ELECTRON_PATH_TXT" ]]; then
     if [[ "$(cat "$ELECTRON_PATH_TXT")" != "electron" ]]; then
         printf 'electron' > "$ELECTRON_PATH_TXT"
@@ -284,7 +284,7 @@ GenericName=AI Assistant
 GenericName[zh_CN]=AI 助手
 Comment=Prisir(湃睿思) AI — 本地对话助手 (Linux 版)
 Comment[zh_CN]=Prisir(湃睿思) AI — 本地对话助手
-Exec=$INSTALL_DIR/oiagent-shell/node_modules/.bin/electron $INSTALL_DIR/oiagent-shell --disable-gpu --disable-software-rasterizer --in-process-gpu %u
+Exec=$INSTALL_DIR/prisiragent-shell/node_modules/.bin/electron $INSTALL_DIR/prisiragent-shell --disable-gpu --disable-software-rasterizer --in-process-gpu %u
 Icon=prisiraiclass
 Terminal=false
 Categories=Office;Network;
@@ -304,72 +304,72 @@ echo "[9/10] 装 systemd user services..."
 SYSTEMD_DIR="$HOME/.config/systemd/user"
 mkdir -p "$SYSTEMD_DIR"
 
-cat > "$SYSTEMD_DIR/oiagent-web.service" <<EOF
+cat > "$SYSTEMD_DIR/prisiragent-web.service" <<EOF
 [Unit]
-Description=PrisirAI oiagent-web (Python 后端, 127.0.0.1:18802)
+Description=PrisirAI prisiragent-web (Python 后端, 127.0.0.1:18802)
 After=network.target
 
 [Service]
 Type=simple
 WorkingDirectory=$INSTALL_DIR
-ExecStart=/usr/bin/python3 $INSTALL_DIR/oiagent_web.py --port 18802
+ExecStart=/usr/bin/python3 $INSTALL_DIR/prisiragent_web.py --port 18802
 Restart=on-failure
 RestartSec=3
 Environment=DISPLAY=:0
-# 写到 journalctl --user -u oiagent-web
+# 写到 journalctl --user -u prisiragent-web
 
 [Install]
 WantedBy=default.target
 EOF
 
-cat > "$SYSTEMD_DIR/oiagent-shell.service" <<EOF
+cat > "$SYSTEMD_DIR/prisiragent-shell.service" <<EOF
 [Unit]
-Description=PrisirAI oiagent-shell (Electron UI, 依赖 web 起)
-After=oiagent-web.service
-BindsTo=oiagent-web.service
+Description=PrisirAI prisiragent-shell (Electron UI, 依赖 web 起)
+After=prisiragent-web.service
+BindsTo=prisiragent-web.service
 
 [Service]
 Type=simple
-WorkingDirectory=$INSTALL_DIR/oiagent-shell
-ExecStart=$INSTALL_DIR/oiagent-shell/node_modules/.bin/electron $INSTALL_DIR/oiagent-shell --disable-gpu --disable-software-rasterizer --in-process-gpu
+WorkingDirectory=$INSTALL_DIR/prisiragent-shell
+ExecStart=$INSTALL_DIR/prisiragent-shell/node_modules/.bin/electron $INSTALL_DIR/prisiragent-shell --disable-gpu --disable-software-rasterizer --in-process-gpu
 Restart=on-failure
 RestartSec=5
 Environment=DISPLAY=:0
 Environment=OAUTH_AUTO_REDIRECT=1
-# 写到 journalctl --user -u oiagent-shell
+# 写到 journalctl --user -u prisiragent-shell
 
 [Install]
 WantedBy=default.target
 EOF
 
 systemctl --user daemon-reload
-systemctl --user enable oiagent-web.service oiagent-shell.service
-echo "  services 装好(默认 enable,启动用: systemctl --user start oiagent-shell)"
+systemctl --user enable prisiragent-web.service prisiragent-shell.service
+echo "  services 装好(默认 enable,启动用: systemctl --user start prisiragent-shell)"
 
 # ---------- 启动 ----------
 echo ""
 echo "=== 安装完成 ==="
 echo ""
 echo "下一步:"
-echo "  systemctl --user start oiagent-shell   # 启动服务(开窗)"
+echo "  systemctl --user start prisiragent-shell   # 启动服务(开窗)"
 if [[ "$WITH_INDEX" == "1" ]]; then
     echo "  WITH_INDEX=1 自动建索引在下面..."
-    systemctl --user start oiagent-web
+    systemctl --user start prisiragent-web
     sleep 3
     echo "  findex 扫 ~/"
     curl -s -X POST -H 'Content-Type: application/json' \
         -d "{\"roots\":[\"$HOME\"],\"exclude\":[\"$HOME/.cache\"]}" \
-        http://127.0.0.1:18802/oiagent/api/findex/enable
+        http://127.0.0.1:18802/prisiragent/api/findex/enable
     echo ""
     echo "  fcontent 索引 $INSTALL_DIR"
     curl -s -X POST -H 'Content-Type: application/json' \
         -d "{\"roots\":[\"$INSTALL_DIR\"],\"ocr\":false}" \
-        http://127.0.0.1:18802/oiagent/api/fcontent/enable
+        http://127.0.0.1:18802/prisiragent/api/fcontent/enable
     echo ""
 else
     echo "  (跳过索引重建 — WITH_INDEX=1 可自动跑,或手动:浏览器开探囊页面触发)"
 fi
 echo ""
 echo "日志查看:"
-echo "  journalctl --user -u oiagent-shell -f"
-echo "  journalctl --user -u oiagent-web  -f"
+echo "  journalctl --user -u prisiragent-shell -f"
+echo "  journalctl --user -u prisiragent-web  -f"

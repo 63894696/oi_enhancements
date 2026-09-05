@@ -4,7 +4,7 @@
 
 三源轮询:
   ① 论坛盯梢  /root/forum/forum_state.json 新帖(读文件,不碰 relay 逻辑)
-  ② AgentMail  oiagent@agentmail.to 收件箱新邮件
+  ② AgentMail  prisiragent@agentmail.to 收件箱新邮件
   ③ 密信 SMP   留接口(SimpleX 反馈通道,后续接)
 
 每条新反馈:
@@ -25,7 +25,7 @@ BASE = Path("/opt/prisir-steward")
 STATE_FILE = BASE / "steward_state.json"     # 各源已处理游标
 QUEUE_FILE = BASE / "draft_queue.jsonl"      # 待人审草稿(追加)
 FORUM_STATE = Path("/root/forum/forum_state.json")
-INBOX = "oiagent@agentmail.to"
+INBOX = "prisiragent@agentmail.to"
 POLL_SEC = int(os.environ.get("STEWARD_POLL_SEC", "60"))
 APPROVE_PORT = int(os.environ.get("STEWARD_APPROVE_PORT", "18816"))
 AGENTMAIL_BASE = "https://api.agentmail.to/v0"

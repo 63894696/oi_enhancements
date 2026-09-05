@@ -1,7 +1,7 @@
 # Contributing to OI Enhancements
 
 Thanks for considering contributing to OI Enhancements (Prisir AI,
-oiagent, prisir_findex, prisir_fcontent, fastlane, and related
+prisiragent, prisir_findex, prisir_fcontent, fastlane, and related
 projects in this repository). This document explains how to
 contribute, what license Your contribution will be under, and how
 the project handles relicensing of past releases.

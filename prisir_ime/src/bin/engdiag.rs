@@ -10,7 +10,7 @@ fn main() {
     println!("[engdiag] db_len={}", md.len());
 
     let mut e = ImeEngine::new(&db).expect("open db");
-    e.set_fuzzy_rules(vec!["z_zh", "c_ch", "s_sh"]);
+    e.set_fuzzy_rules(vec!["z_zh".into(), "c_ch".into(), "s_sh".into()]);
 
     let t = Instant::now();
     let (ok, src) = e.load_or_build_index(&db);
@@ -20,7 +20,7 @@ fn main() {
     // 2026-09-02:实测纯内存 trie 重建耗时(不 mmap/不落盘),评估能否同步建。
     let t2 = Instant::now();
     let mut e2 = ImeEngine::new(&db).expect("open db2");
-    e2.set_fuzzy_rules(vec!["z_zh", "c_ch", "s_sh"]);
+    e2.set_fuzzy_rules(vec!["z_zh".into(), "c_ch".into(), "s_sh".into()]);
     let _ = e2.build_memory_index();
     println!("[engdiag] pure in-memory rebuild_index took={:.1}ms", t2.elapsed().as_secs_f64()*1000.0);
     let c2 = e2.query("zi");

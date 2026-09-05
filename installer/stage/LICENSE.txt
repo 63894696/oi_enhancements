@@ -47,7 +47,7 @@ service over a network, whether via API, web UI, remote desktop, CLI,
 or any other interface, regardless of whether the third party pays.
 
 "Brand" means the project name "oi_enhancements", the product names
-"Prisir AI", "Prisir(湃睿思) AI", "oiagent", "prisraiclass", the
+"Prisir AI", "Prisir(湃睿思) AI", "prisiragent", "prisraiclass", the
 associated logos, icons, marks, domain names, and any other distinctive
 signs of origin.
 
@@ -130,7 +130,7 @@ provided in that file.
 
 This License does NOT grant You any right to use any Brand of the
 OI Enhancements project, including the names "oi_enhancements",
-"Prisir AI", "Prisir(湃睿思) AI", "oiagent", "prisraiclass", the
+"Prisir AI", "Prisir(湃睿思) AI", "prisiragent", "prisraiclass", the
 Prisir flame logo, the prisiraiclass GTK icon, the application icons
 in the assets/ directory, or any associated marks.
 

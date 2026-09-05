@@ -1,5 +1,5 @@
 """
-AgentMail + Parallel helper for oiagent.
+AgentMail + Parallel helper for prisiragent.
 
 Quick start:
     from helper import AgentMail, Parallel
@@ -68,7 +68,7 @@ class AgentMail:
 
     # ---- messages ----
     def send(self, to: str, subject: str, text: str, html: str = None,
-             from_inbox: str = "oiagent@agentmail.to"):
+             from_inbox: str = "prisiragent@agentmail.to"):
         """Send one email. NOTE: `to` is a STRING, not a list."""
         body = {"to": to, "subject": subject, "text": text}
         if html:
@@ -76,7 +76,7 @@ class AgentMail:
         return self._request("POST", f"/inboxes/{from_inbox}/messages/send", body)
 
     def send_chinese(self, to: str, subject: str, chinese_text: str,
-                     from_inbox: str = "oiagent@agentmail.to",
+                     from_inbox: str = "prisiragent@agentmail.to",
                      font_size: int = 24):
         """Send email with Chinese text rendered as inline PNG image.
 
@@ -113,7 +113,7 @@ class AgentMail:
                 continue
         raise RuntimeError("Could not update display_name — no working endpoint")
 
-    def list_messages(self, inbox: str = "oiagent@agentmail.to", limit: int = 20):
+    def list_messages(self, inbox: str = "prisiragent@agentmail.to", limit: int = 20):
         return self._request("GET", f"/inboxes/{inbox}/messages?limit={limit}")
 
 

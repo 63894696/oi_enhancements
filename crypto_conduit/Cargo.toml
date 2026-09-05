@@ -2,7 +2,7 @@
 name = "crypto-conduit"
 version = "0.1.0"
 edition = "2021"
-description = "Capability-04: portable E2E encryption overlay (crypto conduit). Independent second layer, IM-agnostic. See Documents/oiagent-os-integration/capability-04-e2e-overlay.md"
+description = "Capability-04: portable E2E encryption overlay (crypto conduit). Independent second layer, IM-agnostic. See Documents/prisiragent-os-integration/capability-04-e2e-overlay.md"
 license = "MIT"
 
 # rlib  -> 供 Rust 内部测试/未来 Rust 调用方

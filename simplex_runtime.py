@@ -2,7 +2,7 @@
 
 阶段 1(SimpleX 协议功能块化)的核心运行时。把 simplex-chat 的 Python 客户端
 (`simplex_chat`,in-process FFI 驱动 libsimplex.dll)包成**单实例、后台常驻、
-同步可调用**的能力集,供 OIagent / 对话界面以工具形式调用。
+同步可调用**的能力集,供 Prisiragent / 对话界面以工具形式调用。
 
 设计约束(对齐 agent-first-os-architecture.md §3.2 / §4):
   - 每个功能块 = 明确的输入→输出契约,返回 {ok: bool, output|error, diagnosable}。
@@ -113,7 +113,7 @@ class SimplexRuntime:
         self._a2h_waiters: dict[str, Any] = {}  # request_id -> Future(bool)
         self._a2h_pending: dict[str, dict[str, Any]] = {}  # request_id -> {action, reason, ts}
         self._smp_server: str = DEFAULT_SMP_SERVER
-        self._display_name: str = "oiagent"
+        self._display_name: str = "prisiragent"
         self._db_prefix: str = str(_DEFAULT_DB_DIR / "oiagent_simplex")
         # DB 加密密钥(进程内存,不落 env)。解锁后由 web 层写入;_boot 优先消费它,
         # 其次才回退 env(兼容外部脚本/旧路径)。清内存即"锁死自身",无 env 被同机读取的坑。
@@ -134,7 +134,7 @@ class SimplexRuntime:
     # ------------------------------------------------------------------ #
     def start(
         self,
-        display_name: str = "oiagent",
+        display_name: str = "prisiragent",
         smp_server: str = DEFAULT_SMP_SERVER,
         db_prefix: Optional[str] = None,
     ) -> None:
