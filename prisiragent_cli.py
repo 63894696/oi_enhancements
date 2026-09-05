@@ -237,6 +237,201 @@ def _fcontent():
         return None
 
 
+# ---------- P0: edit_file — 精准查找替换(对标 Claude Code Edit) ----------
+# code 场景命脉:全量 write_file 改一个函数要重写整个文件(模型输出不稳定、
+# token 浪费、容易改错)。edit_file 用 old_string→new_string 精确替换,
+# 返回 unified diff 摘要,让模型和用户都能看到改了什么。
+
+def _make_diff(old_lines: list, new_lines: list, context: int = 3) -> str:
+    """生成 unified diff 摘要(简化版,不用 difflib 的完整输出)。"""
+    import difflib
+    diff = list(difflib.unified_diff(
+        old_lines, new_lines,
+        lineterm="", n=context,
+        fromfile="a", tofile="b",
+    ))
+    if not diff:
+        return "(no changes)"
+    return "\n".join(diff)
+
+
+def _t_edit_file(path: str, old_string: str, new_string: str,
+                 replace_all: bool = False, workdir: str = "") -> str:
+    """精准查找替换文件内容。
+
+    - old_string 在文件中必须唯一(除非 replace_all=True)
+    - 返回 unified diff 摘要 + 替换统计
+    - 权限闸复用 write_file 检查(在 dispatch 层)
+    """
+    try:
+        if not os.path.isfile(path):
+            return f"[edit_file error] 文件不存在: {path}"
+        with open(path, encoding="utf-8", errors="replace") as f:
+            content = f.read()
+
+        # 检查 old_string 存在性和唯一性
+        count = content.count(old_string)
+        if count == 0:
+            return (f"[edit_file error] old_string 未在文件中找到。\n"
+                    f"文件共 {len(content)} 字符,请确认 old_string 精确匹配"
+                    f"(含缩进和换行)。")
+        if count > 1 and not replace_all:
+            # 找到所有匹配位置帮助定位
+            lines = content.split("\n")
+            match_lines = []
+            for i, line in enumerate(lines, 1):
+                if old_string.split("\n")[0] in line:
+                    match_lines.append(str(i))
+            return (f"[edit_file error] old_string 在文件中出现 {count} 次"
+                    f"(行: {', '.join(match_lines[:10])})。"
+                    f"请提供更多上下文使其唯一,或设 replace_all=True 替换全部。")
+
+        # 执行替换
+        if replace_all:
+            new_content = content.replace(old_string, new_string)
+        else:
+            new_content = content.replace(old_string, new_string, 1)
+
+        # 生成 diff 摘要
+        old_lines = content.splitlines(keepends=True)
+        new_lines = new_content.splitlines(keepends=True)
+        diff_text = _make_diff(old_lines, new_lines)
+
+        # 写入
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(new_content)
+
+        # 落盘追踪(复用 write_file 的追踪机制)
+        try:
+            _WRITE_TRACKER.setdefault(workdir or os.path.dirname(os.path.abspath(path)),
+                                      []).append((os.path.abspath(path), time.time()))
+        except Exception:  # noqa: BLE001
+            pass
+
+        occurrences = count if replace_all else 1
+        old_size = len(old_string)
+        new_size = len(new_string)
+        delta = new_size - old_size
+        sign = "+" if delta >= 0 else ""
+        return (f"[edit_file ok] {path}\n"
+                f"替换 {occurrences} 处, "
+                f"{old_size}→{new_size} 字符 ({sign}{delta})\n"
+                f"```diff\n{diff_text}\n```")
+    except Exception as e:  # noqa: BLE001
+        return f"[edit_file error] {e}"
+
+
+# ---------- P0: grep_search — 代码内容搜索(对标 Claude Code Grep) ----------
+# 编程基元:搜索代码库中的函数定义、变量引用、导入、TODO 等。
+# 与 local_content_search 的区别:grep_search 是纯文本/代码搜索(不需要索引),
+# 支持正则、文件类型过滤、大小写控制,返回 file:line:content 格式。
+
+_GREP_TEXT_EXTS = {
+    ".py", ".js", ".ts", ".jsx", ".tsx", ".rs", ".go", ".java", ".c", ".cpp", ".h",
+    ".hpp", ".cs", ".rb", ".php", ".swift", ".kt", ".scala", ".lua", ".pl",
+    ".sh", ".bash", ".zsh", ".ps1", ".bat", ".cmd",
+    ".html", ".css", ".scss", ".less", ".xml", ".svg",
+    ".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf",
+    ".md", ".txt", ".rst", ".tex",
+    ".sql", ".graphql", ".proto",
+    ".dockerfile", ".gitignore", ".editorconfig",
+    ".vue", ".svelte", ".astro",
+    ".r", ".m", ".mm", ".dart", ".ex", ".exs", ".erl", ".hrl",
+    ".clj", ".cljs", ".hs", ".ml", ".fs", ".fsx",
+    ".nim", ".zig", ".v", ".d",
+    ".env", ".properties", ".gradle", ".cmake", ".makefile",
+}
+
+
+def _is_grep_searchable(filepath: str) -> bool:
+    """判断文件是否值得 grep(文本/代码文件)。"""
+    ext = os.path.splitext(filepath)[1].lower()
+    if ext in _GREP_TEXT_EXTS:
+        return True
+    # 无扩展名的文件(Makefile, Dockerfile 等)也尝试
+    basename = os.path.basename(filepath).lower()
+    if basename in ("makefile", "dockerfile", "vagrantfile", "gemfile",
+                     "rakefile", "procfile", "justfile", "taskfile"):
+        return True
+    return False
+
+
+_GREP_SKIP_DIRS = {
+    "__pycache__", ".git", ".hg", ".svn", "node_modules", ".next", ".nuxt",
+    "dist", "build", "target", ".venv", "venv", ".tox", ".mypy_cache",
+    ".pytest_cache", ".eggs", "*.egg-info", ".gradle", ".idea", ".vscode",
+}
+
+
+def _t_grep_search(pattern: str, path: str = ".", file_type: str = "",
+                   ignore_case: bool = False, max_results: int = 50,
+                   workdir: str = "") -> str:
+    """代码内容搜索:在目录中递归搜索匹配 pattern 的行。
+
+    - pattern: 正则表达式或纯文本(自动检测)
+    - path: 搜索目录(相对 workdir 或绝对路径)
+    - file_type: 文件类型过滤(如 "py", "js", "rs")
+    - ignore_case: 忽略大小写
+    - max_results: 最大返回行数
+    """
+    import re
+    base = os.path.join(workdir, path) if not os.path.isabs(path) else path
+    if not os.path.isdir(base):
+        # 单文件搜索
+        if os.path.isfile(base):
+            search_files = [base]
+        else:
+            return f"[grep_search error] 路径不存在: {base}"
+    else:
+        search_files = []
+        for root, dirs, files in os.walk(base):
+            dirs[:] = [d for d in dirs if d not in _GREP_SKIP_DIRS
+                       and not d.startswith(".")]
+            for fn in files:
+                fp = os.path.join(root, fn)
+                if _is_grep_searchable(fp):
+                    if file_type:
+                        ext = os.path.splitext(fn)[1].lstrip(".").lower()
+                        if ext != file_type.lower().lstrip("."):
+                            continue
+                    search_files.append(fp)
+                if len(search_files) > 2000:
+                    break
+
+    # 编译正则(如果 pattern 包含正则元字符,按正则处理;否则按纯文本)
+    try:
+        flags = re.IGNORECASE if ignore_case else 0
+        regex = re.compile(pattern, flags)
+    except re.error:
+        # 正则编译失败 → 当纯文本搜索
+        flags = re.IGNORECASE if ignore_case else 0
+        regex = re.compile(re.escape(pattern), flags)
+
+    results = []
+    total_matches = 0
+    for fp in search_files:
+        if len(results) >= max_results:
+            break
+        try:
+            with open(fp, encoding="utf-8", errors="replace") as f:
+                for lineno, line in enumerate(f, 1):
+                    if regex.search(line):
+                        rel = os.path.relpath(fp, workdir) if workdir else fp
+                        results.append(f"{rel}:{lineno}: {line.rstrip()}")
+                        total_matches += 1
+                        if len(results) >= max_results:
+                            break
+        except Exception:  # noqa: BLE001
+            continue
+
+    if not results:
+        return f"[grep_search] 无匹配 (pattern: {pattern})"
+    header = ""
+    if total_matches >= max_results:
+        header = f"[共 {total_matches}+ 条匹配,仅显示前 {max_results} 条]\n"
+    return header + "\n".join(results)
+
+
 def _t_local_content_search(query: str, limit: int = 30) -> str:
     """按内容搜文件(docx/pdf/pptx/txt/md/代码等),带匹配片段。需用户已开启内容搜索。"""
     q = (query or "").strip()
@@ -715,6 +910,25 @@ TOOLS = [
         "parameters": {"type": "object", "properties": {
             "path": {"type": "string"}, "content": {"type": "string"}}, "required": ["path", "content"]}}},
     {"type": "function", "function": {
+        "name": "edit_file",
+        "description": "Precisely replace old_string with new_string in a file. Use this for targeted code edits instead of rewriting the whole file with write_file. old_string must match exactly (including indentation/whitespace) and must be unique in the file (or set replace_all=true). Returns a unified diff summary showing what changed.",
+        "parameters": {"type": "object", "properties": {
+            "path": {"type": "string", "description": "file to edit"},
+            "old_string": {"type": "string", "description": "exact text to find (must match including whitespace/indentation)"},
+            "new_string": {"type": "string", "description": "replacement text"},
+            "replace_all": {"type": "boolean", "description": "replace all occurrences, default false"}},
+            "required": ["path", "old_string", "new_string"]}}},
+    {"type": "function", "function": {
+        "name": "grep_search",
+        "description": "Search file contents in a directory using regex or plain text. Returns matching lines as file:line:content. Use for finding function definitions, variable references, imports, TODOs, patterns in code. Supports file type filtering. Faster and more precise than local_content_search for code (no index needed).",
+        "parameters": {"type": "object", "properties": {
+            "pattern": {"type": "string", "description": "regex pattern or plain text to search for"},
+            "path": {"type": "string", "description": "directory or file to search in, default current dir"},
+            "file_type": {"type": "string", "description": "filter by file extension, e.g. 'py', 'js', 'rs'"},
+            "ignore_case": {"type": "boolean", "description": "case-insensitive search, default false"},
+            "max_results": {"type": "integer", "description": "max matching lines to return, default 50"}},
+            "required": ["pattern"]}}},
+    {"type": "function", "function": {
         "name": "run_shell",
         "description": "Run a shell command in the working directory and return rc/stdout/stderr.",
         "parameters": {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}}},
@@ -827,7 +1041,7 @@ def dispatch(name: str, args: dict, workdir: str, on_confirm=None, model: str = 
                     else:
                         return f"[{name} 被权限闸拦截] {verdict.get('reason','')}"
         except Exception:  # noqa: BLE001 — 闸自身故障:fail-closed 拒写/执行
-            if name in ("run_shell", "write_file", "delete_file"):
+            if name in ("run_shell", "write_file", "edit_file", "delete_file"):
                 return f"[{name} 被权限闸拦截] gate unavailable (fail-closed)"
     if name == "read_file":
         p = args.get("path", "")
@@ -837,6 +1051,19 @@ def dispatch(name: str, args: dict, workdir: str, on_confirm=None, model: str = 
         p = args.get("path", "")
         p = p if os.path.isabs(p) else os.path.join(workdir, p)
         return _t_write_file(p, args.get("content", ""), workdir)
+    if name == "edit_file":
+        p = args.get("path", "")
+        p = p if os.path.isabs(p) else os.path.join(workdir, p)
+        return _t_edit_file(p, args.get("old_string", ""),
+                            args.get("new_string", ""),
+                            bool(args.get("replace_all", False)), workdir)
+    if name == "grep_search":
+        return _t_grep_search(args.get("pattern", ""),
+                              args.get("path", "."),
+                              args.get("file_type", ""),
+                              bool(args.get("ignore_case", False)),
+                              args.get("max_results", 50),
+                              workdir)
     if name == "run_shell":
         return _t_run_shell(args.get("command", ""), workdir)
     if name == "list_files":

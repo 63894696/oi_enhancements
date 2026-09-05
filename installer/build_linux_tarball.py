@@ -37,7 +37,7 @@
 
 2026-08-29 bebian 端到端教训:
   - 之前的打包策略只把 prisiragent_web.py 单文件从仓根拷入;prisiragent_cli.py /
-    prisiragent_context.py / lan_pair.py / perm_gate.py / prisiragent_coworker/ 子包 /
+    prisiragent_context.py / lan_pair.py / perm_gate.py / oiagent_coworker/ 子包 /
     fastlane/ 子包全部漏包。装完 web 端 import 全炸。
   - Win 端 NSIS 不在意 Python import 链(PyInstaller 把 .pyc 打进了 PrisirAI.exe);
     Linux 端直接跑 .py 文件,必须把仓根 Python 部分整块打包。
@@ -68,7 +68,7 @@ OUT_PATH = OUT_DIR / OUT_NAME
 # 强制包含(子目录整棵,内部还要二次过滤)
 # 2026-08-29 bebian 教训:之前用 TOP_LEVEL_REQUIRED 白名单只挑了 prisiragent_web.py,
 # 漏了 prisiragent_cli.py / prisiragent_context.py / lan_pair.py / perm_gate.py 等仓根 .py
-# 以及 fastlane/、prisiragent_coworker/ 子包。
+# 以及 fastlane/、oiagent_coworker/ 子包。
 # 修法:DIRS_REQUIRED 把两个 Python 子包也列上;仓根 .py 改用"扫所有合法 .py"
 # (collect_top_level_py),不再白名单枚举,后续 prisiragent_web 加新 import 也不会漏。
 DIRS_REQUIRED = [
@@ -78,7 +78,7 @@ DIRS_REQUIRED = [
     "assets",
     # 2026-08-29 新增:Python 子包
     "fastlane",
-    "prisiragent_coworker",
+    "oiagent_coworker",
 ]
 
 # 强制包含(脚本与协议)

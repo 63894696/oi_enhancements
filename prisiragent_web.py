@@ -2131,10 +2131,35 @@ _PAGE = r"""<!DOCTYPE html>
   #dlg .card.perm-card #dlg-ok.risk-destructive { background:#a8332a; color:#fff; }
   /* 倒计时:超时后变红 */
   #dlg-cd.cd-done { background:#fbe5e2 !important; color:#a8332a !important; border-color:#a8332a !important; }
+  /* diff 高亮(edit_file 工具结果):红删绿增,对齐 GitHub 风格 */
+  .hljs-addition { background:#e6ffec; color:#1a7f37; display:block; }
+  .hljs-deletion { background:#ffebe9; color:#cf222e; display:block; }
+  .hljs-meta { color:#6e7781; }
+  /* 代码块内 highlight.js 配色微调,适配国风纸底 */
+  .msg pre code.hljs { background:transparent; padding:0; }
+  .msg pre { background:var(--gh-paper); border:1px solid var(--gh-line); border-radius:6px; padding:10px; overflow-x:auto; }
 </style>
 <!-- 壳三件套②③:md 标准渲染 + XSS 防护(版本钉死)。仅渲染 assistant 正文;user 保持纯文本。 -->
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+<!-- 代码高亮:highlight.js(支持 diff 语言,红绿高亮 edit_file 结果) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github.min.css">
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/core.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/diff.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/python.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/javascript.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/typescript.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/rust.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/java.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/cpp.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/go.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/sql.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/bash.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/json.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/yaml.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/xml.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/css.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/markdown.min.js"></script>
 <!-- ④图渲染:mermaid(流程图/时序图/架构图/状态图 → SVG 内联)。ESM 模块,见页面底部 init。 -->
 <script type="module">
   import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.esm.min.mjs';
@@ -2441,6 +2466,7 @@ function renderCtxUsage(cu) {
 
 // 壳三件套②:md 标准渲染(仅 assistant 正文;DOMPurify 防 XSS)。
 // ③:相对路径的图片/链接重写指向 /prisiragent/api/file 端点,使设计稿/生成图/视频可内联。
+// ⑤:highlight.js 代码高亮(含 diff 语言红绿高亮)。
 function renderMd(text) {
   if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
     const d = document.createElement('div'); d.textContent = text; return d.innerHTML;
@@ -2457,6 +2483,16 @@ function renderMd(text) {
   };
   const html = marked.parse(text || '', { breaks: true, walkTokens });
   return DOMPurify.sanitize(html, { ADD_ATTR: ['target'], ADD_TAGS: ['svg','g','path','rect','line','text','tspan','ellipse','circle','polygon','marker','defs','foreignObject','style'] });
+}
+
+// 代码高亮:对容器内所有 pre code 块跑 highlight.js。
+// 在 addMsg append 后调用(元素已在 DOM 里,可量尺寸)。
+function _highlightCodeIn(el) {
+  if (!el || typeof hljs === 'undefined') return;
+  el.querySelectorAll('pre code').forEach(code => {
+    if (code.classList.contains('hljs')) return;  // 已高亮过
+    try { hljs.highlightElement(code); } catch(e) { /* 不支持的语言静默跳过 */ }
+  });
 }
 
 // 壳三件套④:mermaid 图渲染。把容器内 ```mermaid 代码块(pre code.language-mermaid)
@@ -2499,10 +2535,32 @@ function addMsg(role, text, followups) {
     const firstNL = text.indexOf('\n');
     const head = firstNL >= 0 ? text.slice(0, firstNL) : text.slice(0, 60);
     sum.textContent = head + ' ' + T('tool_expand');
-    const pre = document.createElement('pre');
-    pre.className = 'tool-body';
-    pre.textContent = firstNL >= 0 ? text.slice(firstNL + 1) : text;
-    det.appendChild(sum); det.appendChild(pre);
+    const body = firstNL >= 0 ? text.slice(firstNL + 1) : text;
+    // diff 块(edit_file 返回 ```diff ... ```)用 highlight.js 红绿高亮
+    if (body.includes('```diff') && typeof hljs !== 'undefined') {
+      const pre = document.createElement('pre');
+      pre.className = 'tool-body';
+      // 提取 diff 块内容高亮渲染,其余纯文本
+      let html = '';
+      const parts = body.split(/```diff\n?/);
+      for (let i = 0; i < parts.length; i++) {
+        if (i === 0) { html += esc(parts[i]); continue; }
+        const endIdx = parts[i].indexOf('```');
+        const diffCode = endIdx >= 0 ? parts[i].slice(0, endIdx) : parts[i];
+        const rest = endIdx >= 0 ? parts[i].slice(endIdx + 3) : '';
+        try {
+          html += hljs.highlight(diffCode, {language: 'diff'}).value;
+        } catch(e) { html += esc(diffCode); }
+        html += esc(rest);
+      }
+      pre.innerHTML = html;
+      det.appendChild(sum); det.appendChild(pre);
+    } else {
+      const pre = document.createElement('pre');
+      pre.className = 'tool-body';
+      pre.textContent = body;
+      det.appendChild(sum); det.appendChild(pre);
+    }
     box.appendChild(det);
     box.scrollTop = box.scrollHeight;
     return;
@@ -2514,6 +2572,7 @@ function addMsg(role, text, followups) {
     d.innerHTML = renderMd(text);
     d.classList.add('md');
     box.appendChild(d);
+    _highlightCodeIn(d);  // ⑤代码高亮(含 diff)
     _renderMermaidIn(d);  // ④mermaid 图 → SVG(异步,append 后才能量尺寸)
   } else {
     d.textContent = text;  // user 保持纯文本,不解析(防注入)
