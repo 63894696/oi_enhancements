@@ -440,6 +440,14 @@ def _shell_system_prompt(user_text: str, sid: str = "") -> str:
             parts.append(pblock)
     except Exception:  # noqa: BLE001
         pass
+    # 学习进度(P2 教学):quiz 作答掌握度摘要,供自适应教学(薄弱主题多练)
+    try:
+        import learning_progress  # noqa: PLC0415
+        mblock = learning_progress.mastery_block()
+        if mblock:
+            parts.append(mblock)
+    except Exception:  # noqa: BLE001
+        pass
     # 主题聚类:提示「你近期常问什么」(纯本地关键词统计,60s 缓存)
     try:
         import solutions_learner  # noqa: PLC0415
@@ -2600,6 +2608,16 @@ function _renderQuizIn(el) {
         else if (sel.has(idx)) btn.classList.add('wrong');
       });
       if (q.explain) explainEl.classList.add('show');
+      // 学习进度上报:判完把作答结果落本地(对错+主题),供掌握度统计。
+      // 静默 fetch,失败不影响交互;全对=true,有任何漏选/错选=false。
+      try {
+        let allRight = sel.size === answers.size;
+        if (allRight) for (const i of sel) if (!answers.has(i)) { allRight = false; break; }
+        fetch('/prisiragent/api/quiz_result', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({topic: q.topic || '', question: (q.question || '').slice(0, 120), correct: allRight}),
+        }).catch(() => {});
+      } catch (e) { /* 上报失败静默 */ }
     }
     if (multi) {
       const ok = document.createElement('button');
@@ -4805,6 +4823,17 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 import user_profile  # noqa: PLC0415
                 ok = user_profile.archive_fact(fact)
+            except Exception:  # noqa: BLE001
+                pass
+            self._json({"ok": bool(ok)})
+        elif path == "/prisiragent/api/quiz_result":
+            # 教学进度:quiz 卡片作答结果落盘(topic/question/correct)。
+            ok = False
+            try:
+                import learning_progress  # noqa: PLC0415
+                ok = learning_progress.record_result(
+                    body.get("topic", ""), body.get("question", ""),
+                    bool(body.get("correct")))
             except Exception:  # noqa: BLE001
                 pass
             self._json({"ok": bool(ok)})

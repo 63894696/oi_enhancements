@@ -101,6 +101,151 @@ def _t_run_shell(command: str, workdir: str) -> str:
         return f"[run_shell error] {e}"
 
 
+# ---------- P2 git 感知(2026-09-05):只读 git 状态/diff,支撑代码审查与提交信息生成 ----
+# 不走 run_shell(免权限闸惊扰),git 子进程参数数组形式(无 shell 注入面)。
+_GIT_TIMEOUT = 30
+
+
+def _run_git(args: list, workdir: str) -> tuple:
+    """跑 git 子命令,返回 (rc, stdout, stderr)。git 不存在/非仓库不抛,返回错误文本。"""
+    try:
+        r = subprocess.run(["git"] + args, cwd=workdir, capture_output=True,
+                           timeout=_GIT_TIMEOUT)
+        return (r.returncode,
+                (r.stdout or b"").decode("utf-8", "replace"),
+                (r.stderr or b"").decode("utf-8", "replace"))
+    except FileNotFoundError:
+        return (127, "", "git 未安装或不在 PATH")
+    except subprocess.TimeoutExpired:
+        return (124, "", f"git 超时({_GIT_TIMEOUT}s)")
+    except Exception as e:  # noqa: BLE001
+        return (1, "", f"{type(e).__name__}: {e}")
+
+
+def _t_git_status(workdir: str) -> str:
+    """git status 精简视图:分支 + 暂存/未暂存/未跟踪 + 最近 3 条 log。"""
+    rc, out, err = _run_git(["rev-parse", "--is-inside-work-tree"], workdir)
+    if rc != 0 or out.strip() != "true":
+        return f"[git_status] 不是 git 仓库: {workdir} ({err.strip() or 'not a git repo'})"
+    parts = []
+    rc, branch, _ = _run_git(["branch", "--show-current"], workdir)
+    rc2, upstream, _ = _run_git(
+        ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], workdir)
+    head = branch.strip() or "(detached HEAD)"
+    if rc2 == 0 and upstream.strip():
+        # 与上游的 ahead/behind
+        _, ab, _ = _run_git(["rev-list", "--left-right", "--count",
+                             f"HEAD...{upstream.strip()}"], workdir)
+        ahead, _, behind = ab.partition("\t")
+        sync = f"  (↑{ahead.strip()} ↓{behind.strip()})" if ab.strip() else ""
+        head += f" 跟踪 {upstream.strip()}{sync}"
+    parts.append(f"分支: {head}")
+    rc, out, err = _run_git(["status", "--porcelain=v1"], workdir)
+    if rc != 0:
+        return f"[git_status error] {err.strip()}"
+    lines = [ln for ln in out.splitlines() if ln.strip()]
+    if not lines:
+        parts.append("工作区干净")
+    else:
+        staged = [ln[3:] for ln in lines if ln[0] not in (" ", "?")]
+        modified = [ln[3:] for ln in lines if ln[1] != " "]
+        untracked = [ln[3:] for ln in lines if ln.startswith("??")]
+        if staged:
+            parts.append(f"已暂存 ({len(staged)}): " + ", ".join(staged[:20]))
+        if modified:
+            parts.append(f"未暂存修改 ({len(modified)}): " + ", ".join(modified[:20]))
+        if untracked:
+            parts.append(f"未跟踪 ({len(untracked)}): " + ", ".join(untracked[:20]))
+    _, log, _ = _run_git(["log", "--oneline", "-3"], workdir)
+    if log.strip():
+        parts.append("最近提交:\n" + log.strip())
+    return "\n".join(parts)
+
+
+def _t_git_diff(path: str = "", staged: bool = False, workdir: str = "") -> str:
+    """git diff(默认工作区未暂存;staged=true 看已暂存)。path 限定单文件。截断防爆。"""
+    args = ["diff", "--stat"] + (["--staged"] if staged else [])
+    if path:
+        args += ["--", path]
+    rc, stat, err = _run_git(args, workdir or ".")
+    if rc != 0:
+        return f"[git_diff error] {err.strip() or 'not a git repo'}"
+    if not stat.strip():
+        scope = "已暂存" if staged else "工作区"
+        return f"[git_diff] {scope}无改动" + (f" ({path})" if path else "")
+    # 拿完整 patch(截断 12k 字符)
+    args2 = ["diff"] + (["--staged"] if staged else [])
+    if path:
+        args2 += ["--", path]
+    rc2, patch, err2 = _run_git(args2, workdir or ".")
+    if rc2 != 0:
+        return f"[git_diff error] {err2.strip()}"
+    if len(patch) > 12000:
+        patch = patch[:11500] + f"\n…[截断,原 {len(patch)} 字符,用 path 参数缩小范围]"
+    return f"[git_diff {'staged' if staged else 'worktree'}]\n{stat.strip()}\n\n{patch}"
+
+
+# ---------- P2 sandbox 代码执行(2026-09-05):教学即时反馈 --------------------
+# 与 run_shell 的区别:run_shell 跑任意 shell 命令(权限闸管控,重);
+# run_code 只跑 python/javascript 代码片段——写临时文件 → 子进程 → 收输出,
+# 超时强杀,输出截断。不走 shell=True(无命令注入面),但仍能执行任意代码,
+# 所以进 GATED_TOOLS 过权限闸(风险标注 run_shell 类,preview 显示代码)。
+_RUN_CODE_TIMEOUT = 30
+_RUN_CODE_MAX_OUT = 8000
+
+
+def _t_run_code(code: str, language: str = "python", workdir: str = "") -> str:
+    """跑一小段 python/javascript 代码,返回 stdout/stderr/exit code。
+
+    教学场景:用户问「这段代码输出什么」「帮我跑一下这个例子」时即时验证。
+    代码写入系统临时目录(不污染 workdir),跑完即删。timeout 强杀防爆。
+    """
+    code = (code or "").strip()
+    if not code:
+        return "[run_code error] empty code"
+    lang = (language or "python").strip().lower()
+    if lang in ("py", "python3"):
+        lang = "python"
+    if lang in ("js", "node"):
+        lang = "javascript"
+    if lang not in ("python", "javascript"):
+        return (f"[run_code error] 不支持的语言 '{language}',"
+                f"目前支持 python / javascript")
+    import tempfile
+    suffix = ".py" if lang == "python" else ".js"
+    tmp = None
+    try:
+        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=suffix,
+                                          delete=False, encoding="utf-8")
+        tmp.write(code)
+        tmp.close()
+        cmd = (["python", tmp.name] if lang == "python"
+               else ["node", tmp.name])
+        r = subprocess.run(cmd, cwd=workdir or None, capture_output=True,
+                           timeout=_RUN_CODE_TIMEOUT)
+        out = (r.stdout or b"").decode("utf-8", "replace")
+        err = (r.stderr or b"").decode("utf-8", "replace")
+        if len(out) > _RUN_CODE_MAX_OUT:
+            out = out[:_RUN_CODE_MAX_OUT] + f"\n…[截断,原 {len(out)} 字符]"
+        if len(err) > _RUN_CODE_MAX_OUT:
+            err = err[:_RUN_CODE_MAX_OUT] + f"\n…[截断,原 {len(err)} 字符]"
+        return (f"[run_code {lang} rc={r.returncode}]\n"
+                f"stdout:\n{out or '(空)'}\nstderr:\n{err or '(空)'}")
+    except FileNotFoundError:
+        exe = "python" if lang == "python" else "node"
+        return f"[run_code error] {exe} 未安装或不在 PATH"
+    except subprocess.TimeoutExpired:
+        return f"[run_code timeout] 超过 {_RUN_CODE_TIMEOUT}s 已强杀"
+    except Exception as e:  # noqa: BLE001
+        return f"[run_code error] {type(e).__name__}: {e}"
+    finally:
+        if tmp is not None:
+            try:
+                os.unlink(tmp.name)
+            except OSError:
+                pass
+
+
 def _t_list_files(path: str, workdir: str) -> str:
     try:
         base = os.path.join(workdir, path) if not os.path.isabs(path) else path
@@ -970,6 +1115,23 @@ TOOLS = [
         "description": "Run a shell command in the working directory and return rc/stdout/stderr.",
         "parameters": {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}}},
     {"type": "function", "function": {
+        "name": "run_code",
+        "description": "Execute a short Python or JavaScript code snippet and return stdout/stderr/exit code. Use for teaching: verify what a code example prints, demonstrate a concept, check a quiz answer. NOT for file operations or system commands (use run_shell for those). 30s timeout, output truncated at 8k chars.",
+        "parameters": {"type": "object", "properties": {
+            "code": {"type": "string", "description": "source code to execute"},
+            "language": {"type": "string", "description": "python or javascript, default python"}},
+            "required": ["code"]}}},
+    {"type": "function", "function": {
+        "name": "git_status",
+        "description": "Show git repo status: current branch, upstream ahead/behind, staged/unstaged/untracked files, last 3 commits. Read-only. Use before reviewing changes or writing commit messages.",
+        "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {
+        "name": "git_diff",
+        "description": "Show git diff (unstaged worktree changes by default; staged=true for staged). Optionally limit to one file. Returns stat summary + patch (truncated at 12k chars — use path param to narrow). Read-only. Use for code review and commit message drafting.",
+        "parameters": {"type": "object", "properties": {
+            "path": {"type": "string", "description": "limit diff to this file, optional"},
+            "staged": {"type": "boolean", "description": "diff staged changes instead of worktree, default false"}}}}},
+    {"type": "function", "function": {
         "name": "list_files",
         "description": "List files under a path (relative to workdir).",
         "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}},
@@ -1086,7 +1248,7 @@ def dispatch(name: str, args: dict, workdir: str, on_confirm=None, model: str = 
                     else:
                         return f"[{name} 被权限闸拦截] {verdict.get('reason','')}"
         except Exception:  # noqa: BLE001 — 闸自身故障:fail-closed 拒写/执行
-            if name in ("run_shell", "write_file", "edit_file", "delete_file"):
+            if name in ("run_shell", "run_code", "write_file", "edit_file", "delete_file"):
                 return f"[{name} 被权限闸拦截] gate unavailable (fail-closed)"
     if name == "read_file":
         p = args.get("path", "")
@@ -1111,6 +1273,13 @@ def dispatch(name: str, args: dict, workdir: str, on_confirm=None, model: str = 
                               workdir)
     if name == "run_shell":
         return _t_run_shell(args.get("command", ""), workdir)
+    if name == "run_code":
+        return _t_run_code(args.get("code", ""), args.get("language", "python"), workdir)
+    if name == "git_status":
+        return _t_git_status(workdir)
+    if name == "git_diff":
+        return _t_git_diff(args.get("path", ""),
+                           bool(args.get("staged", False)), workdir)
     if name == "list_files":
         return _t_list_files(args.get("path", "."), workdir)
     if name == "search_files":
@@ -1175,8 +1344,9 @@ SYSTEM_CHAT = (
     "add a one-line caption before/after. Node labels may be Chinese. Only emit valid mermaid syntax.\n\n"
     "Teaching quizzes: when the user is learning a topic and a knowledge check would help, you may emit "
     "a quiz as a ```quiz fenced block containing ONE JSON object: "
-    '{"question": "题干", "options": ["选项A", "选项B", "选项C"], "answer": 0, "explain": "解析(可选)"}. '
+    '{"topic": "主题(如 Python 基础)", "question": "题干", "options": ["选项A", "选项B", "选项C"], "answer": 0, "explain": "解析(可选)"}. '
     "answer is the 0-indexed correct option; for multiple-answer questions use an array like [0, 2]. "
+    "Always include topic (short subject label) — it feeds the learner's mastery tracking. "
     "The chat UI renders it as an interactive card with answer checking. Use at most 1-2 quizzes per reply, "
     "only when they genuinely aid learning — never pad every reply with quizzes."
 )
