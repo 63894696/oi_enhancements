@@ -113,6 +113,32 @@ def mastery_block() -> str:
     return "\n".join(lines)
 
 
+def topic_note(topic: str) -> dict | None:
+    """单主题掌握度速查(二期 掌握度回引)。
+
+    返回 None(无记录)或 {total, correct, recent_total, recent_correct,
+    recent_pct(0-100), weak(bool)}。weak 判定与 mastery_block 一致:
+    近期题数≥3 且近期正确率<60%。供 _shell_system_prompt 或诊断逻辑按
+    「正要教的概念」精确点名历史薄弱,而不是只给全局 top-N 摘要。
+    """
+    t = (topic or "").strip()
+    if not t:
+        return None
+    s = topic_stats().get(t)
+    if not s:
+        return None
+    rpct = (round(100 * s["recent_correct"] / s["recent_total"])
+            if s["recent_total"] else 0)
+    return {
+        "total": s["total"],
+        "correct": s["correct"],
+        "recent_total": s["recent_total"],
+        "recent_correct": s["recent_correct"],
+        "recent_pct": rpct,
+        "weak": bool(rpct < 60 and s["recent_total"] >= 3),
+    }
+
+
 def clear() -> bool:
     """清空全部进度(用户主动重置)。文件删除即清。"""
     try:
