@@ -2274,6 +2274,10 @@ _PAGE = r"""<!DOCTYPE html>
   .todo-card .todo-item.s-completed { color:var(--gh-ink-faint); text-decoration:line-through; }
   .todo-card .todo-item.s-in_progress { color:var(--gh-ink); font-weight:600; }
   .todo-card .todo-item.s-in_progress .tk { color:var(--gh-green-deep); }
+  /* P5 计划模式徽标:只读规划状态提示(暖黄,区别于进度卡) */
+  .plan-badge { background:linear-gradient(135deg, rgba(201,138,46,.14), rgba(201,138,46,.05));
+    border:1px solid rgba(201,138,46,.4); border-radius:10px; padding:8px 12px; margin:6px 0;
+    color:var(--gh-ink); font-size:13px; font-weight:600; }
   /* 一期② case 故事卡:文科概念的情境叙事块(区别于代码块的暖色叙事卡) */
   .case-card { background:linear-gradient(135deg, rgba(201,138,46,.10), rgba(201,138,46,.04));
     border:1px solid rgba(201,138,46,.40); border-left:4px solid rgba(201,138,46,.65);
@@ -3301,6 +3305,23 @@ function renderTodoCard(todos){
   card.innerHTML = html;
 }
 
+// P5 计划模式徽标:状态接口带回 plan_mode 时,在消息区顶部亮/灭一个只读规划提示。
+function renderPlanBadge(on){
+  const box = document.getElementById('messages');
+  if (!box) return;
+  let b = document.getElementById('plan-badge');
+  if (!on) { if (b) b.remove(); return; }
+  if (!b) {
+    b = document.createElement('div');
+    b.id = 'plan-badge';
+    b.className = 'plan-badge';
+    box.appendChild(b);
+  }
+  b.textContent = (LANG==='zh'
+    ? '🗺️ 计划模式:只读规划中,方案确认后再执行'
+    : '🗺️ Plan mode: read-only planning until you approve');
+}
+
 async function pollResult() {
   polling = true;
   const eb = document.getElementById('estop-btn');
@@ -3310,6 +3331,7 @@ async function pollResult() {
     const r = await api('/status?session_id=' + sessionId);
     if (r.events && r.events.length) r.events.forEach(renderLiveToolEvent);
     if (r.todos) renderTodoCard(r.todos);
+    if (typeof r.plan_mode !== 'undefined') renderPlanBadge(r.plan_mode);
     if (r.meta && r.meta.context_usage) renderCtxUsage(r.meta.context_usage);
     // 档位3:近满时后台已预提炼交接摘要 → 亮「开新窗接续」按钮并提示
     if (r.meta && r.meta.handoff_ready) {
@@ -4738,13 +4760,15 @@ class Handler(BaseHTTPRequestHandler):
                 _event_cursor[sid] = len(all_ev)
             # P4 todo:带上当前会话任务清单,前端渲染进度卡
             todos = []
+            plan_mode = False
             try:
                 import prisiragent_cli as _cli  # noqa: PLC0415
                 todos = _cli.get_todos(sid)
+                plan_mode = _cli.get_plan_mode(sid)
             except Exception:  # noqa: BLE001
                 pass
             self._json({"running": running, "meta": _get_meta(sid), "events": new_ev,
-                        "todos": todos})
+                        "todos": todos, "plan_mode": plan_mode})
         elif path == "/prisiragent/api/context_usage":
             # 切会话/加载时即算一次用量(不依赖 chat 后的 meta)。
             # model 未知时用 DEFAULT_MODEL 估;若 meta 已有 last_model 用之更准。
@@ -5080,6 +5104,13 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": True, "workdir": wd,
                             "summary": _hk.describe(wd),
                             "hooks": _hk.load_hooks(wd)})
+            except Exception as e:  # noqa: BLE001
+                self._json({"ok": False, "error": str(e)}, 500)
+        elif path == "/prisiragent/api/mcp_status":
+            # MCP:各 server 连接状态 + 工具数(设置面板/调试)。
+            try:
+                import prisiragent_cli as _cli  # noqa: PLC0415
+                self._json({"ok": True, "servers": _cli.mcp_status()})
             except Exception as e:  # noqa: BLE001
                 self._json({"ok": False, "error": str(e)}, 500)
         elif path == "/prisiragent/api/experience":

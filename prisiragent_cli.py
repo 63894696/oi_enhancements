@@ -91,6 +91,15 @@ def _need_read_first(path: str) -> str:
     return ""
 
 
+def _snapshot_before_write(path: str, tool: str) -> None:
+    """P5 undo:写/改文件前快照旧状态。软导入 prisir_snapshot,失败静默(不阻塞写)。"""
+    try:
+        import prisir_snapshot as _ss  # noqa: PLC0415
+        _ss.snapshot_before_write(path, tool)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 # 写入追踪(2026-08-24):成品对话链的「落盘校验」detect 层。开发链靠任务显式声明
 # 「改动文件:」清单校验,成品对话链没有这个概念 → 改为追踪 write_file 实际写了什么。
 # workdir -> [(path, ts), ...];web 层在答复后 pop 取用做落盘校验 + 改后检测(下轮注入)。
@@ -112,6 +121,7 @@ def _t_write_file(path: str, content: str, workdir: str = "") -> str:
     if block:
         return block
     try:
+        _snapshot_before_write(path, "write_file")  # P5 undo 快照
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)
@@ -301,8 +311,8 @@ _SUBAGENT_MAX_LOOPS = 5
 
 
 def _subagent_tools(skills: list | None) -> list:
-    """子代工具集:全量剔除 spawn_subagent(防递归),再按 skills 白名单过滤。"""
-    pool = [t for t in TOOLS if t["function"]["name"] != "spawn_subagent"]
+    """子代工具集:全量剔除 spawn_subagent + run_workflow(防递归编排),再按 skills 白名单过滤。"""
+    pool = [t for t in TOOLS if t["function"]["name"] not in ("spawn_subagent", "run_workflow")]
     if not skills:
         return pool
     allow = {str(s).strip() for s in skills if str(s).strip()}
@@ -587,6 +597,7 @@ def _t_edit_file(path: str, old_string: str, new_string: str,
         block = _need_read_first(path)
         if block:
             return block
+        _snapshot_before_write(path, "edit_file")  # P5 undo 快照
         with open(path, encoding="utf-8", errors="replace") as f:
             content = f.read()
 
@@ -1280,6 +1291,45 @@ def get_todos_text(session_id: str = "default") -> str:
     return "\n".join(lines)
 
 
+# P5 计划模式(plan mode):开启后,写/执行/删除类工具一律被拦,模型只能读+规划,
+# 把方案写进回复给用户过目;用户说「按这个做/执行/可以了」→ 模型调 plan_mode(false)
+# 恢复执行。对齐 Claude Code 的 plan mode(先对齐再动手,防大刀阔斧改错方向)。
+_PLAN_MODE: dict[str, bool] = {}   # session_id -> 是否处于计划模式
+_PLAN_READONLY = frozenset({
+    "read_file", "read_file_head", "read_file_lines", "list_files", "search_files",
+    "grep_search", "glob_search", "local_file_search", "local_content_search",
+    "anytxt_search", "web_search", "web_fetch", "git_status", "git_diff",
+    "file_reputation", "todo_write", "task_output", "task_list", "plan_mode",
+    "get_todos", "parallel_ask", "translate_document", "translate_image",
+})
+
+
+def _t_plan_mode(enabled: bool, session_id: str = "default") -> str:
+    """开关计划模式。True=只读规划,写/执行类工具被拦;False=恢复执行。"""
+    _PLAN_MODE[session_id] = bool(enabled)
+    if enabled:
+        return ("[plan_mode 已开启] 现在处于只读规划状态:read/search/git/web 等只读工具可用,"
+                "write_file/edit_file/delete_file/run_shell/run_code/schedule_cron/spawn_subagent/"
+                "run_workflow 等会被拦截。请只用只读工具调研,把完整方案写进回复给用户确认;"
+                "用户同意后调 plan_mode(enabled=false) 再动手。")
+    return "[plan_mode 已关闭] 已恢复执行状态,可以正常使用全部工具。"
+
+
+def get_plan_mode(session_id: str = "default") -> bool:
+    return bool(_PLAN_MODE.get(session_id, False))
+
+
+def _plan_block(name: str, session_id: str) -> str:
+    """计划模式下,非只读工具返回拦截文案;只读工具返回 ''。"""
+    if not get_plan_mode(session_id):
+        return ""
+    if name in _PLAN_READONLY:
+        return ""
+    return (f"[plan_mode 拦截] 当前处于计划模式(只读规划),'{name}' 被禁用。\n"
+            f"请先用只读工具完成调研,把方案写进回复给用户确认;"
+            f"用户同意后调 plan_mode(enabled=false) 再执行。")
+
+
 def _t_file_reputation(path: str) -> str:
     """协助查毒(只查不删):本地算 SHA256 → 云端只传哈希查信誉(MalwareBazaar/VirusTotal)。
     只给判定+建议,绝不上传文件本体、绝不替用户删除。key 从 keyring 取,不回显。"""
@@ -1432,8 +1482,40 @@ TOOLS = [
             "required": ["pattern"]}}},
     {"type": "function", "function": {
         "name": "run_shell",
-        "description": "Run a shell command in the working directory and return rc/stdout/stderr.",
-        "parameters": {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}}},
+        "description": "Run a shell command in the working directory and return rc/stdout/stderr. Set run_in_background=true for long-running commands (builds, downloads) — it returns a task_id immediately instead of blocking; check progress with task_output.",
+        "parameters": {"type": "object", "properties": {
+            "command": {"type": "string"},
+            "run_in_background": {"type": "boolean", "description": "run without blocking; returns task_id (default false)"}},
+            "required": ["command"]}}},
+    {"type": "function", "function": {
+        "name": "task_output",
+        "description": "Read the current output and status of a background or scheduled task (started via run_shell run_in_background or schedule_cron).",
+        "parameters": {"type": "object", "properties": {
+            "task_id": {"type": "string", "description": "the task id returned when the task was started"}},
+            "required": ["task_id"]}}},
+    {"type": "function", "function": {
+        "name": "task_list",
+        "description": "List all background and scheduled tasks with their status.",
+        "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {
+        "name": "schedule_cron",
+        "description": "Schedule a shell command to run later: either recurring via a 5-field cron expression (minute hour day-of-month month day-of-week, local time), or once after delay_minutes. Returns a task_id; results are readable via task_output. Use when the user asks to run something on a schedule or after a delay.",
+        "parameters": {"type": "object", "properties": {
+            "command": {"type": "string", "description": "the shell command to run"},
+            "cron": {"type": "string", "description": "5-field cron expression for recurring runs (optional)"},
+            "delay_minutes": {"type": "number", "description": "run once after this many minutes (optional)"}},
+            "required": ["command"]}}},
+    {"type": "function", "function": {
+        "name": "undo_file",
+        "description": "Undo a recent file change made by write_file/edit_file. With no path, undoes the most recent change; with a path, undoes the last change to that file. Use when the user wants to revert an edit you just made.",
+        "parameters": {"type": "object", "properties": {
+            "path": {"type": "string", "description": "file to revert (optional; omit to undo the most recent change)"}}}}},
+    {"type": "function", "function": {
+        "name": "plan_mode",
+        "description": "Enter or exit plan mode. When the user asks you to plan before acting ('先出个方案','规划一下再改','plan first'), or before a large/risky multi-file change, call plan_mode(true): you then investigate with read-only tools and write a detailed plan in your reply for the user to approve — write/exec tools are blocked. When the user approves the plan ('按这个做','可以','执行'), call plan_mode(false) to resume execution.",
+        "parameters": {"type": "object", "properties": {
+            "enabled": {"type": "boolean", "description": "true = enter read-only planning; false = resume execution"}},
+            "required": ["enabled"]}}},
     {"type": "function", "function": {
         "name": "run_code",
         "description": "Execute a short Python or JavaScript code snippet and return stdout/stderr/exit code. Use for teaching: verify what a code example prints, demonstrate a concept, check a quiz answer. NOT for file operations or system commands (use run_shell for those). 30s timeout, output truncated at 8k chars.",
@@ -1569,6 +1651,33 @@ TOOLS = [
                 }, "required": ["content", "status"]},
                       "description": "the full task list (replaces previous)"}},
             "required": ["todos"]}}},
+    {"type": "function", "function": {
+        "name": "run_workflow",
+        "description": (
+            "Orchestrate multiple sub-agents to solve a task that benefits from parallelism, "
+            "model diversity, or a multi-step pipeline. Modes: "
+            "'race' — send the same prompt to several sub-agents (optionally different models via "
+            "`models` = platform names; default = all configured platforms) and take the first good "
+            "result; 'dispatch' — route one task to a sub-agent chosen by routing `rules` "
+            "([{match(regex), model, note}]) based on the task text; 'pipeline' — run ordered "
+            "`steps`, where a step may `parallel`: [subtasks] to fan out concurrently, and "
+            "`use_prev`: true to feed the previous step's result into this one. "
+            "Use for: getting a second/third opinion from different models (race), parallel research "
+            "or file sweeps (pipeline fan-out), or model-routed delegation (dispatch). "
+            "Do NOT use for a single simple subtask — use spawn_subagent for that."),
+        "parameters": {"type": "object", "properties": {
+            "mode": {"type": "string", "description": "race | dispatch | pipeline"},
+            "prompt": {"type": "string", "description": "race: the shared prompt"},
+            "models": {"type": "array", "items": {"type": "string"},
+                       "description": "race: platform names to race (default: all configured)"},
+            "task": {"type": "string", "description": "dispatch: the task text"},
+            "rules": {"type": "array", "items": {"type": "object"},
+                      "description": "dispatch: routing rules [{match, model, note}]"},
+            "default_model": {"type": "string", "description": "dispatch: fallback platform name"},
+            "steps": {"type": "array", "items": {"type": "object"},
+                      "description": "pipeline: [{task, model?, parallel?, use_prev?}]"},
+            "goal": {"type": "boolean", "description": "sub-agents run autonomously to DONE (default true)"},
+            }, "required": ["mode"]}}},
 ]
 
 
@@ -1577,7 +1686,59 @@ TOOLS = [
 PERM_GATE_ENABLED = True
 
 
+# ---- MCP 工具并入(迁入 prisir_mcp_bridge)----
+# 本地配置的第三方 MCP server 工具以 mcp__<server>__<tool> 全名并入工具体系。
+# 懒加载 + 缓存:首次对话才拉各 server 的 list_tools;无配置/无 sdk 时返回内置集,零成本。
+_MCP_TOOLS_CACHE: list | None = None
+_MCP_TOOLS_LOADED = False
+
+
+def _mcp_tools() -> list:
+    """拉取全部 MCP server 工具(openai function schema)。失败/未配置返回 []。"""
+    global _MCP_TOOLS_CACHE, _MCP_TOOLS_LOADED
+    if _MCP_TOOLS_LOADED and _MCP_TOOLS_CACHE is not None:
+        return _MCP_TOOLS_CACHE
+    out: list = []
+    try:
+        import prisir_mcp_bridge as _mb  # noqa: PLC0415
+        for t in _mb.get_mcp_tools():
+            fn = {
+                "type": "function",
+                "function": {
+                    "name": t.get("name", ""),
+                    "description": t.get("description", ""),
+                    "parameters": t.get("parameters") or {"type": "object", "properties": {}},
+                },
+            }
+            if fn["function"]["name"]:
+                out.append(fn)
+    except Exception:  # noqa: BLE001 — MCP 不可用不阻塞内置工具
+        out = []
+    _MCP_TOOLS_CACHE = out
+    _MCP_TOOLS_LOADED = True
+    return out
+
+
+def _all_tools() -> list:
+    """内置 TOOLS + MCP 工具。run_conversation 给模型用这份全集。"""
+    return TOOLS + _mcp_tools()
+
+
+def mcp_status() -> dict:
+    """MCP 各 server 连接状态(供 web 状态接口/前端透出)。无桥返回 {}。"""
+    try:
+        import prisir_mcp_bridge as _mb  # noqa: PLC0415
+        return _mb.get_bridge().server_status()
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 def dispatch(name: str, args: dict, workdir: str, on_confirm=None, model: str = "") -> str:
+    # ---- P5 计划模式:开启时非只读工具一律拦截(先于权限闸,优先级最高)----
+    _sid = _SPAWN_CONTEXT.get("session_id", "default")
+    _pb = _plan_block(name, _sid)
+    if _pb:
+        return _pb
     # ---- v1.0 权限闸:写/执行/删除类工具真正执行前先过 coworker 引擎 ----
     # on_confirm: 可选回调 fn({tool,risk,reason,preview}) -> bool;None=无法弹卡,
     #             此时 requires_approval 的动作一律按拒绝处理(fail-closed)。
@@ -1629,7 +1790,30 @@ def dispatch(name: str, args: dict, workdir: str, on_confirm=None, model: str = 
                               args.get("max_results", 50),
                               workdir)
     if name == "run_shell":
+        if args.get("run_in_background"):
+            import prisir_bgtask as _bg  # noqa: PLC0415
+            return _bg.start_background(args.get("command", ""), workdir)
         return _t_run_shell(args.get("command", ""), workdir)
+    if name == "task_output":
+        import prisir_bgtask as _bg  # noqa: PLC0415
+        return _bg.task_output(args.get("task_id", ""))
+    if name == "task_list":
+        import prisir_bgtask as _bg  # noqa: PLC0415
+        return _bg.task_list()
+    if name == "schedule_cron":
+        import prisir_bgtask as _bg  # noqa: PLC0415
+        return _bg.schedule_cron(args.get("command", ""), args.get("cron", ""),
+                                 float(args.get("delay_minutes") or 0), workdir)
+    if name == "undo_file":
+        import prisir_snapshot as _ss  # noqa: PLC0415
+        p = (args.get("path") or "").strip()
+        if p:
+            p = p if os.path.isabs(p) else os.path.join(workdir, p)
+            return _ss.undo_path(p)
+        return _ss.undo_last()
+    if name == "plan_mode":
+        return _t_plan_mode(bool(args.get("enabled", False)),
+                            _SPAWN_CONTEXT.get("session_id", "default"))
     if name == "run_code":
         return _t_run_code(args.get("code", ""), args.get("language", "python"), workdir)
     if name == "spawn_subagent":
@@ -1679,6 +1863,22 @@ def dispatch(name: str, args: dict, workdir: str, on_confirm=None, model: str = 
     if name == "todo_write":
         sid = _SPAWN_CONTEXT.get("session_id", "default")
         return _t_todo_write(args.get("todos"), sid)
+    if name == "run_workflow":
+        import prisir_workflow as _wf  # noqa: PLC0415
+        return _wf.run_workflow(args if isinstance(args, dict) else {},
+                                workdir, model,
+                                on_event=_SPAWN_CONTEXT.get("on_event"),
+                                on_confirm=on_confirm)
+    # MCP 工具路由:mcp__<server>__<tool> 全名 → 桥执行
+    if name.startswith("mcp__"):
+        try:
+            import prisir_mcp_bridge as _mb  # noqa: PLC0415
+            res = _mb.call_mcp_tool(name, args if isinstance(args, dict) else {})
+            if res.get("ok"):
+                return str(res.get("output", ""))[:TOOL_STORE_MAX]
+            return f"[{name} error] {res.get('error', 'unknown')}"
+        except Exception as e:  # noqa: BLE001
+            return f"[{name} error] MCP 桥异常: {type(e).__name__}: {e}"
     return f"[unknown tool {name}]"
 
 
@@ -1761,13 +1961,27 @@ SYSTEM_CHAT = (
     "or benefits from a different model or a restricted tool set. Give the sub-agent a self-contained task "
     "description. It runs its own tool loop and returns its result to you. Do NOT spawn for simple one-step "
     "questions — answer those yourself. Sub-agents cannot spawn further agents.\n\n"
+    "Workflows (run_workflow): for work that benefits from parallelism or model diversity, orchestrate "
+    "sub-agents instead of one. Use race to get the fastest/good answer from several models at once "
+    "(e.g. a hard question where a second opinion helps); use pipeline to split a big job into concurrent "
+    "subtasks (parallel: [...]) then a synthesis step (use_prev); use dispatch to route a task to the "
+    "right model by rules. Prefer a single spawn_subagent when there's no parallelism or diversity to "
+    "exploit — workflows have overhead.\n\n"
     "Task lists: for any task with 3+ distinct steps, FIRST call todo_write to lay out the plan, "
     "then work through it, marking each item in_progress → completed as you go (re-send the full list "
     "each update, exactly ONE in_progress at a time). The user sees a live progress card. Skip todo_write "
     "for trivial one-step requests.\n\n"
     "File edits: before editing or overwriting an EXISTING file, you must read it first in this session "
     "(read_file / read_file_lines / read_file_head) — the system blocks edits to files you haven't read, "
-    "to prevent blind changes. New files need no read.\n\n"
+    "to prevent blind changes. New files need no read. If you make a wrong edit, undo_file reverts the most "
+    "recent change (or a specific file's last change).\n\n"
+    "Plan mode: when the user asks you to plan before acting, or before a large multi-file change, call "
+    "plan_mode(true) — you can then only use read-only tools while you investigate and write a detailed "
+    "plan for approval; call plan_mode(false) once the user approves.\n\n"
+    "Background & scheduled tasks: for long-running commands (builds, downloads, training), use run_shell "
+    "with run_in_background=true — it returns a task_id immediately instead of blocking; check progress "
+    "with task_output, list all with task_list. To run something later or on a schedule, use schedule_cron "
+    "(a 5-field cron expression, or delay_minutes for a one-shot).\n\n"
     "Web & files: use web_fetch to read a page's full text after web_search surfaces a link, or when the "
     "user pastes a URL. Use glob_search (e.g. '**/*.py') to locate files by pattern when you don't know "
     "the exact path; prefer grep_search for content.\n\n"
@@ -1846,7 +2060,7 @@ def run_conversation(messages: list, model: str, workdir: str, max_turns: int = 
     trace: list = []  # 当轮 tool/assistant 中间步(供壳入库)
     t0 = time.time()
     turns = 0
-    tools = TOOLS if use_tools else None
+    tools = _all_tools() if use_tools else None
     think_kw = _think_kwargs(think_level)
     for _ in range(max(1, max_turns)):
         turns += 1

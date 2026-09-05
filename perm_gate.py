@@ -50,18 +50,26 @@ _KIND = {
     "glob_search": "read_file",
     "web_fetch": "read_file",
     "todo_write": "read_file",
+    "task_output": "read_file",
+    "task_list": "read_file",
+    "schedule_cron": "shell",
+    "undo_file": "write_file",
 }
 
 # 需要过闸的工具(写/执行/删除)。只读类(read/list/search/file_reputation)直接放行不过闸。
 # run_code 虽限定 python/js 片段,但本质仍是任意代码执行 → 与 run_shell 同级管控。
-GATED_TOOLS = frozenset({"run_shell", "run_code", "write_file", "edit_file", "delete_file"})
+# schedule_cron 登记定时 shell(到点执行命令)→ 与 run_shell 同级,登记时即需确认。
+GATED_TOOLS = frozenset({"run_shell", "run_code", "write_file", "edit_file", "delete_file",
+                         "schedule_cron"})
 
 # 引擎缺席时的 fail-closed 白名单:只读类放行,其余一律需确认。
+# undo_file 是文件恢复(写操作),不放白名单 → 引擎缺席时需确认,稳妥。
 _READONLY_SAFE = frozenset({"read_file", "list_files", "search_files", "read_file_head",
                              "read_file_lines", "grep_search", "local_file_search",
                              "local_content_search", "anytxt_search", "web_search",
                              "file_reputation", "git_status", "git_diff",
-                             "glob_search", "web_fetch", "todo_write"})
+                             "glob_search", "web_fetch", "todo_write",
+                             "task_output", "task_list"})
 
 
 def _audit_sink(decision) -> None:
