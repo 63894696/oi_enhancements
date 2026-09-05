@@ -20,9 +20,9 @@ _tmp = tempfile.mkdtemp(prefix="oiagent_ux_test_")
 os.environ["PRISIR_DATA"] = _tmp
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import oiagent_web as w  # noqa: E402
-import oiagent_cli as cli  # noqa: E402
-import oiagent_context as octx  # noqa: E402
+import prisiragent_web as w  # noqa: E402
+import prisiragent_cli as cli  # noqa: E402
+import prisiragent_context as octx  # noqa: E402
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
