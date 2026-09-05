@@ -649,6 +649,13 @@ impl ITfKeyEventSink_Impl for TsfInputProcessor_Impl {
         _lparam: LPARAM,
     ) -> Result<BOOL> {
         let vk = wparam.0 as u16;
+        // 整个数字小键盘区(VK_NUMPAD0-9=0x60-0x69 + 运算符 *=0x6A +=0x6B -=0x6D .=0x6E /=0x6F)
+        // 一律放行:只把 A-Z(0x41-0x5A)当字母键。小键盘 VK|0x20 会撞上字母(0x6A|0x20='j' ...
+        // 0x6F|0x20='o'),2026-09-06 用户报「小键盘 /*-+ 出字母」—— 故覆盖整个 0x60-0x6F 区,
+        // 即便未来字母判定放宽也不会吃掉小键盘任何键。
+        if (0x60..=0x6F).contains(&vk) {
+            return Ok(BOOL(0));
+        }
         // Ctrl/Alt 按下时:字母/数字/标点一律放行(组合键 Ctrl+C/V/Z、Alt+F4 等归 app),
         // 不进入拼音。这是「Ctrl 组合键失效」的修复(2026-09-02)。必须 OnTest/OnKeyDown 一致。
         if ctrl_is_down() || alt_is_down() {
@@ -706,6 +713,16 @@ impl ITfKeyEventSink_Impl for TsfInputProcessor_Impl {
     ) -> Result<BOOL> {
         let vk = wparam.0 as u16;
         let inner = &self.this;
+
+        // 整个数字小键盘区(0x60-0x6F:数字 0x60-0x69 + 运算符 */+-. 0x6A-0x6F)一律放行,
+        // 绝不当字母/候选选择键(2026-09-06 用户报「小键盘按出字母」;数字修好后 /*-+ 仍出
+        // jklmno,因 vk|0x20 撞字母,故扩到 0x6F)。小键盘候选选择属可选增强,当前先保证
+        // 数字与运算符正常上屏 —— 这是硬性正确性,优于复用小键盘选候选。
+        if (0x60..=0x6F).contains(&vk) {
+            #[cfg(feature = "dllentry_log")]
+            crate::com_class_factory::log_dll_entry(&format!("OnKeyDown: vk=0x{:02X} NUMPAD PASS", vk));
+            return Ok(BOOL(0));
+        }
 
         // 2026-09-02 回删卡顿端到端定位:OnKeyDown 入口时间戳。
         #[cfg(feature = "dllentry_log")]
