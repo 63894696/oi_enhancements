@@ -2410,13 +2410,17 @@ _PAGE = r"""<!DOCTYPE html>
 <div id="keymodal">
   <div class="card">
     <h3 data-i18n="model_endpoints">模型端点</h3>
-    <div class="sub">无账号:key 只存本地。任意云端平台(OpenAI/Anthropic/Kimi/MiniMax/Agnes…)
-      都按「自定义端点」填,选对协议即可。</div>
+    <div class="sub">无账号:key 只存本地。可登记多个平台,每个一行(平台名+协议+base_url+key+模型)。
+      子代/竞速按「平台名」选用模型。对话路由按任务类型挑平台:openai/anthropic 优先于自定义平台;
+      只填自定义平台时该平台即默认。同名保存=覆盖。</div>
     <div class="kf">
-      <label data-i18n="custom_endpoint">自定义端点</label>
-      <div class="hint">协议:openai=OpenAI 兼容(/chat/completions);anthropic=Anthropic Messages(/v1/messages)。<br>
-        base_url 填到版本前缀即可,如 https://api.kimi.com/coding/v1、https://api.minimaxi.com/anthropic、
-        https://api.anthropic.com、http://127.0.0.1:11434/v1</div>
+      <label data-i18n="custom_endpoint">模型端点</label>
+      <div class="hint">平台名:小写字母/数字/-/_,如 openai、anthropic、kimi、qwen-coder、custom。
+        同名保存=覆盖。openai/anthropic 可空 base_url 用官方默认。<br>
+        协议:openai=OpenAI 兼容(/chat/completions);anthropic=Anthropic Messages(/v1/messages)。<br>
+        base_url 填到版本前缀,如 https://api.kimi.com/coding/v1、https://api.minimaxi.com/anthropic、
+        http://127.0.0.1:11434/v1</div>
+      <input id="k-platform" type="text" placeholder="平台名, e.g. kimi / qwen-coder / custom" style="width:100%;padding:9px 12px;border:1px solid var(--gh-line);border-radius:8px;font-size:13px;background:var(--gh-surface);color:var(--gh-ink);margin-bottom:6px">
       <select id="k-custom-proto" style="width:100%;padding:9px 12px;border:1px solid var(--gh-line);border-radius:8px;font-size:13px;background:var(--gh-surface);color:var(--gh-ink);margin-bottom:6px">
         <option value="openai">openai(OpenAI 兼容,多数平台)</option>
         <option value="anthropic">anthropic(Claude / MiniMax anthropic 端点)</option>
@@ -3498,23 +3502,41 @@ async function pullModels(){
 }
 async function saveKeys(){
   const body = {
+    platform: document.getElementById('k-platform').value.trim().toLowerCase(),
     custom_proto: document.getElementById('k-custom-proto').value,
     custom_url: document.getElementById('k-custom-url').value.trim(),
     custom_key: document.getElementById('k-custom-key').value.trim(),
     custom_model: document.getElementById('k-custom-model').value.trim(),
   };
-  await api('/keys', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const hint = document.getElementById('k-model-hint');
+  const zh = (LANG === 'zh');
+  const r = await api('/keys', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(r && r.ok === false){ hint.textContent = (zh?'保存失败: ':'Save failed: ') + (r.error||''); return; }
+  hint.textContent = zh ? ('已保存平台「'+body.platform+'」') : ('Saved platform "'+body.platform+'"');
+  document.getElementById('k-custom-key').value = '';
   renderKeys();
 }
 async function renderKeys(){
   const ks = await api('/keys');
   const el = document.getElementById('keylist');
-  el.innerHTML = ks.length ? '<div class="sub" style="margin:8px 0 4px">' + (LANG==='zh'?'已配置:':'Configured:') + '</div>' : '';
+  el.innerHTML = ks.length ? '<div class="sub" style="margin:8px 0 4px">' + (LANG==='zh'?'已配置(点「填入」载回表单编辑):':'Configured (click "load" to edit):') + '</div>' : '';
   ks.forEach(k => {
     const d = document.createElement('div'); d.className='k';
-    d.innerHTML = '<span>'+esc(k.platform)+' '+esc(k.key_hint)+'</span><button onclick="delKey(\''+k.platform+'\')">' + T('del') + '</button>';
+    const proto = (k.meta && k.meta.proto) ? ' ['+k.meta.proto+']' : '';
+    const label = esc(k.platform)+proto+' '+esc(k.base_url||'(默认)')+' 模型='+esc(k.model||'(未设)')+' '+esc(k.key_hint);
+    d.innerHTML = '<span style="flex:1">'+label+'</span>'
+      + '<button onclick=\'loadKey('+JSON.stringify(k)+')\'>' + (LANG==='zh'?'填入':'load') + '</button>'
+      + '<button onclick="delKey(\''+k.platform+'\')">' + T('del') + '</button>';
     el.appendChild(d);
   });
+}
+function loadKey(k){
+  document.getElementById('k-platform').value = k.platform || 'custom';
+  document.getElementById('k-custom-proto').value = (k.meta && k.meta.proto) || 'openai';
+  document.getElementById('k-custom-url').value = k.base_url || '';
+  document.getElementById('k-custom-model').value = k.model || '';
+  document.getElementById('k-custom-key').value = '';
+  document.getElementById('k-custom-key').placeholder = (LANG==='zh'?'留空=保留原 key;填新值=覆盖':'empty=keep key; fill=overwrite');
 }
 async function delKey(p){ await api('/keys/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({platform:p})}); renderKeys(); }
 
@@ -5411,15 +5433,31 @@ class Handler(BaseHTTPRequestHandler):
         t.start()
         self._json({"session_id": sid, "status": "running"})
 
+    _PLATFORM_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
+
     def _handle_save_keys(self, body: dict):
-        # 统一只收「自定义端点」。任意平台(OpenAI/Anthropic/Kimi/MiniMax/Agnes…)
-        # 都是 base_url+key+model+协议,不再单列 openai/anthropic 两个字段。
+        # 多平台登记(2026-09-05):任意平台名一行 {proto, base_url, key, model}。
+        # 兼容旧前端:无 platform 字段时落 "custom"(原行为)。
+        # openai/anthropic 可空 base_url(router 有默认端点);自定义平台必须给 base_url。
         proto = (body.get("custom_proto") or "openai").strip().lower()
         if proto not in ("openai", "anthropic"):
             proto = "openai"
-        if body.get("custom_url"):
-            _key_store.set_key("custom", body.get("custom_key", "") or "sk-local",
-                               base_url=body["custom_url"], model=body.get("custom_model", ""),
+        platform = (body.get("platform") or "custom").strip().lower()
+        base_url = (body.get("custom_url") or "").strip()
+        if not self._PLATFORM_NAME_RE.match(platform):
+            self._json({"ok": False, "error": f"平台名非法: {platform!r}(小写字母/数字/-/_)"}, 400)
+            return
+        if not base_url and platform not in ("openai", "anthropic"):
+            self._json({"ok": False, "error": f"自定义平台 {platform} 需填 base_url"}, 400)
+            return
+        if base_url or platform in ("openai", "anthropic"):
+            # key 留空=保留已存 key(编辑端点时不覆盖);平台本无 key 才落 sk-local 占位。
+            new_key = (body.get("custom_key", "") or "").strip()
+            if not new_key:
+                existing = _key_store.get_key(platform) or {}
+                new_key = existing.get("api_key") or "sk-local"
+            _key_store.set_key(platform, new_key,
+                               base_url=base_url, model=(body.get("custom_model", "") or "").strip(),
                                meta={"proto": proto})
         self._json({"ok": True, "platforms": _router.available_platforms()})
 
