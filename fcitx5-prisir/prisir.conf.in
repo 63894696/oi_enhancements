@@ -1,0 +1,12 @@
+[Addon]
+Name[zh_CN]=灵犀拼音
+Name=Prisir Pinyin
+Category=InputMethod
+Version=1.0.0
+Library=prisir
+Type=SharedLibrary
+OnDemand=True
+Configurable=False
+
+[Addon/Dependencies]
+0=core:5.1.0
