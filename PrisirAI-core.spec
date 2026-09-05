@@ -8,18 +8,22 @@ from PyInstaller.utils.hooks import collect_data_files
 
 litellm_datas = collect_data_files('litellm')
 
+import os as _os
+def _maybe(src, dst):
+    """docs/* 在 2026-08-28 撤档事件中被 filter-repo 删除;运行时对缺失优雅降级
+    (_load_constitution/索引抽取失败返回空,不崩),故打包改为存在才带,缺失不致命。"""
+    return [(src, dst)] if _os.path.exists(src) else []
+
 a = Analysis(
     ['prisiragent_web.py'],
     pathex=[],
     binaries=[],
     datas=litellm_datas + [
         ('assets', 'assets'),
-        # 2026-08-24 v2.3.0:方案库索引 + 项目宪法打进 _MEIPASS/docs/。
-        #   _shell_system_prompt 从 _REPO_ROOT/docs/(frozen 下=_MEIPASS/docs/)读
-        #   preset-solutions-index.md(预设优先级)和 prisir-dev-constitution.md(宪法);
-        #   不打进包 frozen 下两文件缺失 → 方案库索引/宪法静默失效。
-        ('docs/preset-solutions-index.md', 'docs'),
-        ('docs/prisir-dev-constitution.md', 'docs'),
+        # 2026-08-24 v2.3.0:方案库索引 + 项目宪法打进 _MEIPASS/docs/(2026-09-06:已撤档,改 _maybe 可选)。
+    ] + _maybe('docs/preset-solutions-index.md', 'docs')
+      + _maybe('docs/prisir-dev-constitution.md', 'docs')
+      + [
         # 2026-08-24 v2.3.0:用户画像沉淀模块。prisiragent_web 用「函数内 import user_profile」
         #   (lazy import,_shell_system_prompt / _run_chat_thread 两处),PyInstaller 静态
         #   分析抓不到函数内 import → 不打进包则 frozen 下画像能力静默失效。模块纯 stdlib,
