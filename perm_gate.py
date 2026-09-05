@@ -54,6 +54,7 @@ _KIND = {
     "task_list": "read_file",
     "schedule_cron": "shell",
     "undo_file": "write_file",
+    "philosopher_debate": "read_file",
 }
 
 # 需要过闸的工具(写/执行/删除)。只读类(read/list/search/file_reputation)直接放行不过闸。
@@ -69,7 +70,7 @@ _READONLY_SAFE = frozenset({"read_file", "list_files", "search_files", "read_fil
                              "local_content_search", "anytxt_search", "web_search",
                              "file_reputation", "git_status", "git_diff",
                              "glob_search", "web_fetch", "todo_write",
-                             "task_output", "task_list"})
+                             "task_output", "task_list", "philosopher_debate"})
 
 
 def _audit_sink(decision) -> None:
