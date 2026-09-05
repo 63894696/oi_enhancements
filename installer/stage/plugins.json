@@ -7,6 +7,14 @@
       "event": "PrisirLingXi_VoiceToggle_Event",
       "button": "语",
       "enabled": true
+    },
+    {
+      "id": "ai",
+      "name": "AI 助手",
+      "exe": "plugins/ai/PrisirAI.exe",
+      "event": "PrisirLingXi_AiToggle_Event",
+      "button": "AI",
+      "enabled": true
     }
   ]
 }

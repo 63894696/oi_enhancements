@@ -9,7 +9,7 @@
 ;   - 自包含: 引擎/词库/索引全打进包, 装完即可用全部功能(拼音+手写走 Windows Ink)。
 ;   - 注册/卸载逻辑全在 prisir_tsfsvc(register.rs / unregister), 已在 VM 反复验证。
 ;
-; 构建: makensis /DVERSION=1.0.0-beta.1 /DCHANNEL=beta lingxi_ime.nsi
+; 构建: makensis /DVERSION=1.0.0-beta.9 /DCHANNEL=beta lingxi_ime.nsi
 ; =============================================================================
 
 Unicode true
@@ -18,7 +18,7 @@ Unicode true
 
 ; ---- 可由命令行覆盖 ----
 !ifndef VERSION
-  !define VERSION "1.0.0-beta.1"
+  !define VERSION "1.0.0-beta.9"
 !endif
 !ifndef CHANNEL
   !define CHANNEL "beta"
@@ -57,7 +57,7 @@ SetCompressor /SOLID lzma
 !insertmacro MUI_LANGUAGE "SimpChinese"
 
 ; ---- 版本资源(资源管理器右键属性看) ----
-VIProductVersion "1.0.0.0"
+VIProductVersion "1.0.0.9"
 VIAddVersionKey "ProductName"   "${PRODUCT}"
 VIAddVersionKey "CompanyName"   "${COMPANY}"
 VIAddVersionKey "FileVersion"   "${VERSION}"
@@ -111,7 +111,7 @@ Section "安装" SEC01
     File "${SRC}\voice\sensevoice-small\config.yaml"
 
     ; ---- 插件框架: 写默认 plugins.json 到 %LOCALAPPDATA%\Prisir\ ----
-    ; 声明 AI 助手插件(PrisirAI.exe, 用户独立安装); exe 不在则按钮/菜单自动隐藏。
+    ; 声明语音听写 + AI 助手两个插件; exe 不在则按钮/菜单自动隐藏(纯增量,不影响打字)。
     ; 后续插件(皮肤/宠物等)照此模板加, 用户从网站下载解压到 plugins\ 即用。
     DetailPrint "写入插件配置 plugins.json ..."
     CreateDirectory "$LOCALAPPDATA\Prisir"
@@ -119,6 +119,14 @@ Section "安装" SEC01
     FileOpen $0 "$LOCALAPPDATA\Prisir\plugins.json" w
     FileWrite $0 '{$\r$\n'
     FileWrite $0 '  "plugins": [$\r$\n'
+    FileWrite $0 '    {$\r$\n'
+    FileWrite $0 '      "id": "voice",$\r$\n'
+    FileWrite $0 '      "name": "语音听写",$\r$\n'
+    FileWrite $0 '      "exe": "plugins/voice/lingxi_voice.exe",$\r$\n'
+    FileWrite $0 '      "event": "PrisirLingXi_VoiceToggle_Event",$\r$\n'
+    FileWrite $0 '      "button": "语",$\r$\n'
+    FileWrite $0 '      "enabled": true$\r$\n'
+    FileWrite $0 '    },$\r$\n'
     FileWrite $0 '    {$\r$\n'
     FileWrite $0 '      "id": "ai",$\r$\n'
     FileWrite $0 '      "name": "AI 助手",$\r$\n'

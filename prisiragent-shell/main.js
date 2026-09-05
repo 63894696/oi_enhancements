@@ -90,6 +90,9 @@ const WEB_PORT = parseInt(process.env.PRISIRAGENT_WEB_PORT || process.env.OIAGEN
 const WEB_URL = `http://${WEB_HOST}:${WEB_PORT}`;
 const HOTKEY = process.env.OIAGENT_SHELL_HOTKEY || "CommandOrControl+Shift+O";
 const PYTHON = process.env.OIAGENT_PYTHON || "python";
+// 输入法悬浮栏 AI 按钮的 toggle 命名事件:Prisir TSF 插件 trigger_plugin("ai") SetEvent 同名事件。
+// 壳在此监听,事件触发 = 把窗口置前(等价热键的「show」半支),让用户能从输入法一键唤起对话。
+const AI_TOGGLE_EVENT = process.env.PRISIR_AI_TOGGLE_EVENT || "PrisirLingXi_AiToggle_Event";
 
 // ---------- token 纪律:主进程读 0600 配置,只把「是否存在」告知渲染层 ----------
 function prisirTokenPath() {
@@ -287,6 +290,51 @@ function toggleWindow() {
   else { win.show(); win.focus(); loadWhenReady(); }
 }
 
+// ---------- 输入法 AI 按钮唤起:监听 PrisirLingXi_AiToggle_Event ----------
+// 与语音插件同构(lingxi_app 的 _voice_listener):TSF 点 AI 按钮 → OpenEvent+SetEvent 同名事件;
+// 这里 WaitOne 阻塞等待,触发即把窗口置前(show+focus,不做 hide —— 用户点 AI 是想对话不是隐藏)。
+// 用隐藏 PowerShell 子进程承载 WaitOne,避免引入 node 原生模块(node-addon-api 编译链)。
+// 事件只在 Windows 存在;非 Windows 直接跳过。
+let aiListenerProc = null;
+function bringToFront() {
+  if (!win) return createWindow();
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+  loadWhenReady();
+}
+function startAiToggleListener() {
+  if (process.platform !== "win32") return;
+  // PowerShell:建/开命名事件 → 循环 WaitOne,每次触发打印一行标记。
+  // 手动重置(ManualResetEvent $false)防一次性;stderr 静默,异常退出后由壳侧重启。
+  const ps = [
+    "$n='" + AI_TOGGLE_EVENT + "';",
+    "$e=New-Object System.Threading.EventWaitHandle($false,[System.Threading.EventResetMode]::AutoReset,$n);",
+    "while($true){ $e.WaitOne() | Out-Null; Write-Output 'AI_TOGGLE' ; [Console]::Out.Flush() }",
+  ].join(" ");
+  try {
+    aiListenerProc = spawn("powershell.exe", ["-NoProfile", "-WindowStyle", "Hidden", "-Command", ps], {
+      windowsHide: true, stdio: ["ignore", "pipe", "ignore"],
+    });
+  } catch (e) { logError("aiToggle", "spawn fail", `err=${e.message}`); return; }
+  let buf = "";
+  aiListenerProc.stdout.on("data", (d) => {
+    buf += d.toString("utf8");
+    let idx;
+    while ((idx = buf.indexOf("AI_TOGGLE")) >= 0) {
+      buf = buf.slice(idx + "AI_TOGGLE".length);
+      logInfo("aiToggle", "event -> bringToFront");
+      bringToFront();
+    }
+  });
+  // 监听进程异常死掉则 3s 后重启(保持唤起通道常开);壳退出时不再重启。
+  aiListenerProc.on("exit", (code) => {
+    aiListenerProc = null;
+    if (!quitting) { logWarn("aiToggle", "listener exit, respawn", `code=${code}`); setTimeout(startAiToggleListener, 3000); }
+  });
+  logInfo("aiToggle", "listener started", `event=${AI_TOGGLE_EVENT} pid=${aiListenerProc.pid}`);
+}
+
 // ---------- v2.0 开发者模式 ----------
 // 检测 $INSTDIR/dev/git-portable/ 是否存在(装包器开发者模式节产物)。
 // 检测是用户已主动勾选安装 git-portable + repo.zip + DEV_README.txt。
@@ -480,6 +528,7 @@ if (!gotLock) {
     createWindow();
     createTray();
     globalShortcut.register(HOTKEY, toggleWindow);
+    startAiToggleListener(); // 输入法悬浮栏 AI 按钮唤起通道
     startBrandNotify(); // #50 品牌化应用通知(每日轮询,容错静默)
     app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   });
@@ -488,6 +537,7 @@ if (!gotLock) {
   app.on("will-quit", () => {
     logInfo("app", "will-quit");
     globalShortcut.unregisterAll();
+    if (aiListenerProc) { try { aiListenerProc.kill(); } catch {} aiListenerProc = null; }
     killBackend();
   });
 

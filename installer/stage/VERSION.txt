@@ -17,7 +17,7 @@
 # 升版注意: Win 端 PRIMARY_VERSION 跟随 Android 端同基线 (用户已在 2026-08-29 决策对齐),
 #           Win 端历史基线 0.7.0, 升到 1.0.0 表示 "首个跨平台公开版本"。
 
-PRIMARY_VERSION=1.0.0-beta.8
+PRIMARY_VERSION=1.0.0-beta.9
 RELEASE_CHANNEL=beta
-BUILD_DATE=2026-09-05
+BUILD_DATE=2026-09-06
 GIT_COMMIT=HEAD

@@ -28,7 +28,7 @@ use windows::core::PCWSTR;
 use windows::Win32::Foundation::CloseHandle;
 use windows::Win32::System::Threading::{OpenEventW, SetEvent, EVENT_MODIFY_STATE};
 use windows::Win32::UI::Shell::ShellExecuteW;
-use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
+use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
 fn logp(msg: &str) {
     crate::com_class_factory::log_dll_entry(&format!("[plugin] {}", msg));
@@ -162,13 +162,15 @@ pub fn trigger_plugin(id: &str) {
                     .chain(std::iter::once(0))
                     .collect();
                 let open: Vec<u16> = "open".encode_utf16().chain(std::iter::once(0)).collect();
+                // SW_SHOWNORMAL:插件可能是 .vbs/.bat 启动器(如 AI 壳 PrisirAI.vbs),
+                // SW_HIDE 会把启动器拉起的窗口一并藏掉;正常显示让 GUI 插件自己决定显隐。
                 let r = ShellExecuteW(
                     None,
                     PCWSTR(open.as_ptr()),
                     PCWSTR(exe_w.as_ptr()),
                     PCWSTR::null(),
                     PCWSTR::null(),
-                    SW_HIDE,
+                    SW_SHOWNORMAL,
                 );
                 logp(&format!("launched plugin '{}' ret={:?}", id, r));
             }

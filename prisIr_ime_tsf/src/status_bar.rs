@@ -272,7 +272,15 @@ fn ensure_window(state: &Arc<Mutex<RefCell<StatusBarState>>>) -> Result<HWND> {
 
 fn default_pos() -> (i32, i32) {
     let sw = unsafe { GetSystemMetrics(SM_CXSCREEN) };
-    (sw - BAR_W - 24, 40)
+    // 用动态总宽(内置 + 插件按钮)右对齐:插件加宽后起点左移,右侧不再溢出屏幕。
+    (sw - dyn_bar_w() - 24, 40)
+}
+
+/// 把栏左上 x 夹回屏幕内:右侧不溢出(用动态总宽),左侧不出屏。
+/// 用户拖动存位 / 默认位都过这一关,防止插件增减把栏挤出右缘。
+fn clamp_x(x: i32) -> i32 {
+    let sw = unsafe { GetSystemMetrics(SM_CXSCREEN) };
+    x.clamp(0, (sw - dyn_bar_w()).max(0))
 }
 
 // ── 对外 API ────────────────────────────────────────────────────────────────
@@ -304,6 +312,7 @@ pub(crate) fn show(
             let s = g.borrow();
             s.pos.unwrap_or_else(default_pos)
         };
+        let x = clamp_x(x);
         unsafe {
             let _ = SetWindowPos(hwnd, HWND_TOPMOST, x, y, w, BAR_H, SWP_NOACTIVATE | SWP_SHOWWINDOW);
             // 苹果式圆角:裁剪窗口为圆角矩形区域(与候选窗一致)。
@@ -642,8 +651,8 @@ unsafe extern "system" fn status_bar_wnd_proc(
                 }
                 let _ = SetCursor(LoadCursorW(None, IDC_SIZEALL).unwrap_or_default());
             }
-            // 拖动中:整窗跟手。
-            let nx = sp.0 + dx;
+            // 拖动中:整窗跟手。x 夹回屏幕内,防拖出右缘后插件加宽时找不到。
+            let nx = clamp_x(sp.0 + dx);
             let ny = sp.1 + dy;
             let _ = SetWindowPos(hwnd, HWND_TOPMOST, nx, ny, 0, 0, SWP_NOACTIVATE | SWP_NOSIZE | SWP_SHOWWINDOW);
             global_bar_state().lock().unwrap().borrow_mut().pos = Some((nx, ny));
