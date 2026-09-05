@@ -15,9 +15,99 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 import urllib.request
 import urllib.error
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
+
+
+# ─────────────────────────────────────────────────────────────
+# 话题档案(续轮):每轮讨论存一条,同 topic 下次开新轮时注入历史
+# ─────────────────────────────────────────────────────────────
+def _topic_dir() -> Path:
+    root = os.environ.get("PRISIR_DATA_DIR") or str(Path.home() / ".local" / "share" / "prisir")
+    d = Path(root) / "philosopher_topics"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _topic_file(topic: str) -> Path:
+    # topic 归一化成安全文件名(小写、非字母数字→-),同话题同人写法不同也命中同一档
+    slug = re.sub(r"[^0-9a-zA-Z一-鿿]+", "-", (topic or "").strip().lower()).strip("-")[:60]
+    return _topic_dir() / f"{slug or 'default'}.jsonl"
+
+
+def save_round(topic: str, panel: str, event: str, res: dict) -> None:
+    """把一轮讨论追加进话题档案。永不抛(档案失败不阻塞讨论)。"""
+    try:
+        rec = {
+            "ts": time.time(),
+            "date": time.strftime("%Y-%m-%d %H:%M"),
+            "panel": panel,
+            "event": event,
+            "stance": {k: v.get("text", "") for k, v in res.get("rounds", {}).get("stance", {}).items()},
+            "stance_names": {k: v.get("school", "") for k, v in res.get("rounds", {}).get("stance", {}).items()},
+            "debate": {k: v.get("text", "") for k, v in res.get("rounds", {}).get("debate", {}).items()},
+            "synthesis": (res.get("synthesis") or {}).get("text", ""),
+        }
+        with open(_topic_file(topic), "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def load_topic_history(topic: str, max_rounds: int = 3) -> list[dict]:
+    """取某话题最近几轮(新→旧返回旧→新序)。读不到返回 []。"""
+    fp = _topic_file(topic)
+    if not fp.is_file():
+        return []
+    try:
+        lines = fp.read_text(encoding="utf-8").splitlines()
+        recs = []
+        for ln in lines:
+            ln = ln.strip()
+            if not ln:
+                continue
+            try:
+                recs.append(json.loads(ln))
+            except Exception:  # noqa: BLE001
+                pass
+        return recs[-max_rounds:]  # 最近 max_rounds 轮(旧→新)
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def list_topics() -> list[dict]:
+    """列已存档话题(供查询/续轮提示)。"""
+    out = []
+    try:
+        for fp in sorted(_topic_dir().glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True):
+            rounds = load_topic_history(fp.stem, max_rounds=999)
+            if rounds:
+                out.append({"topic": fp.stem, "rounds": len(rounds),
+                            "last_event": rounds[-1].get("event", "")[:50],
+                            "last_date": rounds[-1].get("date", "")})
+    except Exception:  # noqa: BLE001
+        pass
+    return out
+
+
+def _history_digest(topic: str) -> str:
+    """把话题历史浓缩成注入提示词的文本(各家最近立场 + 上轮综述)。"""
+    hist = load_topic_history(topic)
+    if not hist:
+        return ""
+    parts = [f"这是「{topic}」事件的第 {len(hist)+1} 轮讨论。此前已有 {len(hist)} 轮:"]
+    for i, rec in enumerate(hist, 1):
+        parts.append(f"\n— 第{i}轮({rec.get('date','')})事件进展:{rec.get('event','')[:80]}")
+        names = rec.get("stance_names", {})
+        for sid, txt in (rec.get("stance") or {}).items():
+            nm = names.get(sid, sid)
+            parts.append(f"  {nm}:{txt[:120]}")
+        if rec.get("synthesis"):
+            parts.append(f"  上轮综述:{rec['synthesis'][:150]}")
+    return "\n".join(parts)
 
 # ─────────────────────────────────────────────────────────────
 # 引擎注册表(2026-09-05 本机实测数据;key_env 从环境读,缺 key 即不可用)
@@ -350,14 +440,19 @@ def _mode_note(n_schools: int, n_eng: int) -> str:
 
 def run_philosopher(event: str, panel: str = DEFAULT_PANEL,
                     mode: str = "debate", max_schools: int = 5,
-                    synthesize: bool = True) -> dict:
+                    synthesize: bool = True, topic: str = "") -> dict:
     """哲人模式主入口。返回 {ok, panel, mode_note, rounds, synthesis, errors, engine_table}。
 
     mode: "stance"(仅立场) / "debate"(立场→辩论→综述,默认)
+    topic: 非空则走续轮 — 同话题历史注入提示词(各家记得上轮立场、就新进展演进),
+           本轮结果存档;综述额外点出与上轮相比的变化。
     """
     event = (event or "").strip()
     if not event:
         return {"ok": False, "error": "空事件"}
+    topic = (topic or "").strip()
+    history_digest = _history_digest(topic) if topic else ""
+    continuing = bool(history_digest)
     schools = get_schools(panel)[:max(1, min(max_schools, 8))]
     engines = usable_engines(probe_call=False)  # 快模式:按 key;调用层容错降级
     if not engines:
@@ -370,9 +465,15 @@ def run_philosopher(event: str, panel: str = DEFAULT_PANEL,
     n_eng_used = len({a["engine"]["name"] for a in assigned})
     mode_note = _mode_note(len(schools), n_eng_used)
     result = {"ok": True, "panel": PANELS.get(panel, PANELS[DEFAULT_PANEL])["label"],
-              "mode_note": mode_note, "event": event,
+              "mode_note": mode_note, "event": event, "topic": topic,
+              "continuing": continuing,
               "engines_used": sorted({a["engine"]["name"] for a in assigned}),
               "rounds": {}, "errors": []}
+
+    # 续轮:用户提示词统一带历史上下文(各家记得此前立场,就新进展回应)
+    hist_block = f"\n\n【话题历史】{history_digest}\n" if continuing else ""
+    r1_ask = (f"请就最新进展再次表态(可坚持、修正或深化你此前的立场,一句带过变化原因):{event}"
+              if continuing else f"请评价这个事件:{event}")
 
     # ── R1:各学派并行给立场 ──
     def _tokens_for(a, base):
@@ -385,7 +486,7 @@ def run_philosopher(event: str, panel: str = DEFAULT_PANEL,
         futs = {}
         for a in assigned:
             sp = build_system_prompt(a["school"])
-            up = f"请评价这个事件:{event}"
+            up = r1_ask + hist_block
             futs[ex.submit(_call, a["engine"], a["model"], sp, up, _tokens_for(a, _R1_TOKENS), True)] = a
         for fut in as_completed(futs):
             a = futs[fut]
@@ -418,9 +519,10 @@ def run_philosopher(event: str, panel: str = DEFAULT_PANEL,
                 if sch["id"] not in r1:
                     continue
                 sp = build_system_prompt(sch)
-                up = (f"事件:{event}\n\n各学派已给出立场:\n{others_digest}\n\n"
-                      f"请以你的视角,简要回应:你最认同哪一家、最反对哪一家,各一句理由;"
-                      f"再补一句你立场的澄清或坚持。不超过150字,仍以「{sch['sign']}」开头。")
+                up = (f"事件最新进展:{event}\n\n各学派本轮立场:\n{others_digest}\n\n"
+                      + (f"【话题历史】{history_digest}\n\n" if continuing else "")
+                      + f"请以你的视角,简要回应:你最认同哪一家、最反对哪一家,各一句理由;"
+                        f"再补一句你立场的澄清或坚持。不超过150字,仍以「{sch['sign']}」开头。")
                 futs[ex.submit(_call, a["engine"], a["model"], sp, up, _tokens_for(a, _R2_TOKENS), True)] = a
             for fut in as_completed(futs):
                 a = futs[fut]
@@ -452,8 +554,12 @@ def run_philosopher(event: str, panel: str = DEFAULT_PANEL,
               "用简体中文,格式严格如下:\n【共识】各家都认同的要点(一两句)\n"
               "【分歧】核心分歧在哪两三家之间、各一句\n"
               "【综合建议】给普通人的一句综合行动建议\n"
-              "总长度不超过250字,平实。")
-        up = f"事件:{event}\n\n各家观点:\n{all_text}"
+              + ("【演变】与上一轮相比,哪几家的立场发生了明显变化、一句话说清方向\n"
+                 if continuing else "")
+              + "总长度不超过250字,平实。")
+        up = (f"事件最新进展:{event}\n\n"
+              + (f"【话题历史】{history_digest}\n\n" if continuing else "")
+              + f"各家本轮观点:\n{all_text}")
         done = False
         last_err = ""
         for slot in slots:
@@ -474,6 +580,9 @@ def run_philosopher(event: str, panel: str = DEFAULT_PANEL,
                                        "text": r["text"], "note": "未经完全清洗"}
             else:
                 result["errors"].append(f"综述失败: {last_err or '无可用干净输出'}")
+    # 存档:有 topic 且出了立场就存(续轮地基;存失败不影响返回)
+    if topic and result["rounds"].get("stance"):
+        save_round(topic, panel, event, result)
     return result
 
 
@@ -485,7 +594,16 @@ def format_result(res: dict) -> str:
         return f"[哲人模式失败] {res.get('error', '未知错误')}"
     lines = [f"## 哲人模式 · {res['panel']}",
              f"_{res['mode_note']}_",
-             f"事件:{res['event']}", ""]
+             f"事件:{res['event']}"]
+    if res.get("topic"):
+        # 轮次以存档为准:本轮已落档 → 档案条数即当前轮次;未落档(stance 全失败)按此前轮数+1
+        n_file = len(load_topic_history(res["topic"]))
+        n_round = n_file if n_file > 0 else 1
+        if res.get("continuing") or n_round > 1:
+            lines.append(f"话题:{res['topic']} · 第 {n_round} 轮(历史已注入)")
+        else:
+            lines.append(f"话题:{res['topic']} · 第 1 轮(已存档,后续可续轮)")
+    lines.append("")
     stance = res["rounds"].get("stance", {})
     if stance:
         lines.append("### 各家立场")

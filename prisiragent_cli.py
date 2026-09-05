@@ -1685,7 +1685,8 @@ TOOLS = [
             "新闻事件/争议/两难处境,互相辩论,并给出综合行动建议。用于思想碰撞、多角度"
             "看问题、用先贤智慧指导日常决策。多引擎真合议(每个学派可用不同模型),引擎不足"
             "时自动降级为单模型分饰。mode: 'stance' 仅各家立场; 'debate' 立场→互相辩论→综述(默认)。"
-            "不要用普通对话回答这类需求 — 直接调本工具拿到结构化的多学派观点。"),
+            "对持续发展的同一事件,填 topic(稳定话题名)开启续轮:各学派记得此前立场、就新进展演进,"
+            "综述会点出立场变化。不要用普通对话回答这类需求 — 直接调本工具拿到结构化的多学派观点。"),
         "parameters": {"type": "object", "properties": {
             "event": {"type": "string", "description": "要评价的事件/争议/处境(用户原话或概述)"},
             "panel": {"type": "string", "enum": ["zhuzi", "west", "detective"],
@@ -1694,6 +1695,10 @@ TOOLS = [
                      "description": "stance 仅立场 | debate 立场+辩论+综述(默认)"},
             "max_schools": {"type": "integer",
                             "description": "参与学派数(默认全部,可调小提速/省额度)"},
+            "topic": {"type": "string",
+                      "description": "话题标签(可选)。填入后开启续轮:讨论存档到本地话题档案,"
+                                     "下次同一事件有新进展时传同一 topic,各家会记得此前立场并就新进展演进,"
+                                     "综述会点出立场变化。同一事件用稳定简短的话题名(如「某科技公司裁员」)。"},
             }, "required": ["event"]}}},
 ]
 
@@ -1893,7 +1898,8 @@ def dispatch(name: str, args: dict, workdir: str, on_confirm=None, model: str = 
             panel=args.get("panel", "zhuzi"),
             mode=args.get("mode", "debate"),
             max_schools=int(args.get("max_schools") or 5),
-            synthesize=(args.get("mode", "debate") == "debate"))
+            synthesize=(args.get("mode", "debate") == "debate"),
+            topic=args.get("topic", ""))
         return _ph.format_result(res)
     # MCP 工具路由:mcp__<server>__<tool> 全名 → 桥执行
     if name.startswith("mcp__"):
@@ -2021,7 +2027,11 @@ SYSTEM_CHAT = (
     "or asks how ancient thinkers / philosophical schools would judge something — call philosopher_debate "
     "with the event. It convenes a panel (zhuzi 诸子百家 / west 西方哲学 / detective 案件推理) that "
     "debates across multiple real models and synthesizes an actionable suggestion. Don't answer such "
-    "requests with a single-model opinion — convene the panel."
+    "requests with a single-model opinion — convene the panel. Continuation rounds: for an ongoing "
+    "event that develops over time, pass a stable short topic name (e.g. '某公司裁员') — the discussion "
+    "is archived locally and, on later rounds with the same topic, each school sees its prior stances "
+    "and evolves against the new development (the synthesis highlights what changed). If the user brings "
+    "new developments about an event that was debated before, reuse the same topic to continue the round."
 )
 
 
