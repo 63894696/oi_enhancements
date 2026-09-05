@@ -34,7 +34,11 @@ Unicode true
 !define INSTALL_REG "Software\${PRODUCT_EN}"
 
 Name "${PRODUCT} ${VERSION}"
-OutFile "LingxiIME-Windows-x64-${VERSION}-${CHANNEL}-Setup.exe"
+; OutFile 可被命令行 /DOUTFILE=... 覆盖(2026-09-06:旧 exe 被运行中的安装进程占用时改用别名输出)
+!ifndef OUTFILE
+  !define OUTFILE "LingxiIME-Windows-x64-${VERSION}-${CHANNEL}-Setup.exe"
+!endif
+OutFile "${OUTFILE}"
 InstallDir "$PROGRAMFILES64\PrisirIME"
 InstallDirRegKey HKLM "${INSTALL_REG}" "InstallDir"
 RequestExecutionLevel admin
@@ -84,7 +88,28 @@ Section "安装" SEC01
     SetOutPath "$INSTDIR"
 
     ; 核心二进制(覆盖安装)
+    ; 2026-09-06: 安装前对会被占用的核心文件做 rename-swap 解锁 ——
+    ;   prisir_ime_tsf.dll 被 ctfmon/explorer/SearchApp/WebView2 等 9+ 进程映射,
+    ;   File 覆盖写不动会弹「无法打开要写入的文件」。File 不支持 /REBOOTOK,
+    ;   故先把旧文件 Rename 成 .old_inst(rename 对被映射的 DLL 可行),
+    ;   腾出原名让 File 写新版;.old_inst 由卸载/下次安装清理。对齐部署 rename-swap 实战。
     SetOverwrite on
+    ${If} ${FileExists} "$INSTDIR\prisir_ime_tsf.dll"
+        Delete "$INSTDIR\prisir_ime_tsf.dll.old_inst"
+        Rename "$INSTDIR\prisir_ime_tsf.dll" "$INSTDIR\prisir_ime_tsf.dll.old_inst"
+    ${EndIf}
+    ${If} ${FileExists} "$INSTDIR\prisir_ime.dll"
+        Delete "$INSTDIR\prisir_ime.dll.old_inst"
+        Rename "$INSTDIR\prisir_ime.dll" "$INSTDIR\prisir_ime.dll.old_inst"
+    ${EndIf}
+    ${If} ${FileExists} "$INSTDIR\prisir_tsfsvc.exe"
+        Delete "$INSTDIR\prisir_tsfsvc.exe.old_inst"
+        Rename "$INSTDIR\prisir_tsfsvc.exe" "$INSTDIR\prisir_tsfsvc.exe.old_inst"
+    ${EndIf}
+    ${If} ${FileExists} "$INSTDIR\prisir_hw.exe"
+        Delete "$INSTDIR\prisir_hw.exe.old_inst"
+        Rename "$INSTDIR\prisir_hw.exe" "$INSTDIR\prisir_hw.exe.old_inst"
+    ${EndIf}
     File "${SRC}\prisir_tsfsvc.exe"
     File "${SRC}\prisir_ime_tsf.dll"
     File "${SRC}\prisir_ime.dll"
@@ -112,7 +137,12 @@ Section "安装" SEC01
 
     ; ---- 插件框架: 写默认 plugins.json 到 %LOCALAPPDATA%\Prisir\ ----
     ; 声明语音听写 + AI 助手两个插件; exe 不在则按钮/菜单自动隐藏(纯增量,不影响打字)。
-    ; 后续插件(皮肤/宠物等)照此模板加, 用户从网站下载解压到 plugins\ 即用。
+    ; 语音随本包安装(见上 voice 段), exe 相对插件根 LOCALAPPDATA\Prisir。
+    ; AI 为独立安装(2026-09-06 用户拍板): 指向 C:\Program Files\PrisirAI\PrisirAI.vbs,
+    ;   不随本包打包; 装了 Prisir AI 的机器 AI 按钮自动出现, 未装则自动隐藏, 互不影响。
+    ; 注意: 必须指向 PrisirAI.vbs(electron 壳启动器,带 AI-toggle 事件监听 + 单例置顶),
+    ;   不是 PrisirAI.exe — 后者只是无窗口的后端 web 服务器,直接拉起会出现
+    ;   「点了 AI 鼠标忙碌但没窗口」(每点一次多攒一个孤立后端进程)。2026-09-06 本机实测。
     DetailPrint "写入插件配置 plugins.json ..."
     CreateDirectory "$LOCALAPPDATA\Prisir"
     CreateDirectory "$LOCALAPPDATA\Prisir\plugins"
@@ -130,7 +160,7 @@ Section "安装" SEC01
     FileWrite $0 '    {$\r$\n'
     FileWrite $0 '      "id": "ai",$\r$\n'
     FileWrite $0 '      "name": "AI 助手",$\r$\n'
-    FileWrite $0 '      "exe": "plugins/ai/PrisirAI.exe",$\r$\n'
+    FileWrite $0 '      "exe": "C:/Program Files/PrisirAI/PrisirAI.vbs",$\r$\n'
     FileWrite $0 '      "event": "PrisirLingXi_AiToggle_Event",$\r$\n'
     FileWrite $0 '      "button": "AI",$\r$\n'
     FileWrite $0 '      "enabled": true$\r$\n'
@@ -181,6 +211,15 @@ Section "安装" SEC01
     ; 仍会枚举生效 — 可接受。
     DetailPrint "安装完成。"
 
+    ; ---- 若有文件被占用标了重启替换,如实告知(2026-09-06) ----
+    ; /REBOOTOK 下写不动的核心 DLL 会在重启后覆盖为新版。不弹重启强制框,只提示。
+    ${If} ${RebootFlag}
+        ${IfNot} ${Silent}
+            MessageBox MB_ICONINFORMATION|MB_OK \
+                "部分文件正被系统占用,已标记为重启后更新。$\n重启电脑后本次安装的新版本才完全生效。"
+        ${EndIf}
+    ${EndIf}
+
     ; ---- 装完一次性弹窗(2026-09-05, 对齐搜狗体验) ----
     ; 静默(/S)模式不弹(无人值守, ssh 下也弹不出交互框)。
     ${IfNot} ${Silent}
@@ -218,6 +257,11 @@ Section "Uninstall"
     Delete /REBOOTOK "$INSTDIR\prisir_ime_tsf.dll"
     Delete /REBOOTOK "$INSTDIR\prisir_ime.dll"
     Delete /REBOOTOK "$INSTDIR\prisir_hw.exe"
+    ; 安装段 rename-swap 留下的 .old_inst 备份(2026-09-06)一并清
+    Delete /REBOOTOK "$INSTDIR\prisir_tsfsvc.exe.old_inst"
+    Delete /REBOOTOK "$INSTDIR\prisir_ime_tsf.dll.old_inst"
+    Delete /REBOOTOK "$INSTDIR\prisir_ime.dll.old_inst"
+    Delete /REBOOTOK "$INSTDIR\prisir_hw.exe.old_inst"
     Delete /REBOOTOK "$INSTDIR\VERSION.txt"
     Delete /REBOOTOK "$INSTDIR\ABOUT.md"
     Delete /REBOOTOK "$INSTDIR\LICENSE.txt"

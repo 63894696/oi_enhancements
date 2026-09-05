@@ -11,7 +11,7 @@
     {
       "id": "ai",
       "name": "AI 助手",
-      "exe": "plugins/ai/PrisirAI.exe",
+      "exe": "C:/Program Files/PrisirAI/PrisirAI.vbs",
       "event": "PrisirLingXi_AiToggle_Event",
       "button": "AI",
       "enabled": true

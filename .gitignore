@@ -226,3 +226,8 @@ wasm_meter/_result_*.txt
 session_trace_*/
 
 
+
+# 2026-09-06: 语音听写模型大文件不入仓(241MB model.onnx 会撑爆 repo + gh API push 上限)。
+# 安装包构建时由 build 脚本从本机 stage 目录读;克隆仓库不含模型,需单独下发。
+installer/stage/voice/sensevoice-small/model.onnx
+installer/stage/voice/sensevoice-small/tokens.json
