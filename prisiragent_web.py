@@ -2139,6 +2139,22 @@ _PAGE = r"""<!DOCTYPE html>
   /* 代码块内 highlight.js 配色微调,适配国风纸底 */
   .msg pre code.hljs { background:transparent; padding:0; }
   .msg pre { background:var(--gh-paper); border:1px solid var(--gh-line); border-radius:6px; padding:10px; overflow-x:auto; }
+  /* 教学 quiz 交互卡片(```quiz JSON 块渲染):国风纸底,选对绿选错红 */
+  .quiz-card { background:var(--gh-surface); border:1px solid var(--gh-line); border-radius:10px;
+    padding:14px 16px; margin:10px 0; box-shadow:var(--gh-shadow); }
+  .quiz-q { font-weight:600; color:var(--gh-ink); margin-bottom:10px; line-height:1.5; }
+  .quiz-opt { display:block; width:100%; text-align:left; padding:8px 12px; margin:6px 0;
+    border:1px solid var(--gh-line); border-radius:8px; background:var(--gh-paper);
+    color:var(--gh-ink); font-size:13.5px; cursor:pointer; transition:border-color .15s; }
+  .quiz-opt:hover:not(:disabled) { border-color:var(--gh-green-deep); }
+  .quiz-opt:disabled { cursor:default; opacity:.85; }
+  .quiz-opt.correct { background:#e6ffec; border-color:#1a7f37; color:#1a7f37; font-weight:600; }
+  .quiz-opt.wrong { background:#ffebe9; border-color:#cf222e; color:#cf222e; }
+  .quiz-explain { margin-top:10px; padding:8px 12px; border-left:3px solid var(--gh-green-deep);
+    background:var(--gh-paper-2); border-radius:0 6px 6px 0; font-size:13px; color:var(--gh-ink-soft);
+    display:none; line-height:1.6; }
+  .quiz-explain.show { display:block; }
+  .quiz-multi-hint { font-size:12px; color:var(--gh-ink-faint); margin-bottom:6px; }
 </style>
 <!-- 壳三件套②③:md 标准渲染 + XSS 防护(版本钉死)。仅渲染 assistant 正文;user 保持纯文本。 -->
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
@@ -2526,6 +2542,83 @@ async function _renderMermaidIn(el) {
   }
 }
 
+// P1 教学 quiz:把 ```quiz JSON 块渲染成交互选择卡。
+// JSON 约定:{question, options:[..], answer: 0|[0,2], explain?} — answer 0-indexed。
+// 单选点击即判;多选(answer 数组)点选项切换、再点「确认」按钮判定。
+function _renderQuizIn(el) {
+  if (!el) return;
+  for (const pre of el.querySelectorAll('pre')) {
+    const code = pre.querySelector('code');
+    const raw = (code ? code.textContent : pre.textContent) || '';
+    const langCls = code ? (code.className || '') : '';
+    if (!/language-quiz|\bquiz\b/.test(langCls) && !raw.trimStart().startsWith('{')) continue;
+    let q;
+    try { q = JSON.parse(raw); } catch (e) { continue; }
+    if (!q || !Array.isArray(q.options) || q.answer === undefined) continue;
+    const multi = Array.isArray(q.answer);
+    const answers = new Set(multi ? q.answer : [q.answer]);
+    const card = document.createElement('div');
+    card.className = 'quiz-card';
+    const qEl = document.createElement('div');
+    qEl.className = 'quiz-q';
+    qEl.textContent = q.question || '';
+    card.appendChild(qEl);
+    if (multi) {
+      const hint = document.createElement('div');
+      hint.className = 'quiz-multi-hint';
+      hint.textContent = '多选题:勾选后点「确认」';
+      card.appendChild(hint);
+    }
+    const picked = new Set();
+    let done = false;
+    const optEls = [];
+    q.options.forEach((opt, idx) => {
+      const btn = document.createElement('button');
+      btn.className = 'quiz-opt';
+      btn.type = 'button';
+      btn.textContent = opt;
+      btn.addEventListener('click', () => {
+        if (done) return;
+        if (multi) {
+          if (picked.has(idx)) { picked.delete(idx); btn.style.borderColor = ''; }
+          else { picked.add(idx); btn.style.borderColor = 'var(--gh-green-deep)'; }
+        } else {
+          done = true;
+          judge(new Set([idx]));
+        }
+      });
+      optEls.push(btn);
+      card.appendChild(btn);
+    });
+    const explainEl = document.createElement('div');
+    explainEl.className = 'quiz-explain';
+    explainEl.textContent = q.explain || '';
+    function judge(sel) {
+      optEls.forEach((btn, idx) => {
+        btn.disabled = true;
+        if (answers.has(idx)) btn.classList.add('correct');
+        else if (sel.has(idx)) btn.classList.add('wrong');
+      });
+      if (q.explain) explainEl.classList.add('show');
+    }
+    if (multi) {
+      const ok = document.createElement('button');
+      ok.className = 'topbtn';
+      ok.style.marginTop = '8px';
+      ok.textContent = '确认';
+      ok.addEventListener('click', () => {
+        if (done) return;
+        done = true;
+        ok.disabled = true;
+        judge(picked);
+      });
+      card.appendChild(ok);
+    }
+    card.appendChild(explainEl);
+    pre.replaceWith(card);
+  }
+}
+
 function addMsg(role, text, followups) {
   const box = document.getElementById('messages');
   if (role === 'tool') {
@@ -2575,6 +2668,7 @@ function addMsg(role, text, followups) {
     box.appendChild(d);
     _highlightCodeIn(d);  // ⑤代码高亮(含 diff)
     _renderMermaidIn(d);  // ④mermaid 图 → SVG(异步,append 后才能量尺寸)
+    _renderQuizIn(d);     // ⑥教学 quiz 卡(```quiz JSON → 交互选择题)
   } else {
     d.textContent = text;  // user 保持纯文本,不解析(防注入)
     box.appendChild(d);

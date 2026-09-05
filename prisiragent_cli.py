@@ -778,6 +778,43 @@ def _t_read_file_head(path: str, max_chars: int = 4000) -> str:
         return f"[read_file_head error] {e}"
 
 
+def _t_read_file_lines(path: str, offset: int = 1, limit: int = 200) -> str:
+    """按行号窗口读文件:1-indexed offset 起始行,limit 行数。返回带行号内容 + 总行数。
+
+    与 read_file(整读)/read_file_head(头 N 字符)互补:模型改大文件时只需看
+    目标行附近,不用整读爆上下文。行号格式「  123\t内容」对齐 grep 输出习惯。
+    """
+    p = (path or "").strip()
+    if not p:
+        return "[read_file_lines error] empty path"
+    try:
+        offset = max(1, int(offset or 1))
+    except (TypeError, ValueError):
+        offset = 1
+    try:
+        limit = max(1, min(int(limit or 200), 2000))  # 上限 2000 行防爆
+    except (TypeError, ValueError):
+        limit = 200
+    try:
+        with open(p, encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+    except Exception as e:  # noqa: BLE001
+        return f"[read_file_lines error] {e}"
+    total = len(lines)
+    if total == 0:
+        return f"[read_file_lines ok] {p} (空文件, 0 行)"
+    if offset > total:
+        return (f"[read_file_lines error] offset {offset} 超出总行数 {total};"
+                f"有效范围 1-{total}")
+    start = offset - 1
+    end = min(start + limit, total)
+    window = lines[start:end]
+    width = len(str(end))  # 行号右对齐宽度
+    body = "".join(f"{i + 1:>{width}}\t{ln}" for i, ln in enumerate(window, start))
+    truncated = "" if end >= total else f"\n... (共 {total} 行,已显示到第 {end} 行)"
+    return f"[read_file_lines ok] {p} 第 {offset}-{end} 行 / 共 {total} 行\n{body}{truncated}"
+
+
 def _t_file_reputation(path: str) -> str:
     """协助查毒(只查不删):本地算 SHA256 → 云端只传哈希查信誉(MalwareBazaar/VirusTotal)。
     只给判定+建议,绝不上传文件本体、绝不替用户删除。key 从 keyring 取,不回显。"""
@@ -993,6 +1030,14 @@ TOOLS = [
             "max_chars": {"type": "integer", "description": "max chars to read, default 4000"}},
             "required": ["path"]}}},
     {"type": "function", "function": {
+        "name": "read_file_lines",
+        "description": "Read a line-window of a file with line numbers (1-indexed offset + limit). Use for large files: jump to the lines you need (e.g. around a grep hit or an error line) instead of reading the whole file. Returns numbered lines plus total line count.",
+        "parameters": {"type": "object", "properties": {
+            "path": {"type": "string", "description": "file path (absolute or relative to workdir)"},
+            "offset": {"type": "integer", "description": "1-indexed starting line, default 1"},
+            "limit": {"type": "integer", "description": "number of lines to read, default 200, max 2000"}},
+            "required": ["path"]}}},
+    {"type": "function", "function": {
         "name": "file_reputation",
         "description": "Check a file's safety reputation (assist malware checking). Computes its SHA256 locally (read-only), then queries cloud reputation by HASH ONLY (MalwareBazaar / VirusTotal, if their free API keys are configured). NEVER uploads the file body, NEVER deletes/quarantines — returns verdict + suggestion; the decision stays with the user.",
         "parameters": {"type": "object", "properties": {
@@ -1084,6 +1129,10 @@ def dispatch(name: str, args: dict, workdir: str, on_confirm=None, model: str = 
         return _t_translate_image(args.get("path", ""), args.get("target_lang", "zh"), workdir)
     if name == "read_file_head":
         return _t_read_file_head(args.get("path", ""), args.get("max_chars", 4000))
+    if name == "read_file_lines":
+        p = args.get("path", "")
+        p = p if os.path.isabs(p) else os.path.join(workdir, p)
+        return _t_read_file_lines(p, args.get("offset", 1), args.get("limit", 200))
     if name == "file_reputation":
         return _t_file_reputation(args.get("path", ""))
     if name == "parallel_ask":
@@ -1123,8 +1172,35 @@ SYSTEM_CHAT = (
     "than text. Use the right type: flowchart (graph TD/LR) for processes & architecture, "
     "sequenceDiagram for interaction/order, stateDiagram-v2 for state machines, erDiagram for data, "
     "gantt for schedules, classDiagram for types. Keep diagrams focused (one idea each, ≤ ~15 nodes); "
-    "add a one-line caption before/after. Node labels may be Chinese. Only emit valid mermaid syntax."
+    "add a one-line caption before/after. Node labels may be Chinese. Only emit valid mermaid syntax.\n\n"
+    "Teaching quizzes: when the user is learning a topic and a knowledge check would help, you may emit "
+    "a quiz as a ```quiz fenced block containing ONE JSON object: "
+    '{"question": "题干", "options": ["选项A", "选项B", "选项C"], "answer": 0, "explain": "解析(可选)"}. '
+    "answer is the 0-indexed correct option; for multiple-answer questions use an array like [0, 2]. "
+    "The chat UI renders it as an interactive card with answer checking. Use at most 1-2 quizzes per reply, "
+    "only when they genuinely aid learning — never pad every reply with quizzes."
 )
+
+
+# 项目 CLAUDE.md 注入(2026-09-05 P1):workdir 下若存在 CLAUDE.md,把内容注入 system
+# prompt,对齐 Claude Code 行为(项目级指令:技术栈/构建命令/约定)。截断防爆上下文。
+_PROJECT_MD_MAX = 8000
+
+
+def _load_project_md(workdir: str) -> str:
+    """读 workdir/CLAUDE.md(大小写不敏感)。返回截断后的内容,不存在/读失败返回空串。"""
+    if not workdir:
+        return ""
+    for name in ("CLAUDE.md", "claude.md", "Claude.md"):
+        p = os.path.join(workdir, name)
+        try:
+            if os.path.isfile(p):
+                with open(p, encoding="utf-8", errors="replace") as f:
+                    text = f.read(_PROJECT_MD_MAX)
+                return text.strip()
+        except Exception:  # noqa: BLE001 — 读不到就当没有,绝不阻塞对话
+            continue
+    return ""
 
 
 def run_conversation(messages: list, model: str, workdir: str, max_turns: int = 20,
@@ -1152,7 +1228,14 @@ def run_conversation(messages: list, model: str, workdir: str, max_turns: int = 
     """
     import litellm
     litellm.drop_params = True
-    system = SYSTEM_CHAT + (("\n\n" + system_extra) if system_extra.strip() else "")
+    system = SYSTEM_CHAT
+    # P1: 项目 CLAUDE.md 自动注入(对齐 Claude Code 行为,优先级低于显式 system_extra)
+    project_md = _load_project_md(workdir)
+    if project_md:
+        system += ("\n\n【当前项目说明(CLAUDE.md)——以下约定优先于你的通用习惯,"
+                   "冲突时以它为准】\n" + project_md)
+    if system_extra.strip():
+        system += "\n\n" + system_extra
     msgs = [{"role": "system", "content": system}] + list(messages)
     trace: list = []  # 当轮 tool/assistant 中间步(供壳入库)
     t0 = time.time()
@@ -1333,8 +1416,13 @@ def run_agent(prompt: str, model: str, workdir: str, max_turns: int) -> dict:
     global PERM_GATE_ENABLED
     _prev_gate = PERM_GATE_ENABLED
     PERM_GATE_ENABLED = False
+    # P1: benchmark 自主模式同样注入项目 CLAUDE.md
+    _sys = SYSTEM
+    _pmd = _load_project_md(workdir)
+    if _pmd:
+        _sys += "\n\n[Project instructions (CLAUDE.md) — follow these over generic habits]\n" + _pmd
     messages = [
-        {"role": "system", "content": SYSTEM},
+        {"role": "system", "content": _sys},
         {"role": "user", "content": prompt + f"\n\n[working directory: {workdir}]"},
     ]
     t0 = time.time()

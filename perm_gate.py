@@ -43,6 +43,7 @@ _KIND = {
     "list_files": "list_files",
     "search_files": "search",
     "read_file_head": "read_file",
+    "read_file_lines": "read_file",
 }
 
 # 需要过闸的工具(写/执行/删除)。只读类(read/list/search/file_reputation)直接放行不过闸。
@@ -50,8 +51,9 @@ GATED_TOOLS = frozenset({"run_shell", "write_file", "edit_file", "delete_file"})
 
 # 引擎缺席时的 fail-closed 白名单:只读类放行,其余一律需确认。
 _READONLY_SAFE = frozenset({"read_file", "list_files", "search_files", "read_file_head",
-                             "grep_search", "local_file_search", "local_content_search",
-                             "anytxt_search", "web_search", "file_reputation"})
+                             "read_file_lines", "grep_search", "local_file_search",
+                             "local_content_search", "anytxt_search", "web_search",
+                             "file_reputation"})
 
 
 def _audit_sink(decision) -> None:
