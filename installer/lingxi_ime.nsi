@@ -137,12 +137,13 @@ Section "安装" SEC01
 
     ; ---- 插件框架: 写默认 plugins.json 到 %LOCALAPPDATA%\Prisir\ ----
     ; 声明语音听写 + AI 助手两个插件; exe 不在则按钮/菜单自动隐藏(纯增量,不影响打字)。
-    ; 语音随本包安装(见上 voice 段), exe 相对插件根 LOCALAPPDATA\Prisir。
-    ; AI 为独立安装(2026-09-06 用户拍板): 指向 C:\Program Files\PrisirAI\PrisirAI.vbs,
-    ;   不随本包打包; 装了 Prisir AI 的机器 AI 按钮自动出现, 未装则自动隐藏, 互不影响。
-    ; 注意: 必须指向 PrisirAI.vbs(electron 壳启动器,带 AI-toggle 事件监听 + 单例置顶),
-    ;   不是 PrisirAI.exe — 后者只是无窗口的后端 web 服务器,直接拉起会出现
-    ;   「点了 AI 鼠标忙碌但没窗口」(每点一次多攒一个孤立后端进程)。2026-09-06 本机实测。
+    ; 2026-09-06 用户反馈「没有语音模块」根因 + 修复(方案 A):
+    ;   beta.11 起语音文件装进 $INSTDIR\voice(C:\Program Files\PrisirIME\voice),
+    ;   但 plugins.json 把 exe 写成相对插件根 LOCALAPPDATA\Prisir 的 "plugins/voice/...",
+    ;   安装器从未把 exe 拷到该目录 → plugin.rs available_plugins() 在 LOCALAPPDATA 找不到
+    ;   exe → 判 exe missing → 状态栏「语」按钮不出现 = 用户看到「没有语音」。
+    ;   修法(方案 A): exe 改绝对路径直指安装目录,与 AI 插件同款; plugin.rs PathBuf::join
+    ;   遇绝对路径直接采用,不再拼插件根。语音文件不重复占盘。
     DetailPrint "写入插件配置 plugins.json ..."
     CreateDirectory "$LOCALAPPDATA\Prisir"
     CreateDirectory "$LOCALAPPDATA\Prisir\plugins"
@@ -152,7 +153,7 @@ Section "安装" SEC01
     FileWrite $0 '    {$\r$\n'
     FileWrite $0 '      "id": "voice",$\r$\n'
     FileWrite $0 '      "name": "语音听写",$\r$\n'
-    FileWrite $0 '      "exe": "plugins/voice/lingxi_voice.exe",$\r$\n'
+    FileWrite $0 '      "exe": "C:/Program Files/PrisirIME/voice/lingxi_voice.exe",$\r$\n'
     FileWrite $0 '      "event": "PrisirLingXi_VoiceToggle_Event",$\r$\n'
     FileWrite $0 '      "button": "语",$\r$\n'
     FileWrite $0 '      "enabled": true$\r$\n'
