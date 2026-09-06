@@ -60,8 +60,10 @@ _KIND = {
 # 需要过闸的工具(写/执行/删除)。只读类(read/list/search/file_reputation)直接放行不过闸。
 # run_code 虽限定 python/js 片段,但本质仍是任意代码执行 → 与 run_shell 同级管控。
 # schedule_cron 登记定时 shell(到点执行命令)→ 与 run_shell 同级,登记时即需确认。
+# browser_action 操作外部网站(点击/填表/JS)= 外向动作,可能改远程状态 → 每次弹卡,
+# preview 显示 action+url/selector/value 让用户看清再点头。
 GATED_TOOLS = frozenset({"run_shell", "run_code", "write_file", "edit_file", "delete_file",
-                         "schedule_cron"})
+                         "schedule_cron", "browser_action"})
 
 # 引擎缺席时的 fail-closed 白名单:只读类放行,其余一律需确认。
 # undo_file 是文件恢复(写操作),不放白名单 → 引擎缺席时需确认,稳妥。

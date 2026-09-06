@@ -1477,6 +1477,166 @@ def _t_scan_folder(path: str, workdir: str, recursive: bool = False,
     return "\n".join(out)
 
 
+# ============================================================
+# browser_action:Playwright 浏览器自动化(2026-09-06,方案 A)
+# ============================================================
+# 让 agent 能开浏览器访问网站做在线 web 配置(补 web_fetch 只能抓静态正文的缝)。
+# 惰性 import playwright(无该环境不致命,只在用到时提示);持久 profile 复用登录态。
+# 安全:进 GATED_TOOLS 每次弹卡;不自动提交支付/删号/发消息类高危表单(agent 层约束 +
+# 权限卡 preview 让用户看清 selector/value);密码/验证码由用户手填,agent 不存。
+_PW = {"playwright": None, "ctx": None, "page": None}
+
+# 高危表单关键词(提交前若 selector/value 命中,要求 agent 先向用户复述确认——双保险,
+# 权限卡是第一道)。只作提示,不硬拦(硬拦在权限闸)。
+_BROWSER_HIGH_RISK = ("pay", "payment", "checkout", "delete-account", "delete_account",
+                      "confirm-delete", "transfer", "withdraw", "支付", "付款", "删除账号",
+                      "确认删除", "转账", "提现")
+
+
+def _pw_profile_dir() -> str:
+    """持久 profile 目录(登录态/cookie 跨调用复用)。"""
+    d = os.path.join(os.path.expanduser("~"), ".local", "share", "prisir", "browser_profile")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _pw_page(headless: bool = False):
+    """取(或建)持久浏览器上下文 + 当前页。惰性启动,跨 browser_action 调用复用。"""
+    from playwright.sync_api import sync_playwright  # 惰性导入
+    if _PW["ctx"] is None:
+        _PW["playwright"] = sync_playwright().start()
+        _PW["ctx"] = _PW["playwright"].chromium.launch_persistent_context(
+            _pw_profile_dir(), headless=headless,
+            args=["--disable-blink-features=AutomationControlled"])
+        _PW["page"] = _PW["ctx"].pages[0] if _PW["ctx"].pages else _PW["ctx"].new_page()
+    return _PW["page"]
+
+
+def _pw_close():
+    try:
+        if _PW["ctx"] is not None:
+            _PW["ctx"].close()
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        if _PW["playwright"] is not None:
+            _PW["playwright"].stop()
+    except Exception:  # noqa: BLE001
+        pass
+    _PW.update({"playwright": None, "ctx": None, "page": None})
+
+
+def _page_text(page, max_chars: int) -> str:
+    """取页面可读正文(body innerText,截断)。"""
+    try:
+        txt = page.evaluate("() => document.body ? document.body.innerText : ''")
+    except Exception:  # noqa: BLE001
+        txt = ""
+    txt = " ".join((txt or "").split())
+    return txt[:max_chars]
+
+
+def _t_browser_action(action: str, workdir: str, url: str = "", selector: str = "",
+                      value: str = "", script: str = "", path: str = "",
+                      max_chars: int = 3000, headless: bool = False) -> str:
+    """浏览器自动化:navigate/read/click/fill/screenshot/eval/snapshot/status/close。
+
+    外向操作(操作外部网站),已挂权限闸弹卡。高危表单(支付/删号/转账)命中时
+    返回提示,要求 agent 先向用户复述确认再执行。
+    """
+    a = (action or "").strip().lower()
+    if not a:
+        return "[browser_action error] 缺 action(navigate/read/click/fill/screenshot/eval/snapshot/status/close)"
+    try:
+        from playwright.sync_api import sync_playwright  # noqa: F401 仅探测可用性
+    except Exception as e:  # noqa: BLE001
+        return (f"[browser_action 不可用] 需要 playwright: pip install playwright && "
+                f"playwright install chromium。当前加载失败: {e}")
+
+    # close 不需要活动页面
+    if a == "close":
+        _pw_close()
+        return "[browser_action ok] 浏览器已关闭"
+
+    # 高危表单预警(提交前提示;权限闸已弹卡,这是第二道提示)
+    risk_hint = ""
+    probe = f"{selector} {value}".lower()
+    if a in ("click", "fill") and any(k in probe for k in _BROWSER_HIGH_RISK):
+        risk_hint = ("\n⚠️ 检测到可能的高危操作(支付/删号/转账类)。请确认用户已明确同意,"
+                     "并已通过权限卡看清 selector/value。谨慎执行。")
+
+    try:
+        page = _pw_page(headless=headless)
+    except Exception as e:  # noqa: BLE001
+        return f"[browser_action error] 浏览器启动失败: {e}"
+
+    try:
+        if a == "navigate":
+            if not url:
+                return "[browser_action error] navigate 需要 url"
+            page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            page.wait_for_timeout(800)  # 留 JS 首屏渲染
+            return (f"[browser_action ok] 已打开 {page.url}\n标题: {page.title()}\n"
+                    f"正文(前{max_chars}字): {_page_text(page, max_chars)}")
+
+        if a == "read":
+            if selector:
+                el = page.query_selector(selector)
+                if not el:
+                    return f"[browser_action error] 找不到元素: {selector}"
+                txt = el.inner_text()
+            else:
+                txt = _page_text(page, max_chars)
+            return (f"[browser_action ok] {page.url}\n标题: {page.title()}\n"
+                    f"内容: {txt[:max_chars]}")
+
+        if a == "click":
+            if not selector:
+                return "[browser_action error] click 需要 selector"
+            page.click(selector, timeout=10000)
+            page.wait_for_timeout(500)
+            return f"[browser_action ok] 已点击 {selector}\n当前 {page.url} — {page.title()}{risk_hint}"
+
+        if a == "fill":
+            if not selector:
+                return "[browser_action error] fill 需要 selector"
+            page.fill(selector, value, timeout=10000)
+            return f"[browser_action ok] 已填 {selector}(长度{len(value)}){risk_hint}"
+
+        if a == "screenshot":
+            sp = path or os.path.join(workdir, f"browser_shot_{int(time.time())}.png")
+            sp = sp if os.path.isabs(sp) else os.path.join(workdir, sp)
+            page.screenshot(path=sp, full_page=True)
+            return f"[browser_action ok] 截图已存: {sp}"
+
+        if a == "eval":
+            if not script:
+                return "[browser_action error] eval 需要 script"
+            r = page.evaluate(script)
+            return f"[browser_action ok] eval 返回: {json.dumps(r, ensure_ascii=False)[:max_chars]}"
+
+        if a == "snapshot":
+            # 简化无障碍树:列出可交互元素(tag/role/text/selector 线索)供 agent 定位
+            items = page.evaluate(
+                """() => Array.from(document.querySelectorAll(
+                    'a,button,input,select,textarea,[role=button]')).slice(0,80).map(e=>({
+                    tag: e.tagName.toLowerCase(), type: e.type||'',
+                    text: (e.innerText||e.value||e.placeholder||e.getAttribute('aria-label')||'').slice(0,40),
+                    id: e.id||'', name: e.name||''}))""")
+            lines = [f"[browser_action ok] {page.url} 可交互元素(前80):"]
+            for it in items:
+                lines.append(f"  <{it['tag']}> {it['text']!r} id={it['id']} name={it['name']} type={it['type']}")
+            return "\n".join(lines)
+
+        if a == "status":
+            return (f"[browser_action ok] 浏览器活动\nURL: {page.url}\n标题: {page.title()}\n"
+                    f"profile: {_pw_profile_dir()}")
+
+        return f"[browser_action error] 未知 action: {a}"
+    except Exception as e:  # noqa: BLE001
+        return f"[browser_action error] {a} 失败: {type(e).__name__}: {str(e)[:200]}"
+
+
 # ---------- 思考档位抽象(off/low/medium/high) ----------
 # 各家「思考/推理」参数不统一:GPT/Codex=reasoning_effort(low/medium/high),
 # Claude=thinking{budget_tokens}, Kimi/Qwen=enable_thinking, K3 等无档位。
@@ -1728,6 +1888,19 @@ TOOLS = [
             "max_files": {"type": "integer", "description": "cap on files scanned, default 200"}},
             "required": ["path"]}}},
     {"type": "function", "function": {
+        "name": "browser_action",
+        "description": "Automate a real web browser (Playwright, persistent profile keeps login). Actions: navigate{url} open a page and get title+text; read{selector?,max_chars?} get page/element text; snapshot list clickable elements (links/buttons/inputs) to find selectors; click{selector}; fill{selector,value}; screenshot{path?}; eval{script} run JS read-only; status current URL/title; close release browser. Use for online web-app configuration that needs login/JS — web_fetch cannot do those. GATED: each call needs user approval (preview shows action+url/selector). Never auto-submit payment/account-deletion/message forms — ask the user first; passwords/OTPs are entered by the user, never stored.",
+        "parameters": {"type": "object", "properties": {
+            "action": {"type": "string", "description": "navigate|read|click|fill|screenshot|eval|snapshot|status|close"},
+            "url": {"type": "string", "description": "for navigate"},
+            "selector": {"type": "string", "description": "CSS/text selector for read/click/fill"},
+            "value": {"type": "string", "description": "for fill"},
+            "script": {"type": "string", "description": "for eval (read-only)"},
+            "path": {"type": "string", "description": "for screenshot output path"},
+            "max_chars": {"type": "integer", "description": "text truncation, default 3000"},
+            "headless": {"type": "boolean", "description": "run without visible window (default false; login needs headed first time)"}},
+            "required": ["action"]}}},
+    {"type": "function", "function": {
         "name": "parallel_ask",
         "description": "Ask 2-4 INDEPENDENT sub-questions concurrently and return their answers merged. Use ONLY when the user's request decomposes into multiple independent questions that don't depend on each other's answers (e.g. 'compare A and B', 'explain X and also Y'). Sub-questions are pure Q&A (no tools, no file access) answered in parallel, saving wall-clock vs asking sequentially. Do NOT use for a single question, sequential steps, or anything needing tools/files.",
         "parameters": {"type": "object", "properties": {
@@ -1880,7 +2053,12 @@ def dispatch(name: str, args: dict, workdir: str, on_confirm=None, model: str = 
                 if not verdict["allow"]:
                     preview = ""
                     if isinstance(args, dict):
-                        preview = (args.get("command") or args.get("path") or "")[:300]
+                        if name == "browser_action":
+                            # 浏览器操作:preview 显示 action+url/selector/value 让用户看清点哪填啥
+                            preview = " ".join(str(args.get(k, "")) for k in
+                                               ("action", "url", "selector", "value") if args.get(k))[:300]
+                        else:
+                            preview = (args.get("command") or args.get("path") or "")[:300]
                     if verdict.get("requires_approval") and on_confirm is not None:
                         try:
                             ok = bool(on_confirm({
@@ -1896,7 +2074,8 @@ def dispatch(name: str, args: dict, workdir: str, on_confirm=None, model: str = 
                     else:
                         return f"[{name} 被权限闸拦截] {verdict.get('reason','')}"
         except Exception:  # noqa: BLE001 — 闸自身故障:fail-closed 拒写/执行
-            if name in ("run_shell", "run_code", "write_file", "edit_file", "delete_file"):
+            if name in ("run_shell", "run_code", "write_file", "edit_file", "delete_file",
+                        "schedule_cron", "browser_action"):
                 return f"[{name} 被权限闸拦截] gate unavailable (fail-closed)"
     if name == "read_file":
         p = args.get("path", "")
@@ -1988,6 +2167,13 @@ def dispatch(name: str, args: dict, workdir: str, on_confirm=None, model: str = 
         return _t_scan_folder(args.get("path", ""), workdir,
                               bool(args.get("recursive", False)),
                               int(args.get("max_files", SCAN_MAX_FILES)))
+    if name == "browser_action":
+        return _t_browser_action(
+            args.get("action", ""), workdir,
+            url=args.get("url", ""), selector=args.get("selector", ""),
+            value=args.get("value", ""), script=args.get("script", ""),
+            path=args.get("path", ""), max_chars=int(args.get("max_chars", 3000)),
+            headless=bool(args.get("headless", False)))
     if name == "parallel_ask":
         return _t_parallel_ask(args.get("questions") or [], model, workdir)
     if name == "glob_search":
