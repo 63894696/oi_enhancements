@@ -144,21 +144,37 @@ class PrisirRouter:
     def __init__(self, store: Optional[PrisirKeyStore] = None):
         self.store = store or PrisirKeyStore()
 
+    # 已知平台的官方默认端点+模型: 用户只填 key(不填 base_url/模型)即可用,
+    # 修「填了 minimaxi/deepseek/ollama key 却判无可用平台」缺陷。
+    # 端点与本仓 prisir_philosopher.py / team_lead_tools.py / model_providers.py 保持一致。
+    _KNOWN_PLATFORM_DEFAULTS: Dict[str, Dict[str, str]] = {
+        "openai":    {"base_url": "https://api.openai.com/v1",     "model": "gpt-4o"},
+        "anthropic": {"base_url": "https://api.anthropic.com",     "model": "claude-opus-5"},
+        "minimaxi":  {"base_url": "https://api.minimaxi.com/v1",   "model": "MiniMax-M1"},
+        "minimax":   {"base_url": "https://api.minimaxi.com/v1",   "model": "MiniMax-M1"},
+        "deepseek":  {"base_url": "https://api.deepseek.com/v1",   "model": "deepseek-chat"},
+        "ollama":    {"base_url": "https://ollama.com/v1",         "model": "qwen2.5"},
+        "yunbailian": {"base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                      "model": "qwen-plus"},
+        "qwen":      {"base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                      "model": "qwen-plus"},
+        "agnes":     {"base_url": "https://openrouter.ai/api/v1",  "model": "anthropic/claude-3.5-sonnet"},
+    }
+
     # ---- 平台装配 ----
     def _platform_cfg(self, platform: str) -> Optional[Dict[str, Any]]:
         rec = self.store.get_key(platform)
         if not rec or not rec["api_key"]:
             return None
         cfg = dict(rec)
+        known = self._KNOWN_PLATFORM_DEFAULTS.get(platform)
+        if known:
+            # 已知平台: 缺 base_url/model 用官方默认补齐
+            cfg["base_url"] = cfg["base_url"] or known["base_url"]
+            cfg["model"] = cfg["model"] or known["model"]
         if platform == "openai":
-            cfg.setdefault("base_url", "") or cfg.update(base_url="https://api.openai.com/v1")
-            cfg["base_url"] = cfg["base_url"] or "https://api.openai.com/v1"
-            cfg["model"] = cfg["model"] or "gpt-4o"
             cfg["fast_model"] = cfg["meta"].get("fast_model", "gpt-4o-mini")
-        elif platform == "anthropic":
-            cfg["base_url"] = cfg["base_url"] or "https://api.anthropic.com"
-            cfg["model"] = cfg["model"] or "claude-opus-5"
-        else:  # custom / 其他自定义端点
+        elif not known:  # custom / 未登记的自定义端点: 仍需 base_url 才可用
             if not cfg["base_url"]:
                 return None
             cfg["model"] = cfg["model"] or "default"
