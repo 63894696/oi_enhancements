@@ -22,7 +22,7 @@ Unicode True
 
 ; -------- 元信息 --------
 !define APP_NAME "PrisirAI"
-!define APP_VERSION "2.7.2"
+!define APP_VERSION "2.7.3"
 !define APP_PUBLISHER "Prisir(湃睿思)"
 !define APP_EXE "PrisirAI.exe"
 ; 对外品牌显示名(窗口/对话框用),区别于 APP_NAME(exe/目录/注册表内部标识符,不动)
