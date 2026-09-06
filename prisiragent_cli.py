@@ -1299,7 +1299,7 @@ _PLAN_READONLY = frozenset({
     "read_file", "read_file_head", "read_file_lines", "list_files", "search_files",
     "grep_search", "glob_search", "local_file_search", "local_content_search",
     "anytxt_search", "web_search", "web_fetch", "git_status", "git_diff",
-    "file_reputation", "todo_write", "task_output", "task_list", "plan_mode",
+    "file_reputation", "scan_folder", "todo_write", "task_output", "task_list", "plan_mode",
     "get_todos", "parallel_ask", "translate_document", "translate_image",
 })
 
@@ -1375,6 +1375,106 @@ def _t_file_reputation(path: str) -> str:
         lines.append("VirusTotal: 未配 key")
     lines.append("—— 判定建议:仅依据云端信誉,供用户参考;是否删除/隔离由用户决定,本工具不执行。")
     return "\n".join(lines)
+
+
+# 「随叫随扫」目录批量信誉扫描护栏(2026-09-06):默认只扫一层、限量限大小,
+# 防一次扫整盘拖垮 IO/打爆云端配额。可显式加大。
+SCAN_MAX_FILES = 200          # 单次最多扫多少文件
+SCAN_MAX_BYTES = 64 * 1024 * 1024  # 单文件超 64MB 跳过哈希(信誉查不查随用户深扫)
+
+
+def _t_scan_folder(path: str, workdir: str, recursive: bool = False,
+                   max_files: int = SCAN_MAX_FILES) -> str:
+    """随叫随扫(只查不删):遍历目录逐文件算 SHA256 → 云端哈希查信誉,汇总判定。
+    绝不上传文件本体、绝不替用户删除。递归/超量要用户明确(权限闸管控)。"""
+    d = (path or "").strip()
+    if not d:
+        return "[scan_folder error] empty path"
+    d = d if os.path.isabs(d) else os.path.join(workdir, d)
+    if not os.path.isdir(d):
+        return f"[scan_folder error] 不是目录或不存在: {d}"
+    try:
+        if _FINDEX_DIR not in sys.path:
+            sys.path.insert(0, _FINDEX_DIR)
+        import reputation  # noqa: PLC0415
+        from fastlane.providers.llm_prisir import PrisirKeyStore  # noqa: PLC0415
+    except Exception as e:  # noqa: BLE001
+        return f"[scan_folder 不可用] 查毒模块加载失败: {e}"
+    ks = PrisirKeyStore()
+    mbk = (ks.get_key("malwarebazaar") or {}).get("api_key", "")
+    vtk = (ks.get_key("virustotal") or {}).get("api_key", "")
+    if not mbk and not vtk:
+        return ("[scan_folder 不可用] 未配云端信誉 key。请到设置页填 MalwareBazaar 或 "
+                "VirusTotal 的免费 Auth-Key(只传哈希查信誉,文件本体不出本机)。")
+
+    # 收集目标文件(带护栏)
+    files = []
+    if recursive:
+        for root, _dirs, names in os.walk(d):
+            for nm in names:
+                files.append(os.path.join(root, nm))
+                if len(files) >= max_files:
+                    break
+            if len(files) >= max_files:
+                break
+    else:
+        for nm in sorted(os.listdir(d)):
+            fp = os.path.join(d, nm)
+            if os.path.isfile(fp):
+                files.append(fp)
+            if len(files) >= max_files:
+                break
+
+    flagged, cleanish, unknown, skipped = [], [], [], []
+    for fp in files:
+        try:
+            sz = os.path.getsize(fp)
+        except OSError:
+            skipped.append((fp, "读取失败")); continue
+        if sz > SCAN_MAX_BYTES:
+            skipped.append((fp, f"超 {SCAN_MAX_BYTES//1024//1024}MB 跳过")); continue
+        h = reputation.hash_file(fp)
+        if not h.get("ok"):
+            skipped.append((fp, h.get("error", "hash failed"))); continue
+        sha = h["sha256"]
+        verdict = None
+        # VirusTotal 优先(覆盖面广)
+        if vtk:
+            vt = reputation.query_virustotal_hash(sha, vtk)
+            if vt.get("found") and vt.get("malicious", 0) > 0:
+                verdict = ("⛔ 报毒", f"VT {vt['malicious']}/{vt['total']} "
+                           f"({vt.get('meaningful_name') or '见文件名'})")
+            elif vt.get("found"):
+                verdict = ("✅ 已收录未报毒", f"VT 0/{vt.get('total',0)}")
+        if verdict is None and mbk:
+            mb = reputation.query_malwarebazaar(sha256=sha, api_key=mbk)
+            if mb.get("found"):
+                verdict = ("⛔ 已知恶意", f"MB {mb.get('signature','未知家族')}")
+        if verdict is None:
+            verdict = ("❔ 云端未收录", "查不到≠安全")
+        rel = os.path.relpath(fp, d)
+        if verdict[0].startswith("⛔"):
+            flagged.append((rel, verdict[1]))
+        elif verdict[0].startswith("✅"):
+            cleanish.append((rel, verdict[1]))
+        else:
+            unknown.append((rel, verdict[1]))
+
+    out = [f"扫描目录: {d}", f"文件数: {len(files)}"
+           + (f"(已达上限 {max_files},更大目录请分批或显式加递归)" if len(files) >= max_files else "")]
+    out.append(f"⛔ 报毒/已知恶意: {len(flagged)}")
+    for rel, v in flagged:
+        out.append(f"   ⛔ {rel} — {v}")
+    out.append(f"✅ 云端已收录未报毒: {len(cleanish)}")
+    for rel, v in cleanish[:20]:
+        out.append(f"   ✅ {rel} — {v}")
+    out.append(f"❔ 云端未收录(未知): {len(unknown)}")
+    for rel, v in unknown[:20]:
+        out.append(f"   ❔ {rel} — {v}")
+    if skipped:
+        out.append(f"⏭ 跳过: {len(skipped)}(超大/读失败)")
+    out.append("—— 判定建议:仅依据云端信誉(只传哈希),供用户参考;是否删除/隔离由用户决定,本工具不执行。")
+    return "\n".join(out)
 
 
 # ---------- 思考档位抽象(off/low/medium/high) ----------
@@ -1618,6 +1718,14 @@ TOOLS = [
         "description": "Check a file's safety reputation (assist malware checking). Computes its SHA256 locally (read-only), then queries cloud reputation by HASH ONLY (MalwareBazaar / VirusTotal, if their free API keys are configured). NEVER uploads the file body, NEVER deletes/quarantines — returns verdict + suggestion; the decision stays with the user.",
         "parameters": {"type": "object", "properties": {
             "path": {"type": "string", "description": "absolute file path"}},
+            "required": ["path"]}}},
+    {"type": "function", "function": {
+        "name": "scan_folder",
+        "description": "'Scan-on-demand' a whole folder for malware: computes each file's SHA256 locally (read-only) and queries cloud reputation by HASH ONLY (MalwareBazaar / VirusTotal, if their free API keys are configured), then summarizes flagged / known-clean / unknown. NEVER uploads file bodies, NEVER deletes/quarantines — the decision stays with the user. Read-only. Default scans one level, capped at 200 files / 64MB each; set recursive=true for subfolders (larger scans should be user-approved).",
+        "parameters": {"type": "object", "properties": {
+            "path": {"type": "string", "description": "absolute folder path"},
+            "recursive": {"type": "boolean", "description": "recurse into subfolders (default false)"},
+            "max_files": {"type": "integer", "description": "cap on files scanned, default 200"}},
             "required": ["path"]}}},
     {"type": "function", "function": {
         "name": "parallel_ask",
@@ -1876,6 +1984,10 @@ def dispatch(name: str, args: dict, workdir: str, on_confirm=None, model: str = 
         return _t_read_file_lines(p, args.get("offset", 1), args.get("limit", 200))
     if name == "file_reputation":
         return _t_file_reputation(args.get("path", ""))
+    if name == "scan_folder":
+        return _t_scan_folder(args.get("path", ""), workdir,
+                              bool(args.get("recursive", False)),
+                              int(args.get("max_files", SCAN_MAX_FILES)))
     if name == "parallel_ask":
         return _t_parallel_ask(args.get("questions") or [], model, workdir)
     if name == "glob_search":
