@@ -168,8 +168,10 @@ class PrisirRouter:
         return [p["platform"] for p in self.store.list_platforms() if p["has_key"]]
 
     def route(self, messages: Messages, strategy: str = "smart",
-              task_type: Optional[str] = None) -> Dict[str, Any]:
-        """选平台。返回 {platform, cfg, task_type} 或抛 RuntimeError。"""
+              task_type: Optional[str] = None,
+              exclude: Optional[set] = None) -> Dict[str, Any]:
+        """选平台。返回 {platform, cfg, task_type} 或抛 RuntimeError。
+        exclude: 本次跳过这些平台名(故障转移拉黑用)。"""
         text = " ".join(m.get("content", "") for m in messages[-3:])
         tt = task_type or classify_task(text)
 
@@ -182,34 +184,92 @@ class PrisirRouter:
         else:  # smart
             order = list(_TASK_PREFERENCE.get(tt, _TASK_PREFERENCE["general"]))
 
+        # 用户实际填了 key 的平台,可能在偏好序之外(自定义平台名)——补齐到序尾,
+        # 保证「多设几个端点自动故障转移」覆盖所有已配端点,不只是 openai/anthropic/custom。
+        for p in self.available_platforms():
+            if p not in order:
+                order.append(p)
+
+        excl = exclude or set()
         for platform in order:
+            if platform in excl:
+                continue
             cfg = self._platform_cfg(platform)
             if cfg:
                 return {"platform": platform, "cfg": cfg, "task_type": tt}
         raise RuntimeError(
-            f"无可用模型平台(策略={strategy}, 已填key={self.available_platforms()})。"
+            f"无可用模型平台(策略={strategy}, 已填key={self.available_platforms()}, "
+            f"已拉黑={sorted(excl)})。"
             "请到 Prisir AI 设置页填入 OpenAI / Anthropic / 自定义端点 key。")
+
+    # 调用失败时可安全重试下一平台的错误(402订阅墙/429限流/超时/5xx/连接错)。
+    # 4xx 里 400(请求体非法)/401(key 错)/403(无权限)是配置问题,换平台无意义,不重试。
+    _RETRYABLE_HTTP = {402, 408, 409, 425, 429, 500, 502, 503, 504}
+
+    def _is_retryable(self, exc: Exception) -> bool:
+        """判断调用异常是否值得换平台重试。"""
+        import httpx
+        if isinstance(exc, httpx.HTTPStatusError):
+            code = exc.response.status_code
+            return code in self._RETRYABLE_HTTP or code >= 500
+        # 网络层(超时/连接/解析)一律可换平台
+        if isinstance(exc, (httpx.TimeoutException, httpx.ConnectError,
+                            httpx.NetworkError, httpx.RemoteProtocolError)):
+            return True
+        # RuntimeError 多为「空 content / 解析失败 / 无可用平台」——空响应可换平台
+        msg = str(exc)
+        if "空 content" in msg or "响应解析失败" in msg or "空响应" in msg:
+            return True
+        return False
 
     # ---- 调用 ----
     async def generate(self, messages: Messages, strategy: str = "smart",
                        temperature: float = 0.7, max_tokens: int = 4096) -> Dict[str, Any]:
-        """路由 + 调用。返回 {text, platform, model, task_type}。"""
-        pick = self.route(messages, strategy)
-        cfg, platform = pick["cfg"], pick["platform"]
+        """路由 + 调用 + 跨平台故障转移。返回 {text, platform, model, task_type, failover?}。
 
-        # 协议分派:平台 anthropic,或自定义端点 meta.proto=anthropic → Anthropic Messages
-        proto = (cfg.get("meta") or {}).get("proto", "")
-        use_anthropic = (platform == "anthropic") or (platform == "custom" and proto == "anthropic")
-        if use_anthropic:
-            text = await self._call_anthropic(cfg, messages, temperature, max_tokens)
-            model = cfg["model"]
-        else:
-            model = cfg["model"]
-            if pick["task_type"] == "fast" and cfg.get("fast_model"):
-                model = cfg["fast_model"]
-            text = await self._call_openai_compat(cfg, messages, temperature, max_tokens, model)
-
-        return {"text": text, "platform": platform, "model": model, "task_type": pick["task_type"]}
+        2026-09-06 故障转移:route() 按偏好序(含所有已配端点)选平台;调用抛可重试错误
+        (402/429/超时/5xx/连接错/空响应)就拉黑该平台换下一个,直至成功或全挂。
+        返回带 failover=[{platform, error}...] 记录转移轨迹(不含 key)。
+        """
+        exclude: set = set()
+        failover: list = []
+        last_err: Optional[Exception] = None
+        while True:
+            try:
+                pick = self.route(messages, strategy, exclude=exclude)
+            except RuntimeError as e:
+                # 没有更多可用平台
+                if last_err is not None:
+                    raise RuntimeError(
+                        f"所有已配平台均失败:{failover and ' → '.join(f['platform'] for f in failover)};"
+                        f"最后错误: {last_err}") from last_err
+                raise
+            cfg, platform = pick["cfg"], pick["platform"]
+            try:
+                # 协议分派:平台 anthropic,或自定义端点 meta.proto=anthropic → Anthropic Messages
+                proto = (cfg.get("meta") or {}).get("proto", "")
+                use_anthropic = (platform == "anthropic") or (proto == "anthropic")
+                if use_anthropic:
+                    text = await self._call_anthropic(cfg, messages, temperature, max_tokens)
+                    model = cfg["model"]
+                else:
+                    model = cfg["model"]
+                    if pick["task_type"] == "fast" and cfg.get("fast_model"):
+                        model = cfg["fast_model"]
+                    text = await self._call_openai_compat(cfg, messages, temperature, max_tokens, model)
+                out = {"text": text, "platform": platform, "model": model,
+                       "task_type": pick["task_type"]}
+                if failover:
+                    out["failover"] = failover
+                return out
+            except Exception as e:  # noqa: BLE001
+                last_err = e
+                if not self._is_retryable(e):
+                    raise
+                # 记录转移(不含 key),拉黑换下一个
+                failover.append({"platform": platform,
+                                 "error": f"{type(e).__name__}: {str(e)[:80]}"})
+                exclude.add(platform)
 
     async def _call_openai_compat(self, cfg: Dict[str, Any], messages: Messages,
                                   temperature: float, max_tokens: int, model: str) -> str:
@@ -275,13 +335,48 @@ class PrisirRouter:
 
 
 # ============================================================
+# 主对话路径(rc=2 错误字符串)可重试判定 —— PrisirRouter._is_retryable 的字符串版
+# ============================================================
+# run_conversation(prisiragent_cli)把 LLM 异常吞成 rc=2 字符串(不抛异常),主对话
+# 故障转移只剩错误文本可判。此函数与 _is_retryable(异常版)共用 _RETRYABLE_HTTP 语义:
+#   402/408/409/425/429/5xx/超时/连接错/空响应 → 换平台
+#   400(非法体)/401(key错)/403(无权限) → 配置错,换平台无意义
+# 400-temperature 已在 _completion_with_temperature_fallback 内部回退过,换平台无意义 → 不重试。
+_RETRYABLE_HTTP = PrisirRouter._RETRYABLE_HTTP
+_NET_HINTS = ("timeout", "timed out", "connect", "connection", "network",
+              "remote protocol", "eof", "空 content", "空响应", "响应解析失败")
+_CODE_RE = re.compile(r"\b([45]\d\d)\b")
+
+
+def is_retryable_error_str(err: str) -> bool:
+    """判断主对话 rc=2 的错误串是否值得拉黑当前平台换下一个重试。"""
+    s = (err or "").lower()
+    # 明确非重试:400-temperature(已内部回退)/401/403 配置错
+    if "temperature" in s and "400" in s:
+        return False
+    m = _CODE_RE.search(s)
+    if m:
+        code = int(m.group(1))
+        if code in (401, 403):
+            return False
+        if code == 400:
+            return False  # 非 temperature 的 400 是请求体非法,换平台无意义
+        return code in _RETRYABLE_HTTP or code >= 500
+    # 无状态码:看网络/空响应关键词
+    if any(h in s for h in _NET_HINTS):
+        return True
+    # 兜底:无法判定时宁可多转移一次(全平台挂会自然终止),不漏真故障
+    return True
+
+
+# ============================================================
 # 端点模型列表拉取(参考翻译插件 engines.listModels:GET {base}/models)
 # ============================================================
 def list_endpoint_models(base_url: str, api_key: str = "", timeout_s: float = 15.0) -> Dict[str, Any]:
     """从 OpenAI 兼容端点拉可取模型列表。返回 {ok, models, error}。
 
-    同步实现(供 oiagent_web 设置页「拉取模型」用)。只列模型名,不回显 key。
-    Anthropic 协议端点(如 api.minimaxi.com/anthropic)多数无 /models,
+    同步实现(供设置页「拉取模型」用)。只列模型名,不回显 key。
+    Anthropic 协议端点(走 /v1/messages 的那类)多数无 /models,
     但同 host 的 OpenAI 兼容侧(/v1)有 — 拉模型时自动换成 /v1 再试。
     """
     import httpx  # 延迟导入,避免无 httpx 环境影响其它路径

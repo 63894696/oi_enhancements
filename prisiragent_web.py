@@ -63,6 +63,7 @@ from prisiragent_context import (  # noqa: E402
 )
 from fastlane.providers.llm_prisir import (  # noqa: E402
     PrisirKeyStore, PrisirRouter, generate_followups, list_endpoint_models,
+    is_retryable_error_str,
 )
 # 2026-08-25 P1 局域网联动:配对令牌 + mDNS 发现广播(docs/prisir-android-win-link-2026-08-25.md)。
 # 纯 stdlib 模块,惰性启用——仅 --lan 时才监听局域网;默认 127.0.0.1 本机访问不带令牌。
@@ -1007,38 +1008,12 @@ def _run_chat_thread(sid: str, user_text: str, strategy: str, model: str, workdi
         sys_extra = _shell_system_prompt(user_text, sid)
 
         use_router = bool(_router.available_platforms())
-        # 上下文窗口管理(档位1 预警 + 档位2 observation masking)。
-        # 先定模型再算用量;masking 只改发给模型的副本,不动 SQLite 全文。
-        if use_router:
-            # Prisir 路由: 用 router 选定平台后,把该平台模型映射到 litellm model 串
-            pick = _router.route(msgs + [{"role": "user", "content": user_text}], strategy)
-            platform, cfg = pick["platform"], pick["cfg"]
-            lm = _litellm_model_for(platform, cfg, pick["task_type"])
-        else:
-            lm = model
-
-        # 用量评估(基于将送入的完整历史),超阈值则遮蔽旧 tool 输出
-        full_msgs = msgs + [{"role": "user", "content": content}]
-        # 档位4 同窗口压缩:meta 有已生效摘要则先把旧历史折叠为摘要块
-        full_msgs, n_compacted = _apply_compact(sid, full_msgs)
-        usage = usage_for(full_msgs, lm)
-        # mask_old_tool_outputs 返回副本(不就地改);传 model 让其自适应收紧,
-        # 超阈值才遮蔽旧 tool 输出,直至估算用量回落到 MASK_RATIO 以下。
-        send_msgs = mask_old_tool_outputs(full_msgs, model=lm) if usage["mask"] else full_msgs
-        # 孤儿 tool 消息清洗(tool_call_id is not found 修复):库历史里 assistant 丢
-        # tool_calls、tool 行无 tool_call_id,OpenAI 协议端点会报 BadRequestError。
-        # 发送前把孤儿 tool 折叠为 assistant 只读资料块;只改发送副本,不动库。
-        send_msgs = sanitize_tool_history(send_msgs)
-        if usage["mask"]:
-            # 记录遮蔽动作 + 遮蔽条数,透出给前端(meta)便于排查
-            n_masked = sum(1 for m in send_msgs
-                           if m.get("role") == "tool" and "已遮蔽" in str(m.get("content", "")))
-            usage = dict(usage, masked=True, masked_count=n_masked)
 
         # 实时工具进度(壳三件套①):on_event 把 run_conversation 内部的工具执行事件
         # 实时 append 进 _events[sid],前端轮询 /status 取增量展示「进行中的工具调用」。
         # estop 包装:每个 tool_start 边界检查中断标志,置位则抛 _EstopInterrupt 终止工具链
         # (不打断正在执行的单个工具,避免半写文件);事件仍照常登记。
+        # 与平台无关 —— 故障转移换平台重跑时复用同一回调,留在循环外只建一次。
         def _on_tool_event(ev):
             if ev.get("type") == "tool_start" and _estop_event(sid).is_set():
                 raise _EstopInterrupt()
@@ -1056,18 +1031,69 @@ def _run_chat_thread(sid: str, user_text: str, strategy: str, model: str, workdi
         except Exception:  # noqa: BLE001
             pass
 
-        if use_router:
+        # 跨平台故障转移循环(2026-09-06):选中平台跑 rc=2 且错误可重试(402/429/5xx/
+        # 超时/连接错/空响应) → 拉黑该平台重选下一个重跑,直至成功或全平台挂。
+        # run_conversation 把 LLM 异常吞成 rc=2 字符串(cli 不抛),故按错误串判定。
+        # 用量评估/mask/sanitize 依赖 lm(模型串),换平台后必须随循环重算(幂等,只改发送副本)。
+        exclude: set = set()
+        failover: list = []
+        res = None
+        used = model
+        while True:
+            if use_router:
+                # Prisir 路由: 用 router 选定平台后,把该平台模型映射到 litellm model 串
+                # exclude 拉黑本次已失败平台;_litellm_model_for 重注入 env 覆盖上一平台 key/base。
+                try:
+                    pick = _router.route(msgs + [{"role": "user", "content": user_text}],
+                                         strategy, exclude=exclude)
+                except RuntimeError as e:
+                    # 无更多可用平台:把已试轨迹一并落消息(不含 key)
+                    trail = " → ".join(f["platform"] for f in failover) or "(无)"
+                    raise RuntimeError(f"所有已配平台均失败:{trail};最后错误: {e}") from e
+                platform, cfg = pick["platform"], pick["cfg"]
+                lm = _litellm_model_for(platform, cfg, pick["task_type"])
+            else:
+                lm = model
+
+            # 用量评估(基于将送入的完整历史),超阈值则遮蔽旧 tool 输出
+            full_msgs = msgs + [{"role": "user", "content": content}]
+            # 档位4 同窗口压缩:meta 有已生效摘要则先把旧历史折叠为摘要块
+            full_msgs, n_compacted = _apply_compact(sid, full_msgs)
+            usage = usage_for(full_msgs, lm)
+            # mask_old_tool_outputs 返回副本(不就地改);传 model 让其自适应收紧,
+            # 超阈值才遮蔽旧 tool 输出,直至估算用量回落到 MASK_RATIO 以下。
+            send_msgs = mask_old_tool_outputs(full_msgs, model=lm) if usage["mask"] else full_msgs
+            # 孤儿 tool 消息清洗(tool_call_id is not found 修复):库历史里 assistant 丢
+            # tool_calls、tool 行无 tool_call_id,OpenAI 协议端点会报 BadRequestError。
+            # 发送前把孤儿 tool 折叠为 assistant 只读资料块;只改发送副本,不动库。
+            send_msgs = sanitize_tool_history(send_msgs)
+            if usage["mask"]:
+                # 记录遮蔽动作 + 遮蔽条数,透出给前端(meta)便于排查
+                n_masked = sum(1 for m in send_msgs
+                               if m.get("role") == "tool" and "已遮蔽" in str(m.get("content", "")))
+                usage = dict(usage, masked=True, masked_count=n_masked)
+
             res = run_conversation(send_msgs, lm, workdir,
                                    think_level=think_level, system_extra=sys_extra,
                                    on_event=_on_tool_event, on_confirm=_perm_on_confirm)
             answer = res["out"]
-            used = f"{platform}:{cfg['model']}"
-        else:
-            res = run_conversation(send_msgs, lm, workdir,
-                                   think_level=think_level, system_extra=sys_extra,
-                                   on_event=_on_tool_event, on_confirm=_perm_on_confirm)
-            answer = res["out"]
-            used = model
+            used = f"{platform}:{cfg['model']}" if use_router else model
+
+            if not use_router:
+                break  # 非路由路径(单模型)不做跨平台转移
+            if res["rc"] == 0:
+                break  # 成功
+            if res["rc"] == 2 and is_retryable_error_str(res["out"]):
+                failover.append({"platform": platform, "error": res["out"][:80]})
+                exclude.add(platform)
+                if len(exclude) >= len(_router.available_platforms()):
+                    # 全平台试完仍失败
+                    trail = " → ".join(f["platform"] for f in failover)
+                    answer = f"[错误] 所有已配平台均失败:{trail};最后错误: {res['out'][:200]}"
+                    res = dict(res, rc=2, out=answer)
+                    break
+                continue  # 拉黑当前平台,换下一个重跑
+            break  # rc=1(estop/其它)或不可重试 rc=2(400/401/403 配置错) → 不再试
 
         # 当轮工具轨迹入库(截断后),激活跨轮 masking(档位2)与任务回放。
         # 顺序在最终 assistant 答复之前,保持时间序。tool 角色的 name 并入 content 头部保可追溯。
@@ -1119,16 +1145,20 @@ def _run_chat_thread(sid: str, user_text: str, strategy: str, model: str, workdi
         sess = get_session(sid)
         if sess and sess[1] == "新会话":
             rename_session(sid, user_text[:24])
-        _set_meta(sid, {"last_model": used, "rc": res["rc"],
-                        "context_usage": {
-                            "used": usage["used"], "window": usage["window"],
-                            "ratio": usage["ratio"], "near_full": usage["near_full"],
-                            "known": usage["known"], "masked": bool(usage.get("masked")),
-                            "masked_count": usage.get("masked_count", 0),
-                            "compacted": n_compacted,
-                            "compact_source": _get_meta(sid).get("compact_source", ""),
-                            "advise": usage["advise"],
-                        }})
+        _meta = {"last_model": used, "rc": res["rc"],
+                 "context_usage": {
+                     "used": usage["used"], "window": usage["window"],
+                     "ratio": usage["ratio"], "near_full": usage["near_full"],
+                     "known": usage["known"], "masked": bool(usage.get("masked")),
+                     "masked_count": usage.get("masked_count", 0),
+                     "compacted": n_compacted,
+                     "compact_source": _get_meta(sid).get("compact_source", ""),
+                     "advise": usage["advise"],
+                 }}
+        # 故障转移轨迹透出(只平台名+错误摘要,绝不含 key),前端据此提示「已自动换平台」。
+        if failover:
+            _meta["failover"] = failover
+        _set_meta(sid, _meta)
 
         # 档位4 同窗口压缩触发:近满时后台提炼写 meta,下一轮起 _apply_compact
         # 把旧历史折叠为摘要。滚动再压缩:已有摘要后,若「摘要+保留区」又涨到近满,
@@ -2442,12 +2472,12 @@ _PAGE = r"""<!DOCTYPE html>
       <div class="hint">平台名:小写字母/数字/-/_,如 openai、anthropic、kimi、qwen-coder、custom。
         同名保存=覆盖。openai/anthropic 可空 base_url 用官方默认。<br>
         协议:openai=OpenAI 兼容(/chat/completions);anthropic=Anthropic Messages(/v1/messages)。<br>
-        base_url 填到版本前缀,如 https://api.kimi.com/coding/v1、https://api.minimaxi.com/anthropic、
-        http://127.0.0.1:11434/v1</div>
+        base_url 填到版本前缀,如 https://api.kimi.com/coding/v1、
+        http://127.0.0.1:11434/v1(本地 Ollama);Anthropic 协议端点填到 /v1 或其根。</div>
       <input id="k-platform" type="text" placeholder="平台名, e.g. kimi / qwen-coder / custom" style="width:100%;padding:9px 12px;border:1px solid var(--gh-line);border-radius:8px;font-size:13px;background:var(--gh-surface);color:var(--gh-ink);margin-bottom:6px">
       <select id="k-custom-proto" style="width:100%;padding:9px 12px;border:1px solid var(--gh-line);border-radius:8px;font-size:13px;background:var(--gh-surface);color:var(--gh-ink);margin-bottom:6px">
         <option value="openai">openai(OpenAI 兼容,多数平台)</option>
-        <option value="anthropic">anthropic(Claude / MiniMax anthropic 端点)</option>
+        <option value="anthropic">anthropic(Anthropic Messages 协议端点)</option>
       </select>
       <input id="k-custom-url" type="text" placeholder="base_url, e.g. https://...">
       <input id="k-custom-key" type="password" data-i18n-ph="key_ph" placeholder="key(本地可空)" style="margin-top:6px">

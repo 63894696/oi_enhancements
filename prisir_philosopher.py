@@ -5,7 +5,11 @@
 - 学派是「角色」,模型是「嗓子」。学派面板(角色提示词)与引擎(可调模型)解耦。
 - 引擎注册表内置实测数据(base_url/key_env/候选模型/出字字段);启动探测降级:
   402 订阅墙 / 429 限流 / 超时 → 标不可用,不进面板;M=1 单引擎分饰,M=0 提示配 key。
-- key 只从环境变量读,绝不回显、不落盘、不出本机。
+- key 源(2026-09-06):优先环境变量(key_env),缺失时回落 PrisirAI 端点库
+  (PrisirKeyStore, keys.db 平台记录)。key 只在内存引擎 dict(_auth),绝不回显、
+  不落盘、不出本机、不污染环境变量;环境变量显式配置永远盖过 keys.db 同名端点。
+- proto=anthropic 的端点走 Anthropic Messages API(/v1/messages, x-api-key);
+  其余走 OpenAI 兼容(/chat/completions, Bearer)。
 - 三轮:R1 各学派并行立场+建议 → R2 学派互见观点后回应(辩论)→ R3 综述(共识/分歧/行动)。
 - 真实坑内置:思维链模型(Kimi/GLM/nemotron/gpt-oss)会把思考当正文,需剥离;
   MiniMax 带 <think> 段;部分模型出字在 reasoning/reasoning_content 字段。
@@ -155,6 +159,114 @@ ENGINE_REGISTRY = [
     },
 ]
 
+
+# ─────────────────────────────────────────────────────────────
+# keys.db 引擎源(2026-09-06):把 PrisirAI 端点库转成哲人引擎
+# ─────────────────────────────────────────────────────────────
+# 平台 proto 判定:meta.proto 显式标注优先;否则按 base_url 形态启发。
+#   anthropic 端点走 /v1/messages + x-api-key;其余走 /chat/completions + Bearer。
+# 默认端点补齐与 llm_prisir.PrisirRouter._platform_cfg 对齐,但**不写死任何具体
+# 第三方平台**(minimax/kimi 等都不预设,全靠用户在端点库自填)。
+_DEFAULT_ENDPOINTS = {
+    "openai": "https://api.openai.com/v1",
+    "anthropic": "https://api.anthropic.com",
+}
+
+
+def _proto_of(rec: dict) -> str:
+    """从 keys.db 记录判协议:'anthropic' 或 'openai'(默认)。"""
+    proto = ((rec.get("meta") or {}).get("proto") or "").strip().lower()
+    if proto in ("anthropic", "openai"):
+        return proto
+    return "openai"
+
+
+def _guess_thinking(model: str) -> bool:
+    """按模型名启发式标 thinking(思维链会先倒思考段,需剥离)。仅作初始标注,
+    实际仍以 _clean_output 清洗为准;角色模式会强制清洗,故此标偏保守。"""
+    m = (model or "").lower()
+    return any(k in m for k in ("think", "reason", "kimi", "glm", "nemotron", "gpt-oss", "minimax"))
+
+
+def engines_from_keystore(store=None) -> list[dict]:
+    """把 keys.db 里 has_key 的平台转成哲人引擎 dict。
+
+    引擎字段对齐 ENGINE_REGISTRY,但 key 走内存 _auth=(scheme, key),不写环境变量:
+      - proto=openai    → _auth=("bearer", key)
+      - proto=anthropic → _auth=("x-api-key", key)
+    base_url 缺省用 _DEFAULT_ENDPOINTS(openai/anthropic);自定义平台缺 base_url 跳过。
+    解析异常单平台跳过(记 _skip_reason),不拖垮整体。
+    """
+    try:
+        if store is None:
+            from fastlane.providers.llm_prisir import PrisirKeyStore
+            store = PrisirKeyStore()
+    except Exception:  # noqa: BLE001  fastlane 不在/DB 打不开 → 无 keys.db 引擎
+        return []
+    out = []
+    try:
+        platforms = store.list_platforms()
+    except Exception:  # noqa: BLE001
+        return []
+    for rec in platforms:
+        try:
+            if not rec.get("has_key"):
+                continue
+            name = (rec.get("platform") or "").strip()
+            if not name:
+                continue
+            proto = _proto_of(rec)
+            base = (rec.get("base_url") or "").strip() or _DEFAULT_ENDPOINTS.get(name, "")
+            if not base:
+                # 自定义平台无 base_url 无法用(对齐 router._platform_cfg 的 custom 分支)
+                continue
+            model = (rec.get("model") or "").strip()
+            # anthropic 官方默认模型;openai 官方默认;自定义必须用户填,否则占位
+            if not model:
+                model = {"anthropic": "claude-opus-5", "openai": "gpt-4o"}.get(name, "default")
+            # 取明文 key:仅内存用,绝不打印/落盘
+            full = store.get_key(name) or {}
+            key = (full.get("api_key") or "").strip()
+            if not key or key == "sk-local":
+                # sk-local 是本地占位(llama.cpp 等),无鉴权也算可用,但远端空 key 跳过
+                if base.startswith(("http://127.", "http://localhost", "http://[::1]")):
+                    key = "sk-local"
+                else:
+                    continue
+            scheme = "x-api-key" if proto == "anthropic" else "bearer"
+            out.append({
+                "name": name,
+                "base_url": base,
+                "key_env": "",           # 不绑环境变量
+                "models": [model],
+                "thinking_models": set(),
+                "thinking": _guess_thinking(model),
+                "_proto": proto,
+                "_auth": (scheme, key),
+                "_source": "keys.db",
+            })
+        except Exception:  # noqa: BLE001  单条记录坏 → 跳过
+            continue
+    return out
+
+
+def all_engines() -> list[dict]:
+    """环境变量引擎 + keys.db 引擎合并。同名时环境变量优先(显式 export 盖过库)。"""
+    merged = {}
+    for eng in engines_from_keystore():
+        merged[eng["name"]] = eng
+    for eng in ENGINE_REGISTRY:
+        merged[eng["name"]] = eng  # 环境变量引擎覆盖同名 keys.db 引擎
+    return list(merged.values())
+
+
+def _engine_key(engine: dict) -> str:
+    """取引擎凭据:内存 _auth 优先,否则环境变量。永不打印返回值。"""
+    auth = engine.get("_auth")
+    if auth:
+        return auth[1]
+    return os.environ.get(engine.get("key_env", ""), "")
+
 _MAX_WORKERS = 5
 _CALL_TIMEOUT = 120   # 思维链引擎(agnes/kimi)推理慢,给足
 _R1_TOKENS = 260      # 立场:够 120-150 字 + 缓冲(思维链引擎翻倍)
@@ -243,24 +355,18 @@ def _extract_text(data: dict) -> str:
 def _call(engine: dict, model: str, system: str, user: str, max_tokens: int,
           role_mode: bool = False) -> dict:
     """role_mode=True(学派立场/辩论):强制走招牌截取清洗,不论引擎 thinking 标注。"""
-    key = os.environ.get(engine["key_env"], "")
+    key = _engine_key(engine)
     if not key:
-        return {"ok": False, "err": f"缺环境变量 {engine['key_env']}"}
-    body = json.dumps({
-        "model": model,
-        "messages": [{"role": "system", "content": system},
-                     {"role": "user", "content": user}],
-        "max_tokens": max_tokens,
-    }).encode("utf-8")
-    headers = {"Content-Type": "application/json", "Authorization": "Bearer " + key}
-    headers.update(engine.get("headers") or {})
-    req = urllib.request.Request(engine["base_url"].rstrip("/") + "/chat/completions",
-                                 data=body, headers=headers)
+        src = engine.get("key_env") or "keys.db"
+        return {"ok": False, "err": f"缺凭据({src})"}
+    proto = engine.get("_proto") or "openai"
     import time
     t0 = time.time()
     try:
-        with urllib.request.urlopen(req, timeout=_CALL_TIMEOUT) as r:
-            data = json.loads(r.read().decode("utf-8"))
+        if proto == "anthropic":
+            data = _http_anthropic(engine, model, system, user, max_tokens, key)
+        else:
+            data = _http_openai(engine, model, system, user, max_tokens, key)
         ms = int((time.time() - t0) * 1000)
         thinking = (engine.get("thinking", False)
                     or model in engine.get("thinking_models", set())
@@ -284,18 +390,66 @@ def _call(engine: dict, model: str, system: str, user: str, max_tokens: int,
         return {"ok": False, "err": f"{type(e).__name__}: {e}"}
 
 
+def _http_openai(engine: dict, model: str, system: str, user: str,
+                 max_tokens: int, key: str) -> dict:
+    """OpenAI 兼容 /chat/completions(Bearer)。返回原始 JSON dict。"""
+    body = json.dumps({
+        "model": model,
+        "messages": [{"role": "system", "content": system},
+                     {"role": "user", "content": user}],
+        "max_tokens": max_tokens,
+    }).encode("utf-8")
+    headers = {"Content-Type": "application/json", "Authorization": "Bearer " + key}
+    headers.update(engine.get("headers") or {})
+    req = urllib.request.Request(engine["base_url"].rstrip("/") + "/chat/completions",
+                                 data=body, headers=headers)
+    with urllib.request.urlopen(req, timeout=_CALL_TIMEOUT) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def _http_anthropic(engine: dict, model: str, system: str, user: str,
+                    max_tokens: int, key: str) -> dict:
+    """Anthropic Messages /v1/messages(x-api-key)。返回规整成 OpenAI 形态
+    {"choices":[{"message":{"content": text}}]},让 _extract_text 统一取字。"""
+    base = engine["base_url"].rstrip("/")
+    # base 若已含 /v1 则直接 /messages,否则补 /v1/messages(对齐 minimax anthropic 形态)
+    endpoint = base + ("/messages" if base.endswith("/v1") else "/v1/messages")
+    payload: dict = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "messages": [{"role": "user", "content": user}],
+    }
+    if system:
+        payload["system"] = system
+    body = json.dumps(payload).encode("utf-8")
+    headers = {
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+    }
+    headers.update(engine.get("headers") or {})
+    req = urllib.request.Request(endpoint, data=body, headers=headers)
+    with urllib.request.urlopen(req, timeout=_CALL_TIMEOUT) as r:
+        data = json.loads(r.read().decode("utf-8"))
+    parts = data.get("content", []) if isinstance(data, dict) else []
+    text = "".join(p.get("text", "") for p in parts if isinstance(p, dict) and p.get("type") == "text")
+    return {"choices": [{"message": {"content": text}}]}
+
+
 # ─────────────────────────────────────────────────────────────
 # 探测:每个引擎选第一个真出字的模型;不可用引擎标记原因
 # ─────────────────────────────────────────────────────────────
 def probe_engines(probe_call: bool = True) -> list[dict]:
-    """返回引擎状态表。probe_call=False 只查 key 是否在手(快,不发请求)。"""
+    """返回引擎状态表(环境变量引擎 + keys.db 引擎合并)。probe_call=False 只查
+    key 是否在手(快,不发请求)。"""
     out = []
-    for eng in ENGINE_REGISTRY:
-        key = os.environ.get(eng["key_env"], "")
+    for eng in all_engines():
+        key = _engine_key(eng)
         entry = {"engine": eng["name"], "has_key": bool(key),
-                 "usable": False, "model": None, "reason": ""}
+                 "usable": False, "model": None, "reason": "",
+                 "source": eng.get("_source") or "env"}
         if not key:
-            entry["reason"] = f"缺 {eng['key_env']}"
+            entry["reason"] = f"缺凭据({eng.get('key_env') or 'keys.db'})"
             out.append(entry)
             continue
         if not probe_call:
@@ -331,7 +485,7 @@ def usable_engines(probe_call: bool = False) -> list[dict]:
     out = []
     table = probe_engines(probe_call)
     by_name = {e["engine"]: e for e in table}
-    for eng in ENGINE_REGISTRY:
+    for eng in all_engines():
         ent = by_name.get(eng["name"])
         if ent and ent["usable"]:
             thinking = eng.get("thinking", False) or ent["model"] in eng.get("thinking_models", set())
