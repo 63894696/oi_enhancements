@@ -1248,12 +1248,14 @@ def _effective_model(sid: str = "") -> str:
             return _litellm_model_for(pick["platform"], pick["cfg"], pick["task_type"])
     except Exception:
         pass
-    # 路由不可用兜底:该会话上次真实模型 → 全局默认
+    # 路由不可用兜底:该会话上次真实模型;无任何历史则不显型号(2026-09-06 用户反馈:
+    # 没配 key 时兜底 DEFAULT_MODEL 会让路由标签误显示千问型号,以为在用它——实无 key 调不动。
+    # 返回 "" 让前端只显示「未配key」,不误导)。
     if sid:
         lm = _get_meta(sid).get("last_model")
         if lm:
             return lm
-    return DEFAULT_MODEL
+    return ""
 
 
 # ============================================================
@@ -1359,6 +1361,41 @@ def _estop_clear(sid: str) -> None:
         ev = _ESTOP.get(sid)
         if ev is not None:
             ev.clear()
+
+
+# 文件资料栏(2026-09-06 用户反馈):列出 workdir 文件树供左侧栏渲染。
+# 安全红线同 _serve_workdir_file:rel 仅相对路径,realpath 必须落在 workdir 内,拒目录穿越。
+# 跳过常见噪音目录/隐藏项,单层列出(前端按目录再请求展开,避免一次性深遍历大目录)。
+_FILES_SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv",
+                    "dist", "build", "target", ".idea", ".vscode", "_staging2"}
+
+
+def _list_workdir_tree(rel: str) -> dict:
+    base = os.path.realpath(_WORKDIR["path"])
+    rel = (rel or "").lstrip("/\\")
+    target = os.path.realpath(os.path.join(base, rel))
+    if target != base and not target.startswith(base + os.sep):
+        return {"ok": False, "error": "forbidden: 越出工作目录", "dirs": [], "files": []}
+    if not os.path.isdir(target):
+        return {"ok": False, "error": "not a dir", "dirs": [], "files": []}
+    dirs, files = [], []
+    try:
+        for name in sorted(os.listdir(target), key=str.lower):
+            if name.startswith(".") or name in _FILES_SKIP_DIRS:
+                continue
+            full = os.path.join(target, name)
+            child_rel = os.path.relpath(full, base).replace(os.sep, "/")
+            try:
+                if os.path.isdir(full):
+                    dirs.append({"name": name, "path": child_rel})
+                else:
+                    files.append({"name": name, "path": child_rel,
+                                  "size": os.path.getsize(full)})
+            except OSError:
+                continue  # 个别文件 stat 失败不拖垮整层
+    except OSError as e:
+        return {"ok": False, "error": f"read error: {e}", "dirs": [], "files": []}
+    return {"ok": True, "workdir": base, "path": rel, "dirs": dirs, "files": files}
 
 
 def _perm_on_confirm(payload: dict) -> bool:
@@ -2103,6 +2140,37 @@ _PAGE = r"""<!DOCTYPE html>
   #sl-replay .msg.agent { align-self:flex-start; }
   #rail { width:250px; border-right:1px solid var(--gh-line); background:rgba(239,232,218,.5);
     padding:12px; overflow-y:auto; display:flex; flex-direction:column; gap:4px; }
+  /* 文件资料栏(2026-09-06):会话栏与对话区之间的可折叠 IDE 式文件树 */
+  #frail { width:230px; flex:0 0 230px; border-right:1px solid var(--gh-line);
+    background:rgba(239,232,218,.35); display:flex; flex-direction:column; overflow:hidden; }
+  #frail-head { display:flex; align-items:center; gap:4px; padding:10px 12px 6px; }
+  #frail-head #frail-title { font-size:12px; color:var(--gh-ink-faint); text-transform:uppercase; letter-spacing:1px; }
+  #frail-head .spacer { flex:1; }
+  #frail-head button { border:none; background:none; color:var(--gh-ink-soft); cursor:pointer;
+    font-size:13px; padding:2px 5px; border-radius:5px; }
+  #frail-head button:hover { background:var(--gh-surface); color:var(--gh-green-deep); }
+  #frail-workdir { padding:0 12px 8px; font-size:11px; color:var(--gh-ink-faint);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; border-bottom:1px dashed var(--gh-line); }
+  #frail-tree { flex:1; overflow-y:auto; padding:6px 6px 12px; font-size:12.5px; }
+  .ft-dir, .ft-file { display:flex; align-items:center; gap:5px; padding:3px 6px; border-radius:6px;
+    color:var(--gh-ink-soft); cursor:pointer; white-space:nowrap; user-select:none; }
+  .ft-dir:hover, .ft-file:hover { background:var(--gh-surface); }
+  .ft-file:hover { color:var(--gh-ink); }
+  .ft-dir .tw { width:12px; flex:0 0 12px; text-align:center; color:var(--gh-ink-faint); font-size:10px; transition:transform .12s; }
+  .ft-dir.open .tw { transform:rotate(90deg); }
+  .ft-ico { flex:0 0 auto; font-size:12px; }
+  .ft-name { flex:1; overflow:hidden; text-overflow:ellipsis; }
+  .ft-kids { margin-left:14px; border-left:1px solid var(--gh-line); padding-left:4px; }
+  .ft-kids.hidden { display:none; }
+  .ft-empty, .ft-err { padding:14px 12px; font-size:12px; color:var(--gh-ink-faint); }
+  .ft-err { color:var(--gh-seal); }
+  .ft-op { flex:0 0 auto; font-size:12px; padding:0 3px; border-radius:4px; opacity:0; transition:opacity .12s; }
+  .ft-file:hover .ft-op { opacity:.75; }
+  .ft-op:hover { opacity:1 !important; background:var(--gh-paper-2); color:var(--gh-green-deep); }
+  .ft-preview { margin:2px 4px 6px 18px; padding:8px 10px; background:var(--gh-paper);
+    border:1px solid var(--gh-line); border-radius:6px; font-size:11.5px; font-family:monospace;
+    color:var(--gh-ink); white-space:pre-wrap; word-break:break-all; max-height:300px; overflow-y:auto; }
+  #files-btn.on { background:var(--gh-green-deep); color:#fbf6ec; border-color:var(--gh-green-deep); }
   #rail h2 { font-size:12px; color:var(--gh-ink-faint); text-transform:uppercase; letter-spacing:1px; margin:4px 2px 8px; }
   .sess { padding:8px 10px; border-radius:8px; font-size:13px; color:var(--gh-ink-soft);
     cursor:pointer; border:1px solid transparent; display:flex; align-items:center; gap:6px; }
@@ -2219,6 +2287,19 @@ _PAGE = r"""<!DOCTYPE html>
   #attach-btn { padding:6px 10px; border-radius:8px; border:1px solid var(--gh-line);
     background:var(--gh-surface); color:var(--gh-ink); font-size:14px; cursor:pointer; }
   #attach-btn:hover { border-color:var(--gh-green-deep); }
+  /* estop 停止按钮:运行中的「中断」信号。印章红描边 + 停止块呼吸脉动,
+     与发送键(墨绿实心)主次分明,又和 attach(中性描边)区分出危险语义。 */
+  #estop-btn { display:inline-flex; align-items:center; gap:6px; padding:6px 13px;
+    border-radius:999px; border:1.5px solid var(--gh-seal); background:var(--gh-surface);
+    color:var(--gh-seal); font-size:12.5px; font-weight:600; cursor:pointer;
+    letter-spacing:.5px; transition:background .15s,color .15s,box-shadow .15s; }
+  #estop-btn .stopdot { width:9px; height:9px; border-radius:2px; background:var(--gh-seal);
+    flex:0 0 auto; animation:estop-pulse 1.4s ease-in-out infinite; }
+  #estop-btn:hover { background:var(--gh-seal); color:#fbf6ec;
+    box-shadow:0 2px 10px rgba(178,58,48,.28); }
+  #estop-btn:hover .stopdot { background:#fbf6ec; animation-play-state:paused; }
+  #estop-btn:active { transform:translateY(1px); }
+  @keyframes estop-pulse { 0%,100% { opacity:1; } 50% { opacity:.3; } }
   #attach-row { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
   .atchip { display:inline-flex; align-items:center; gap:6px; padding:4px 8px; font-size:12px;
     background:var(--gh-paper-2); border:1px solid var(--gh-line); border-radius:999px; color:var(--gh-ink); }
@@ -2380,6 +2461,7 @@ _PAGE = r"""<!DOCTYPE html>
   </div>
   <div class="spacer"></div>
   <span id="strategy-label"></span>
+  <button class="topbtn" id="files-btn" onclick="toggleFiles()" data-i18n="files" data-i18n-title="files_title">📁 文件</button>
   <button class="topbtn" onclick="openKeys()" data-i18n="model_key">🔑 模型 Key</button>
   <button class="topbtn" onclick="openFeedback()" data-i18n-title="feedback_title"><span data-i18n="feedback">⚙ 反馈问题</span></button>
   <button class="topbtn" onclick="newSession()" data-i18n="new_session">+ 新会话</button>
@@ -2388,6 +2470,18 @@ _PAGE = r"""<!DOCTYPE html>
   <div id="rail">
     <h2 data-i18n="sessions">会话</h2>
     <div id="sess-list"></div>
+  </div>
+  <!-- 文件资料栏(2026-09-06 用户反馈:IDE 式左侧文件树,管理工作目录资料)。
+       默认收起,顶栏 📁 开关切换;查看/插入引用/文本编辑,编辑走权限闸。 -->
+  <div id="frail" style="display:none">
+    <div id="frail-head">
+      <span id="frail-title" data-i18n="files">文件</span>
+      <span class="spacer"></span>
+      <button id="frail-refresh" type="button" onclick="loadFileTree()" title="刷新">⟳</button>
+      <button id="frail-close" type="button" onclick="toggleFiles()" title="收起">✕</button>
+    </div>
+    <div id="frail-workdir" title="当前工作目录"></div>
+    <div id="frail-tree"></div>
   </div>
   <div id="split-wrap">
     <div id="split-left">
@@ -2452,7 +2546,7 @@ _PAGE = r"""<!DOCTYPE html>
           </select>
           <button id="attach-btn" type="button" data-i18n-title="attach_title">📎</button>
           <input id="attach-input" type="file" multiple style="display:none">
-          <button id="estop-btn" type="button" data-i18n="stop" data-i18n-title="estop_title" style="display:none" onclick="estopNow()">■ 停止</button>
+          <button id="estop-btn" type="button" data-i18n="stop" data-i18n-title="estop_title" style="display:none" onclick="estopNow()"><span class="stopdot"></span>停止</button>
           <button id="send" onclick="sendMessage()" data-i18n="send">发送</button>
         </div>
       </div>
@@ -2551,10 +2645,11 @@ const I18N = {
     sessions:'会话', summary:'摘要', replay:'原文', merge:'✕ 合并',
     pin:'固定的', rename:'✏️ 重命名会话', export_pdf:'📄 导出为PDF', export_md:'📝 衍生为Markdown',
     export_docx:'📃 导出为DOCX', save_exp:'💎 存为经验(Obsidian)', continue_new:'🔀 开新窗接续(带交接)',
-    split:'🗔 分屏接续(带交接)', remote:'📱 手机遥控', del:'🗑️ 删除', stop:'■ 停止',
+    split:'🗔 分屏接续(带交接)', remote:'📱 手机遥控', del:'🗑️ 删除', stop:'停止',
     input_ph:'问点什么… (Enter 发送,Shift+Enter 换行)',
     think_default:'思考:默认', think_off:'思考:关闭', think_low:'思考:低', think_medium:'思考:中', think_high:'思考:高',
     attach_title:'附加文件(文本内联/图片多模态)', estop_title:'中断当前操作(estop)',
+    files:'📁 文件', files_title:'显示/收起工作目录文件资料栏',
     model_endpoints:'模型端点', custom_endpoint:'自定义端点', workdir:'工作目录',
     workdir_hint:'PrisirAI 读写文件/跑命令的基准目录(影响 read_file/run_shell 相对路径)',
     save:'保存', close:'关闭', cancel:'取消', ok:'确定', apply:'应用', pull:'拉取',
@@ -2583,6 +2678,7 @@ const I18N = {
     input_ph:'Ask anything… (Enter to send, Shift+Enter for newline)',
     think_default:'Think: default', think_off:'Think: off', think_low:'Think: low', think_medium:'Think: medium', think_high:'Think: high',
     attach_title:'Attach file (inline text / multimodal image)', estop_title:'Interrupt current operation (estop)',
+    files:'📁 Files', files_title:'Show/hide the working-directory file panel',
     model_endpoints:'Model Endpoints', custom_endpoint:'Custom endpoint', workdir:'Working directory',
     workdir_hint:'Base directory PrisirAI reads/writes files and runs commands in (affects read_file/run_shell relative paths)',
     save:'Save', close:'Close', cancel:'Cancel', ok:'OK', apply:'Apply', pull:'Pull',
@@ -2611,7 +2707,14 @@ function T(key){ return (I18N[LANG] && I18N[LANG][key]) || I18N.en[key] || key; 
 // 扫 data-i18n / data-i18n-title / data-i18n-ph 属性,批量替换文案(页面加载后调一次)
 function applyI18n(){
   document.querySelectorAll('[data-i18n]').forEach(function(el){
-    var k=el.getAttribute('data-i18n'); if(k) el.textContent=T(k);
+    var k=el.getAttribute('data-i18n'); if(!k) return;
+    // estop 等带子元素(图标 span)的按钮:只更新文本节点,保留图标;纯文本元素照旧整体替换
+    if (el.id==='estop-btn') {
+      var t=null;
+      for (var i=0;i<el.childNodes.length;i++){ var n=el.childNodes[i];
+        if (n.nodeType===3 && n.textContent.trim()){ t=n; break; } }
+      if (t) t.textContent=T(k); else el.appendChild(document.createTextNode(T(k)));
+    } else { el.textContent=T(k); }
   });
   document.querySelectorAll('[data-i18n-title]').forEach(function(el){
     var k=el.getAttribute('data-i18n-title'); if(k) el.title=T(k);
@@ -2630,6 +2733,101 @@ async function api(path, opts) {
   const r = await fetch('/prisiragent/api' + path, opts);
   const ct = r.headers.get('content-type') || '';
   return ct.includes('json') ? r.json() : r;
+}
+
+/* ===== 文件资料栏(2026-09-06) ===== */
+let filesOpen = false;
+function toggleFiles() {
+  filesOpen = !filesOpen;
+  const fr = document.getElementById('frail');
+  fr.style.display = filesOpen ? 'flex' : 'none';
+  document.getElementById('files-btn').classList.toggle('on', filesOpen);
+  if (filesOpen) loadFileTree();
+}
+async function loadFileTree() {
+  const tree = document.getElementById('frail-tree');
+  tree.innerHTML = '<div class="ft-empty">' + (LANG==='zh'?'加载中…':'Loading…') + '</div>';
+  const r = await api('/files?path=');
+  document.getElementById('frail-workdir').textContent = r.workdir || '';
+  document.getElementById('frail-workdir').title = r.workdir || '';
+  tree.innerHTML = '';
+  if (!r.ok) { tree.innerHTML = '<div class="ft-err">' + esc(r.error||'error') + '</div>'; return; }
+  renderTreeLevel(tree, r);
+}
+function renderTreeLevel(container, data) {
+  if (!data.dirs.length && !data.files.length) {
+    container.innerHTML = '<div class="ft-empty">' + (LANG==='zh'?'(空目录)':'(empty)') + '</div>'; return;
+  }
+  data.dirs.forEach(d => container.appendChild(dirNode(d)));
+  data.files.forEach(f => container.appendChild(fileNode(f)));
+}
+function fileIcon(name) {
+  const e = name.split('.').pop().toLowerCase();
+  const m = {md:'📝',markdown:'📝',txt:'📄',py:'🐍',js:'📜',ts:'📜',json:'🧾',html:'🌐',css:'🎨',
+    png:'🖼',jpg:'🖼',jpeg:'🖼',gif:'🖼',svg:'🖼',pdf:'📕',docx:'📘',xlsx:'📗',pptx:'📙',
+    zip:'📦',db:'🗄',log:'📋',bat:'⚙',ps1:'⚙',sh:'⚙'};
+  return m[e] || '📄';
+}
+function dirNode(d) {
+  const wrap = document.createElement('div');
+  const row = document.createElement('div');
+  row.className = 'ft-dir';
+  row.innerHTML = '<span class="tw">▶</span><span class="ft-ico">📁</span><span class="ft-name">' + esc(d.name) + '</span>';
+  const kids = document.createElement('div');
+  kids.className = 'ft-kids hidden';
+  let loaded = false;
+  row.onclick = async function() {
+    const open = kids.classList.toggle('hidden') === false;
+    row.classList.toggle('open', open);
+    if (open && !loaded) {
+      loaded = true;
+      kids.innerHTML = '<div class="ft-empty">…</div>';
+      const r = await api('/files?path=' + encodeURIComponent(d.path));
+      kids.innerHTML = '';
+      if (r.ok) renderTreeLevel(kids, r);
+      else kids.innerHTML = '<div class="ft-err">' + esc(r.error||'err') + '</div>';
+    }
+  };
+  wrap.appendChild(row); wrap.appendChild(kids);
+  return wrap;
+}
+function fileNode(f) {
+  const wrap = document.createElement('div');
+  const row = document.createElement('div');
+  row.className = 'ft-file';
+  row.title = f.path + ' (' + f.size + ' B)';
+  row.innerHTML = '<span class="ft-ico">' + fileIcon(f.name) + '</span><span class="ft-name">' + esc(f.name) + '</span>';
+  // 操作钮:👁查看(内联展开) / ⤵引用(贴路径进输入框)
+  const view = document.createElement('span');
+  view.className = 'ft-op'; view.textContent = '👁'; view.title = LANG==='zh'?'查看内容':'View';
+  view.onclick = function(e){ e.stopPropagation(); toggleFileView(wrap, f); };
+  const ref = document.createElement('span');
+  ref.className = 'ft-op'; ref.textContent = '⤵'; ref.title = LANG==='zh'?'引用到输入框':'Insert into input';
+  ref.onclick = function(e){ e.stopPropagation(); insertRef(f.path); };
+  row.appendChild(view); row.appendChild(ref);
+  row.onclick = function() { toggleFileView(wrap, f); };
+  wrap.appendChild(row);
+  return wrap;
+}
+function insertRef(p) {
+  const inp = document.getElementById('input');
+  const cur = inp.value;
+  inp.value = (cur ? cur.replace(/\s+$/,'') + ' ' : '') + p;
+  inp.focus();
+}
+function toggleFileView(wrap, f) {
+  let pv = wrap.querySelector('.ft-preview');
+  if (pv) { pv.remove(); return; }  // 再点收起
+  pv = document.createElement('div');
+  pv.className = 'ft-preview';
+  pv.textContent = LANG==='zh'?'加载中…':'Loading…';
+  wrap.appendChild(pv);
+  fetch('/prisiragent/api/file?path=' + encodeURIComponent(f.path))
+    .then(r => r.text()).then(t => {
+      const max = 4000;
+      pv.textContent = t.length > max ? t.slice(0,max) + '\n…(' + (LANG==='zh'?'已截断':'truncated') + ')' : t;
+    })
+    .catch(e => { pv.textContent = (LANG==='zh'?'读取失败: ':'Read failed: ') + e.message; });
 }
 
 function esc(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
@@ -4796,6 +4994,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(lp.new_offer())
         elif path == "/prisiragent/api/sessions":
             self._json(list_sessions())
+        elif path == "/prisiragent/api/files":
+            # 文件资料栏(2026-09-06):列出 workdir 文件树。只读,realpath 锁在 workdir 内防穿越。
+            rel = (qs.get("path") or [""])[0]
+            self._json(_list_workdir_tree(rel))
         elif path == "/prisiragent/api/profile":
             # 画像查看(含 archived 标志,供前端列表/管理)。
             try:
