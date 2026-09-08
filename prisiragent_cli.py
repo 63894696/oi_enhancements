@@ -2363,6 +2363,40 @@ def _run_hook(event: str, workdir: str, ctx: dict) -> str | None:
         return None
 
 
+def _resolve_model_keys_db(model: str):
+    """#101: 把 --model 的平台别名解析到 keys.db(用户网页端填的端点+key)。
+
+    model 形如 'yunbailian' / 'kimi' / 'custom' 且无 '/' 前缀(非 litellm 直连串)时,
+    查 PrisirKeyStore 拿 {api_key, base_url, model, meta},按 meta.proto 注入
+    OPENAI_API_KEY/OPENAI_API_BASE 或 ANTHROPIC_API_KEY/ANTHROPIC_BASE_URL 并返回
+    (litellm 串, display别名)。查不到/出错一律原样返回 (model, model)(兼容
+    'openrouter/deepseek/deepseek-chat' 等显式 litellm 串)。key 全程不落盘不回显。
+    """
+    try:
+        if not model or "/" in model:
+            return model, model  # 已是 litellm 串,不解析
+        from fastlane.providers.llm_prisir import PrisirKeyStore  # noqa: PLC0415
+        cfg = PrisirKeyStore().get_key(model)
+        if not cfg or not cfg.get("model"):
+            return model, model
+        real = cfg["model"]
+        proto = (cfg.get("meta") or {}).get("proto", "openai")
+        base = (cfg.get("base_url") or "").rstrip("/")
+        if proto == "anthropic":
+            if cfg.get("api_key"):
+                os.environ["ANTHROPIC_API_KEY"] = cfg["api_key"]
+            if base:
+                os.environ["ANTHROPIC_BASE_URL"] = base
+            return f"anthropic/{real}", model  # display=平台别名,壳端按它贴路由标签
+        if cfg.get("api_key"):
+            os.environ["OPENAI_API_KEY"] = cfg["api_key"]
+        if base:
+            os.environ["OPENAI_API_BASE"] = base
+        return f"openai/{real}", model
+    except Exception:  # noqa: BLE001
+        return model, model  # 解析失败静默回退原样,不阻塞对话
+
+
 def run_conversation(messages: list, model: str, workdir: str, max_turns: int = 20,
                      use_tools: bool = True, think_level: str = "",
                      system_extra: str = "", on_event=None, on_confirm=None) -> dict:
@@ -2388,6 +2422,7 @@ def run_conversation(messages: list, model: str, workdir: str, max_turns: int = 
     """
     import litellm
     litellm.drop_params = True
+    model, disp_model = _resolve_model_keys_db(model)  # #101
     system = SYSTEM_CHAT
     # P1: 项目 CLAUDE.md 自动注入(对齐 Claude Code 行为,优先级低于显式 system_extra)
     project_md = _load_project_md(workdir)
@@ -2431,7 +2466,8 @@ def run_conversation(messages: list, model: str, workdir: str, max_turns: int = 
             _run_hook("on_response", workdir,
                       {"model": model, "output": out[:500]})
             return {"rc": 0, "out": out, "turns": turns,
-                    "ms": int((time.time() - t0) * 1000), "trace": trace}
+                    "ms": int((time.time() - t0) * 1000), "trace": trace,
+                    "model": disp_model}
 
         for tc in tcs:
             try:
@@ -2591,6 +2627,7 @@ def continue_from_session(from_sid: str) -> dict:
 def run_agent(prompt: str, model: str, workdir: str, max_turns: int) -> dict:
     import litellm
     litellm.drop_params = True
+    model, disp_model = _resolve_model_keys_db(model)  # #101
     # benchmark 自主模式:无人可确认,关掉权限闸(全局开关在本次调用内置 False)。
     global PERM_GATE_ENABLED
     _prev_gate = PERM_GATE_ENABLED
@@ -2614,7 +2651,7 @@ def run_agent(prompt: str, model: str, workdir: str, max_turns: int) -> dict:
                                           tool_choice="auto", temperature=0)
             except Exception as e:  # noqa: BLE001
                 return {"rc": 2, "out": f"[llm error] {type(e).__name__}: {e}", "turns": turns,
-                        "ms": int((time.time() - t0) * 1000)}
+                        "ms": int((time.time() - t0) * 1000), "model": disp_model}
             msg = resp.choices[0].message
             # record assistant message (with tool_calls if any)
             am = {"role": "assistant", "content": msg.content or ""}
@@ -2716,6 +2753,47 @@ def main():
     sys.exit(0 if res["rc"] == 0 else 1)
 
 
+_CLI_BANNER = r"""
+  ____       _            ___    ___
+ |  _ \ _ __(_)___ _ __  / _ \  |_ _|
+ | |_) | '__| / __| '__|| | | |  | |
+ |  __/| |  | \__ \ |   | |_| |  | |
+ |_|   |_|  |_|___/_|    \___/  |___|
+"""
+
+
+def _print_cli_banner(model: str, workdir: str, sid: str) -> None:
+    """交互模式启动横幅(#101 配套):让用户一眼确认 CLI 正常起好、走的是哪个
+    模型/端点、key 有没有加载上。只显示 有/无,绝不回显 key 明文。
+    仅在交互(-i)模式调用;--message/脚本/管道不调,避免污染 stdout。"""
+    litellm_str, disp = _resolve_model_keys_db(model)
+    # 端点 + key 状态(从 keys.db 读,不回显明文)
+    endpoint, keyok = "", False
+    try:
+        if disp and "/" not in disp:
+            from fastlane.providers.llm_prisir import PrisirKeyStore  # noqa: PLC0415
+            cfg = PrisirKeyStore().get_key(disp)
+            if cfg:
+                endpoint = (cfg.get("base_url") or "").rstrip("/")
+                keyok = bool(cfg.get("api_key"))
+    except Exception:  # noqa: BLE001
+        pass
+    ver = ""
+    try:
+        import prisiragent_web as _w  # noqa: PLC0415
+        ver = getattr(_w, "APP_VERSION", "")
+    except Exception:  # noqa: BLE001
+        pass
+    print(_CLI_BANNER)
+    print(f" PrisirAI CLI {('v' + ver) if ver else ''}".rstrip())
+    print(f" 模型   : {disp}" + (f"  ({litellm_str})" if litellm_str != disp else ""))
+    if endpoint:
+        print(f" 端点   : {endpoint}")
+    print(f" key    : {'已加载 ✓' if keyok else '未配置(走默认 litellm 环境变量)'}")
+    print(f" 会话   : sid={sid}  目录: {workdir}")
+    print(" " + "─" * 46)
+
+
 def _run_interactive(a):
     """Multi-turn chat loop with persistent session."""
     sid = a.session_id
@@ -2736,6 +2814,7 @@ def _run_interactive(a):
             sys.exit(1)
         print(f"[resuming session: {sid} — {sess[1]}]")
 
+    _print_cli_banner(a.model, a.workdir, sid)
     print("Type /quit to exit, /new to start a fresh session.\n")
     while True:
         try:
