@@ -70,9 +70,14 @@ a = Analysis(
         # 2026-08-25 P1:局域网联动配对/令牌/mDNS 模块。prisiragent_web 顶层 `import lan_pair`,
         # PyInstaller 静态分析能跟入,但显式 datas 双保险(防后续改 lazy import 断链)。纯 stdlib。
         ('lan_pair.py', '.'),
+        # 2026-09-08 #102:通用增量补丁核心。prisiragent_web 顶层启动时 `import prisir_patch`
+        #   (activate_patches 把 patches/ 插 sys.path[0] 覆盖 frozen PYZ 同名模块)+ do_POST
+        #   三个 /api/patch/* 路由函数内 lazy import。显式 datas 打进 _MEIPASS 根,
+        #   否则 frozen 下补丁机制静默失效。纯 stdlib,多产品复用。
+        ('prisir_patch.py', '.'),
         # 上游法律文件随子包一起被打入 _MEIPASS(prisiragent_coworker 子目录内已有)
     ],
-    hiddenimports=['user_profile', 'solutions_learner', 'constitution_compliance', 'lan_pair', 'shell_findex', 'prisir_fcontent', 'prisir_fcontent.engine', 'prisir_fcontent.extract', 'prisir_fcontent.tokenize', 'prisir_fcontent.overlay_translate', 'prisir_fcontent.ocr_eval', 'fastlane.providers.llm_prisir', 'fastlane.providers.base', 'fastlane.providers.factory', 'fastlane.providers.llm_cloud', 'fastlane.adapters', 'fastlane.adapters.main', 'litellm', 'httpx', 'httpcore', 'h11', 'anyio', 'sniffio', 'certifi', 'idna', 'openai', 'anthropic', 'tiktoken', 'jsonschema', 'jinja2', 'aiohttp'],
+    hiddenimports=['user_profile', 'solutions_learner', 'constitution_compliance', 'lan_pair', 'prisir_patch', 'shell_findex', 'prisir_fcontent', 'prisir_fcontent.engine', 'prisir_fcontent.extract', 'prisir_fcontent.tokenize', 'prisir_fcontent.overlay_translate', 'prisir_fcontent.ocr_eval', 'fastlane.providers.llm_prisir', 'fastlane.providers.base', 'fastlane.providers.factory', 'fastlane.providers.llm_cloud', 'fastlane.adapters', 'fastlane.adapters.main', 'litellm', 'httpx', 'httpcore', 'h11', 'anyio', 'sniffio', 'certifi', 'idna', 'openai', 'anthropic', 'tiktoken', 'jsonschema', 'jinja2', 'aiohttp'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

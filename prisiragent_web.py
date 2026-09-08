@@ -27,6 +27,16 @@ import threading
 import time
 import uuid
 import logging
+
+# 2026-09-08 #102 增量补丁:在任何项目模块 import 前,把可写补丁目录插到 sys.path[0],
+# 使 ~/.local/share/prisir/patches/<mod>.py 优先于 frozen PYZ/源码同名模块被加载。
+# 这样改一个 .py 只需发几 KB 补丁,不必重打 348MB exe。prisir_patch 必须显式打进包
+# (见 PrisirAI-core.spec datas);源码运行则从同目录直接 import。
+try:
+    import prisir_patch as _pp  # noqa: PLC0415
+    _PATCH_ROOT = _pp.activate_patches("prisir")
+except Exception:  # noqa: BLE001
+    _PATCH_ROOT = ""
 import platform
 
 # 2026-08-24 修:frozen(PyInstaller)下 tiktoken 两件事:
@@ -2351,6 +2361,23 @@ _PAGE = r"""<!DOCTYPE html>
   #fbmodal .status code { font-family:monospace; color:var(--gh-green-deep); word-break:break-all; }
   #fbmodal .row { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; flex-wrap:wrap; }
 
+  /* #102 补丁卡(复用 fbmodal 结构) */
+  #patchmodal { position:fixed; inset:0; background:rgba(47,58,52,.4); display:none; z-index:112;
+    align-items:center; justify-content:center; }
+  #patchmodal.open { display:flex; }
+  #patchmodal .card { background:var(--gh-paper); border-radius:14px; padding:24px; width:600px; max-width:92vw;
+    max-height:88vh; overflow-y:auto; box-shadow:0 12px 40px rgba(0,0,0,.25); }
+  #patchmodal h3 { font-size:16px; color:var(--gh-green-deep); margin-bottom:4px; }
+  #patchmodal .sub { font-size:12px; color:var(--gh-ink-faint); margin-bottom:14px; }
+  #patchmodal .status { margin-top:12px; padding:10px 12px; background:var(--gh-paper-2);
+    border-radius:8px; font-size:12px; color:var(--gh-ink); white-space:pre-wrap; word-break:break-all; }
+  #patchmodal .row { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; flex-wrap:wrap; }
+  #patchmodal table { width:100%; border-collapse:collapse; font-size:12px; margin-top:8px; }
+  #patchmodal th, #patchmodal td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--gh-line);
+    vertical-align:top; }
+  #patchmodal th { color:var(--gh-ink-faint); font-weight:600; }
+  #patchmodal .mini { font-size:11px; padding:2px 8px; }
+
   /* 通用内嵌对话框(Electron sandbox 禁用原生 prompt/confirm) */
   #dlg { position:fixed; inset:0; background:rgba(47,58,52,.4); display:none; z-index:200;
     align-items:center; justify-content:center; }
@@ -2464,6 +2491,7 @@ _PAGE = r"""<!DOCTYPE html>
   <button class="topbtn" id="files-btn" onclick="toggleFiles()" data-i18n="files" data-i18n-title="files_title">📁 文件</button>
   <button class="topbtn" onclick="openKeys()" data-i18n="model_key">🔑 模型 Key</button>
   <button class="topbtn" onclick="openFeedback()" data-i18n-title="feedback_title"><span data-i18n="feedback">⚙ 反馈问题</span></button>
+  <button class="topbtn" onclick="openPatch()" data-i18n="patch" data-i18n-title="patch_title">🩹 补丁</button>
   <button class="topbtn" onclick="newSession()" data-i18n="new_session">+ 新会话</button>
 </div>
 <div id="main">
@@ -2621,8 +2649,25 @@ _PAGE = r"""<!DOCTYPE html>
   </div>
 </div>
 
-<!-- 通用内嵌对话框:Electron sandbox 渲染进程里 window.prompt/confirm 被禁用,改用 DOM 模态 -->
-<div id="dlg">
+<!-- #102 补丁卡:一键应用/回滚增量补丁包(zip)。 -->
+<div id="patchmodal">
+  <div class="card">
+    <h3 data-i18n="patch_card_title">🩹 增量补丁</h3>
+    <div class="sub" data-i18n="patch_sub">只发改动文件,不重装整个程序。选补丁包(.zip)应用,重启后生效;可随时回滚。</div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+      <input type="file" id="patch-file" accept=".zip" style="font-size:12px;flex:1">
+      <button class="topbtn primary" onclick="patchApplyChosen()" data-i18n="patch_apply">应用</button>
+    </div>
+    <div class="status" id="patch-status">—</div>
+    <h3 style="margin-top:16px;font-size:13px" data-i18n="patch_applied">已应用的补丁</h3>
+    <div id="patch-list"><div class="sub">—</div></div>
+    <div class="row">
+      <button class="topbtn" onclick="closePatch()" data-i18n="close">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- 通用内嵌对话框:Electron sandbox 渲染进程里 window.prompt/confirm 被禁用,改用 DOM 模态 --><div id="dlg">
   <div class="card">
     <div class="head" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
       <h3 id="dlg-title" style="margin:0"></h3>
@@ -2668,6 +2713,10 @@ const I18N = {
     need_session:'先开始一个会话', mermaid_src_title:'渲染失败,点击复制 mermaid 源码',
     calling_tool:'调用 ', output_preview:'输出预览', handoff_llm:'LLM 提炼', handoff_rule:'规则整理',
     routing:'路由: ', no_key:' · 未配key', timed_out:'已超时',
+    patch:'🩹 补丁', patch_title:'增量补丁:应用/回滚改动文件,无需重装', patch_card_title:'🩹 增量补丁',
+    patch_sub:'只发改动文件,不重装整个程序。选补丁包(.zip)应用,重启后生效;可随时回滚。',
+    patch_apply:'应用', patch_applied:'已应用的补丁', patch_applying:'应用中…', patch_applied_ok:'已应用,重启后生效:',
+    patch_none:'尚未应用任何补丁', patch_rollback:'回滚', patch_pick:'请先选择补丁包(.zip)',
   },
   en: {
     send:'Send', new_session:'+ New chat', model_key:'🔑 Model Key', feedback:'⚙ Feedback',
@@ -2697,6 +2746,11 @@ const I18N = {
     need_session:'Start a chat first', mermaid_src_title:'Render failed, click to copy mermaid source',
     calling_tool:'Calling ', output_preview:'Output preview', handoff_llm:'LLM distilled', handoff_rule:'rule-based',
     routing:'Routing: ', no_key:' · no key', timed_out:'Timed out',
+    patch:'🩹 Patches', patch_title:'Incremental patches: apply/roll back changed files without reinstalling',
+    patch_card_title:'🩹 Incremental patches',
+    patch_sub:'Ships only changed files — no full reinstall. Pick a patch (.zip) and apply; takes effect after restart; roll back anytime.',
+    patch_apply:'Apply', patch_applied:'Applied patches', patch_applying:'Applying…', patch_applied_ok:'Applied, takes effect after restart:',
+    patch_none:'No patches applied yet', patch_rollback:'Roll back', patch_pick:'Pick a patch (.zip) first',
   }
 };
 let LANG = (function(){
@@ -3634,6 +3688,64 @@ function openFeedback(){
   document.getElementById('fbmodal').classList.add('open');
 }
 function closeFeedback(){ document.getElementById('fbmodal').classList.remove('open'); }
+
+/* ===== #102 增量补丁:一键应用/回滚 ===== */
+function openPatch(){ document.getElementById('patchmodal').classList.add('open'); patchRefreshList(); }
+function closePatch(){ document.getElementById('patchmodal').classList.remove('open'); }
+function _patchStatus(msg, isErr){
+  const s = document.getElementById('patch-status');
+  s.textContent = msg;
+  s.style.color = isErr ? 'var(--gh-danger,#c0392b)' : '';
+}
+async function patchApplyChosen(){
+  const fi = document.getElementById('patch-file');
+  if (!fi.files || !fi.files[0]) { _patchStatus(T('patch_pick'), true); return; }
+  const f = fi.files[0];
+  _patchStatus(T('patch_applying'));
+  try {
+    // 1) 上传 zip 到服务器(_inbox),拿服务器侧路径
+    const up = await fetch('/prisiragent/api/patch/upload', {
+      method:'POST', headers:{'Content-Type':'application/octet-stream',
+        'Content-Disposition':'attachment; filename="' + encodeURIComponent(f.name) + '"'},
+      body: f,
+    }).then(r=>r.json());
+    if (!up.ok) { _patchStatus((up.error||'upload failed'), true); return; }
+    // 2) 用服务器侧路径应用
+    const r = await api('/patch/apply', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({patch_zip: up.path})});
+    if (!r.ok) { _patchStatus(r.error||'apply failed', true); return; }
+    _patchStatus(T('patch_applied_ok') + ' ' + (r.patch_id||'') + '  (' + (r.applied||[]).join(', ') + ')');
+    fi.value = '';
+    patchRefreshList();
+  } catch(e){ _patchStatus('apply error: ' + (e.message||e), true); }
+}
+async function patchRollback(pid){
+  _patchStatus('…');
+  try {
+    const r = await api('/patch/rollback', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({patch_id: pid})});
+    if (!r.ok) { _patchStatus(r.error||'rollback failed', true); return; }
+    _patchStatus((LANG==='zh'?'已回滚 ':'Rolled back ') + pid);
+    patchRefreshList();
+  } catch(e){ _patchStatus('rollback error: ' + (e.message||e), true); }
+}
+async function patchRefreshList(){
+  const box = document.getElementById('patch-list');
+  try {
+    const r = await api('/patch/list', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+    const ps = (r && r.patches) || [];
+    if (!ps.length) { box.innerHTML = '<div class="sub">' + T('patch_none') + '</div>'; return; }
+    let h = '<table><tr><th>patch_id</th><th>' + (LANG==='zh'?'文件':'files') + '</th><th></th></tr>';
+    ps.forEach(p=>{
+      h += '<tr><td><code>' + (p.patch_id||'') + '</code><div class="sub">' + (p.base_version||'') + '</div></td>' +
+           '<td>' + ((p.files||[]).join('<br>')) + '</td>' +
+           '<td><button class="topbtn mini" onclick="patchRollback(\'' + String(p.patch_id||'').replace(/'/g,"\\'") + '\')">' +
+           T('patch_rollback') + '</button></td></tr>';
+    });
+    box.innerHTML = h + '</table>';
+  } catch(e){ box.innerHTML = '<div class="sub">list error: ' + (e.message||e) + '</div>'; }
+}
+
 function fbGetMask(){
   const cb = document.getElementById('fb-mask-keys');
   cb.dataset.userSet = "1";   // 用户手动过即锁定默认值
@@ -4897,6 +5009,34 @@ class Handler(BaseHTTPRequestHandler):
         except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
             return {}
 
+    def _handle_patch_upload(self):
+        # #102 接收浏览器上传的补丁 zip(Content-Disposition 文件名),存到 patches/_inbox/,
+        # 返回服务器侧绝对路径,前端再调 patch/apply。body=原始 zip 字节(非 JSON)。
+        # 必须由 do_POST 在 _read_body() 之前拦截调用,否则 body 已被当 JSON 读掉。
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            if length <= 0:
+                self._json({"ok": False, "error": "空上传"}, code=400)
+                return
+            data = self.rfile.read(length)
+            cd = self.headers.get("Content-Disposition", "")
+            fname = "patch.zip"
+            for part in cd.split(";"):
+                part = part.strip()
+                if part.lower().startswith("filename="):
+                    fname = part.split("=", 1)[1].strip().strip('"') or fname
+            fname = Path(fname).name  # 只取文件名,防路径注入
+            if not fname.lower().endswith(".zip"):
+                fname += ".zip"
+            import prisir_patch as _pp  # noqa: PLC0415
+            inbox = _pp.default_patch_root("prisir") / "_inbox"
+            inbox.mkdir(parents=True, exist_ok=True)
+            dest = inbox / fname
+            dest.write_bytes(data)
+            self._json({"ok": True, "path": str(dest), "size": len(data)})
+        except Exception as e:  # noqa: BLE001
+            self._json({"ok": False, "error": f"{type(e).__name__}: {e}"}, code=500)
+
     # ---------------- OPTIONS(CORS preflight,仅 --lan 需要) ----------------
     def do_OPTIONS(self):  # noqa: N802
         if WEB_HOST == "0.0.0.0":
@@ -5288,6 +5428,11 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if self._gate(path):
             return
+        if path == "/prisiragent/api/patch/upload":
+            # #102 接收浏览器上传的补丁 zip。注意:必须在 _read_body() 之前处理——
+            # _read_body 会把整个 body 当 JSON 读掉,这里要原始 zip 字节,先拦截。
+            self._handle_patch_upload()
+            return
         body = self._read_body()
 
         if path == "/prisiragent/api/new":
@@ -5315,6 +5460,38 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/prisiragent/api/estop/clear":
             _estop_clear(body.get("session_id", ""))
             self._json({"ok": True})
+        elif path == "/prisiragent/api/patch/apply":
+            # #102 增量补丁:应用一个补丁包(zip)。body: {"patch_zip": 绝对路径 或
+            #   "patch_zip_rel": 工作目录相对路径, "shell_dir": 可选壳静态目录}。
+            # 应用=备份→sha256校验→落盘到 ~/.local/share/prisir/patches/→登记;重启后生效。
+            try:
+                import prisir_patch as _pp  # noqa: PLC0415
+                zp = (body.get("patch_zip") or "").strip()
+                rel = (body.get("patch_zip_rel") or "").strip()
+                if not zp and rel:
+                    zp = str(Path(DEFAULT_WORKDIR) / rel)
+                shell_dir = (body.get("shell_dir") or "").strip() or None
+                res = _pp.apply_patch(zp, _pp.default_patch_root("prisir"),
+                                      Path(shell_dir) if shell_dir else None)
+                self._json(res, code=200 if res.get("ok") else 400)
+            except Exception as e:  # noqa: BLE001
+                self._json({"ok": False, "error": f"{type(e).__name__}: {e}"}, code=500)
+        elif path == "/prisiragent/api/patch/rollback":
+            # #102 回滚一个已应用补丁。body: {"patch_id": ...}
+            try:
+                import prisir_patch as _pp  # noqa: PLC0415
+                res = _pp.rollback_patch(body.get("patch_id", ""),
+                                         _pp.default_patch_root("prisir"))
+                self._json(res, code=200 if res.get("ok") else 400)
+            except Exception as e:  # noqa: BLE001
+                self._json({"ok": False, "error": f"{type(e).__name__}: {e}"}, code=500)
+        elif path == "/prisiragent/api/patch/list":
+            # #102 列出已应用补丁(供 GUI 展示/回滚选择)。
+            try:
+                import prisir_patch as _pp  # noqa: PLC0415
+                self._json(_pp.list_patches(_pp.default_patch_root("prisir")))
+            except Exception as e:  # noqa: BLE001
+                self._json({"ok": False, "error": f"{type(e).__name__}: {e}"}, code=500)
         elif path == "/prisiragent/api/profile/archive":
             # 画像纠偏:按 fact 归档一条(不删,可恢复),下次 recall 不再注入。
             fact = (body.get("fact") or "").strip()
