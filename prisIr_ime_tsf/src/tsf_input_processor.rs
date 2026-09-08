@@ -1235,26 +1235,28 @@ impl TsfInputProcessor {
     /// 返回 None = 该键不做标点映射(放行)。
     pub(crate) fn map_punct(vk: u16, shift: bool, chinese_punct: bool) -> Option<&'static str> {
         // (vk, shift) → 中文 / 英文 符号
+        // 2026-09-08 修复:zh 表原先多个键误填英文占位(逗号/书名号/分号/问号/引号/方括号),
+        // 导致中文模式打 , 出英文逗号、《》 打不出。现按主流拼音输入法(搜狗/微软)补全。
         let zh: &str = match (vk, shift) {
-            (0xBC, false) => ",",   // ,  → ,
-            (0xBC, true) => "<",    // <  → 《(简化用单书名号一半,常见输入法用《)
-            (0xBE, false) => "。",  // .  → 。
-            (0xBE, true) => ">",    // >  → 》
-            (0xBF, false) => "/",   // /  → /
-            (0xBF, true) => "?",    // ?  → ?
-            (0xBA, false) => ";",   // ;  → ;
-            (0xBA, true) => ":",    // :  → :
-            (0xDE, false) => "'",   // '  → '(直引号,避免成对复杂)
-            (0xDE, true) => "\"",   // "  → "
-            (0xDB, false) => "[",   // [  → 【(简化用 [)
-            (0xDD, false) => "]",   // ]  → 】
-            (0xDC, false) => "、",  // \  → 、
-            (0xC0, false) => "`",   // `  → ·
-            (0xC0, true) => "~",    // ~  → ~
-            (0xBD, false) => "-",   // -  → -
-            (0xBD, true) => "—",    // _  → ——(破折号,取单支)
-            (0xBB, false) => "=",   // =  → =
-            (0xBB, true) => "+",    // +  → +
+            (0xBC, false) => "\u{FF0C}", // ,  → , FULLWIDTH COMMA
+            (0xBC, true) => "\u{300A}",  // <  → 《 LEFT DOUBLE ANGLE BRACKET
+            (0xBE, false) => "\u{3002}", // .  → 。 IDEOGRAPHIC FULL STOP
+            (0xBE, true) => "\u{300B}",  // >  → 》 RIGHT DOUBLE ANGLE BRACKET
+            (0xBF, false) => "/",        // /  → / (顿号场景见 0xDC)
+            (0xBF, true) => "\u{FF1F}",  // ?  → ? FULLWIDTH QUESTION MARK
+            (0xBA, false) => "\u{FF1B}", // ;  → ; FULLWIDTH SEMICOLON
+            (0xBA, true) => "\u{FF1A}",  // :  → : FULLWIDTH COLON
+            (0xDE, false) => "\u{2018}", // '  → ' LEFT SINGLE QUOTATION MARK
+            (0xDE, true) => "\u{201C}",  // "  → " LEFT DOUBLE QUOTATION MARK
+            (0xDB, false) => "\u{3010}", // [  → 【 LEFT BLACK LENTICULAR BRACKET
+            (0xDD, false) => "\u{3011}", // ]  → 】 RIGHT BLACK LENTICULAR BRACKET
+            (0xDC, false) => "\u{3001}", // \  → 、 IDEOGRAPHIC COMMA (顿号)
+            (0xC0, false) => "\u{00B7}", // `  → · MIDDLE DOT (间隔号)
+            (0xC0, true) => "\u{FF5E}",  // ~  → ~ FULLWIDTH TILDE
+            (0xBD, false) => "-",        // -  → - (连接号保持半角,数字负号常用)
+            (0xBD, true) => "\u{2014}\u{2014}", // _  → —— 破折号 (双 EM DASH)
+            (0xBB, false) => "=",        // =  → = (保持半角)
+            (0xBB, true) => "+",         // +  → + (保持半角)
             _ => return None,
         };
         let en: &str = match (vk, shift) {
