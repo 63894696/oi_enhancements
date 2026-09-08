@@ -89,7 +89,7 @@ DEFAULT_STRATEGY = os.environ.get("PRISIR_STRATEGY", "smart")
 
 # 2026-08-25 版本号(About 页用)。单点真源在 installer/prisirai.nsi !define APP_VERSION,
 # 此处保持同值即可(About 显示);不由此驱动装包。
-APP_VERSION = "2.6.0"
+APP_VERSION = "2.7.4"
 APP_BRAND = "Prisir(湃睿思) AI"
 
 # v2.0 日志:RotatingFileHandler 5MB×3,落 userData/logs/prisirai-backend.log(装包态)
