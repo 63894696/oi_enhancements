@@ -1309,54 +1309,42 @@ impl TsfInputProcessor {
     /// OEM 标点键 → (中文标点, 英文标点)。shift 影响部分键(如 9→(, /→?)。
     /// 返回 None = 该键不做标点映射(放行)。
     pub(crate) fn map_punct(vk: u16, shift: bool, chinese_punct: bool) -> Option<&'static str> {
-        // (vk, shift) → 中文 / 英文 符号
-        // 2026-09-08 修复:zh 表原先多个键误填英文占位(逗号/书名号/分号/问号/引号/方括号),
-        // 导致中文模式打 , 出英文逗号、《》 打不出。现按主流拼音输入法(搜狗/微软)补全。
-        let zh: &str = match (vk, shift) {
-            (0xBC, false) => "\u{FF0C}", // ,  → , FULLWIDTH COMMA
-            (0xBC, true) => "\u{300A}",  // <  → 《 LEFT DOUBLE ANGLE BRACKET
-            (0xBE, false) => "\u{3002}", // .  → 。 IDEOGRAPHIC FULL STOP
-            (0xBE, true) => "\u{300B}",  // >  → 》 RIGHT DOUBLE ANGLE BRACKET
-            (0xBF, false) => "/",        // /  → / (顿号场景见 0xDC)
-            (0xBF, true) => "\u{FF1F}",  // ?  → ? FULLWIDTH QUESTION MARK
-            (0xBA, false) => "\u{FF1B}", // ;  → ; FULLWIDTH SEMICOLON
-            (0xBA, true) => "\u{FF1A}",  // :  → : FULLWIDTH COLON
-            (0xDE, false) => "\u{2018}", // '  → ' LEFT SINGLE QUOTATION MARK
-            (0xDE, true) => "\u{201C}",  // "  → " LEFT DOUBLE QUOTATION MARK
-            (0xDB, false) => "\u{3010}", // [  → 【 LEFT BLACK LENTICULAR BRACKET
-            (0xDB, true) => "\u{3010}",  // {  → 【 (zh 无 shift 变体,回落【;2026-09-09 修 None 丢键)
-            (0xDD, false) => "\u{3011}", // ]  → 】 RIGHT BLACK LENTICULAR BRACKET
-            (0xDD, true) => "\u{3011}",  // }  → 】 (同上)
-            (0xDC, false) => "\u{3001}", // \  → 、 IDEOGRAPHIC COMMA (顿号)
-            (0xDC, true) => "\u{3001}",  // |  → 、 (zh 无 shift 变体,回落、;修 None 丢键)
-            (0xC0, false) => "\u{00B7}", // `  → · MIDDLE DOT (间隔号)
-            (0xC0, true) => "\u{FF5E}",  // ~  → ~ FULLWIDTH TILDE
-            (0xBD, false) => "-",        // -  → - (连接号保持半角,数字负号常用)
-            (0xBD, true) => "\u{2014}\u{2014}", // _  → —— 破折号 (双 EM DASH)
-            (0xBB, false) => "=",        // =  → = (保持半角)
-            (0xBB, true) => "+",         // +  → + (保持半角)
-            // Shift+数字 → 中文符号(对齐微软拼音中文模式,2026-09-09 #103 四轮)。
-            // 数字键不在 OEM 区,原先走 digit 分支被 shift 直接放行出 ASCII($ ^ ( _)。
-            (0x34, true) => "\u{FFE5}",  // $  → ￥ FULLWIDTH YEN SIGN(人民币)
-            (0x36, true) => "\u{2026}\u{2026}", // ^  → …… HORIZONTAL ELLIPSIS ×2(中文省略号)
-            (0x39, true) => "\u{FF08}",  // (  → ( FULLWIDTH LEFT PARENTHESIS
-            (0x30, true) => "\u{FF09}",  // )  → ) FULLWIDTH RIGHT PARENTHESIS
+        // (vk, shift, 中英标点) → 符号
+        // 2026-09-08 修复:zh 表原先多个键误填英文占位,按搜狗/微软补全为全角。
+        // 2026-09-09 #104 根因修复:rustc 1.95.0 编译缺陷 —— 同一函数内出现两个同 discriminant
+        // 的 `match vk`(zh 表 + en 表)、且臂值含多字节全角字符元组时,第一个 match 的部分臂
+        // (0x34/0x36/0x39/0x30,此前二维元组写法下连 0xDB/0xDD/0xDC)被错误编译成落 `_ => None`。
+        // 极简复现证实:单 match 正常,双 match 即触发;优化开关无关。这导致中文模式
+        // Shift+数字 与 Shift+[ ] \ 静默丢键(吃了键却无映射 → commit None → 光标卡住)。
+        // 根治:合并为**单个** `match vk` 返回 4 元组 (zh_unshift, zh_shift, en_unshift, en_shift),
+        // 再按 (chinese_punct, shift) 二重选择 —— 只一个 match,彻底绕开该缺陷。
+        // 每臂: 0xVK => (中不shift, 中shift, 英不shift, 英shift)
+        let cell: (&str, &str, &str, &str) = match vk {
+            0xBC => ("\u{FF0C}", "\u{300A}", ",", "<"),   // , 《
+            0xBE => ("\u{3002}", "\u{300B}", ".", ">"),   // 。 》
+            0xBF => ("/", "\u{FF1F}", "/", "?"),          // / ?
+            0xBA => ("\u{FF1B}", "\u{FF1A}", ";", ":"),   // ; :
+            0xDE => ("\u{2018}", "\u{201C}", "'", "\""),  // ' "(开闭交替由 OnKeyDown quote_open_next 处理)
+            0xDB => ("\u{3010}", "\u{3010}", "[", "{"),   // 【
+            0xDD => ("\u{3011}", "\u{3011}", "]", "}"),   // 】
+            0xDC => ("\u{3001}", "\u{3001}", "\\", "|"),  // 、
+            0xC0 => ("\u{00B7}", "\u{FF5E}", "`", "~"),   // · ~
+            0xBD => ("-", "\u{2014}\u{2014}", "-", "_"),  // - ——
+            0xBB => ("=", "+", "=", "+"),                 // = +
+            // Shift+数字 → 中文符号(对齐微软拼音中文模式,#103/#104)。数字键不在 OEM 区;
+            // 不 shift 的纯数字由 OnKeyDown digit 分支另行 commit,这里 unshift 给半角数字兜底。
+            0x34 => ("4", "\u{FFE5}", "4", "$"),          // 4 ￥
+            0x36 => ("6", "\u{2026}\u{2026}", "6", "^"),  // 6 ……
+            0x39 => ("9", "\u{FF08}", "9", "("),          // 9 (
+            0x30 => ("0", "\u{FF09}", "0", ")"),          // 0 )
             _ => return None,
         };
-        let en: &str = match (vk, shift) {
-            (0xBC, false) => ",", (0xBC, true) => "<",
-            (0xBE, false) => ".", (0xBE, true) => ">",
-            (0xBF, false) => "/", (0xBF, true) => "?",
-            (0xBA, false) => ";", (0xBA, true) => ":",
-            (0xDE, false) => "'", (0xDE, true) => "\"",
-            (0xDB, false) => "[", (0xDD, false) => "]",
-            (0xDC, false) => "\\",
-            (0xC0, false) => "`", (0xC0, true) => "~",
-            (0xBD, false) => "-", (0xBD, true) => "_",
-            (0xBB, false) => "=", (0xBB, true) => "+",
-            _ => return None,
-        };
-        Some(if chinese_punct { zh } else { en })
+        Some(match (chinese_punct, shift) {
+            (true, false) => cell.0,
+            (true, true) => cell.1,
+            (false, false) => cell.2,
+            (false, true) => cell.3,
+        })
     }
 
     /// 旧的无状态版本(仅按 VK 类型判断),保留给无需状态的调用点。
@@ -1568,5 +1556,28 @@ impl TsfInputProcessor {
                 crate::com_class_factory::log_dll_entry(&format!("commit_text: '{}' FAIL {e}", text));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod punct_map_tests {
+    use super::TsfInputProcessor as T;
+    // 中文标点(chinese_punct=true)下 Shift+数字 / OEM 键的映射断言。
+    // 对齐微软拼音中文模式:#103 修复,#104 回归排查用(功能级,不依赖二进制字节搜索)。
+    #[test]
+    fn zh_shift_digits_and_oem() {
+        assert_eq!(T::map_punct(0x34, true, true), Some("\u{FFE5}")); // 4 -> ￥
+        assert_eq!(T::map_punct(0x36, true, true), Some("\u{2026}\u{2026}")); // 6 -> ……
+        assert_eq!(T::map_punct(0x39, true, true), Some("\u{FF08}")); // 9 -> (
+        assert_eq!(T::map_punct(0x30, true, true), Some("\u{FF09}")); // 0 -> )
+        assert_eq!(T::map_punct(0xDB, true, true), Some("\u{3010}")); // [ -> 【
+        assert_eq!(T::map_punct(0xDD, true, true), Some("\u{3011}")); // ] -> 】
+        assert_eq!(T::map_punct(0xDC, true, true), Some("\u{3001}")); // \ -> 、
+        assert_eq!(T::map_punct(0xBD, true, true), Some("\u{2014}\u{2014}")); // - -> ——
+        // 英文模式 shift 变体(#104 顺带补全:{}| 原 en 表缺 → 英文模式按不出)
+        assert_eq!(T::map_punct(0xDB, true, false), Some("{"));
+        assert_eq!(T::map_punct(0xDD, true, false), Some("}"));
+        assert_eq!(T::map_punct(0xDC, true, false), Some("|"));
+        assert_eq!(T::map_punct(0x34, true, false), Some("$"));
     }
 }

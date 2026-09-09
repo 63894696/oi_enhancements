@@ -353,7 +353,7 @@ mod tests {
     #[test]
     fn paging_selects_across_pages() {
         // 12 个候选 → 3 页(每页 5)。横排翻页后数字键选可视区的候选。
-        let cands: Vec<Candidate> = (0..12).map(|i| Candidate::new(format!("w{i}"), i as u64)).collect();
+        let cands: Vec<Candidate> = (0..12).map(|i| Candidate::new(format!("w{i}"), i as i64)).collect();
         let mut b = PinyinBuffer::new();
         b.buf = "ni".to_string();
         b.set_candidates(cands);
@@ -371,7 +371,7 @@ mod tests {
     #[test]
     fn paging_bounds() {
         // 7 个候选:首页满 5,余 2。纯横排整页:第 2 页只有 2 个。
-        let cands: Vec<Candidate> = (0..7).map(|i| Candidate::new(format!("w{i}"), i as u64)).collect();
+        let cands: Vec<Candidate> = (0..7).map(|i| Candidate::new(format!("w{i}"), i as i64)).collect();
         let mut b = PinyinBuffer::new();
         b.set_candidates(cands);
         assert!(b.page_down());          // → off=5,残页 2 个
@@ -390,7 +390,7 @@ mod tests {
 
     #[test]
     fn set_candidates_resets_page() {
-        let cands: Vec<Candidate> = (0..12).map(|i| Candidate::new(format!("w{i}"), i as u64)).collect();
+        let cands: Vec<Candidate> = (0..12).map(|i| Candidate::new(format!("w{i}"), i as i64)).collect();
         let mut b = PinyinBuffer::new();
         b.set_candidates(cands.clone());
         b.page_down();
