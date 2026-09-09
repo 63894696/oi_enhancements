@@ -28,7 +28,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use windows::core::*;
 use windows::Win32::Foundation::*;
 use windows::Win32::UI::TextServices::*;
-use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_SHIFT};
+use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_SHIFT};
 
 // ──────────────────────────────────────────────────────────────────────
 // 常量
@@ -36,23 +36,29 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_SHIFT};
 /// 实时查询 Shift 是否按住(2026-09-01 修「大写卡死」):
 /// 之前用 shift_held 跟踪状态(OnKeyDown 置 true / OnKeyUp 置 false),但 OnKeyUp
 /// 会丢(焦点切换/事件路由到别的进程)→ shift_held 卡死 true → 中英两模式全大写+拼音不进。
-/// 改成每次按键 GetKeyState(VK_SHIFT) 实时查询,根除跟踪状态卡死这一类问题。
+/// 改成每次按键实时查询物理键态,根除跟踪状态卡死这一类问题。
 /// 返 true = Shift 当前按下。
+/// 2026-09-09(#104 五轮 Shift+- 出 _ 根因):改用 GetAsyncKeyState 而非 GetKeyState。
+/// GetKeyState 是**同步队列态**,在 TSF 的 OnKeyDown/OnTestKeyDown sink 回调里按键消息
+/// 尚未进当前线程输入队列,对刚按下的 Shift 可能返回旧值(未按下)→ shift 被误判 false →
+/// 0xBD 走 unshift 分支出半角 - / 键被放行由系统画原生 _。真实键盘按住较久时碰巧读到按下
+/// (本机正常),注入/快速击键则读不到(VM 出 _),解释了「本机好 / VM 坏」。GetAsyncKeyState
+/// 直接读驱动级物理态,与消息队列无关,是微软对 TIP 读修饰键的官方建议。
 fn shift_is_down() -> bool {
-    unsafe { (GetKeyState(VK_SHIFT.0 as i32) as u16 & 0x8000) != 0 }
+    unsafe { (GetAsyncKeyState(VK_SHIFT.0 as i32) as u16 & 0x8000) != 0 }
 }
 
-/// Ctrl 当前是否按下(实时查询,同 shift_is_down 套路)。
+/// Ctrl 当前是否按下(实时物理态,同 shift_is_down 套路)。
 /// 2026-09-02 修「Ctrl 组合键失效」:wants_key_state 对 A-Z 无条件吃,Ctrl+C/V/Z 被吞。
-/// 用 GetKeyState(VK_CONTROL) 实时判,按下时对字母/数字/标点放行给 app(参考外挂式
+/// 用 GetAsyncKeyState(VK_CONTROL) 实时判,按下时对字母/数字/标点放行给 app(参考外挂式
 /// app_debug.py 的 PASS-THRU letter 逻辑)。VK_CONTROL=0x11 是左右 Ctrl 归并后的通用键。
 fn ctrl_is_down() -> bool {
-    unsafe { (GetKeyState(0x11) as u16 & 0x8000) != 0 }
+    unsafe { (GetAsyncKeyState(0x11) as u16 & 0x8000) != 0 }
 }
 
-/// Alt 当前是否按下(VK_MENU=0x12)。Alt+字母 = 菜单/快捷键,必须放行。
+/// Alt 当前是否按下(VK_MENU=0x12,实时物理态)。Alt+字母 = 菜单/快捷键,必须放行。
 fn alt_is_down() -> bool {
-    unsafe { (GetKeyState(0x12) as u16 & 0x8000) != 0 }
+    unsafe { (GetAsyncKeyState(0x12) as u16 & 0x8000) != 0 }
 }
 // ──────────────────────────────────────────────────────────────────────
 
