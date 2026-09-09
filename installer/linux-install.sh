@@ -132,15 +132,15 @@ pip install --break-system-packages --quiet \
 # 否则图片翻译/截图 OCR 静默降级、用户以为装了就能用。OCR 是 PrisirAI 组件(图片翻译),
 # 故装包期就验证模型可用性,失败给明确指引而非装完才发现。
 python3 - <<'PY' || echo "WARN: OCR 模型自检未过 — 图片翻译/截图 OCR 可能不可用,请确认 rapidocr_onnxruntime 已装且网络可拉模型" >&2
-import os
+import os, glob
 try:
     import rapidocr_onnxruntime as r
     p = os.path.dirname(r.__file__)
-    need = ["ch_PP-OCRv4_det_infer.onnx", "ch_PP-OCRv4_rec_infer.onnx"]
-    missing = [m for m in need if not os.path.isfile(os.path.join(p, "models", m))]
-    if missing:
-        raise SystemExit("missing models: %s" % missing)
-    print("  OCR 自检 OK:rapidocr_onnxruntime + PP-OCRv4 模型就绪")
+    det = glob.glob(os.path.join(p, "models", "ch_PP-OCRv*_det_infer.onnx"))
+    rec = glob.glob(os.path.join(p, "models", "ch_PP-OCRv*_rec_infer.onnx"))
+    if not det or not rec:
+        raise SystemExit("missing det/rec models in %s" % os.path.join(p, "models"))
+    print("  OCR 自检 OK:rapidocr_onnxruntime + 检测/识别模型就绪(%s)" % os.path.basename(det[0]))
 except ImportError:
     raise SystemExit("rapidocr_onnxruntime 未装上")
 PY
