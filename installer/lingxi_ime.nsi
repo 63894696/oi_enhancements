@@ -18,7 +18,7 @@ Unicode true
 
 ; ---- 可由命令行覆盖 ----
 !ifndef VERSION
-  !define VERSION "1.0.0-beta.14"
+  !define VERSION "1.0.0-beta.15"
 !endif
 !ifndef CHANNEL
   !define CHANNEL "beta"

@@ -673,11 +673,15 @@ impl ITfKeyEventSink_Impl for TsfInputProcessor_Impl {
                 !state.pinyin.candidates.is_empty(),
             )
         };
+        // 2026-09-09(#103 三轮):OnTest 必须与 OnKeyDown 的模式判定一致 — 英文模式标点要放行。
+        // 读 IME 中/英模式传给 wants_key_state_full,否则英文模式标点被误吃丢键(记事本无输出)。
+        let chinese_mode = *self.this.is_chinese_mode.lock().unwrap();
         let want = match vk {
             // 翻页键:打字(有候选)时恒吃 —— OnKeyDown 里翻得动就翻页、翻不动就放行符号,
             // 两条路都「吃」所以 OnTest 必须报吃,否则 TSF 矛盾丢键(2026-09-02 边界 bug)。
-            0x22 | 0xBB | 0x21 | 0xBD | 0xBC | 0xBE if typing => true,
-            _ => TsfInputProcessor::wants_key_state_full(vk, buf_empty, cands_empty, has_next, has_prev),
+            // 仅在中文模式:英文模式候选恒空,typing=false,不会进此分支。
+            0x22 | 0xBB | 0x21 | 0xBD | 0xBC | 0xBE if typing && chinese_mode => true,
+            _ => TsfInputProcessor::wants_key_state_full(vk, buf_empty, cands_empty, has_next, has_prev, chinese_mode),
         };
         #[cfg(feature = "dllentry_log")]
         crate::com_class_factory::log_dll_entry(&format!(
@@ -1213,7 +1217,9 @@ impl TsfInputProcessor {
     ///   - 退格 / 空格 / Esc / 数字:仅当**在打字**(buffer 非空 或 有候选)才吃;
     ///     buffer 空时放行,让退格删文档、空格/数字/Esc 归 app。
     pub(crate) fn wants_key_state(vk: u16, buf_empty: bool, cands_empty: bool) -> bool {
-        Self::wants_key_state_full(vk, buf_empty, cands_empty, false, false)
+        // 无实时模式的旧调用点:按中文模式(chinese_mode=true)给 OEM 标点,与历史行为一致。
+        // 实时路径(OnTestKeyDown)走 wants_key_state_full 并传真实 chinese_mode。
+        Self::wants_key_state_full(vk, buf_empty, cands_empty, false, false, true)
     }
 
     /// 完整版:额外传 has_next/has_prev 决定翻页键吃不吃(翻页仅在有目标页时吃,
@@ -1224,6 +1230,7 @@ impl TsfInputProcessor {
         cands_empty: bool,
         has_next: bool,
         has_prev: bool,
+        chinese_mode: bool,
     ) -> bool {
         match vk {
             0x41..=0x5A => true,           // A-Z 总是吃
@@ -1231,12 +1238,15 @@ impl TsfInputProcessor {
             0x14 => true,                  // CapsLock
             0x08 | 0x20 | 0x1B | 0x0D | 0x30..=0x39 => !(buf_empty && cands_empty), // 仅在打字才吃
             // 翻页键:PgDn(0x22)/+(0xBB) 仅当有下一页,PgUp(0x21)/-(0xBD) 仅当有上一页。
-            0x22 | 0xBB => has_next,
-            0x21 | 0xBD => has_prev,
-            // OEM 标点键:中文模式下要吃(做中/英标点映射)。OnKeyDown 内部再按 mode 放行。
-            // 注意:0xBC(,)/0xBE(.)在有候选时也作翻页(外挂式习惯),此处在 wants 层恒吃,
-            // OnKeyDown 的标点分支里再根据有无候选决定翻页还是上屏标点。
-            0xBA | 0xBB | 0xBC | 0xBD | 0xBE | 0xBF | 0xC0 | 0xDB | 0xDC | 0xDD | 0xDE => true,
+            // 中文模式才谈翻页(候选只在中文模式出现);英文模式根本不翻页,这些键按标点处理。
+            0x22 | 0xBB if chinese_mode => has_next,
+            0x21 | 0xBD if chinese_mode => has_prev,
+            // OEM 标点键:仅中文模式吃(做中/英标点映射),英文模式必须放行让系统出 ASCII。
+            // 2026-09-09(#103 三轮)根因:原先此处无视模式恒吃(true),而 OnKeyDown 在英文模式
+            // 对标点 return 放行 → OnTest 吃 / OnKeyDown 放,前后矛盾,TSF 直接丢键 →
+            // 记事本英文模式所有非数字标点「无输出」。改按 chinese_mode 判定,与 OnKeyDown 对齐。
+            // 0xBC(,)/0xBE(.) 在中文模式有候选时兼作翻页(外挂式习惯)。
+            0xBA | 0xBB | 0xBC | 0xBD | 0xBE | 0xBF | 0xC0 | 0xDB | 0xDC | 0xDD | 0xDE => chinese_mode,
             _ => false,
         }
     }
@@ -1259,8 +1269,11 @@ impl TsfInputProcessor {
             (0xDE, false) => "\u{2018}", // '  → ' LEFT SINGLE QUOTATION MARK
             (0xDE, true) => "\u{201C}",  // "  → " LEFT DOUBLE QUOTATION MARK
             (0xDB, false) => "\u{3010}", // [  → 【 LEFT BLACK LENTICULAR BRACKET
+            (0xDB, true) => "\u{3010}",  // {  → 【 (zh 无 shift 变体,回落【;2026-09-09 修 None 丢键)
             (0xDD, false) => "\u{3011}", // ]  → 】 RIGHT BLACK LENTICULAR BRACKET
+            (0xDD, true) => "\u{3011}",  // }  → 】 (同上)
             (0xDC, false) => "\u{3001}", // \  → 、 IDEOGRAPHIC COMMA (顿号)
+            (0xDC, true) => "\u{3001}",  // |  → 、 (zh 无 shift 变体,回落、;修 None 丢键)
             (0xC0, false) => "\u{00B7}", // `  → · MIDDLE DOT (间隔号)
             (0xC0, true) => "\u{FF5E}",  // ~  → ~ FULLWIDTH TILDE
             (0xBD, false) => "-",        // -  → - (连接号保持半角,数字负号常用)
