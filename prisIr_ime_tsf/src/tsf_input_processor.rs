@@ -788,7 +788,13 @@ impl ITfKeyEventSink_Impl for TsfInputProcessor_Impl {
         // ───── 1. 决定当前是英文还是中文模式 ─────
         let mode = *inner.is_chinese_mode.lock().unwrap();
         let shift_held = shift_is_down(); // 实时查询,不用跟踪状态(防卡死)
-        let treat_as_english = !mode || shift_held;
+        // 2026-09-09 修复(#103 回归):treat_as_english 只应作用于「字母」(Shift+字母=临时英文大写)。
+        // 原先标点分支也用它判定(888 行 shift 时直接放行),导致 Shift+,/./? 全出英文符号、
+        // map_punct 的 shift=true 分支(《》?:)永远拿不到 shift。拆成两个量:
+        //   treat_letter_english —— 字母用(含 shift 临时英文);
+        //   punct_english        —— 标点用(只看 IME 中/英模式,不看 shift;shift 交给 map_punct)。
+        let treat_letter_english = !mode || shift_held;
+        let punct_english = !mode;
 
         // ───── 2. 字母 a-z 处理 ─────
         let ch_lower_opt: Option<char> = {
@@ -797,8 +803,8 @@ impl ITfKeyEventSink_Impl for TsfInputProcessor_Impl {
         };
         if let Some(ch) = ch_lower_opt {
             #[cfg(feature = "dllentry_log")]
-            crate::com_class_factory::log_dll_entry(&format!("OnKeyDown letter '{}' mode={} shift_held={} treat_en={}", ch, mode, shift_held, treat_as_english));
-            if treat_as_english {
+            crate::com_class_factory::log_dll_entry(&format!("OnKeyDown letter '{}' mode={} shift_held={} treat_en={}", ch, mode, shift_held, treat_letter_english));
+            if treat_letter_english {
                 // 英文模式:默认小写,按住 Shift 才大写(对齐常规输入法/搜狗)。
                 // 之前 CapsLock 切英文时无条件大写,违背「默认小写」直觉(2026-09-01 用户报)。
                 let s = if shift_held {
@@ -886,7 +892,11 @@ impl ITfKeyEventSink_Impl for TsfInputProcessor_Impl {
         // ───── 2b. OEM 标点键:中文模式下做中/英标点映射,英文模式放行 ─────
         // wants_key_state 已对 OEM 键返 true(中文吃);此处按 mode 决定 commit 还是放行。
         if matches!(vk, 0xBA | 0xBB | 0xBC | 0xBD | 0xBE | 0xBF | 0xC0 | 0xDB | 0xDC | 0xDD | 0xDE) {
-            if treat_as_english {
+            // 2026-09-09(#103 回归核心修):此处改用 punct_english(只看 IME 中/英模式)。
+            // 原先用 treat_as_english(含 shift_held),Shift 按下即放行,导致中文模式下
+            // Shift+,/./? 直接出英文符号,map_punct 的 shift=true 全角分支(《》?:)永远不可达。
+            // 现在中文模式不再因 shift 放行,shift 传进 map_punct 取全角上档。
+            if punct_english {
                 return Ok(BOOL(0)); // 英文模式:放行,系统出原生 ASCII 标点
             }
             let shift = shift_is_down(); // 实时查询
@@ -945,7 +955,7 @@ impl ITfKeyEventSink_Impl for TsfInputProcessor_Impl {
         // ───── 3. 数字 / 退格 / 空格 / Esc / 回车(中文模式才吃) ─────
         // wants_key 包含 0x08 / 0x20 / 0x1B / 0x0D / 0x30..=0x39
         if TsfInputProcessor::wants_key(vk) {
-            if treat_as_english {
+            if treat_letter_english {
                 // 英文模式空格/退格/Esc 不做特殊处理 — 透传给 PinyinBuffer 也无意义。
                 // 直接放行让 TSF forward 给 app。
                 return Ok(BOOL(0));
