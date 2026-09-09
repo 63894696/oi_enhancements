@@ -128,6 +128,22 @@ pip install --break-system-packages --quiet \
     pypdf rapidocr_onnxruntime opencv-python-headless Pillow || {
     echo "WARN: pip install 部分失败,fcontent/截图 OCR 功能可能不可用,对话主链不受影响" >&2
 }
+# 2026-09-10 「安装即用」校验:rapidocr 装完后必须能 import 且默认模型文件就绪,
+# 否则图片翻译/截图 OCR 静默降级、用户以为装了就能用。OCR 是 PrisirAI 组件(图片翻译),
+# 故装包期就验证模型可用性,失败给明确指引而非装完才发现。
+python3 - <<'PY' || echo "WARN: OCR 模型自检未过 — 图片翻译/截图 OCR 可能不可用,请确认 rapidocr_onnxruntime 已装且网络可拉模型" >&2
+import os
+try:
+    import rapidocr_onnxruntime as r
+    p = os.path.dirname(r.__file__)
+    need = ["ch_PP-OCRv4_det_infer.onnx", "ch_PP-OCRv4_rec_infer.onnx"]
+    missing = [m for m in need if not os.path.isfile(os.path.join(p, "models", m))]
+    if missing:
+        raise SystemExit("missing models: %s" % missing)
+    print("  OCR 自检 OK:rapidocr_onnxruntime + PP-OCRv4 模型就绪")
+except ImportError:
+    raise SystemExit("rapidocr_onnxruntime 未装上")
+PY
 
 # ---------- 2. Rust toolchain 检查(findex .so 已在 tarball 里,不再现场编译) ----------
 # 2026-08-28 装好即用改造:

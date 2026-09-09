@@ -8,6 +8,15 @@ from PyInstaller.utils.hooks import collect_data_files
 
 litellm_datas = collect_data_files('litellm')
 
+# 2026-09-10 「安装即用」OCR 打包:rapidocr_onnxruntime 自带 PP-OCRv4 mobile 模型
+#   (~14MB: det 4MB + rec 10MB + cls 0.2MB),默认 RapidOCR() 无参即读包内模型。
+#   collect_data_files 收全包内 .onnx/.yaml 资源,frozen 下图片翻译/截图 OCR 开箱即用,
+#   不再依赖运行时 pip install。onnxruntime/cv2 同步从 excludes 拿掉(见下)。
+try:
+    rapidocr_datas = collect_data_files('rapidocr_onnxruntime')
+except Exception:
+    rapidocr_datas = []
+
 import os as _os
 def _maybe(src, dst):
     """docs/* 在 2026-08-28 撤档事件中被 filter-repo 删除;运行时对缺失优雅降级
@@ -18,7 +27,7 @@ a = Analysis(
     ['prisiragent_web.py'],
     pathex=[],
     binaries=[],
-    datas=litellm_datas + [
+    datas=litellm_datas + rapidocr_datas + [
         ('assets', 'assets'),
         # 2026-08-24 v2.3.0:方案库索引 + 项目宪法打进 _MEIPASS/docs/(2026-09-06:已撤档,改 _maybe 可选)。
     ] + _maybe('docs/preset-solutions-index.md', 'docs')
@@ -86,7 +95,7 @@ a = Analysis(
     #   一配端点就崩 ModuleNotFoundError: No module named 'pydantic'。fastapi/uvicorn/
     #   starlette 保留排除(对话链不真起 fastapi 服务器,adapters.main 的 fastapi import
     #   仅在跑 ASR/LLM 本地服务时才需要,当前对话不走那条)。
-    excludes=['torch', 'torchaudio', 'torchvision', 'tensorflow', 'transformers', 'vllm', 'accelerate', 'modelscope', 'numba', 'pandas', 'scipy', 'matplotlib', 'onnxruntime', 'rapidocr_onnxruntime', 'cv2', 'fastapi', 'uvicorn', 'starlette', 'langchain', 'langchain_core', 'langsmith', 'IPython', 'notebook'],
+    excludes=['torch', 'torchaudio', 'torchvision', 'tensorflow', 'transformers', 'vllm', 'accelerate', 'modelscope', 'numba', 'pandas', 'scipy', 'matplotlib', 'fastapi', 'uvicorn', 'starlette', 'langchain', 'langchain_core', 'langsmith', 'IPython', 'notebook'],
     noarchive=False,
     optimize=0,
 )
