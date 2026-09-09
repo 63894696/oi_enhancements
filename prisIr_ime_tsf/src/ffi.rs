@@ -157,8 +157,11 @@ unsafe fn try_load_ime_dll() -> Result<ImeDll, String> {
 }
 
 fn locate_ime_dll_path() -> String {
+    // 2026-09-09(#104 六轮):环境变量也必须校验存在性 —— VM 残留 PRISIR_IME_DLL=C:\PrisirIME\
+    // (目录已删)而不校验时,优先返回无效路径 → LoadLibrary 失败 → 引擎 null → 中文模式字母全吞。
+    // 无效则落空,继续走下面候选循环找真实部署位置。
     if let Ok(p) = std::env::var("PRISIR_IME_DLL") {
-        if !p.is_empty() { return p; }
+        if !p.is_empty() && std::path::Path::new(&p).exists() { return p; }
     }
     // 部署态常见位置(2026-09-01): 引擎 DLL 实际部署在 C:\PrisirIME\prisir_ime.dll。
     // ctfmon/notepad 进程上下文里 LOCALAPPDATA 指向系统账号或不存在 Browser 子目录,

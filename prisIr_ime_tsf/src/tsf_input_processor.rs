@@ -573,8 +573,14 @@ impl ITfTextInputProcessorEx_Impl for TsfInputProcessor_Impl {
     /// 否则 implement 宏会生成 zero-out stub 盲写调用方 out-ptr → explorer c0000005。
     fn ActivateEx(&self, ptim: Option<&ITfThreadMgr>, tid: u32, _dwflags: u32) -> Result<()> {
         eprintln!("[prisir_tsf] ActivateEx called (tid={tid}), delegating to activate_inner");
+        // 版本指纹:确认 VM 跑的是否真为本次新编译(防 ctfmon/explorer 重启但旧 DLL 仍驻留
+        // 未卸载 → 新逻辑不生效的部署假象,2026-09-09 #104 五轮排查 Shift+-)。
         #[cfg(feature = "dllentry_log")]
-        crate::com_class_factory::log_dll_entry("TsfInputProcessor::ActivateEx:ENTER");
+        crate::com_class_factory::log_dll_entry(&format!(
+            "TsfInputProcessor::ActivateEx:ENTER build=paging_flat vkBDshift={} vkBDnoshift={}",
+            TsfInputProcessor::wants_key_state_full(0xBD, true, true, false, false, true, true),
+            TsfInputProcessor::wants_key_state_full(0xBD, true, true, false, false, true, false)
+        ));
         let r = self.activate_inner(ptim, tid);
         #[cfg(feature = "dllentry_log")]
         crate::com_class_factory::log_dll_entry(if r.is_ok() {
@@ -660,6 +666,12 @@ impl ITfKeyEventSink_Impl for TsfInputProcessor_Impl {
         _lparam: LPARAM,
     ) -> Result<BOOL> {
         let vk = wparam.0 as u16;
+        // #104 诊断:逐键记录 OnTest 入口(字母丢键排查)。仅 dllentry_log 编译,发布零开销。
+        #[cfg(feature = "dllentry_log")]
+        crate::com_class_factory::log_dll_entry(&format!(
+            "KEY OnTest vk=0x{:02X} ctrl={} alt={} shift={}",
+            vk, ctrl_is_down(), alt_is_down(), shift_is_down()
+        ));
         // 整个数字小键盘区(VK_NUMPAD0-9=0x60-0x69 + 运算符 *=0x6A +=0x6B -=0x6D .=0x6E /=0x6F)
         // 一律放行:只把 A-Z(0x41-0x5A)当字母键。小键盘 VK|0x20 会撞上字母(0x6A|0x20='j' ...
         // 0x6F|0x20='o'),2026-09-06 用户报「小键盘 /*-+ 出字母」—— 故覆盖整个 0x60-0x6F 区,
@@ -687,12 +699,20 @@ impl ITfKeyEventSink_Impl for TsfInputProcessor_Impl {
         // 2026-09-09(#103 三轮):OnTest 必须与 OnKeyDown 的模式判定一致 — 英文模式标点要放行。
         // 读 IME 中/英模式传给 wants_key_state_full,否则英文模式标点被误吃丢键(记事本无输出)。
         let chinese_mode = *self.this.is_chinese_mode.lock().unwrap();
+        // #104 诊断:Shift+- 出 _ —— 记录 OnTest 时 shift 实时态与各判定量。
+        #[cfg(feature = "dllentry_log")]
+        if vk == 0xBD || vk == 0x10 {
+            crate::com_class_factory::log_dll_entry(&format!(
+                "DIAG OnTest vk=0x{:02X} shift={} chinese_mode={} typing={} has_prev={} buf_empty={} cands_empty={}",
+                vk, shift_is_down(), chinese_mode, typing, has_prev, buf_empty, cands_empty
+            ));
+        }
         let want = match vk {
             // 翻页键:打字(有候选)时恒吃 —— OnKeyDown 里翻得动就翻页、翻不动就放行符号,
             // 两条路都「吃」所以 OnTest 必须报吃,否则 TSF 矛盾丢键(2026-09-02 边界 bug)。
             // 仅在中文模式:英文模式候选恒空,typing=false,不会进此分支。
             0x22 | 0xBB | 0x21 | 0xBD | 0xBC | 0xBE if typing && chinese_mode => true,
-            _ => TsfInputProcessor::wants_key_state_full(vk, buf_empty, cands_empty, has_next, has_prev, chinese_mode),
+            _ => TsfInputProcessor::wants_key_state_full(vk, buf_empty, cands_empty, has_next, has_prev, chinese_mode, shift_is_down()),
         };
         #[cfg(feature = "dllentry_log")]
         crate::com_class_factory::log_dll_entry(&format!(
@@ -728,6 +748,13 @@ impl ITfKeyEventSink_Impl for TsfInputProcessor_Impl {
     ) -> Result<BOOL> {
         let vk = wparam.0 as u16;
         let inner = &self.this;
+
+        // #104 诊断:逐键记录 OnKeyDown 入口。
+        #[cfg(feature = "dllentry_log")]
+        crate::com_class_factory::log_dll_entry(&format!(
+            "KEY OnKeyDown vk=0x{:02X} mode={} ctrl={} alt={}",
+            vk, *inner.is_chinese_mode.lock().unwrap(), ctrl_is_down(), alt_is_down()
+        ));
 
         // 整个数字小键盘区(0x60-0x6F:数字 0x60-0x69 + 运算符 */+-. 0x6A-0x6F)一律放行,
         // 绝不当字母/候选选择键(2026-09-06 用户报「小键盘按出字母」;数字修好后 /*-+ 仍出
@@ -958,6 +985,15 @@ impl ITfKeyEventSink_Impl for TsfInputProcessor_Impl {
                 }
             }
             let chinese_punct = *inner.is_chinese_punct.lock().unwrap();
+            // #104 诊断:Shift+- 出 _ —— 记录 OnKeyDown 标点分支的关键判定量与映射结果。
+            #[cfg(feature = "dllentry_log")]
+            if vk == 0xBD {
+                crate::com_class_factory::log_dll_entry(&format!(
+                    "DIAG OnKeyDown vk=0xBD shift={} mode={} punct_english={} chinese_punct={} map={:?}",
+                    shift, mode, punct_english, chinese_punct,
+                    TsfInputProcessor::map_punct(vk, shift, chinese_punct)
+                ));
+            }
             if let Some(text) = TsfInputProcessor::map_punct(vk, shift, chinese_punct) {
                 // 中文双引号开/闭交替(2026-09-09 #103 四轮):map_punct 无状态恒出开引号 ",
                 // 这里按 quote_open_next 翻成开 " / 闭 ",对齐微软拼音 "" 成对。
@@ -1270,19 +1306,42 @@ impl TsfInputProcessor {
     pub(crate) fn wants_key_state(vk: u16, buf_empty: bool, cands_empty: bool) -> bool {
         // 无实时模式的旧调用点:按中文模式(chinese_mode=true)给 OEM 标点,与历史行为一致。
         // 实时路径(OnTestKeyDown)走 wants_key_state_full 并传真实 chinese_mode。
-        Self::wants_key_state_full(vk, buf_empty, cands_empty, false, false, true)
+        Self::wants_key_state_full(vk, buf_empty, cands_empty, false, false, true, false)
     }
 
     /// 完整版:额外传 has_next/has_prev 决定翻页键吃不吃(翻页仅在有目标页时吃,
     /// 与 handle_special 的 page_down/page_up 判定严格一致,避免 OnTest/OnKeyDown 矛盾)。
-    pub(crate) fn wants_key_state_full(
+    /// shift 用于区分 0xBB/0xBD 的「翻页」与「标点(全角上档)」两种角色 —— OnKeyDown 翻页块
+    /// 有 `if !shift`(shift 时不翻页、走 map_punct 出 ￥/—— 等),OnTest 必须一致,否则
+    /// shift+0xBD 翻页臂 has_prev=false 放行、而 OnKeyDown 想 commit —— = 吃放矛盾丢键。
+    pub fn wants_key_state_full(
         vk: u16,
         buf_empty: bool,
         cands_empty: bool,
         has_next: bool,
         has_prev: bool,
         chinese_mode: bool,
+        shift: bool,
     ) -> bool {
+        // 2026-09-09(#104 五轮)rustc 1.95 release 错编实锤:原先用「带 guard 的 OR 模式臂
+        // (0x21 | 0xBD if chinese_mode => has_prev)+ 后续宽 OR 臂(0xBA|...|0xBD|... => chinese_mode)」
+        // 的组合,release 下 wants_key_state_full(0xBD, ..., chinese_mode=true) 实测返 false
+        // (VM ActivateEx 指纹 vkBDwant=false),0xBD 错走翻页臂 has_prev=false,到不了 OEM 臂 →
+        // OnTest 放行 Shift+- → 系统画 _。与 #104 双 match 同属本编译器版本对「guard arm + 多重
+        // OR 模式 + 宽臂」的错编。根治:0xBB/0xBD 用**平铺无 guard**的臂显式分开翻页/标点两角色。
+        if chinese_mode && !shift {
+            let paging = match vk {
+                // 翻页键(仅未按 shift 时;shift 按下走下面标点臂出全角上档):
+                // PgDn/+ 有下一页才吃,PgUp/- 有上一页才吃。OnKeyDown 翻页块 if !shift 一致。
+                0x22 | 0xBB => has_next,
+                0x21 | 0xBD => has_prev,
+                _ => false,
+            };
+            if paging {
+                return true;
+            }
+            // 翻不动(has_next/has_prev=false)则落空,继续走下面 OEM 标点臂 —— 0xBB/0xBD 在其中。
+        }
         match vk {
             0x41..=0x5A => true,           // A-Z 总是吃
             0x10 => true,                  // Shift
@@ -1298,15 +1357,12 @@ impl TsfInputProcessor {
                 // OnTest 放/OnKeyDown 吃的矛盾丢键(2026-09-09 #103 四轮)。英文模式数字仍放行。
                 matches!(vk, 0x30..=0x39) && chinese_mode
             }
-            // 翻页键:PgDn(0x22)/+(0xBB) 仅当有下一页,PgUp(0x21)/-(0xBD) 仅当有上一页。
-            // 中文模式才谈翻页(候选只在中文模式出现);英文模式根本不翻页,这些键按标点处理。
-            0x22 | 0xBB if chinese_mode => has_next,
-            0x21 | 0xBD if chinese_mode => has_prev,
             // OEM 标点键:仅中文模式吃(做中/英标点映射),英文模式必须放行让系统出 ASCII。
             // 2026-09-09(#103 三轮)根因:原先此处无视模式恒吃(true),而 OnKeyDown 在英文模式
             // 对标点 return 放行 → OnTest 吃 / OnKeyDown 放,前后矛盾,TSF 直接丢键 →
             // 记事本英文模式所有非数字标点「无输出」。改按 chinese_mode 判定,与 OnKeyDown 对齐。
             // 0xBC(,)/0xBE(.) 在中文模式有候选时兼作翻页(外挂式习惯)。
+            // shift+0xBB/0xBD 在中文模式也吃(走 map_punct 出 ￥/——),由上面 early-return 之外的此臂覆盖。
             0xBA | 0xBB | 0xBC | 0xBD | 0xBE | 0xBF | 0xC0 | 0xDB | 0xDC | 0xDD | 0xDE => chinese_mode,
             _ => false,
         }
@@ -1314,7 +1370,7 @@ impl TsfInputProcessor {
 
     /// OEM 标点键 → (中文标点, 英文标点)。shift 影响部分键(如 9→(, /→?)。
     /// 返回 None = 该键不做标点映射(放行)。
-    pub(crate) fn map_punct(vk: u16, shift: bool, chinese_punct: bool) -> Option<&'static str> {
+    pub fn map_punct(vk: u16, shift: bool, chinese_punct: bool) -> Option<&'static str> {
         // (vk, shift, 中英标点) → 符号
         // 2026-09-08 修复:zh 表原先多个键误填英文占位,按搜狗/微软补全为全角。
         // 2026-09-09 #104 根因修复:rustc 1.95.0 编译缺陷 —— 同一函数内出现两个同 discriminant
@@ -1610,5 +1666,24 @@ mod punct_map_tests {
         assert_eq!(T::map_punct(0xDD, true, false), Some("}"));
         assert_eq!(T::map_punct(0xDC, true, false), Some("|"));
         assert_eq!(T::map_punct(0x34, true, false), Some("$"));
+    }
+
+    // #104 五轮:wants_key_state_full 对 0xBD/0xBB 在「空 buffer + 中文模式 + shift」下必须吃
+    // (走标点出 ——/￥),不能因翻页臂 has_prev/has_next=false 放行。release 错编曾让
+    // (0xBD,...,chinese_mode=true) 返 false → Shift+- 丢键出 _。此测试固化该契约。
+    #[test]
+    fn wants_key_punct_vs_paging_0xbd() {
+        // 中文模式,空 buffer/无候选:
+        // shift+0xBD → 吃(出 ——);shift+0xBB → 吃(出 ￥)
+        assert!(T::wants_key_state_full(0xBD, true, true, false, false, true, true));
+        assert!(T::wants_key_state_full(0xBB, true, true, false, false, true, true));
+        // 未 shift+0xBD 无上一页 → 也吃(OnKeyDown 会 commit 半角 -;OnTest 必须与之一致,
+        // 否则 吃放矛盾丢键。翻页仅当有上一页时才在 OnKeyDown 内部翻,但「吃」不变)
+        assert!(T::wants_key_state_full(0xBD, true, true, false, false, true, false));
+        // 未 shift 且有上一页 → 吃(翻页)
+        assert!(T::wants_key_state_full(0xBD, false, false, false, true, true, false));
+        // 英文模式:0xBD 一律放行(系统出 -/_)
+        assert!(!T::wants_key_state_full(0xBD, true, true, false, false, false, true));
+        assert!(!T::wants_key_state_full(0xBD, true, true, false, false, false, false));
     }
 }
