@@ -2527,9 +2527,14 @@ def _chat_db_path() -> str:
     honours, then falls back to the standard user-data location."""
     p = os.environ.get("PRISIRAGENT_CHAT_DB", "") or os.environ.get("OIAGENT_CHAT_DB", "")
     if p:
+        os.makedirs(os.path.dirname(p) or ".", exist_ok=True)
         return p
-    base = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
-    return os.path.join(base, "PrisirAI", "chat.db")
+    # 与 web 端同源:PRISIR_DATA 覆盖,默认 ~/.local/share/prisir/chats.db,
+    # 这样 CLI 与网页/GUI 的对话进同一个库、可互相续聊。
+    base = os.environ.get("PRISIR_DATA", "") or os.path.join(
+        os.path.expanduser("~"), ".local", "share", "prisir")
+    os.makedirs(base, exist_ok=True)  # 库父目录必须存在, 否则 sqlite 打不开
+    return os.path.join(base, "chats.db")
 
 
 def _db() -> sqlite3.Connection:
@@ -2575,6 +2580,21 @@ def get_messages(sid: str) -> list:
         rows = c.execute(
             "SELECT role,content,followups,ts FROM messages WHERE session_id=? ORDER BY id", (sid,)).fetchall()
     return [{"role": r[0], "content": r[1], "followups": json.loads(r[2] or "[]"), "ts": r[3]} for r in rows]
+
+
+def _conv_history(sid: str, max_msgs: int = 20) -> list:
+    """对话上下文窗口:取当前会话最近 max_msgs 条,只留 role+content。
+
+    对话是连续的,只需近期上下文;用 LIMIT 窗口而非全量 get_messages,
+    避免长会话(或我此前误写入的超长 system 轮)把 litellm 输入顶爆
+    (qwen 上限 983616 token,全量历史曾触发 400 Algo.InvalidParameter)。
+    """
+    with _db() as c:
+        rows = c.execute(
+            "SELECT role,content FROM messages WHERE session_id=? ORDER BY id DESC LIMIT ?",
+            (sid, max_msgs)).fetchall()
+    rows.reverse()
+    return [{"role": r[0], "content": r[1]} for r in rows]
 
 
 def rename_session(sid: str, title: str) -> None:
@@ -2732,16 +2752,10 @@ def main():
     # persist user message
     add_message(sid, "user", prompt)
 
-    # build message list for run_agent (it prepends its own system prompt)
-    history = get_messages(sid)
-    msgs = [{"role": m["role"], "content": m["content"]} for m in history]
-    # run_agent expects a fresh prompt, not full history — strip the last user
-    # message (already in history) and pass the full history as prompt context.
-    # Actually run_agent builds its own messages list; we just call it with the
-    # full history as a single prompt string for now (keeps it simple).
-    full_prompt = "\n".join(f"{m['role']}: {m['content']}" for m in msgs)
-
-    res = run_agent(full_prompt, a.model, a.workdir, a.max_turns)
+    # 对话模式:用 run_conversation(拿到文本即返回,不循环 DONE),上下文=当前会话近期窗口。
+    # 原先用 run_agent(benchmark 导向)拼全库历史 + 反复 nudge 到 DONE —— 对纯问答会
+    # 触发 max-turns 假失败、对共享库会因历史过长触发 400。改 run_conversation 修复。
+    res = run_conversation(_conv_history(sid), a.model, a.workdir, a.max_turns)
 
     # persist assistant reply
     if res["rc"] == 0:
@@ -2753,13 +2767,7 @@ def main():
     sys.exit(0 if res["rc"] == 0 else 1)
 
 
-_CLI_BANNER = r"""
-  ____       _            ___    ___
- |  _ \ _ __(_)___ _ __  / _ \  |_ _|
- | |_) | '__| / __| '__|| | | |  | |
- |  __/| |  | \__ \ |   | |_| |  | |
- |_|   |_|  |_|___/_|    \___/  |___|
-"""
+_CLI_BANNER = ""
 
 
 def _print_cli_banner(model: str, workdir: str, sid: str) -> None:
@@ -2832,12 +2840,8 @@ def _run_interactive(a):
             continue
 
         add_message(sid, "user", user_input)
-        history = get_messages(sid)
-        msgs = [{"role": m["role"], "content": m["content"]} for m in history]
-
-        # run_agent expects a single prompt; pass full history as context
-        full_prompt = "\n".join(f"{m['role']}: {m['content']}" for m in msgs)
-        res = run_agent(full_prompt, a.model, a.workdir, a.max_turns)
+        # 对话模式:run_conversation 拿到文本即返回(不循环 DONE),上下文=近期窗口
+        res = run_conversation(_conv_history(sid), a.model, a.workdir, a.max_turns)
 
         if res["rc"] == 0:
             add_message(sid, "assistant", res["out"])
