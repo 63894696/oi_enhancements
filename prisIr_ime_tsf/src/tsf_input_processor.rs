@@ -1325,11 +1325,14 @@ impl TsfInputProcessor {
             0xBF => ("/", "\u{FF1F}", "/", "?"),          // / ?
             0xBA => ("\u{FF1B}", "\u{FF1A}", ";", ":"),   // ; :
             0xDE => ("\u{2018}", "\u{201C}", "'", "\""),  // ' "(开闭交替由 OnKeyDown quote_open_next 处理)
-            0xDB => ("\u{3010}", "\u{3010}", "[", "{"),   // 【
-            0xDD => ("\u{3011}", "\u{3011}", "]", "}"),   // 】
-            0xDC => ("\u{3001}", "\u{3001}", "\\", "|"),  // 、
+            // 0xDB/0xDD/0xDC:中文模式不按 shift 出【】、;**按 shift 出英文上档 {}|** ——
+            // 2026-09-09 #104 用户要求对齐微软/搜狗中文模式习惯(shift+括号出英文 {}|),
+            // 而非此前"shift 也出【】、"。大量用户已养成 shift 出英文上档的习惯。
+            0xDB => ("\u{3010}", "{", "[", "{"),          // [ 不shift=【 shift={
+            0xDD => ("\u{3011}", "}", "]", "}"),          // ] 不shift=】 shift=}
+            0xDC => ("\u{3001}", "|", "\\", "|"),         // \ 不shift=、 shift=|
             0xC0 => ("\u{00B7}", "\u{FF5E}", "`", "~"),   // · ~
-            0xBD => ("-", "\u{2014}\u{2014}", "-", "_"),  // - ——
+            0xBD => ("-", "\u{2014}\u{2014}", "-", "_"),  // - 不shift=半角- shift=——
             0xBB => ("=", "+", "=", "+"),                 // = +
             // 数字键:中文模式 shift 出**全角**(用户实测微软/搜狗中文模式 Shift+数字=!@#￥%……&*()全角,
             // 纠正此前"半角"的错误假设);英文模式 shift 出半角 !@#$%^&*()。数字键不在 OEM 区;
@@ -1584,10 +1587,15 @@ mod punct_map_tests {
         assert_eq!(T::map_punct(0x38, true, true), Some("\u{FF0A}")); // 8 -> ＊
         assert_eq!(T::map_punct(0x39, true, true), Some("\u{FF08}")); // 9 -> (
         assert_eq!(T::map_punct(0x30, true, true), Some("\u{FF09}")); // 0 -> )
-        assert_eq!(T::map_punct(0xDB, true, true), Some("\u{3010}")); // [ -> 【
-        assert_eq!(T::map_punct(0xDD, true, true), Some("\u{3011}")); // ] -> 】
-        assert_eq!(T::map_punct(0xDC, true, true), Some("\u{3001}")); // \ -> 、
-        assert_eq!(T::map_punct(0xBD, true, true), Some("\u{2014}\u{2014}")); // - -> ——
+        // 中文模式不按 shift 出【】、(顿号);按 shift 出英文上档 {}|(对齐用户习惯,#104)
+        assert_eq!(T::map_punct(0xDB, false, true), Some("\u{3010}")); // [ -> 【
+        assert_eq!(T::map_punct(0xDD, false, true), Some("\u{3011}")); // ] -> 】
+        assert_eq!(T::map_punct(0xDC, false, true), Some("\u{3001}")); // \ -> 、
+        assert_eq!(T::map_punct(0xDB, true, true), Some("{"));  // Shift+[ -> {
+        assert_eq!(T::map_punct(0xDD, true, true), Some("}"));  // Shift+] -> }
+        assert_eq!(T::map_punct(0xDC, true, true), Some("|"));  // Shift+\ -> |
+        assert_eq!(T::map_punct(0xBD, true, true), Some("\u{2014}\u{2014}")); // Shift+- -> ——
+        assert_eq!(T::map_punct(0xBD, false, true), Some("-")); // - -> 半角-
         // 英文模式 shift → 半角(用户实测英文模式半角)
         assert_eq!(T::map_punct(0x31, true, false), Some("!"));
         assert_eq!(T::map_punct(0x35, true, false), Some("%"));
