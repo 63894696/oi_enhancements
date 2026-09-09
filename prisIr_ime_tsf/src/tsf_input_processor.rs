@@ -973,11 +973,12 @@ impl ITfKeyEventSink_Impl for TsfInputProcessor_Impl {
 
         // ───── 2c. Shift+数字:中文模式未打字时出中文符号(￥……( 等),对齐微软拼音 ─────
         // 必须在下面的 digit 分支(treat_letter_english 含 shift)之前,否则 shift+数字被当临时英文
-        // 放行出 ASCII($ ^ ( _)。仅在中文模式 + 中文标点 + 未打字(buffer 空)时接管;
-        // 打字中(有候选)留给 digit 分支做候选选择,不抢。
+        // 放行出 ASCII($ ^ ( _)。仅在中文模式 + 中文标点 + 无候选(没在选字)时接管;
+        // 打字中(有候选)留给 digit 分支做候选选择,不抢。OnTest 对数字恒吃(见 wants_key_state_full),
+        // 无候选时唯一动作就是这里上屏,故不依赖 buffer 空判断 —— 有候选时本段直接跳过即可。
         if shift_held && !punct_english && (0x30..=0x39).contains(&vk) {
-            let buf_empty = inner.state.lock().unwrap().pinyin.buf.is_empty();
-            if buf_empty {
+            let no_cands = inner.state.lock().unwrap().pinyin.candidates.is_empty();
+            if no_cands {
                 let chinese_punct = *inner.is_chinese_punct.lock().unwrap();
                 if let Some(text) = TsfInputProcessor::map_punct(vk, true, chinese_punct) {
                     TsfInputProcessor::commit_text(inner, text);
@@ -1001,7 +1002,19 @@ impl ITfKeyEventSink_Impl for TsfInputProcessor_Impl {
             let tid = *inner.client_tid.lock().unwrap();
             match result {
                 SpecialResult::Passthrough => {
-                    // buffer 空 — 与拼音无关,放行给 app(退格删文档 / 空格 / Esc / 数字)。
+                    // buffer 空、无候选。数字键在中文模式被 OnTest 恒吃(配合 2c 段),
+                    // 普通数字(无 shift)在这里补 commit 半角数字本身,不能放行 —— 放行则
+                    // OnTest 吃/OnKeyDown 放矛盾丢键(数字打不出)。shift+数字已在 2c 段处理完返回。
+                    // 退格/空格/Esc/回车 buffer 空时 OnTest 本就放行,不会走到这。
+                    if (0x30..=0x39).contains(&vk) {
+                        if let Some(d) = char::from_u32(vk as u32) {
+                            let s = d.to_string();
+                            TsfInputProcessor::commit_text(inner, &s);
+                            #[cfg(feature = "dllentry_log")]
+                            crate::com_class_factory::log_dll_entry(&format!("OnKeyDown: digit commit '{}'", s));
+                        }
+                        return Ok(BOOL::from(true)); // 吃(与 OnTest 一致)
+                    }
                     #[cfg(feature = "dllentry_log")]
                     crate::com_class_factory::log_dll_entry(&format!("OnKeyDown: vk=0x{:02X} passthrough (empty buf)", vk));
                     return Ok(BOOL(0));
@@ -1273,10 +1286,10 @@ impl TsfInputProcessor {
                 if !(buf_empty && cands_empty) {
                     return true;
                 }
-                // buffer 空:退格/空格/Esc/回车 放行(删文档/归 app);数字键在中文模式吃
-                // 以支持 Shift+数字出中文符号(￥……( 等,OnKeyDown 2c 段),英文模式/普通数字放行。
-                // 2026-09-09(#103 四轮):若此处对 shift+数字放行而 OnKeyDown 拦截 commit,
-                // 又成 OnTest 放/OnKeyDown 吃的矛盾丢键。中文模式空 buffer 数字键恒吃,两边对齐。
+                // buffer 空:退格/空格/Esc/回车 放行(删文档/归 app)。
+                // 数字键在中文模式**恒吃**(不论 shift):OnKeyDown 对 shift+数字上屏中文符号(2c 段)、
+                // 对普通数字 commit 半角数字 —— 两条路都「吃」,OnTest 必须报吃,否则又成
+                // OnTest 放/OnKeyDown 吃的矛盾丢键(2026-09-09 #103 四轮)。英文模式数字仍放行。
                 matches!(vk, 0x30..=0x39) && chinese_mode
             }
             // 翻页键:PgDn(0x22)/+(0xBB) 仅当有下一页,PgUp(0x21)/-(0xBD) 仅当有上一页。
