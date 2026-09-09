@@ -138,6 +138,10 @@ pub struct TsfInputProcessor {
     /// 中/英标点模式 — true = 中文标点(,。;「」), false = 英文标点(,.;"")。
     /// 状态条「标」按钮翻转;OnKeyDown 按它决定标点映射。默认中文标点。
     pub(crate) is_chinese_punct: Arc<Mutex<bool>>,
+    /// 中文双引号开/闭交替标志 — true = 下一次出开引号 "(0x201C), false = 出闭引号 "(0x201D)。
+    /// 微软拼音中文模式按 Shift+' 时 "" 成对交替;单次 map_punct 无状态,故在 OnKeyDown 记录。
+    /// 2026-09-09(#103 四轮):对齐微软,不再每次都出开引号 ""。
+    pub(crate) quote_open_next: Arc<Mutex<bool>>,
 }
 
 impl TsfInputProcessor {
@@ -160,6 +164,7 @@ impl TsfInputProcessor {
             langbar_cookie: Arc::new(Mutex::new(0)),
             pending_mode_change: Arc::new(Mutex::new(false)),
             is_chinese_punct: Arc::new(Mutex::new(true)),
+            quote_open_next: Arc::new(Mutex::new(true)),
         }
     }
 }
@@ -948,12 +953,39 @@ impl ITfKeyEventSink_Impl for TsfInputProcessor_Impl {
             }
             let chinese_punct = *inner.is_chinese_punct.lock().unwrap();
             if let Some(text) = TsfInputProcessor::map_punct(vk, shift, chinese_punct) {
-                TsfInputProcessor::commit_text(inner, text);
+                // 中文双引号开/闭交替(2026-09-09 #103 四轮):map_punct 无状态恒出开引号 ",
+                // 这里按 quote_open_next 翻成开 " / 闭 ",对齐微软拼音 "" 成对。
+                let text_owned: String = if chinese_punct && vk == 0xDE && shift {
+                    let mut q = inner.quote_open_next.lock().unwrap();
+                    let t = if *q { "\u{201C}".to_string() } else { "\u{201D}".to_string() };
+                    *q = !*q;
+                    t
+                } else {
+                    text.to_string()
+                };
+                TsfInputProcessor::commit_text(inner, &text_owned);
                 #[cfg(feature = "dllentry_log")]
-                crate::com_class_factory::log_dll_entry(&format!("OnKeyDown: punct vk=0x{:02X} -> '{}' (cn_punct={})", vk, text, chinese_punct));
+                crate::com_class_factory::log_dll_entry(&format!("OnKeyDown: punct vk=0x{:02X} -> '{}' (cn_punct={})", vk, text_owned, chinese_punct));
                 return Ok(BOOL::from(true)); // 吃
             }
             return Ok(BOOL(0)); // 无映射 → 放行
+        }
+
+        // ───── 2c. Shift+数字:中文模式未打字时出中文符号(￥……( 等),对齐微软拼音 ─────
+        // 必须在下面的 digit 分支(treat_letter_english 含 shift)之前,否则 shift+数字被当临时英文
+        // 放行出 ASCII($ ^ ( _)。仅在中文模式 + 中文标点 + 未打字(buffer 空)时接管;
+        // 打字中(有候选)留给 digit 分支做候选选择,不抢。
+        if shift_held && !punct_english && (0x30..=0x39).contains(&vk) {
+            let buf_empty = inner.state.lock().unwrap().pinyin.buf.is_empty();
+            if buf_empty {
+                let chinese_punct = *inner.is_chinese_punct.lock().unwrap();
+                if let Some(text) = TsfInputProcessor::map_punct(vk, true, chinese_punct) {
+                    TsfInputProcessor::commit_text(inner, text);
+                    #[cfg(feature = "dllentry_log")]
+                    crate::com_class_factory::log_dll_entry(&format!("OnKeyDown: shift+digit vk=0x{:02X} -> '{}'", vk, text));
+                    return Ok(BOOL::from(true)); // 吃
+                }
+            }
         }
 
         // ───── 3. 数字 / 退格 / 空格 / Esc / 回车(中文模式才吃) ─────
@@ -1236,7 +1268,17 @@ impl TsfInputProcessor {
             0x41..=0x5A => true,           // A-Z 总是吃
             0x10 => true,                  // Shift
             0x14 => true,                  // CapsLock
-            0x08 | 0x20 | 0x1B | 0x0D | 0x30..=0x39 => !(buf_empty && cands_empty), // 仅在打字才吃
+            0x08 | 0x20 | 0x1B | 0x0D | 0x30..=0x39 => {
+                // 打字中(buffer 非空 或 有候选):吃 — 退格删字母/空格选候选/数字选候选。
+                if !(buf_empty && cands_empty) {
+                    return true;
+                }
+                // buffer 空:退格/空格/Esc/回车 放行(删文档/归 app);数字键在中文模式吃
+                // 以支持 Shift+数字出中文符号(￥……( 等,OnKeyDown 2c 段),英文模式/普通数字放行。
+                // 2026-09-09(#103 四轮):若此处对 shift+数字放行而 OnKeyDown 拦截 commit,
+                // 又成 OnTest 放/OnKeyDown 吃的矛盾丢键。中文模式空 buffer 数字键恒吃,两边对齐。
+                matches!(vk, 0x30..=0x39) && chinese_mode
+            }
             // 翻页键:PgDn(0x22)/+(0xBB) 仅当有下一页,PgUp(0x21)/-(0xBD) 仅当有上一页。
             // 中文模式才谈翻页(候选只在中文模式出现);英文模式根本不翻页,这些键按标点处理。
             0x22 | 0xBB if chinese_mode => has_next,
@@ -1280,6 +1322,12 @@ impl TsfInputProcessor {
             (0xBD, true) => "\u{2014}\u{2014}", // _  → —— 破折号 (双 EM DASH)
             (0xBB, false) => "=",        // =  → = (保持半角)
             (0xBB, true) => "+",         // +  → + (保持半角)
+            // Shift+数字 → 中文符号(对齐微软拼音中文模式,2026-09-09 #103 四轮)。
+            // 数字键不在 OEM 区,原先走 digit 分支被 shift 直接放行出 ASCII($ ^ ( _)。
+            (0x34, true) => "\u{FFE5}",  // $  → ￥ FULLWIDTH YEN SIGN(人民币)
+            (0x36, true) => "\u{2026}\u{2026}", // ^  → …… HORIZONTAL ELLIPSIS ×2(中文省略号)
+            (0x39, true) => "\u{FF08}",  // (  → ( FULLWIDTH LEFT PARENTHESIS
+            (0x30, true) => "\u{FF09}",  // )  → ) FULLWIDTH RIGHT PARENTHESIS
             _ => return None,
         };
         let en: &str = match (vk, shift) {
