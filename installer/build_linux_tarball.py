@@ -60,7 +60,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT_DIR = ROOT / "installer" / "_dist"
-APP_VERSION = "2.6.0"
+APP_VERSION = "2.7.4"
 # 2026-08-28 加架构后缀(避免未来引入 aarch64 时与本包混淆)
 OUT_NAME = f"PrisirAI-Linux-x86_64-{APP_VERSION}.tar.gz"
 OUT_PATH = OUT_DIR / OUT_NAME
