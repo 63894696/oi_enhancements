@@ -1331,10 +1331,17 @@ impl TsfInputProcessor {
             0xC0 => ("\u{00B7}", "\u{FF5E}", "`", "~"),   // · ~
             0xBD => ("-", "\u{2014}\u{2014}", "-", "_"),  // - ——
             0xBB => ("=", "+", "=", "+"),                 // = +
-            // Shift+数字 → 中文符号(对齐微软拼音中文模式,#103/#104)。数字键不在 OEM 区;
-            // 不 shift 的纯数字由 OnKeyDown digit 分支另行 commit,这里 unshift 给半角数字兜底。
+            // 数字键:中文模式 shift 出**全角**(用户实测微软/搜狗中文模式 Shift+数字=!@#￥%……&*()全角,
+            // 纠正此前"半角"的错误假设);英文模式 shift 出半角 !@#$%^&*()。数字键不在 OEM 区;
+            // 不 shift 的纯数字由 OnKeyDown digit 分支 commit 半角数字,这里 unshift 给半角数字兜底。
+            0x31 => ("1", "\u{FF01}", "1", "!"),          // 1 ！
+            0x32 => ("2", "\u{FF20}", "2", "@"),          // 2 ＠
+            0x33 => ("3", "\u{FF03}", "3", "#"),          // 3 ＃
             0x34 => ("4", "\u{FFE5}", "4", "$"),          // 4 ￥
+            0x35 => ("5", "\u{FF05}", "5", "%"),          // 5 ％
             0x36 => ("6", "\u{2026}\u{2026}", "6", "^"),  // 6 ……
+            0x37 => ("7", "\u{FF06}", "7", "&"),          // 7 ＆
+            0x38 => ("8", "\u{FF0A}", "8", "*"),          // 8 ＊
             0x39 => ("9", "\u{FF08}", "9", "("),          // 9 (
             0x30 => ("0", "\u{FF09}", "0", ")"),          // 0 )
             _ => return None,
@@ -1566,15 +1573,25 @@ mod punct_map_tests {
     // 对齐微软拼音中文模式:#103 修复,#104 回归排查用(功能级,不依赖二进制字节搜索)。
     #[test]
     fn zh_shift_digits_and_oem() {
+        // 中文模式 shift+数字 → 全角(用户实测微软/搜狗:!@#￥%……&*()全角)
+        assert_eq!(T::map_punct(0x31, true, true), Some("\u{FF01}")); // 1 -> ！
+        assert_eq!(T::map_punct(0x32, true, true), Some("\u{FF20}")); // 2 -> ＠
+        assert_eq!(T::map_punct(0x33, true, true), Some("\u{FF03}")); // 3 -> ＃
         assert_eq!(T::map_punct(0x34, true, true), Some("\u{FFE5}")); // 4 -> ￥
+        assert_eq!(T::map_punct(0x35, true, true), Some("\u{FF05}")); // 5 -> ％
         assert_eq!(T::map_punct(0x36, true, true), Some("\u{2026}\u{2026}")); // 6 -> ……
+        assert_eq!(T::map_punct(0x37, true, true), Some("\u{FF06}")); // 7 -> ＆
+        assert_eq!(T::map_punct(0x38, true, true), Some("\u{FF0A}")); // 8 -> ＊
         assert_eq!(T::map_punct(0x39, true, true), Some("\u{FF08}")); // 9 -> (
         assert_eq!(T::map_punct(0x30, true, true), Some("\u{FF09}")); // 0 -> )
         assert_eq!(T::map_punct(0xDB, true, true), Some("\u{3010}")); // [ -> 【
         assert_eq!(T::map_punct(0xDD, true, true), Some("\u{3011}")); // ] -> 】
         assert_eq!(T::map_punct(0xDC, true, true), Some("\u{3001}")); // \ -> 、
         assert_eq!(T::map_punct(0xBD, true, true), Some("\u{2014}\u{2014}")); // - -> ——
-        // 英文模式 shift 变体(#104 顺带补全:{}| 原 en 表缺 → 英文模式按不出)
+        // 英文模式 shift → 半角(用户实测英文模式半角)
+        assert_eq!(T::map_punct(0x31, true, false), Some("!"));
+        assert_eq!(T::map_punct(0x35, true, false), Some("%"));
+        assert_eq!(T::map_punct(0x38, true, false), Some("*"));
         assert_eq!(T::map_punct(0xDB, true, false), Some("{"));
         assert_eq!(T::map_punct(0xDD, true, false), Some("}"));
         assert_eq!(T::map_punct(0xDC, true, false), Some("|"));
