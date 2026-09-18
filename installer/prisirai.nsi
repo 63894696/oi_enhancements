@@ -22,7 +22,7 @@ Unicode True
 
 ; -------- 元信息 --------
 !define APP_NAME "PrisirAI"
-!define APP_VERSION "2.7.5"
+!define APP_VERSION "2.7.7"
 !define APP_PUBLISHER "Prisir(湃睿思)"
 !define APP_EXE "PrisirAI.exe"
 ; 对外品牌显示名(窗口/对话框用),区别于 APP_NAME(exe/目录/注册表内部标识符,不动)
@@ -39,6 +39,11 @@ InstallDirRegKey HKCU "Software\${APP_NAME}" "InstallLocation"
 RequestExecutionLevel admin
 ShowInstDetails show
 ShowUninstDetails show
+
+; 2026-09-13:默认 zlib 压缩率差(534MB),改 LZMA + solid 大幅缩小
+; 二进制大文件(PrisirAI.exe 397MB + electron 269MB)用 solid 块压缩收益最大
+SetCompressor /SOLID lzma
+SetDatablockOptimize on
 
 ; -------- 现代 UI --------
 !include "MUI2.nsh"
@@ -170,13 +175,13 @@ Section "$(SECTION_CORE)"
   SetOutPath "$INSTDIR"
   File "..\dist\PrisirAI.exe"
 
-  ; 资源 — 从 installer/_staging2/ 拷(2026-08-25 重建的干净 staging)。
-  ; 旧 _staging/ 曾被手工 cp -r 弄出嵌套 prisiragent-shell\prisiragent-shell,且其 default_app.asar
-  ; 被残留 electron 进程持久锁住删不掉、/x 排除也不可靠 → 直接从干净源(仓库根 prisiragent-shell)
-  ; 重建全新 _staging2/,根源无嵌套,无需任何 /x 排除或编译期删除。
+  ; 2026-09-13:Electron 壳(269MB)→ Tauri 壳(15MB),省 254MB
+  ; Tauri 壳是一个独立 exe,不需要 node_modules/electron 目录
+  File "..\prisiragent-tauri\src-tauri\target\release\prisirai-shell.exe"
+
+  ; 资源 — assets(图标/主题/山水背景)仍需,Electron 的 prisiragent-shell 目录不再需要
   SetOutPath "$INSTDIR"
   File /r "_staging2\assets"
-  File /r "_staging2\prisiragent-shell"
 
   ; 启动器(快捷方式目标)
   SetOutPath "$INSTDIR"
@@ -197,14 +202,14 @@ Section "$(SECTION_CORE)"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "Publisher" "${APP_PUBLISHER}"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}" "DisplayName" "${APP_BRAND}"
 
-  ; 桌面快捷方式(2026-08-24 改:指向 PrisirAI.vbs 无窗启动,不再闪 CMD 黑窗)
+  ; 桌面快捷方式(2026-09-13 改:指向 Tauri 壳 prisirai-shell.exe)
   CreateShortcut "$DESKTOP\Prisir AI.lnk" \
-    "$INSTDIR\PrisirAI.vbs" "" "$INSTDIR\prisiragent-shell\icon.ico" 0
+    "$INSTDIR\prisirai-shell.exe" "" "$INSTDIR\assets\icon.ico" 0
 
   ; 开始菜单
   CreateDirectory "$SMPROGRAMS\PrisirAI"
   CreateShortcut "$SMPROGRAMS\PrisirAI\Prisir AI.lnk" \
-    "$INSTDIR\PrisirAI.vbs" "" "$INSTDIR\prisiragent-shell\icon.ico" 0
+    "$INSTDIR\prisirai-shell.exe" "" "$INSTDIR\assets\icon.ico" 0
 
   ; 写卸载器(放在最后,这样 Uninstall.exe 不会与 $INSTDIR 冲突)
   WriteUninstaller "$INSTDIR\Uninstall.exe"

@@ -114,7 +114,7 @@ class SimplexRuntime:
         self._a2h_pending: dict[str, dict[str, Any]] = {}  # request_id -> {action, reason, ts}
         self._smp_server: str = DEFAULT_SMP_SERVER
         self._display_name: str = "prisiragent"
-        self._db_prefix: str = str(_DEFAULT_DB_DIR / "oiagent_simplex")
+        self._db_prefix: str = str(_DEFAULT_DB_DIR / "prisiragent_simplex")
         # DB 加密密钥(进程内存,不落 env)。解锁后由 web 层写入;_boot 优先消费它,
         # 其次才回退 env(兼容外部脚本/旧路径)。清内存即"锁死自身",无 env 被同机读取的坑。
         self._db_key: Optional[str] = None

@@ -5,7 +5,7 @@
   (b) simplex_tools: standalone 降级 fail-closed + accept_invitation 本体审批闸
   (c) simplex_auto_accept: 本地确认白名单(首见→需确认,confirm 后→接受)
 
-隔离:用 OIAGENT_POLICY_DB 指到临时文件,不碰真实 policy_rules.db;
+隔离:用 PRISIRAGENT_POLICY_DB 指到临时文件(旧名 OIAGENT_POLICY_DB 仍生效作 fallback),不碰真实 policy_rules.db;
      测试间用 importlib.reload 重置模块级连接/白名单缓存。
 跑法:`python -m unittest test_policy_gate_simplex.py`
 """

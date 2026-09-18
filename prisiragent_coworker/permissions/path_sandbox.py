@@ -38,7 +38,7 @@ from pathlib import Path
 from prisiragent_coworker.permissions.engine import AuditSink
 
 __all__ = [
-    "OIagentCoworkerPathSandbox",
+    "prisiragentCoworkerPathSandbox",
     "PathSandboxConfig",
     "SandboxDecision",
     "SandboxReason",
@@ -78,7 +78,7 @@ class PathSandboxConfig:
     case_insensitive: bool = os.name == "nt"
 
 
-class OIagentCoworkerPathSandbox:
+class prisiragentCoworkerPathSandbox:
     """Resolve requested paths and confine them to a workspace root."""
 
     def __init__(

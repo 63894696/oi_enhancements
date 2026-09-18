@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 """PrisirAI 工具 → coworker PermissionEngine 适配层(v1.0 权限闸)。
 
-把 dispatch 的工具调用翻译成 coworker 的 Action,过 OIagentCoworkerPermissionEngine
+把 dispatch 的工具调用翻译成 coworker 的 Action,过 prisiragentCoworkerPermissionEngine
 的 SYNC 决策,返回 {allow, requires_approval, risk_level, reason}。
 
 设计要点:
@@ -22,14 +22,14 @@ from pathlib import Path
 
 from prisiragent_coworker.permissions import (
     Action,
-    OIagentCoworkerPermissionEngine,
+    prisiragentCoworkerPermissionEngine,
     PermissionContext,
     PermissionMode,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
-_engine: OIagentCoworkerPermissionEngine | None = None
+_engine: prisiragentCoworkerPermissionEngine | None = None
 _audit_path: Path | None = None
 
 # dispatch 工具名 → coworker Action.kind(驱动 _classify_risk 的默认风险级)。
@@ -104,7 +104,7 @@ def init(workdir: str, audit_dir: str) -> None:
     """初始化引擎单例。prisiragent_web 启动时调用一次;重复调用会按新 workdir 重建。"""
     global _engine, _audit_path
     _audit_path = Path(audit_dir) / "permission_stream.jsonl"
-    _engine = OIagentCoworkerPermissionEngine(
+    _engine = prisiragentCoworkerPermissionEngine(
         workspace_root=Path(workdir), audit_sink=_audit_sink
     )
     _LOGGER.info("perm_gate initialized: workdir=%s audit=%s", workdir, _audit_path)
@@ -115,7 +115,7 @@ def rebind_workdir(workdir: str) -> None:
     global _engine
     if _audit_path is None:
         return  # 尚未 init,等启动时 init
-    _engine = OIagentCoworkerPermissionEngine(
+    _engine = prisiragentCoworkerPermissionEngine(
         workspace_root=Path(workdir), audit_sink=_audit_sink
     )
     _LOGGER.info("perm_gate rebound workdir=%s", workdir)

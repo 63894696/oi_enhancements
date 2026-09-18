@@ -1,4 +1,4 @@
-# OIagent MCP Server v0.1
+# Prisiragent MCP Server v0.1
 
 > 走方向 2 决策做的最小 MCP 暴露层。不重写 OI,不重写 cursor-harness,只把它们当成可调用的 MCP 工具。
 

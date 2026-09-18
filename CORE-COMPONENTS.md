@@ -77,7 +77,7 @@ be made available under OIE-PCS-1.0.
 - `aureon/`                                 — 端侧 Agent 核心模块
 - `aureon/nix/`                             — Nix 表达式
 - `prisir_asr/`                             — 端侧 ASR 客户端
-- `prisir-browser/`                         — Prisir 浏览器侧
+- `prisiragent-browser/`                    — Prisir 浏览器侧
 - `prisir_ime/`                             — 灵犀输入法(Rust FFI + Python 壳)
 - `prisir_ime/src/`                         — Rust 引擎(jni / ffi / lib / engine)
 - `prisir_work/`                            — PrisirWork(GitHub connector 多 session)

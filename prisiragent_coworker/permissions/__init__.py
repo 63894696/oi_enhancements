@@ -29,10 +29,10 @@ Public API:
     * :class:`Action`, :class:`PermissionContext`, :class:`Verdict` --
       the engine's core dataclasses.
     * :class:`PermissionMode` -- five-mode permission state machine.
-    * :class:`OIagentCoworkerPermissionEngine` -- five-mode permission
+    * :class:`prisiragentCoworkerPermissionEngine` -- five-mode permission
       decision engine (W2-1.1).
     * :class:`AuditDecision`, :class:`AuditSink`,
-      :class:`OIagentCoworkerAuditFacade` -- typed audit envelope +
+      :class:`prisiragentCoworkerAuditFacade` -- typed audit envelope +
       facade (W2-1.3 / W2-1.4).
     * :class:`LegacyPolicyEngine`, :class:`PolicyGate`,
       :class:`PolicyGateMode`, :class:`VerdictDiff` -- P0-3 PolicyGate
@@ -49,11 +49,11 @@ Anti-flattery boundary (see plan §3.1 / §3.2):
 from prisiragent_coworker.permissions.audit import (
     AuditDecision,
     AuditSink,
-    OIagentCoworkerAuditFacade,
+    prisiragentCoworkerAuditFacade,
 )
 from prisiragent_coworker.permissions.engine import (
     Action,
-    OIagentCoworkerPermissionEngine,
+    prisiragentCoworkerPermissionEngine,
     PermissionContext,
     PermissionMode,
     Verdict,
@@ -70,8 +70,8 @@ __all__ = [
     "AuditDecision",
     "AuditSink",
     "LegacyPolicyEngine",
-    "OIagentCoworkerAuditFacade",
-    "OIagentCoworkerPermissionEngine",
+    "prisiragentCoworkerAuditFacade",
+    "prisiragentCoworkerPermissionEngine",
     "PermissionContext",
     "PermissionMode",
     "PolicyGate",

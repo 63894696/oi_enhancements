@@ -1,6 +1,6 @@
 /* guohua-theme.css — shared light ink-painting design tokens.
    Source palette: 采薇/蒹葭 references (D:\AI生成素材库\视频生成测试).
-   Used by oiagent_web, SecureDM panel, SecureDM web for a unified light guohua theme. */
+   Used by prisiragent_web, SecureDM panel, SecureDM web for a unified light guohua theme. */
 :root {
   /* base */
   --gh-paper: #f6f1e7;        /* 宣纸底 */

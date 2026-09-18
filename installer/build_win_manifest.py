@@ -7,7 +7,7 @@
 - 输出:  installer/_dist/windows/<channel>/manifest.json
          installer/_dist/windows/<channel>/checksums.sha256
 
-VERSION.txt 在 prisIr_ime_tsf/VERSION.txt(Win 端自己的, 与 Android 端 VERSION.txt 同字段)。
+VERSION.txt 在 prisiragent_ime/VERSION.txt(Win 端自己的, 与 Android 端 VERSION.txt 同字段)。
 产物文件名规则(由 build_win.sh 写出):
     LingxiIME-Windows-x64-<PRIMARY_VERSION>-<RELEASE_CHANNEL>.zip
 
@@ -45,7 +45,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DIST_ROOT = REPO_ROOT / "installer" / "_dist" / "windows"
-WIN_VERSION_FILE = REPO_ROOT / "prisIr_ime_tsf" / "VERSION.txt"
+WIN_VERSION_FILE = REPO_ROOT / "prisiragent_ime" / "VERSION.txt"
 ANDROID_VERSION_FILE = REPO_ROOT / "VERSION.txt"
 ZIP_NAME_TEMPLATE = "LingxiIME-Windows-x64-{version}-{channel}.zip"
 
@@ -67,7 +67,7 @@ CHANGELOG = {
 
 
 def load_win_version() -> dict:
-    """读 prisIr_ime_tsf/VERSION.txt 解析成 dict。
+    """读 prisiragent_ime/VERSION.txt 解析成 dict。
 
     字段对齐 Android 端, 但没有 PRIMARY_VERSION_CODE (Win 端无 versionCode)。
     """
@@ -135,7 +135,7 @@ def build_manifest_for_channel(channel: str, ver: dict):
                 inner_version = line.split("=", 1)[1].strip()
                 break
         if inner_version != ver["PRIMARY_VERSION"]:
-            print(f"  [WARN] unzipped VERSION.txt PRIMARY_VERSION={inner_version} 与 prisIr_ime_tsf/VERSION.txt PRIMARY_VERSION={ver['PRIMARY_VERSION']} 不一致")
+            print(f"  [WARN] unzipped VERSION.txt PRIMARY_VERSION={inner_version} 与 prisiragent_ime/VERSION.txt PRIMARY_VERSION={ver['PRIMARY_VERSION']} 不一致")
 
     # 安装命令样例(对齐 INSTALL.md, 简化版)
     install_cmd = (

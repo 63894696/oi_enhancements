@@ -64,7 +64,7 @@ Three record classes appear in the ``kind="permission"`` stream:
 
 Anti-flattery boundary (see plan §3.1 / §8.1.1):
     - No ``import openworker`` anywhere in this file.
-    - No ``${OIAGENT_VAULT}`` resolution, no env-var reads, no
+    - No ``${PRISIRAGENT_VAULT}`` resolution (legacy ``${OIAGENT_VAULT}`` accepted as fallback), no env-var reads, no
       ``prisiragent.vault.path`` import.
     - Zero audit emission; there is no sink parameter at all.
     - No file / network / log I/O; input is the injected iterable only.

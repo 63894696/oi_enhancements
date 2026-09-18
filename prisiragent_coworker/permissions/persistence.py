@@ -66,7 +66,7 @@ if TYPE_CHECKING:
     from prisiragent_coworker.permissions.engine import PermissionMode
 
 __all__ = [
-    "OIagentCoworkerStandingRuleStore",
+    "prisiragentCoworkerStandingRuleStore",
     "StandingRule",
     "StandingRuleExpired",
 ]
@@ -154,7 +154,7 @@ def _new_rule_id() -> str:
     return uuid.uuid4().hex
 
 
-class OIagentCoworkerStandingRuleStore:
+class prisiragentCoworkerStandingRuleStore:
     """Append-only JSONL store for standing rules with TTL expiry.
 
     The store is designed for single-process access. Multiple processes
@@ -289,7 +289,7 @@ class OIagentCoworkerStandingRuleStore:
     def set_audit_sink(self, sink: object | None) -> None:
         """Replace the audit sink (or pass None to disable).
 
-        Public mutator so the OIagentCoworkerAuditFacade can wire a
+        Public mutator so the prisiragentCoworkerAuditFacade can wire a
         standing-rule store back through the unified audit pipeline without
         poking the private ``_audit_sink`` attribute. Idempotent;
         replaces whatever sink the store was constructed with.

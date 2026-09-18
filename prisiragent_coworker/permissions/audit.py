@@ -33,7 +33,7 @@ generate what each subsystem was emitting. W2-1.3 replaces that with:
     for subsystem-specific auxiliary context (W2-1.4 addition).
   * ``AuditSink`` -- a runtime-checkable Protocol with a single argument
     that MUST be an ``AuditDecision``.
-  * ``OIagentCoworkerAuditFacade`` -- a top-level facade that wraps the
+  * ``prisiragentCoworkerAuditFacade`` -- a top-level facade that wraps the
     four subsystem calls into one ``AuditDecision`` each. W2-1.4 adds
     ``for_path_sandbox_with_original()`` and
     ``for_shell_classifier_with_target()`` adapter variants that accept
@@ -83,7 +83,7 @@ if TYPE_CHECKING:
 __all__ = [
     "AuditDecision",
     "AuditSink",
-    "OIagentCoworkerAuditFacade",
+    "prisiragentCoworkerAuditFacade",
 ]
 
 _LOGGER = logging.getLogger(__name__)
@@ -94,9 +94,9 @@ AuditKind = Literal[
     "path_sandbox",
     "shell_classifier",
     "standing_rule",
-    "inbox",  # W2-2: OIagentCoworkerInboxService envelopes
-    "selfwake",  # W2-3: OIagentCoworkerSelfWakeScheduler envelopes
-    "skill",  # W2-5: OIagentCoworkerSkillsService envelopes
+    "inbox",  # W2-2: prisiragentCoworkerInboxService envelopes
+    "selfwake",  # W2-3: prisiragentCoworkerSelfWakeScheduler envelopes
+    "skill",  # W2-5: prisiragentCoworkerSkillsService envelopes
 ]
 StandingRuleAction = Literal["add", "revoke"]
 
@@ -123,7 +123,7 @@ class AuditDecision:
         selfwake_envelope: For ``kind == "selfwake"``, the
             ``TaskFireEnvelope`` describing a register / tick_fire / succeed /
             fail / cancel / disable / enable event from
-            ``OIagentCoworkerSelfWakeScheduler``. (Forward-declared as
+            ``prisiragentCoworkerSelfWakeScheduler``. (Forward-declared as
             ``object | None`` to avoid the audit -> selfwake import edge;
             runtime callers in selfwake/scheduler.py populate this slot
             with the dataclass instance.)
@@ -159,7 +159,7 @@ class AuditSink(Protocol):
     which is populated.
 
     Implementations MUST be idempotent and MUST NEVER raise. The caller
-    (``OIagentCoworkerPermissionEngine.check`` and the facade adapters)
+    (``prisiragentCoworkerPermissionEngine.check`` and the facade adapters)
     catches sink exceptions internally to keep the verdict / decision
     invariants stable.
 
@@ -178,7 +178,7 @@ def _utcnow() -> datetime:
     return datetime.now(UTC)
 
 
-class OIagentCoworkerAuditFacade:
+class prisiragentCoworkerAuditFacade:
     """Top-level audit facade wiring all subsystems to one sink.
 
     The facade is the single integration point between the permission
@@ -213,7 +213,7 @@ class OIagentCoworkerAuditFacade:
             contract.
           * An already-built ``AuditDecision(kind='permission', ...)`` --
             forwarded verbatim to the inner sink, avoiding double-wrap.
-            ``OIagentCoworkerPermissionEngine.check`` (W2-1.3) already
+            ``prisiragentCoworkerPermissionEngine.check`` (W2-1.3) already
             pre-wraps its ``Verdict`` in an ``AuditDecision``; if the
             engine is wired through this adapter the inner sink would
             otherwise receive ``decision.engine_decision.engine_decision``
@@ -286,7 +286,7 @@ class OIagentCoworkerAuditFacade:
     ) -> Callable[[SandboxDecision, Path], None]:
         """Return a 2-arg sink adapter for path_sandbox (W2-1.4).
 
-        ``OIagentCoworkerPathSandbox._finish`` invokes its ``audit_sink``
+        ``prisiragentCoworkerPathSandbox._finish`` invokes its ``audit_sink``
         with two positional arguments -- ``(SandboxDecision, original_path)``
         -- because path_sandbox internally already had the original path
         in scope and threading it through the audit envelope as an
@@ -318,7 +318,7 @@ class OIagentCoworkerAuditFacade:
     ) -> Callable[[ShellClassification, str], None]:
         """Return a 2-arg sink adapter for shell_classifier (W2-1.4).
 
-        ``OIagentCoworkerShellClassifier._audit`` invokes its
+        ``prisiragentCoworkerShellClassifier._audit`` invokes its
         ``audit_sink`` with two positional arguments --
         ``(ShellClassification, command)`` -- because the classifier
         internally already had the raw command string in scope.
@@ -358,7 +358,7 @@ class OIagentCoworkerAuditFacade:
         it to the inner sink.
 
         Args:
-            store: An ``OIagentCoworkerStandingRuleStore`` (typed as
+            store: An ``prisiragentCoworkerStandingRuleStore`` (typed as
                 ``object`` to avoid an import cycle). The store's
                 audit sink is replaced with the pass-through adapter
                 via the public ``set_audit_sink`` setter.
@@ -374,12 +374,12 @@ class OIagentCoworkerAuditFacade:
             import DAG.
         """
         from prisiragent_coworker.permissions.persistence import (
-            OIagentCoworkerStandingRuleStore,
+            prisiragentCoworkerStandingRuleStore,
         )
 
-        if not isinstance(store, OIagentCoworkerStandingRuleStore):
+        if not isinstance(store, prisiragentCoworkerStandingRuleStore):
             raise TypeError(
-                f"for_standing_rule_store expected OIagentCoworkerStandingRuleStore; "
+                f"for_standing_rule_store expected prisiragentCoworkerStandingRuleStore; "
                 f"got {type(store).__name__}. Wrap a real store."
             )
         sink = self._sink

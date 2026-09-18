@@ -12,7 +12,7 @@
 #   - New file; no upstream counterpart. Implements the §5 PolicyGate
 #     compat layer: hot-read feature-flag routing between the legacy
 #     Prisiragent P0-3 PolicyEngine (duck-typed, not imported) and the new
-#     OIagentCoworkerPermissionEngine, with shadow-mode verdict diffing
+#     prisiragentCoworkerPermissionEngine, with shadow-mode verdict diffing
 #     and enforce-mode fallback-to-legacy on new-engine crash.
 #   - See git log --follow <this file> for the full change history.
 #
@@ -66,7 +66,7 @@ from prisiragent_coworker.permissions.audit import AuditDecision, AuditSink
 if TYPE_CHECKING:
     from prisiragent_coworker.permissions.engine import (
         Action,
-        OIagentCoworkerPermissionEngine,
+        prisiragentCoworkerPermissionEngine,
         PermissionContext,
         Verdict,
     )
@@ -81,8 +81,9 @@ __all__ = [
 _LOGGER = logging.getLogger(__name__)
 
 # Feature-flag key inside feature_flags.json. Expected real-world path:
-#   ${OIAGENT_VAULT}/prisiragent_coworker/feature_flags.json
-# The gate does NOT resolve ${OIAGENT_VAULT} itself -- the caller does.
+#   ${PRISIRAGENT_VAULT}/prisiragent_coworker/feature_flags.json
+# (legacy name: ${OIAGENT_VAULT} also accepted by callers as fallback)
+# The gate does NOT resolve ${PRISIRAGENT_VAULT} itself -- the caller does.
 _FLAG_KEY = "permissions_v2_shadow"
 
 # Decision-bearing fields compared by the shadow-mode diff. ``reason``
@@ -171,7 +172,7 @@ class PolicyGate:
     def __init__(
         self,
         legacy: LegacyPolicyEngine,
-        new_engine: OIagentCoworkerPermissionEngine,
+        new_engine: prisiragentCoworkerPermissionEngine,
         audit_sink: AuditSink,
         flags_path: Path,
     ) -> None:
@@ -180,7 +181,7 @@ class PolicyGate:
         Args:
             legacy: Duck-typed legacy PolicyEngine (must expose
                 ``classify(action, ctx) -> Verdict``).
-            new_engine: The new OIagentCoworkerPermissionEngine (must
+            new_engine: The new prisiragentCoworkerPermissionEngine (must
                 expose a callable ``check(action, ctx)``).
             audit_sink: Callable accepting one ``AuditDecision``
                 envelope; receives the gate's diff / fallback records.
@@ -213,7 +214,7 @@ class PolicyGate:
                 "feature-flag resolution. Received None."
             )
         self._legacy: LegacyPolicyEngine = legacy
-        self._new_engine: OIagentCoworkerPermissionEngine = new_engine
+        self._new_engine: prisiragentCoworkerPermissionEngine = new_engine
         self._audit_sink: AuditSink = audit_sink
         self._flags_path: Path = Path(flags_path)
         _LOGGER.debug(

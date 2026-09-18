@@ -24,7 +24,7 @@ with per-leg failure isolation. It composes the W3-2 durable local
 ``AuditStreamSink`` (the primary leg, invoked FIRST) with the external
 ``prisiragent.audit.P2_10`` audit leg (the secondary leg, invoked SECOND)
 behind the sealed single-sink facade
-(:class:`~prisiragent_coworker.permissions.audit.OIagentCoworkerAuditFacade`).
+(:class:`~prisiragent_coworker.permissions.audit.prisiragentCoworkerAuditFacade`).
 
 Adjudicated design (W3-3 contract)
 ----------------------------------
@@ -55,7 +55,7 @@ Wiring recipe (deployment-facing; NOT executed by this module)
 ::
 
     from pathlib import Path
-    from prisiragent_coworker.permissions.audit import OIagentCoworkerAuditFacade
+    from prisiragent_coworker.permissions.audit import prisiragentCoworkerAuditFacade
     from prisiragent_coworker.permissions.audit_stream import AuditStreamSink
     from prisiragent_coworker.permissions.audit_tee import FanoutAuditSink
     # from prisiragent.audit import P2_10_audit_sink   # external; deployer imports (NOT in this repo)
@@ -64,12 +64,12 @@ Wiring recipe (deployment-facing; NOT executed by this module)
     stream_leg  = AuditStreamSink(stream_path)      # durable local leg (first)
     p2_leg      = P2_10_audit_sink(...)             # external leg (second)
     tee         = FanoutAuditSink(primary=stream_leg, secondary=p2_leg)
-    facade      = OIagentCoworkerAuditFacade(sink=tee)
-    # engine = OIagentCoworkerPermissionEngine(..., audit_sink=facade.for_engine())
+    facade      = prisiragentCoworkerAuditFacade(sink=tee)
+    # engine = prisiragentCoworkerPermissionEngine(..., audit_sink=facade.for_engine())
 
 Anti-flattery boundary (see plan §3.1 / §8.1.1):
     - No ``import openworker`` anywhere in this file.
-    - No ``${OIAGENT_VAULT}`` resolution, no env-var reads, no
+    - No ``${PRISIRAGENT_VAULT}`` resolution (legacy ``${OIAGENT_VAULT}`` accepted as fallback), no env-var reads, no
       ``prisiragent.vault.path`` import; ``stream_path`` is injected as a
       ``Path`` by the deployer.
     - No ``datetime.now()`` -- this module never reads a clock.
@@ -97,7 +97,7 @@ class FanoutAuditSink:
 
     Conforms to the ``AuditSink`` Protocol (``@runtime_checkable``):
     ``isinstance(tee, AuditSink)`` holds, and the tee passes the
-    ``OIagentCoworkerAuditFacade(sink=tee)`` ``callable`` gate.
+    ``prisiragentCoworkerAuditFacade(sink=tee)`` ``callable`` gate.
 
     The primary leg (durable local ``AuditStreamSink``) is invoked FIRST;
     the secondary leg (external P2_10) is invoked SECOND. Both legs

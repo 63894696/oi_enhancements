@@ -136,6 +136,146 @@ _TASK_PREFERENCE: Dict[str, List[str]] = {
 
 
 # ============================================================
+# 厂商归集(2026-09-14 同厂商优先故障转移)
+# ============================================================
+# 故障转移跨厂商时,回复风格/工具习惯会跳变(用户反馈「风格不搭」)。
+# 归一化「同厂商」判定:已知平台名直接映射;自定义/自定义家族名按 base_url 主机名归一。
+# 同一厂商桶内的多个平台条目视为「同一厂商的不同模型」,故障转移应优先在桶内换,
+# 桶内无可换才跨厂商(由 _run_chat_thread 的候选序生成实现)。
+_VENDOR_HOST_HINTS: List[tuple] = [
+    ("openai.com", "openai"),
+    ("anthropic.com", "anthropic"),
+    ("minimaxi.com", "minimax"),
+    ("minimax.chat", "minimax"),
+    ("deepseek.com", "deepseek"),
+    ("dashscope.aliyuncs.com", "qwen"),
+    ("aliyuncs.com", "qwen"),
+    ("openrouter.ai", "openrouter"),
+    ("ollama.com", "ollama"),
+    ("bigmodel.cn", "zhipu"),
+    ("moonshot.cn", "moonshot"),
+    ("moonshotai", "moonshot"),
+    ("api.mistral.ai", "mistral"),
+    ("groq.com", "groq"),
+    ("generativelanguage.googleapis.com", "gemini"),
+    ("googleapis.com", "gemini"),
+]
+
+# 已知平台名 → 厂商桶(平台名与厂商不一定同字面,如 minimaxi/minimax 同桶)
+_VENDOR_PLATFORM_MAP: Dict[str, str] = {
+    "openai": "openai",
+    "anthropic": "anthropic",
+    "minimaxi": "minimax",
+    "minimax": "minimax",
+    "deepseek": "deepseek",
+    "ollama": "ollama",
+    "yunbailian": "qwen",
+    "qwen": "qwen",
+    "agnes": "openrouter",
+}
+
+
+def vendor_of(platform: str, base_url: str = "") -> str:
+    """归一化平台所属厂商桶。已知平台名直查;否则按 base_url 主机名匹配,都不中回退平台名。"""
+    p = (platform or "").strip().lower()
+    if p in _VENDOR_PLATFORM_MAP:
+        return _VENDOR_PLATFORM_MAP[p]
+    host = (base_url or "").lower()
+    for hint, vend in _VENDOR_HOST_HINTS:
+        if hint in host:
+            return vend
+    return p or "unknown"
+
+
+# ============================================================
+# 纯规则离线首配(task #12): key 前缀 / base_url 域名 → 平台+proto+base_url
+# 设计定案(两轮实测背书): 配置识别是纯规则问题,任何小模型都不可靠,故零模型。
+# 只识别「这是什么平台的 key/url」,不做网络调用、不校验 key 真伪。
+# 命中 → {ok, platform, proto, base_url, model, vendor, by};未命中 → {ok:False, reason}。
+# ============================================================
+
+# key 前缀 → (平台名, proto)。前缀判定时取小写、去空白;顺序即优先级(更具体的前缀在前)。
+_KEY_PREFIX_RULES: List[tuple] = [
+    ("sk-ant-", "anthropic", "anthropic"),
+    ("sk-or-", "agnes", "openai"),        # OpenRouter 兼容 openai 协议;agnes 桶=openrouter
+    ("sk-proj-", "openai", "openai"),
+    ("sk-", "openai", "openai"),          # 通用 sk- 兜底按 openai(deepseek/moonshot 等也是 sk- 但需 url 区分)
+]
+
+# 平台名 → 其官方默认 base_url 用于展示/预填(与 _KNOWN_PLATFORM_DEFAULTS 同源,避免循环 import 在函数内取)。
+def identify_key(text: str) -> Dict[str, Any]:
+    """纯规则识别用户粘贴的 key 或 base_url 属于哪个平台。
+
+    输入可以是: 裸 key(sk-ant-...)、key+url 混合粘贴、或纯 url。
+    返回 {ok, platform, proto, base_url, model, vendor, by} 或 {ok:False, reason}。
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return {"ok": False, "reason": "empty"}
+
+    # 拆出 url 与疑似 key:整段里找 http(s)://... 与 sk-/key 样 token。
+    url = ""
+    m = re.search(r"https?://[^\s\"'<>]+", raw)
+    if m:
+        url = m.group(0).rstrip("/.,;)")
+    # 提取疑似 key 片段(以 sk- 等开头的连续非空白)
+    key_tok = ""
+    km = re.search(r"(sk-[A-Za-z0-9_\-]+|[A-Za-z0-9_\-]{20,})", raw)
+    if km and "://" not in km.group(0):
+        key_tok = km.group(0)
+
+    # 1) url 域名优先(最确定): 域名 → 厂商 → 平台/proto/base_url
+    if url:
+        host = url.lower()
+        for hint, vend in _VENDOR_HOST_HINTS:
+            if hint in host:
+                plat, proto = _vendor_to_platform(vend)
+                return _identify_hit(plat, proto, url, by="url", key=key_tok)
+
+    # 2) key 前缀判定
+    kl = key_tok.lower()
+    if kl:
+        for pref, plat, proto in _KEY_PREFIX_RULES:
+            if kl.startswith(pref):
+                # 通用 sk- 兜底时,若无 url 佐证则置信度标注为 prefix-guess
+                return _identify_hit(plat, proto, "", by="prefix", key=key_tok)
+
+    return {"ok": False, "reason": "no_match",
+            "hint": "未识别。请补充该平台名称或其 base_url(填 https://... 即可自动识别)"}
+
+
+def _vendor_to_platform(vendor: str) -> tuple:
+    """厂商桶 → (平台名, proto)。agnes/openrouter 桶落 agnes(仓内 openrouter 入口)。"""
+    mapping = {
+        "openai": ("openai", "openai"),
+        "anthropic": ("anthropic", "anthropic"),
+        "minimax": ("minimaxi", "openai"),
+        "deepseek": ("deepseek", "openai"),
+        "qwen": ("qwen", "openai"),
+        "openrouter": ("agnes", "openai"),
+        "ollama": ("ollama", "openai"),
+    }
+    return mapping.get(vendor, ("custom", "openai"))
+
+
+def _identify_hit(platform: str, proto: str, url: str, by: str, key: str = "") -> Dict[str, Any]:
+    """组装命中结果, 已知平台补官方默认 base_url/model。"""
+    from fastlane.providers.llm_prisir import PrisirRouter  # 延迟自引, 取默认端点
+    known = PrisirRouter._KNOWN_PLATFORM_DEFAULTS.get(platform, {})
+    base_url = url or known.get("base_url", "")
+    return {
+        "ok": True,
+        "platform": platform,
+        "proto": proto,
+        "base_url": base_url,
+        "model": known.get("model", ""),
+        "vendor": vendor_of(platform, base_url),
+        "by": by,               # url / prefix — 前端据此提示置信度
+        "key_present": bool(key),
+    }
+
+
+# ============================================================
 # 路由器
 # ============================================================
 class PrisirRouter:
@@ -217,6 +357,62 @@ class PrisirRouter:
             f"无可用模型平台(策略={strategy}, 已填key={self.available_platforms()}, "
             f"已拉黑={sorted(excl)})。"
             "请到 Prisir AI 设置页填入 OpenAI / Anthropic / 自定义端点 key。")
+
+    def failover_candidates(self, strategy: str = "smart",
+                            task_type: Optional[str] = None,
+                            exclude: Optional[set] = None,
+                            preferred: Optional[str] = None) -> List[Dict[str, Any]]:
+        """生成完整候选序(同厂商优先),供故障转移循环逐个尝试。
+
+        2026-09-14 同厂商优先:首次(preferred 未拉黑)用 preferred(用户 active_platform);
+        一旦它失败,下一位优先「同厂商桶内」的其它已配平台(换模型不换厂商,风格不跳变),
+        桶内耗尽才按 _TASK_PREFERENCE 跨厂商。返回 [{platform, cfg, task_type}...],
+        已剔除 exclude 与无 cfg 项,顺序即尝试顺序。
+        """
+        text = ""  # 候选序生成不依赖具体消息;task_type 由调用方给或默认 general
+        tt = task_type or "general"
+        order = list(_TASK_PREFERENCE.get(tt, _TASK_PREFERENCE["general"]))
+        for p in self.available_platforms():
+            if p not in order:
+                order.append(p)
+
+        excl = set(exclude or set())
+        # 已配且可用的平台(有 key 且能装配出 cfg)
+        usable = []
+        for p in order:
+            if p in excl:
+                continue
+            cfg = self._platform_cfg(p)
+            if cfg:
+                usable.append((p, cfg))
+
+        # 同厂商优先排序:锚厂商 = preferred 的厂商(即使它已被拉黑——故障转移中途锚定
+        # 不变,继续在同厂商桶内换下一个模型);无 preferred 才锚序首可用平台。
+        if preferred:
+            anchor = preferred
+        else:
+            anchor = usable[0][0] if usable else None
+        anchor_vendor = vendor_of(anchor, self._anchor_base(anchor)) if anchor else None
+
+        def _vendor_key(item):
+            p, cfg = item
+            same = 0 if (anchor_vendor and vendor_of(p, cfg.get("base_url", "")) == anchor_vendor) else 1
+            # 稳定排序:同厂商桶内保持 _TASK_PREFERENCE 原序,锚平台排最前
+            is_anchor = 0 if p == anchor else 1
+            return (same, is_anchor)
+
+        usable.sort(key=_vendor_key)
+        return [{"platform": p, "cfg": cfg, "task_type": tt} for p, cfg in usable]
+
+    def _anchor_base(self, platform: Optional[str]) -> str:
+        if not platform:
+            return ""
+        rec = self.store.get_key(platform)
+        base = (rec or {}).get("base_url", "")
+        if not base:
+            known = self._KNOWN_PLATFORM_DEFAULTS.get(platform, {})
+            base = known.get("base_url", "")
+        return base or ""
 
     # 调用失败时可安全重试下一平台的错误(402订阅墙/429限流/超时/5xx/连接错)。
     # 4xx 里 400(请求体非法)/401(key 错)/403(无权限)是配置问题,换平台无意义,不重试。
@@ -408,7 +604,17 @@ def list_endpoint_models(base_url: str, api_key: str = "", timeout_s: float = 15
         with httpx.Client(timeout=timeout_s) as client:
             r = client.get(url, headers=headers)
         if r.status_code != 200:
-            return {"ok": False, "models": [], "error": f"HTTP {r.status_code}"}
+            # M3.22.3 — 把常见 HTTP 状态翻成人话,前端 hint 直接展示
+            err_map = {
+                401: "401 未授权 — KEY 缺失或失效,请先填 KEY 再试",
+                403: "403 拒绝访问 — KEY 没权限访问该模型",
+                404: "404 路径不存在 — 该平台可能无 /models 端点(anthropic 系常见)",
+                429: "429 请求太频繁 — 稍等再试",
+                500: "500 服务端错误 — 平台临时挂了",
+                502: "502 网关错误 — 上游挂了",
+            }
+            hint = err_map.get(r.status_code, f"HTTP {r.status_code} — 非 200 响应")
+            return {"ok": False, "models": [], "error": hint}
         data = r.json()
         arr = data.get("data") if isinstance(data, dict) else (data if isinstance(data, list) else [])
         if not isinstance(arr, list):
@@ -466,3 +672,44 @@ async def generate_followups(router: PrisirRouter, question: str, answer: str,
         return [str(x)[:60] for x in arr if isinstance(x, str)][:n]
     except Exception:  # noqa: BLE001
         return []
+
+
+# ============================================================
+# 语句续写补全(2026-09-14 Tab 内联补全 轨道A/B 共享引擎)
+# ============================================================
+# 轨道 A(对话输入框 Tab 补全)与轨道 B(系统输入法中文文案续写)共用这一个引擎:
+# 输入已写的文本片段,返回「接下来一句话」的续写建议 + 实测耗时(给延迟对照)。
+# 低 temperature 求稳,小 max_tokens 求快;失败返空串(不阻塞输入)。
+_COMPLETION_PROMPT = (
+    "请接着用户已写的这段中文,自然续写「接下来的半句到一句话」,"
+    "让整句读起来通顺连贯(像输入法的智能组句)。"
+    "只输出要补在原文后面的那段文字本身,不要重复原文、不要解释、不要引号。"
+    "若原文已完整无法续写,输出空。"
+)
+
+
+async def suggest_completion(router: PrisirRouter, context_text: str,
+                             strategy: str = "smart") -> Dict[str, Any]:
+    """中文文案续写建议。返回 {suggestion, ms, platform?, ok}。
+
+    延迟是轨道 B 探针的核心证伪指标,故随结果带回实测耗时。
+    失败/超时返 suggestion='' + ok=False(调用方静默,绝不影响输入)。
+    """
+    text = (context_text or "").strip()
+    if not text:
+        return {"suggestion": "", "ms": 0, "ok": False}
+    convo = [
+        {"role": "user", "content": f"用户已写:「{text[-400:]}」\n\n{_COMPLETION_PROMPT}"},
+    ]
+    t0 = time.time()
+    try:
+        res = await router.generate(convo, strategy=strategy, temperature=0.3, max_tokens=60)
+        ms = int((time.time() - t0) * 1000)
+        sug = (res.get("text") or "").strip().strip('"\'「」')
+        # 只取首行首句,避免模型啰嗦补多句
+        sug = re.split(r"[\n。!?;]", sug)[0].strip()
+        return {"suggestion": sug, "ms": ms, "platform": res.get("platform"), "ok": bool(sug)}
+    except Exception as e:  # noqa: BLE001
+        ms = int((time.time() - t0) * 1000)
+        return {"suggestion": "", "ms": ms, "ok": False,
+                "error": f"{type(e).__name__}: {str(e)[:80]}"}

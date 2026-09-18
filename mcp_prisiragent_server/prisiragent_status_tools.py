@@ -1,7 +1,7 @@
-"""oiagent_status 工具 — 读 trace 日志,输出 prisiragent-team-lead 工作健康度
+"""prisiragent_status 工具 — 读 trace 日志,输出 prisiragent-team-lead 工作健康度
 
 复用:
-- ~/.claude/oiagent_harness_training/*.jsonl (team_lead_tools.py 写)
+- ~/.claude/prisiragent_harness_training/*.jsonl (team_lead_tools.py 写)
 """
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-TRACE_DIR = Path.home() / ".claude" / "oiagent_harness_training"
+TRACE_DIR = Path.home() / ".claude" / "prisiragent_harness_training"
 
 
 def _err(stage: str, exc: Exception) -> str:
@@ -138,7 +138,7 @@ def _summarize(traces: list[dict]) -> dict:
     }
 
 
-def oiagent_status_impl(days: int = 7) -> str:
+def prisiragent_status_impl(days: int = 7) -> str:
     """读最近 N 天 trace,输出 prisiragent-team-lead 工作健康度"""
     try:
         days = max(1, min(days, 90))  # 1-90 天,防止爆扫
@@ -155,15 +155,15 @@ def oiagent_status_impl(days: int = 7) -> str:
             indent=2,
         )
     except Exception as e:
-        return _err("oiagent_status", e)
+        return _err("prisiragent_status", e)
 
 
 # ── Dynamic Registry Exports ─────────────────────────
 TOOL_DEFS = [
     {
-        "name": "oiagent_status",
+        "name": "prisiragent_status",
         "description": (
-            "读 ~/.claude/oiagent_harness_training/*.jsonl,"
+            "读 ~/.claude/prisiragent_harness_training/*.jsonl,"
             "输出 prisiragent-team-lead 派单工作健康度:"
             "{total events, by_event/intent/agent/pool, rule_hit_rate, race_winners, latest 10}"
             "默认看最近 7 天"
@@ -185,7 +185,7 @@ TOOL_DEFS = [
 
 
 HANDLERS = {
-    "oiagent_status": oiagent_status_impl,
+    "prisiragent_status": prisiragent_status_impl,
 }
 
 
@@ -195,10 +195,10 @@ HANDLERS = {
 def _cli():
     import argparse
 
-    p = argparse.ArgumentParser(description="oiagent_status — 看派单工作健康度")
+    p = argparse.ArgumentParser(description="prisiragent_status — 看派单工作健康度")
     p.add_argument("--days", type=int, default=7, help="最近 N 天(1-90)")
     args = p.parse_args()
-    print(oiagent_status_impl(args.days))
+    print(prisiragent_status_impl(args.days))
 
 
 if __name__ == "__main__":

@@ -153,9 +153,9 @@ prisir_findex/findex.db-wal
 e2e_share_a2h/
 e2e_share_rot/
 
-# prisIr_ime_tsf — 源码纳入 git(2026-09-03);仅排除 Rust 编译产物 + 临时报告
-prisIr_ime_tsf/target/
-prisIr_ime_tsf/.tmp_*.md
+# prisiragent_ime — 源码纳入 git(2026-09-03);仅排除 Rust 编译产物 + 临时报告
+prisIragent_ime/target/
+prisIragent_ime/.tmp_*.md
 # tiktoken 编码缓存(运行时下载)
 tiktoken_data/
 
@@ -212,11 +212,11 @@ tests/_agent_memory_selfcheck.js
 tests/_m2b_migration_selfcheck.js
 tests/_skill_loader_selfcheck.js
 tests/_comet_credits.py
-# prisir-browser mixin 调试片段
-prisir-browser/mixin/_build_dm.py
-prisir-browser/mixin/_dm_bridge.js
-prisir-browser/mixin/_dm_emoji_js.txt
-prisir-browser/mixin/_dm_emoji_snippet.txt
+# prisIragent-browser mixin 调试片段
+prisIragent-browser/mixin/_build_dm.py
+prisIragent-browser/mixin/_dm_bridge.js
+prisIragent-browser/mixin/_dm_emoji_js.txt
+prisIragent-browser/mixin/_dm_emoji_snippet.txt
 # wasm_meter 调试 / 自检 / 单次运行产物
 wasm_meter/_cap_reject.mjs
 wasm_meter/_cap_reject.py

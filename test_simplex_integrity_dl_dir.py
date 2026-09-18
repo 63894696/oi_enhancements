@@ -139,7 +139,7 @@ class TestVerifyFileByManifestDirMerge(unittest.TestCase):
     def test_b2_rt_db_prefix_wins_over_missing_env(self):
         """模拟真实 bob 场景:env 无 DM_DB_PREFIX 也无 identity(bob 是 argv 覆写模块全局、不写 env),
         但 rt._db_prefix 已是 bob 的正确前缀 → 必须用它定位 download_dir.txt,不回退错 identity。
-        这是修复前 bug 会复发的关键场景(env 回退 "oiagent" 会找错目录)。"""
+        这是修复前 bug 会复发的关键场景(env 回退 "prisiragent" 会找错目录)。"""
         self._write_custom_txt()
         (self.custom / "payload.bin").write_bytes(b"from-custom")
         # 确保 env 完全没有 DM_DB_PREFIX / DM_IDENTITY / SECUREDM_INSTANCE

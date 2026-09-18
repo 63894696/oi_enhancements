@@ -1,4 +1,4 @@
-"""task_tools.py — v0.25 OIagent 任务接管 MCP tool
+"""task_tools.py — v0.25 prisiragent 任务接管 MCP tool
 
 4 个 MCP tool:
 - task_submit:Claude 写 task 到 OI Memory task queue
@@ -58,11 +58,11 @@ def task_submit_impl(
 
     Args:
         title: 任务标题(简短)
-        content: 任务描述(详细,OIagent 拿到后能直接跑)
+        content: 任务描述(详细,prisiragent 拿到后能直接跑)
         depends_on: 依赖的 task_id 列表
         priority: 数字越大越优先(默认 0)
         namespace: 默认 'tasks'
-        max_retries: OIagent 失败重试次数(默认 3)
+        max_retries: prisiragent 失败重试次数(默认 3)
 
     Returns:
         {"ok": True, "task_id": int, "status": "pending|blocked"}
@@ -131,7 +131,7 @@ def task_list_impl(
 
     Args:
         status: pending/running/done/blocked/cancelled 之一
-        ready: True 时返 depends_on 全 done 的 pending task(OIagent 调度入口)
+        ready: True 时返 depends_on 全 done 的 pending task(prisiragent 调度入口)
         blocked: True 时返 status=blocked 的 task(Claude 拉取入口)
         namespace: 默认 'tasks'
         limit: 最大返回数(默认 20)
@@ -243,7 +243,7 @@ TOOL_DEFS = [
             "type": "object",
             "properties": {
                 "title": {"type": "string", "description": "任务标题(简短)"},
-                "content": {"type": "string", "description": "任务描述(OIagent 拿到后能直接跑)"},
+                "content": {"type": "string", "description": "任务描述(prisiragent 拿到后能直接跑)"},
                 "depends_on": {"type": "array", "items": {"type": "integer"}, "description": "依赖的 task_id 列表"},
                 "priority": {"type": "integer", "description": "数字越大越优先(默认 0)"},
                 "namespace": {"type": "string", "description": "命名空间(默认 'tasks')"},
@@ -292,7 +292,7 @@ TOOL_DEFS = [
     },
     {
         "name": "task_mark",
-        "description": "统一 mark 接口: running / done / retry-fail。OIagent 调度用。",
+        "description": "统一 mark 接口: running / done / retry-fail。prisiragent 调度用。",
         "inputSchema": {
             "type": "object",
             "properties": {

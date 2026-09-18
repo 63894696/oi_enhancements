@@ -1,4 +1,4 @@
-"""cognee_tools.py — v0.23.1 mcp_oiagent 4 个 cognee tool
+"""cognee_tools.py — v0.23.1 mcp_prisiragent 4 个 cognee tool
 
 走"工具不重复"原则:
 - 不重写 LLM 走 cognee 默认 OpenAI provider + 百炼 OpenAI 兼容端点(实测通过)

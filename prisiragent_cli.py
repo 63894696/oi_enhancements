@@ -48,6 +48,333 @@ def truncate_tool_output(text: str, limit: int = TOOL_STORE_MAX) -> str:
     return f"{head}\n…[截断,原 {len(s)} 字符]…\n{tail}"
 
 
+# ============================================================================
+# SoL-Pi 机制1 — ObservationPack 观测压缩(2026-09-14 移植自 NVlabs/SoL-Pi)
+# 大 tool 输出本地归档,上下文里只留 handle+头尾摘要,模型需要时 recall 取回。
+# 前两次该工具输出全量放行(对齐 SoL-Pi V2「two full sends before projection」),
+# 第三次起才投影。全程 fail-open:归档/召回失败一律回退全量原文,绝不阻塞对话。
+# 开关: env PRISIR_OBSPACK=0 关闭(默认开)。
+# ============================================================================
+_OBSPACK_THRESHOLD = 4000      # 超过此字符数的 tool 输出才投影
+_OBSPACK_HEAD = 2048           # 上下文里保留的头部字节
+_OBSPACK_TAIL = 1536           # 上下文里保留的尾部字节
+_OBSPACK_FULL_SENDS = 2        # 每个工具前 N 次输出全量放行
+_OBSPACK_DIR_NAME = "observations"
+
+# 每个 (sid, tool_name) 已输出次数(决定前 N 次全量)
+_obspack_count: dict = {}
+# handle -> 归档文件绝对路径
+_obspack_handles: dict = {}
+_obspack_seq = [0]  # 单调序号(用 list 避免 global 声明)
+
+
+def _obspack_enabled() -> bool:
+    return os.environ.get("PRISIR_OBSPACK", "1") != "0"
+
+
+def _obspack_dir(sid: str) -> str:
+    base = os.environ.get("PRISIR_DATA", "") or os.path.join(
+        os.path.expanduser("~"), ".local", "share", "prisir")
+    d = os.path.join(base, _OBSPACK_DIR_NAME, sid or "default")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _observe_and_pack(tool_name: str, result: str, sid: str) -> str:
+    """大 tool 输出 → 归档 + 留 handle/头尾摘要。fail-open 回全量。
+
+    只投影「内容型」大输出(read/shell/grep/web_fetch 等);错误串(以 [ 开头)
+    与短输出不动。返回发给模型的字符串(可能是投影后的占位)。
+    """
+    try:
+        if not _obspack_enabled():
+            return result
+        s = str(result or "")
+        if len(s) <= _OBSPACK_THRESHOLD or s.startswith("["):
+            return s
+        key = (sid or "default", tool_name)
+        n = _obspack_count.get(key, 0) + 1
+        _obspack_count[key] = n
+        if n <= _OBSPACK_FULL_SENDS:
+            return s  # 前 N 次全量放行
+        # 归档全文
+        _obspack_seq[0] += 1
+        seq = _obspack_seq[0]
+        import re as _re  # noqa: PLC0415 — 局部导入避免顶层依赖
+        _clean_sid = _re.sub(r"[^A-Za-z0-9_-]", "", (sid or "default"))
+        handle = f"obs-{_clean_sid}-{seq}"
+        path = os.path.join(_obspack_dir(sid), f"{handle}.log")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(s)
+        _obspack_handles[handle] = path
+        head = s[:_OBSPACK_HEAD]
+        tail = s[-_OBSPACK_TAIL:]
+        return (
+            f"{head}\n"
+            f"…[观测已压缩 handle={handle} 原 {len(s)} 字符;中间 {len(s) - _OBSPACK_HEAD - _OBSPACK_TAIL} 字符已归档,"
+            f"需完整内容用 recall_observation(handle=\"{handle}\") 取回]…\n"
+            f"{tail}")
+    except Exception:  # noqa: BLE001 — 任何失败都回全量,绝不影响对话
+        return result
+
+
+def _t_recall_observation(handle: str, offset: int = 0, limit: int = 4000) -> str:
+    """按 handle 分页取回归档的完整观测。fail-open:找不到/读失败给明确提示。"""
+    handle = (handle or "").strip()
+    if not handle:
+        return "[recall_observation error] 空 handle"
+    path = _obspack_handles.get(handle)
+    # 内存里没有 → 尝试按命名规则在归档目录里找(跨进程/重启后)
+    if not path:
+        for sid in {(_SPAWN_CONTEXT.get("session_id") or "default"), "default"}:
+            cand = os.path.join(_obspack_dir(sid), f"{handle}.log")
+            if os.path.isfile(cand):
+                path = cand
+                _obspack_handles[handle] = path
+                break
+    if not path or not os.path.isfile(path):
+        return f"[recall_observation error] 找不到 handle={handle} 的归档(可能未压缩或已清理)"
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            data = f.read()
+        offset = max(0, int(offset or 0))
+        limit = max(1, int(limit or 4000))
+        chunk = data[offset:offset + limit]
+        more = "" if offset + limit >= len(data) else f"\n…[还有 {len(data) - offset - limit} 字符,用 offset={offset + limit} 续取]…"
+        return f"[recall {handle} {offset}:{offset + len(chunk)}/{len(data)}]\n{chunk}{more}"
+    except Exception as e:  # noqa: BLE001
+        return f"[recall_observation error] 读取失败: {e}"
+
+
+# ============================================================================
+# SoL-Pi 机制4 — Evidence-Preserving Reducer(2026-09-14 移植自 NVlabs/SoL-Pi)
+# 长日志的首读外包给便宜模型,但返回的引用行必须逐行对归档原文校验,编造行剔除。
+# 主模型看到的是「已验证的证据」而非「流畅摘要」。fail-open:失败给 recall 提示。
+# 开关: env PRISIR_REDUCER=0 关闭(默认开)。
+# ============================================================================
+def _resolve_archive_text(handle_or_path: str, workdir: str) -> tuple[str, str]:
+    """把 handle 或文件路径解析成 (归档全文, 来源标签)。读不到返回 ("", 错误说明)。"""
+    hp = (handle_or_path or "").strip()
+    if not hp:
+        return "", "空 handle/path"
+    # 1) 当作 obs handle
+    if hp.startswith("obs-"):
+        path = _obspack_handles.get(hp)
+        if not path:
+            for sid in {(_SPAWN_CONTEXT.get("session_id") or "default"), "default"}:
+                cand = os.path.join(_obspack_dir(sid), f"{hp}.log")
+                if os.path.isfile(cand):
+                    path = cand
+                    _obspack_handles[hp] = path
+                    break
+        if path and os.path.isfile(path):
+            try:
+                with open(path, encoding="utf-8", errors="replace") as f:
+                    return f.read(), f"归档 {hp}"
+            except Exception as e:  # noqa: BLE001
+                return "", f"读归档失败: {e}"
+        return "", f"找不到 handle={hp} 的归档"
+    # 2) 当作文件路径
+    p = hp if os.path.isabs(hp) else os.path.join(workdir, hp)
+    if os.path.isfile(p):
+        try:
+            with open(p, encoding="utf-8", errors="replace") as f:
+                return f.read(), f"文件 {p}"
+        except Exception as e:  # noqa: BLE001
+            return "", f"读文件失败: {e}"
+    return "", f"既不是有效 obs handle 也不是存在的文件: {hp}"
+
+
+# 便宜档标记:同家族里带这些词的多为降档便宜型号(mini/turbo/haiku/flash/lite/small 等)
+_CHEAP_TOKENS = ("mini", "turbo", "haiku", "flash", "lite", "small", "nano", "air")
+# 旗舰/贵档标记:带这些词的视为「当前正用的贵模型」,降档时排除
+_EXPENSIVE_TOKENS = ("pro", "plus", "max", "opus", "ultra", "preview", "latest", "large")
+# 家族前缀映射:型号名 → 家族(取连字符/点首段,统一小写)。同家族才互降,不跨家族乱换。
+
+# /v1/models 探测缓存:base_url -> (ts, [model_id,...]);避免每次 reduce 都打一次探测
+_models_cache: dict = {}
+_MODELS_CACHE_TTL = 600  # 秒
+
+
+def _list_endpoint_models(base_url: str, api_key: str) -> list:
+    """探测 OpenAI 兼容端点 GET {base}/models,返回 model id 列表。失败/不支持返回 []。
+
+    带 10 分钟缓存(同一 base_url 不重复探测)。绝不带 key 出本进程。
+    """
+    base = (base_url or "").rstrip("/")
+    if not base:
+        return []
+    now = time.time()
+    ent = _models_cache.get(base)
+    if ent and (now - ent[0]) < _MODELS_CACHE_TTL:
+        return ent[1]
+    ids: list = []
+    try:
+        import urllib.request as _ur
+        req = _ur.Request(base + "/models", headers={"Authorization": f"Bearer {api_key}"})
+        with _ur.urlopen(req, timeout=6) as resp:
+            data = json.loads(resp.read().decode("utf-8", "replace"))
+        items = data.get("data") if isinstance(data, dict) else None
+        if isinstance(items, list):
+            ids = [str(m.get("id")) for m in items
+                   if isinstance(m, dict) and m.get("id")]
+    except Exception:  # noqa: BLE001 — 端点不实现 /models / 网络失败 → 空,走兜底
+        ids = []
+    _models_cache[base] = (now, ids)
+    return ids
+
+
+def _model_family(model: str) -> str:
+    """提取模型家族前缀(小写):gpt-4o-mini→gpt, qwen-plus→qwen, claude-opus-5→claude。
+
+    取首段连字符前的主干;对 'openrouter/anthropic/claude-3.5' 这种带路径的先去前缀。
+    """
+    m = (model or "").split("/")[-1].strip().lower()
+    if not m:
+        return ""
+    # 去掉常见版本尾巴后取首段
+    for sep in ("-", ".", "_", ":"):
+        if sep in m:
+            return m.split(sep)[0]
+    return m
+
+
+def _pick_cheap_from_family(current_model: str, candidates: list) -> str:
+    """在同家族 candidates 里挑「当前模型的便宜降档」。找不到返回空串。
+
+    判据(用户拍板「同家族降一档」):同家族前缀 + 带便宜标记/更短名;
+    排除当前模型自身与明显更贵档。候选列表为端点真实模型时最准。
+    """
+    cur = (current_model or "").split("/")[-1].strip().lower()
+    fam = _model_family(current_model)
+    if not fam or not candidates:
+        return ""
+    cur_is_expensive = any(t in cur for t in _EXPENSIVE_TOKENS) or not any(
+        t in cur for t in _CHEAP_TOKENS)
+    best = ""
+    for c in candidates:
+        cl = (c or "").split("/")[-1].strip().lower()
+        if not cl or cl == cur:
+            continue
+        if _model_family(cl) != fam:
+            continue  # 不跨家族
+        has_cheap = any(t in cl for t in _CHEAP_TOKENS)
+        # 便宜信号:带便宜标记,或当前是贵档而它比当前名更「素」(更短且无贵档标记)
+        cheaper = has_cheap or (cur_is_expensive and len(cl) < len(cur)
+                                and not any(t in cl for t in _EXPENSIVE_TOKENS))
+        if cheaper:
+            # 多个候选里优先带便宜标记的;再挑名字最短的(通常最入门)
+            if not best or (has_cheap and not any(t in best for t in _CHEAP_TOKENS)) \
+                    or len(cl) < len(best):
+                best = cl
+    return best
+
+
+def _pick_reducer_model(parent_model: str) -> str:
+    """给 reducer 选便宜模型:端点自动发现同家族降档,失败回退父模型。
+
+    优先级(2026-09-14 用户拍板「端点自动发现+同家族降一档」):
+      1. 显式 fast_model(meta 里有,UI 暂填不了但保留兼容);
+      2. 探测该端点 /v1/models,从真实模型里挑当前模型的同家族便宜档;
+      3. 端点不实现 /models 或无便宜档 → 回退父模型(至少有得用,不省但不错)。
+    """
+    try:
+        from fastlane.providers.llm_prisir import PrisirRouter  # noqa: PLC0415
+        router = PrisirRouter()
+        for platform in router.available_platforms():
+            cfg = router._platform_cfg(platform)
+            if not cfg:
+                continue
+            meta = cfg.get("meta") or {}
+            proto = meta.get("proto", "openai")
+            base = (cfg.get("base_url") or "").rstrip("/")
+            key = cfg.get("api_key") or ""
+            cur = cfg.get("model") or parent_model
+
+            def _litellm_str(m: str) -> str:
+                if proto == "anthropic":
+                    if key:
+                        os.environ["ANTHROPIC_API_KEY"] = key
+                    if base:
+                        os.environ["ANTHROPIC_BASE_URL"] = base
+                    return f"anthropic/{m}"
+                if key:
+                    os.environ["OPENAI_API_KEY"] = key
+                if base:
+                    os.environ["OPENAI_API_BASE"] = base
+                return f"openai/{m}"
+
+            # 1) 显式 fast_model
+            fast = meta.get("fast_model")
+            if fast:
+                return _litellm_str(fast)
+            # 2) 端点自动发现同家族便宜档
+            available = _list_endpoint_models(base, key)
+            cheap = _pick_cheap_from_family(cur, available)
+            if cheap:
+                return _litellm_str(cheap)
+            # 3) 该端点没挑到便宜档 → 试下一个已配平台;全没有则循环完回退父模型
+    except Exception:  # noqa: BLE001
+        pass
+    return parent_model  # 回退父模型(可能也是强的,但至少有得用)
+
+
+def _t_reduce_log(handle_or_path: str, question: str, workdir: str,
+                  parent_model: str = "") -> str:
+    """委派便宜模型从长日志抽取与 question 相关的行,逐行对原文校验后返回证据。
+
+    校验:reducer 输出的每条「引用行」必须在归档原文里出现(子串),否则剔除并计数。
+    主模型拿到的是「已验证引用 + 校验统计」,不是不可信的流畅摘要。
+    """
+    if os.environ.get("PRISIR_REDUCER", "1") == "0":
+        return "[reduce_log 已关闭] 用 recall_observation 自行取回"
+    question = (question or "").strip()
+    if not question:
+        return "[reduce_log error] 需要 question(要从日志里查什么)"
+    text, src = _resolve_archive_text(handle_or_path, workdir)
+    if not text:
+        return f"[reduce_log error] {src};可改用 recall_observation 取回原文"
+    # 日志太长时给 reducer 截断(它也要省 token);主模型可 recall 完整版
+    excerpt = text[:24000]
+    truncated_note = "" if len(text) <= 24000 else f"(日志共 {len(text)} 字符,前 24000 送 reducer)"
+    model = _pick_reducer_model(parent_model)
+    prompt = (
+        "你在做日志证据抽取。下面是一段日志/长文本,以及一个具体问题。\n"
+        "任务:从日志里**原样逐行**摘出与问题最相关的行(不要改写、不要总结成自己的话),"
+        "每行一条,前面加 '> '。若某行日志能直接回答问题,优先摘它。\n"
+        "最后另起一行写 '结论: ' 加一句简短结论(可自己的话)。\n"
+        "若日志里确实没有相关内容,只回 '结论: 日志中无相关证据'。\n\n"
+        f"【问题】{question}\n\n【日志开始】\n{excerpt}\n【日志结束】")
+    try:
+        import litellm
+        litellm.drop_params = True
+        resp = litellm.completion(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0)
+        raw = (resp.choices[0].message.content or "").strip()
+    except Exception as e:  # noqa: BLE001
+        return (f"[reduce_log error] reducer 调用失败({type(e).__name__}: {e});"
+                f"可改用 recall_observation 取回原文")
+
+    # 逐行校验:凡 '> ' 引用行必须在原文出现(去首尾空白后子串匹配),否则剔除
+    verified, dropped, conclusion = [], 0, ""
+    for line in raw.splitlines():
+        s = line.strip()
+        if s.startswith(">"):
+            quote = s.lstrip("> ").strip()
+            if quote and quote in text:
+                verified.append(quote)
+            else:
+                dropped += 1  # 编造/改写的行,丢弃
+        elif s.startswith("结论"):
+            conclusion = s
+    head = (f"[reduce_log 证据 {src} {truncated_note} 校验通过 {len(verified)} 行"
+            + (f",剔除编造 {dropped} 行" if dropped else "") + "]")
+    body = "\n".join("> " + v for v in verified) if verified else "(无校验通过的引用行)"
+    return f"{head}\n{body}\n{conclusion}".rstrip()
+
+
 # ---------------- tools ----------------
 def _t_read_file(path: str) -> str:
     try:
@@ -121,16 +448,34 @@ def _t_write_file(path: str, content: str, workdir: str = "") -> str:
     if block:
         return block
     try:
-        _snapshot_before_write(path, "write_file")  # P5 undo 快照
-        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        ap = os.path.abspath(path)
+        # 取旧内容(若存在): 用于 write_file 也输出 unified diff(对齐 edit_file 体验)。
+        # 与 prisir_snapshot._MAX_BYTES(2MB)保持一致, >2MB 不进 diff 防内存膨胀。
+        old_text = ""
+        old_existed = os.path.isfile(ap)
+        if old_existed:
+            try:
+                if os.path.getsize(ap) <= 2_000_000:
+                    with open(ap, encoding="utf-8", errors="replace") as f:
+                        old_text = f.read()
+            except Exception:  # noqa: BLE001
+                old_text = ""
+        _snapshot_before_write(path, "write_file")  # P5 undo 快照(也覆盖新文件路径)
+        os.makedirs(os.path.dirname(ap), exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)
         # 落盘成功后追踪(失败静默,不影响主功能返回值)
         try:
-            _WRITE_TRACKER.setdefault(workdir or os.path.dirname(os.path.abspath(path)),
-                                      []).append((os.path.abspath(path), time.time()))
+            _WRITE_TRACKER.setdefault(workdir or os.path.dirname(ap),
+                                      []).append((ap, time.time()))
         except Exception:  # noqa: BLE001
             pass
+        # 行级 diff: 覆盖已有文件且旧内容成功读到 → 输出 unified diff 块,
+        # 前端 detect 到 ```diff 自动红绿高亮(已有 highlight.js 管线)。
+        if old_existed and old_text and old_text != content:
+            diff_txt = _make_diff(old_text.splitlines(), content.splitlines(), context=3)
+            return (f"[write_file ok] {path} ({len(content)} bytes)\n"
+                    f"```diff\n{diff_txt}\n```")
         return f"[write_file ok] {path} ({len(content)} bytes)"
     except Exception as e:  # noqa: BLE001
         return f"[write_file error] {e}"
@@ -1717,18 +2062,36 @@ TOOLS = [
         "description": "Read a text file and return its contents.",
         "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}},
     {"type": "function", "function": {
-        "name": "write_file",
-        "description": "Write text content to a file (creates parent dirs).",
+        "name": "recall_observation",
+        "description": "Recall the full content of a large tool output that was compressed into a handle (obs-...). Large read_file/run_shell/grep_search outputs are archived and replaced by a handle with head+tail excerpt; call this to page back the full text when the excerpt isn't enough. Use offset/limit to page through very long content.",
         "parameters": {"type": "object", "properties": {
-            "path": {"type": "string"}, "content": {"type": "string"}}, "required": ["path", "content"]}}},
+            "handle": {"type": "string", "description": "the obs-... handle from a compressed observation"},
+            "offset": {"type": "integer", "description": "character offset to start from, default 0"},
+            "limit": {"type": "integer", "description": "max characters to return, default 4000"}},
+            "required": ["handle"]}}},
+    {"type": "function", "function": {
+        "name": "reduce_log",
+        "description": "Delegate the first read of a long log/large text to a cheaper model, then verify every quoted line against the archived source before returning (SoL-Pi evidence-preserving reducer). Use when you have a large archived observation (obs-... handle) or a big log file and need the lines relevant to a specific question WITHOUT paying full-context tokens to read it all yourself. Returns only source-verified quote lines plus a short conclusion; fabricated quotes are dropped and counted.",
+        "parameters": {"type": "object", "properties": {
+            "handle_or_path": {"type": "string", "description": "an obs-... handle from a compressed observation, or a path to a log file"},
+            "question": {"type": "string", "description": "what to look for in the log (be specific)"}},
+            "required": ["handle_or_path", "question"]}}},
+    {"type": "function", "function": {
+        "name": "write_file",
+        "description": "Write text content to a file (creates parent dirs). Optionally run a follow-up validation command in the SAME call via then_run (SoL-Pi action fusion) — the write result and validation output are returned together, saving a separate run_shell round trip.",
+        "parameters": {"type": "object", "properties": {
+            "path": {"type": "string"}, "content": {"type": "string"},
+            "then_run": {"type": "string", "description": "optional shell command to validate the write (e.g. run the test/build); executed in the same call after a successful write, goes through the permission gate"}},
+            "required": ["path", "content"]}}},
     {"type": "function", "function": {
         "name": "edit_file",
-        "description": "Precisely replace old_string with new_string in a file. Use this for targeted code edits instead of rewriting the whole file with write_file. old_string must match exactly (including indentation/whitespace) and must be unique in the file (or set replace_all=true). Returns a unified diff summary showing what changed.",
+        "description": "Precisely replace old_string with new_string in a file. Use this for targeted code edits instead of rewriting the whole file with write_file. old_string must match exactly (including indentation/whitespace) and must be unique in the file (or set replace_all=true). Returns a unified diff summary showing what changed. Optionally run a follow-up validation command in the SAME call via then_run (SoL-Pi action fusion) — edit result and validation output returned together, saving a separate run_shell round trip.",
         "parameters": {"type": "object", "properties": {
             "path": {"type": "string", "description": "file to edit"},
             "old_string": {"type": "string", "description": "exact text to find (must match including whitespace/indentation)"},
             "new_string": {"type": "string", "description": "replacement text"},
-            "replace_all": {"type": "boolean", "description": "replace all occurrences, default false"}},
+            "replace_all": {"type": "boolean", "description": "replace all occurrences, default false"},
+            "then_run": {"type": "string", "description": "optional shell command to validate the edit (e.g. run the test/build); executed in the same call after a successful edit, goes through the permission gate"}},
             "required": ["path", "old_string", "new_string"]}}},
     {"type": "function", "function": {
         "name": "grep_search",
@@ -2036,6 +2399,30 @@ def mcp_status() -> dict:
         return {}
 
 
+def _fuse_then_run(edit_result: str, then_run: str, workdir: str) -> str:
+    """SoL-Pi 机制2 — Action Fusion(2026-09-14 移植):编辑+验证一次调用。
+
+    编辑成功后,同一次工具调用内本地跑 then_run 验证命令,把编辑结果+验证输出
+    合并成单条 observation 返回,省一次模型往返。fail-open:验证异常只标注,
+    不影响已成功的编辑结果。then_run 为空/编辑已失败(以 [ 开头)则原样返回。
+    开关: env PRISIR_ACTION_FUSION=0 关闭(默认开)。
+    """
+    then_run = (then_run or "").strip()
+    if not then_run or os.environ.get("PRISIR_ACTION_FUSION", "1") == "0":
+        return edit_result
+    # 编辑没成就不验证:错误串形如「[xxx error]…」「[xxx 被拒绝/拦截]…」;成功串「[xxx ok]」照常融合
+    _low = str(edit_result or "").lower()
+    if (" error]" in _low) or ("被拒绝" in _low) or ("被拦截" in _low) or ("被权限闸" in _low):
+        return edit_result
+    try:
+        validation = _t_run_shell(then_run, workdir)
+    except Exception as e:  # noqa: BLE001
+        validation = f"[then_run error] {type(e).__name__}: {e}"
+    return (f"{edit_result}\n\n"
+            f"——— 联动验证(then_run,同一调用内执行)———\n"
+            f"$ {then_run}\n{validation}")
+
+
 def dispatch(name: str, args: dict, workdir: str, on_confirm=None, model: str = "") -> str:
     # ---- P5 计划模式:开启时非只读工具一律拦截(先于权限闸,优先级最高)----
     _sid = _SPAWN_CONTEXT.get("session_id", "default")
@@ -2081,16 +2468,26 @@ def dispatch(name: str, args: dict, workdir: str, on_confirm=None, model: str = 
         p = args.get("path", "")
         p = p if os.path.isabs(p) else os.path.join(workdir, p)
         return _t_read_file(p)
+    if name == "recall_observation":
+        return _t_recall_observation(args.get("handle", ""),
+                                     int(args.get("offset", 0) or 0),
+                                     int(args.get("limit", 4000) or 4000))
+    if name == "reduce_log":
+        return _t_reduce_log(args.get("handle_or_path", ""),
+                             args.get("question", ""), workdir,
+                             parent_model=model)
     if name == "write_file":
         p = args.get("path", "")
         p = p if os.path.isabs(p) else os.path.join(workdir, p)
-        return _t_write_file(p, args.get("content", ""), workdir)
+        _res = _t_write_file(p, args.get("content", ""), workdir)
+        return _fuse_then_run(_res, args.get("then_run", ""), workdir)
     if name == "edit_file":
         p = args.get("path", "")
         p = p if os.path.isabs(p) else os.path.join(workdir, p)
-        return _t_edit_file(p, args.get("old_string", ""),
+        _res = _t_edit_file(p, args.get("old_string", ""),
                             args.get("new_string", ""),
                             bool(args.get("replace_all", False)), workdir)
+        return _fuse_then_run(_res, args.get("then_run", ""), workdir)
     if name == "grep_search":
         return _t_grep_search(args.get("pattern", ""),
                               args.get("path", "."),
@@ -2499,7 +2896,9 @@ def run_conversation(messages: list, model: str, workdir: str, max_turns: int = 
                            "path": str(args.get("path", ""))[:300],
                            "output": result[:400]})
             msgs.append({"role": "tool", "tool_call_id": tc.id,
-                         "name": _tname, "content": result})
+                         "name": _tname,
+                         "content": _observe_and_pack(
+                             _tname, result, _SPAWN_CONTEXT.get("session_id", "default"))})
             # 轨迹(供壳入库激活跨轮 masking): 截断后存,带工具名保可追溯
             trace.append({"role": "tool", "name": _tname,
                           "content": truncate_tool_output(result)})

@@ -18,15 +18,15 @@ a GitHub issue.
 - License: PSF License (Python Software Foundation License)
 - URL: https://www.python.org/psf/license/
 - Note: most Linux distributions bundle Python under the same
-  license. Used by `oiagent_web.py`, `prisir_findex/shell_findex.py`,
+  license. Used by `prisiragent_web.py`, `prisir_findex/shell_findex.py`,
   `prisir_fcontent/*.py`, `fastlane/*.py`, and most `.py` in this
   repo.
 
-### Node.js + Electron (oiagent-shell)
+### Node.js + Electron (prisiragent-shell)
 - Node.js — MIT — https://nodejs.org/
 - Electron — MIT — https://www.electronjs.org/
 - Tray / Notification / nativeImage — part of Electron (MIT)
-- Used by `oiagent-shell/`.
+- Used by `prisiragent-shell/`.
 
 
 ## Python packages
@@ -126,7 +126,7 @@ These are not part of the shipped Software but are used to build it.
   Used by the Windows installer builder.
 - **electron-builder** — MIT —
   https://www.electron.build/
-  Used by `oiagent-shell/package.json` build scripts.
+  Used by `prisiragent-shell/package.json` build scripts.
 - **GitHub Actions / GitHub Pages** — GitHub Terms of Service
 - **Visual Studio Code** — MIT (only used by developers; not
   shipped)
@@ -145,7 +145,7 @@ OIE-PCS-1.0. Your use of them is governed by THEIR terms.
 - **OpenAI API** — OpenAI Terms of Use
 - **Other LLM provider APIs** added via `fastlane/providers/`
 - **babelspan.com** — read-only public updates JSON endpoint
-  (used by the brand-update notifier in `oiagent-shell/main.js`)
+  (used by the brand-update notifier in `prisiragent-shell/main.js`)
 
 The Software does NOT bundle model weights. All model inference is
 performed by remote APIs or by user-supplied local model servers.

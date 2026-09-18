@@ -62,7 +62,7 @@ MEMORY_KEEP_FILE_PATTERNS = {
     "v022-federation-shipped",  # v0.22 Federation + WireGuard
     # 常驻 daemon / 工具
     "aureon-v0195b-4-providers-active",  # v0.19.5b 4 provider
-    "mcp-prisiragent-v061-everything-shipped",  # mcp_oiagent v0.6.1
+    "mcp-prisiragent-v061-everything-shipped",  # mcp_prisiragent v0.6.1
     "everything-gui-registry-fix",  # Everything GUI fix
     "win10-shell-association-fix",  # Win10 shell fix
     # 决策类

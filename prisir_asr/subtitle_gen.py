@@ -1,6 +1,6 @@
 """Prisir Browser 内置 ASR — P1 轨 A 离线预生成字幕原型
 
-蓝图依据:prisir-browser-builtin-asr-video-subtitle-v01-2026-08-19 §3.2
+蓝图依据:prisiragent-browser-builtin-asr-video-subtitle-v01-2026-08-19 §3.2
   轨 A 主线:WASAPI loopback 听系统音频 → SenseVoice → 带时间轴 SRT 存下载目录。
   DRM 管视频流提取,管不到用户听到的声音;零破解、合法、通用(有声即可)。
 

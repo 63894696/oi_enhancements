@@ -4,7 +4,7 @@
 const { webcrypto } = require("crypto");
 const fs = require("fs");
 
-// ── 与 prisIr-browser/mixin/group.html:158-167 逐行对齐 ──
+// ── 与 prisiragent-browser/mixin/group.html:158-167 逐行对齐 ──
 const enc = new TextEncoder();
 function b64(buf) { return Buffer.from(new Uint8Array(buf)).toString("base64"); }
 function b64d(s) { return new Uint8Array(Buffer.from(s, "base64")); }

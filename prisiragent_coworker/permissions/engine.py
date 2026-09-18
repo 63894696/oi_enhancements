@@ -65,7 +65,7 @@ from prisiragent_coworker.permissions.audit import (
 __all__ = [
     "Action",
     "AuditSink",
-    "OIagentCoworkerPermissionEngine",
+    "prisiragentCoworkerPermissionEngine",
     "PermissionContext",
     "PermissionMode",
     "RiskLevel",
@@ -211,7 +211,7 @@ class PermissionContext:
     force_strict: bool = False
 
 
-class OIagentCoworkerPermissionEngine:
+class prisiragentCoworkerPermissionEngine:
     """Five-mode permission decision engine -- covers Prisiragent P0-3 PolicyEngine.
 
     Public API:
@@ -251,7 +251,7 @@ class OIagentCoworkerPermissionEngine:
         """
         if workspace_root is None:
             raise ValueError(
-                "OIagentCoworkerPermissionEngine requires a non-None "
+                "prisiragentCoworkerPermissionEngine requires a non-None "
                 "workspace_root for path sandbox. Received None."
             )
         if not callable(audit_sink):
@@ -262,7 +262,7 @@ class OIagentCoworkerPermissionEngine:
         self.workspace_root: Path = Path(workspace_root).resolve()
         self.audit_sink: AuditSink = audit_sink
         _LOGGER.debug(
-            "OIagentCoworkerPermissionEngine initialized: workspace_root=%s",
+            "prisiragentCoworkerPermissionEngine initialized: workspace_root=%s",
             self.workspace_root,
         )
 

@@ -36,7 +36,7 @@ sys.path.insert(0, str(ROOT))
 
 LOG_DIR = Path.home() / ".local" / "share" / "aureon" / "log"
 LOG_FILE = LOG_DIR / "prisiragent_dev_consumer.log"
-TASK_NAME = "OIAgentDevConsumer"
+TASK_NAME = "prisiragentDevConsumer"
 LOCK_FILE = LOG_DIR / "prisiragent_dev_consumer.lock"
 
 logging.basicConfig(

@@ -106,9 +106,9 @@ def show_health(_icon=None, _item=None) -> None:
     # Win10/11 toast 在通知中心易被吞;改用 ctypes MessageBoxW 确认可见。
     try:
         import ctypes
-        ctypes.windll.user32.MessageBoxW(0, msg, "OIagent Tray 状态", 0x40)
+        ctypes.windll.user32.MessageBoxW(0, msg, "prisiragent Tray 状态", 0x40)
     except Exception as e:  # noqa: BLE001
-        _notify("OIagent Tray 状态", msg)  # 兜底
+        _notify("prisiragent Tray 状态", msg)  # 兜底
         print(f"[tray] MessageBox 失败: {e}", file=sys.stderr)
 
 
@@ -126,7 +126,7 @@ def quit_app(icon: Optional[pystray.Icon], _item) -> None:
 def _notify(title: str, msg: str) -> None:
     """pystray.notify 在 Windows 上走系统 toast。"""
     try:
-        pystray.Icon("OIagentTray").notify(title, msg)
+        pystray.Icon("prisiragentTray").notify(title, msg)
     except Exception:  # noqa: BLE001
         # 兜底:打 stderr 即可(避免桌面 session 0 弹不到 UI)
         print(f"[tray][notify] {title}: {msg}", file=sys.stderr)
@@ -171,7 +171,7 @@ def main() -> int:
         MenuItem("退出托盘", quit_app),
     )
 
-    icon = pystray.Icon("OIagentTray", img, "OIagent Tray", menu)
+    icon = pystray.Icon("prisiragentTray", img, "prisiragent Tray", menu)
     print(f"[tray] 托盘启动;右键菜单 / 双击 / {_HOTKEY} 三入口")
     icon.run()  # 阻塞,直到 quit_app
     return 0

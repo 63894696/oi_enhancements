@@ -1,4 +1,4 @@
-"""tests/oiagent_shell_ux_test.py — 壳体验三件套单元测试。
+"""tests/prisiragent_shell_ux_test.py — 壳体验三件套单元测试。
 
 覆盖(纯本地路径,不依赖 LLM key):
   ①实时工具进度: run_conversation 的 on_event 回调在工具执行前后发 tool_start/tool_end;
@@ -6,7 +6,7 @@
   ③产物内联查看: _serve_workdir_file 目录穿越防护(越出 workdir→403/拒)、
     workdir 内文件→正确 Content-Type、md 以 text 取回。
 
-跑法: python tests/oiagent_shell_ux_test.py  →  打印 PASS/FAIL
+跑法: python tests/prisiragent_shell_ux_test.py  →  打印 PASS/FAIL
 """
 import io
 import os
@@ -16,7 +16,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 # 用临时 DB / 临时 workdir,不碰真实数据
-_tmp = tempfile.mkdtemp(prefix="oiagent_ux_test_")
+_tmp = tempfile.mkdtemp(prefix="prisiragent_ux_test_")
 os.environ["PRISIR_DATA"] = _tmp
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -163,7 +163,7 @@ def _make_handler_inst():
 
 def test_serve_workdir_file_traversal_blocked():
     """越出 workdir 的路径必须 403(目录穿越防护红线)。"""
-    wd = tempfile.mkdtemp(prefix="oiagent_wd_")
+    wd = tempfile.mkdtemp(prefix="prisiragent_wd_")
     open(os.path.join(wd, "ok.txt"), "w", encoding="utf-8").write("hello")
     old = w._WORKDIR["path"]
     w._WORKDIR["path"] = wd
@@ -181,7 +181,7 @@ def test_serve_workdir_file_traversal_blocked():
 
 def test_serve_workdir_file_md_as_text():
     """md 文件以 text/plain 取回(防直接当 html 渲染),由前端再 md 渲染。"""
-    wd = tempfile.mkdtemp(prefix="oiagent_wd_md_")
+    wd = tempfile.mkdtemp(prefix="prisiragent_wd_md_")
     open(os.path.join(wd, "design.md"), "w", encoding="utf-8").write("# 标题\n表格")
     old = w._WORKDIR["path"]
     w._WORKDIR["path"] = wd

@@ -1,13 +1,13 @@
-"""tests/oiagent_context_test.py — 壳上下文窗口管理单元测试(档位1+2)。
+"""tests/prisiragent_context_test.py — 壳上下文窗口管理单元测试(档位1+2)。
 
-覆盖 oiagent_context.py:
+覆盖 prisiragent_context.py:
   - estimate_tokens: 中文/英文/混排/空串
   - context_window: 已知模型/未知模型/带 litellm 前缀
   - usage_for: 用量/ratio/near_full/mask/advise
   - mask_old_tool_outputs: 保留最近 N 条 tool,遮蔽更早长输出,短输出不动,
     user/assistant 不动,不改传入 list(返回副本)
 
-跑法: python tests/oiagent_context_test.py  →  打印 PASS/FAIL
+跑法: python tests/prisiragent_context_test.py  →  打印 PASS/FAIL
 """
 import sys
 from pathlib import Path
@@ -185,7 +185,7 @@ def test_tool_ingestion_activates_masking():
 
 
 def main():
-    print("=== oiagent_context 单元测试 ===\n")
+    print("=== prisiragent_context 单元测试 ===\n")
     test_estimate_tokens()
     print()
     test_context_window()

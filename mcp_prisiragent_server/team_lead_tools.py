@@ -11,8 +11,8 @@
 - 默认 cheap_lottery (Race 模式抽奖层),失败再升级
 
 复用:
-- ~/.claude/mcp_oiagent_routing.yaml  (routing 表)
-- ~/.claude/oiagent_harness_training/  (trace 输出目录)
+- ~/.claude/mcp_prisiragent_routing.yaml  (routing 表)
+- ~/.claude/prisiragent_harness_training/  (trace 输出目录)
 """
 from __future__ import annotations
 
@@ -31,8 +31,8 @@ from typing import Any
 import yaml
 
 # ── 路径 ────────────────────────────────────────────
-ROUTING_PATH = Path.home() / ".claude" / "mcp_oiagent_routing.yaml"
-TRACE_DIR = Path.home() / ".claude" / "oiagent_harness_training"
+ROUTING_PATH = Path.home() / ".claude" / "mcp_prisiragent_routing.yaml"
+TRACE_DIR = Path.home() / ".claude" / "prisiragent_harness_training"
 # v0.48 Prisiragent 团队协作经验保存
 OBSIDIAN_VAULT = Path(os.environ.get(
     "OBSIDIAN_VAULT",
@@ -566,7 +566,7 @@ def _ingest_trace_async(record: dict) -> None:
             text = _format_trace_for_cognee(record)
             r = cognee_remember_impl(
                 data=text,
-                dataset_name="oiagent_harness_training",
+                dataset_name="prisiragent_harness_training",
             )
             if '"ok": true' not in r and '"ok":true' not in r:
                 print(f"[trace-ingest] cognee ingest 非 ok 返回: {r[:200]}", file=sys.stderr)
@@ -602,9 +602,9 @@ TOOL_DEFS = [
     {
         "name": "team_lead_dispatch",
         "description": (
-            "prisiragent-team-lead 派单:按任务描述查 ~/.claude/mcp_oiagent_routing.yaml,"
+            "prisiragent-team-lead 派单:按任务描述查 ~/.claude/mcp_prisiragent_routing.yaml,"
             "返回 {agent, pool, mode, matched_keyword},0-token 关键词匹配,"
-            "同时写一条 trace 到 ~/.claude/oiagent_harness_training/<date>.jsonl"
+            "同时写一条 trace 到 ~/.claude/prisiragent_harness_training/<date>.jsonl"
         ),
         "inputSchema": {
             "type": "object",
@@ -642,7 +642,7 @@ TOOL_DEFS = [
     {
         "name": "team_lead_trace",
         "description": (
-            "手动写一条 trace 到 ~/.claude/oiagent_harness_training/<date>.jsonl。"
+            "手动写一条 trace 到 ~/.claude/prisiragent_harness_training/<date>.jsonl。"
             "供外部 hook / skill 调用,作为 prisiragent 反推 IDE-无关 harness 的训练数据。"
         ),
         "inputSchema": {
@@ -785,7 +785,7 @@ def _save_team_experience_to_obsidian(event: str, payload: dict) -> None:
             "",
             "## 关联",
             "- [[note-to-obsidian]]",
-            "- [[mcp_oiagent_routing]]",
+            "- [[mcp_prisiragent_routing]]",
             "",
             "## 原始事件",
             "```json",

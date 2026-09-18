@@ -21,12 +21,15 @@ import os
 import re
 import secrets
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import threading
 import time
 import uuid
+import shutil
 import logging
+from urllib.parse import urlparse, parse_qs
 
 # 2026-09-08 #102 增量补丁:在任何项目模块 import 前,把可写补丁目录插到 sys.path[0],
 # 使 ~/.local/share/prisir/patches/<mod>.py 优先于 frozen PYZ/源码同名模块被加载。
@@ -66,14 +69,29 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs, quote
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+# M3.22(2026-09-16): companion_llm_providers 在 companion/ 子目录里,
+# 兜底把 sibling 子目录加 sys.path 让根目录脚本也能 import。
+# 装包态(prisir-backend.exe)会把 companion_llm_providers 同 bundle,
+# sys.path 已在打包脚本里配好。
+_COMPANION_DIR = Path(__file__).resolve().parent / "companion"
+if _COMPANION_DIR.is_dir() and str(_COMPANION_DIR) not in sys.path:
+    sys.path.insert(0, str(_COMPANION_DIR))
 from prisiragent_cli import run_conversation  # noqa: E402
 from prisiragent_context import (  # noqa: E402
     MASK_RATIO, usage_for, mask_old_tool_outputs, build_handoff_rules,
-    sanitize_tool_history,
+    sanitize_tool_history, estimate_tokens,
 )
 from fastlane.providers.llm_prisir import (  # noqa: E402
     PrisirKeyStore, PrisirRouter, generate_followups, list_endpoint_models,
     is_retryable_error_str,
+)
+# M3.22(2026-09-16):把「下拉选厂商+填 key」模式从 companion 搬到 PrisirAI 主后端。
+# spec 来源与 companion_llm_providers.py 一致(13 平台),keys.db 写入复用
+# upsert_key_from_form → PrisirKeyStore.set_key。**不在前端暴露 base_url 字段**(同 ASR 设计),
+# 锚死在 spec 里避免用户配错协议。
+from companion_llm_providers import (  # noqa: E402
+    list_llm_providers as _list_llm_providers,
+    upsert_key_from_form,
 )
 # 2026-08-25 P1 局域网联动:配对令牌 + mDNS 发现广播(docs/prisir-android-win-link-2026-08-25.md)。
 # 纯 stdlib 模块,惰性启用——仅 --lan 时才监听局域网;默认 127.0.0.1 本机访问不带令牌。
@@ -99,7 +117,7 @@ DEFAULT_STRATEGY = os.environ.get("PRISIR_STRATEGY", "smart")
 
 # 2026-08-25 版本号(About 页用)。单点真源在 installer/prisirai.nsi !define APP_VERSION,
 # 此处保持同值即可(About 显示);不由此驱动装包。
-APP_VERSION = "2.7.5"
+APP_VERSION = "2.7.7"
 APP_BRAND = "Prisir(湃睿思) AI"
 
 # v2.0 日志:RotatingFileHandler 5MB×3,落 userData/logs/prisirai-backend.log(装包态)
@@ -113,13 +131,13 @@ _DEFAULT_LOG_DIR = os.path.join(
 
 def _setup_logging(log_file: str | None = None) -> str:
     """配置 logging.FileHandler + 控制台。返回实际生效的 log_file 路径(用于回显)。"""
-    target = log_file or os.path.join(_DEFAULT_LOG_DIR, "prisIrai-backend.log")
+    target = log_file or os.path.join(_DEFAULT_LOG_DIR, "prisir-backend.log")
     try:
         Path(target).parent.mkdir(parents=True, exist_ok=True)
     except Exception as e:  # noqa: BLE001
         # 路径不可写 → 退到临时目录,绝不崩
         import tempfile
-        target = os.path.join(tempfile.gettempdir(), "prisIrai-backend.log")
+        target = os.path.join(tempfile.gettempdir(), "prisir-backend.log")
         sys.stderr.write(f"[prisiragent_web] log_file unreachable, fallback to {target}: {e}\n")
     try:
         handler = RotatingFileHandler(target, maxBytes=5 * 1024 * 1024, backupCount=3,
@@ -405,6 +423,31 @@ def _shell_system_prompt(user_text: str, sid: str = "") -> str:
             "用「Prisir(湃睿思) AI」这个称呼。下面【项目宪法】是硬性技术契约,"
             "涉及凭证/密钥/网络/代码正确性时以它为准,违反即返工;普通问答不影响。\n\n"
             "【项目宪法】\n" + constitution)
+    # 工作方式(2026-09-13 AGENTS.md 纳入,用户拍板先激进后调整):让 agent 从「对话助手」
+    # 升级为「执行 agent」,自动化帮助用户达成期望目标。若后续接到 token 消耗反馈再精简。
+    parts.append(
+        "【工作方式】\n"
+        "## 执行与确认\n"
+        "- 用户明确要求创建、修改、修复或执行时,在已授权范围内完成,不停在能力说明、计划或「是否继续」。\n"
+        "- 沿用当前任务中已确认的要求和授权,不重复询问。常规细节根据上下文合理判断,不擅自扩大任务范围。\n"
+        "- 缺少会实质影响结果的信息时再询问,同时继续不受影响的工作。\n"
+        "- 用户明确要求「先分析」「先给方案」「确认后再改」时,遵守该边界。\n"
+        "- 需要最终确认的操作,先完成已获授权的准备工作,让用户确认具体、可审阅的结果;"
+        "不以准备工作代替最终操作的授权。\n"
+        "## Skill 与指令冲突\n"
+        "- 用户对当前任务的明确要求优先于 Skill 的默认做法。\n"
+        "- 如果某条 Skill 指令导致暂停、重复确认或无法完成请求,指出具体文件和相关原文,"
+        "说明是明确要求还是自己的解释。\n"
+        "- 不因 Skill 包含完整流程,就自动执行用户没有要求的其他环节。\n"
+        "## 沟通方式\n"
+        "- 先回答用户最关心的问题,再补充必要依据;使用清楚、具体的语言。\n"
+        "- 默认使用自然段;并列、步骤或比较确有需要时才使用列表和表格。\n"
+        "- 避免空泛提示语、刻意反转、重复总结和自行发明的概念标签。\n"
+        "- 交付时分清已完成、未完成和未经验证的部分,不把尝试说成成功。\n"
+        "## 验证范围\n"
+        "- 完成与本次任务相称的必要检查。\n"
+        "- 检查通过后,只有新增修改、失败或未解决的问题才扩大或重复检查。\n"
+        "- 不为简单、低影响的修改增加与结果无关的测试或审查流程。")
     # 回复语气(2026-08-25 用户拍板):任务真做成、有结果反馈时,用让用户放心/满意/高兴的
     # 措辞收口,让用户一眼知道「成了」;仅措辞,不影响事实与诚实(失败/不确定仍如实说)。
     parts.append(
@@ -441,6 +484,17 @@ def _shell_system_prompt(user_text: str, sid: str = "") -> str:
         lblock = solutions_learner.learned_block(hit_cats)
         if lblock:
             parts.append(lblock)
+    except Exception:  # noqa: BLE001
+        pass
+    # 路线A / ACE 记坑注入(2026-09-14):命中类别的「过往失败教训」也注入,提醒这次避开。
+    # 与 learned_block(成功解法)互补——成功给「怎么做」,教训给「别怎么做」。
+    try:
+        import pitfalls_learner  # noqa: PLC0415
+        hit_cats2 = [pt for pt, kws in _PRESET_KEYWORDS
+                     if any(k in user_text for k in kws)]
+        pfblock = pitfalls_learner.pitfalls_block(hit_cats2)
+        if pfblock:
+            parts.append(pfblock)
     except Exception:  # noqa: BLE001
         pass
     # 用户画像:把已沉淀的偏好/习惯/角色/忌讳注入,让回答越用越懂用户
@@ -482,7 +536,51 @@ def _shell_system_prompt(user_text: str, sid: str = "") -> str:
                     parts.append("\n".join(lines))
             except Exception:  # noqa: BLE001
                 pass
+    # M3.33 #66:用户消息触发词命中 → 把 skill 完整信息(包含 body)注入 system prompt。
+    # agent 读到 body 后才知道有 scripts/check.py / scripts/generate.py 可调,
+    # 自主决定是否用 skill 完成任务(不强插 tool 链路)。
+    try:
+        sb = _skill_block_for_prompt(user_text)
+        if sb:
+            parts.append(sb)
+    except Exception:  # noqa: BLE001
+        pass
     return "\n\n".join(parts)
+
+
+def _skill_block_for_prompt(user_text: str) -> str:
+    """#66:扫用户消息里的 skill 触发词,命中后把 skill body(Layer 2)注入。
+    无命中返 ""。失败静默返 ""(不污染主链路)。"""
+    if not user_text or not user_text.strip():
+        return ""
+    try:
+        hits = _skill_match_triggers(user_text)
+    except Exception:  # noqa: BLE001
+        return ""
+    if not hits:
+        return ""
+    blocks = ["【Skill 提示】用户消息里命中以下 skill(由 trigger 词触发),可考虑用 scripts/ 下的脚本完成任务。"]
+    for name in hits[:6]:  # 最多 6 个,覆盖 3 图 + 2 音 + 1 视全套
+        sk = _skill_get(name)
+        if not sk:
+            continue
+        body = (sk.get("body") or "").strip()
+        if len(body) > 3000:
+            body = body[:3000] + "\n…(body 截断)"
+        triggers = (sk.get("triggers") or [])[:8]
+        blocks.append(
+            f"- name: {sk['name']}\n"
+            f"  description: {sk.get('description','')}\n"
+            f"  triggers: {', '.join(triggers)}\n"
+            f"  requirements: {sk.get('requirements','(无)')}\n"
+            f"  body:\n{body}"
+        )
+    blocks.append(
+        "【Skill 使用提示】要调用 skill 时,有两种方式:(a) 直接用 shell_run / subprocess 跑 scripts/ 下的脚本;"
+        "(b) 走我们提供的 HTTP API:POST /prisiragent/api/skill_run {name, script, args}。"
+        "如无合适 skill,直接正常回答,不要为了用 skill 而硬上。"
+    )
+    return "\n".join(blocks)
 
 
 # ============================================================
@@ -628,6 +726,1244 @@ _events_lock = threading.Lock()
 
 # 工作目录(可被 /api/workdir 覆盖,内存态;工具调用以此为 cwd)
 _WORKDIR = {"path": DEFAULT_WORKDIR}
+
+# M3.31(2026-09-16):外部版本管理兼容 — git 可用性缓存
+# detected: True/False/None(None=未探测)
+# version: str or None
+# gate_shown: bool(权限闸是否已弹过)
+# last_check_ts: 上次探测时间戳
+_GIT_STATE = {"detected": None, "version": None, "gate_shown": False, "last_check_ts": 0.0}
+
+# M3.32 Phase 2(2026-09-16):Office 渲染器探测状态。libreoffice / officecli 各探测一份,
+# 用 last_check_ts 缓存 24h(同 _GIT_STATE 模式)。
+_OFFICE_STATE = {
+    "lo": {"detected": None, "version": None, "path": "", "err": "", "last_check_ts": 0.0},
+    "officecli": {"detected": None, "version": None, "path": "", "err": "", "last_check_ts": 0.0},
+    "gate_shown": False,  # officecli 装机闸 ack(本会话已选「暂不启用」)
+}
+
+
+# === M3.33 skill 系统骨架(2026-09-16) ===
+# 兼容 Claude Code skill 标准(SKILL.md frontmatter + 渐进式加载)。
+# 用户级: ~/.prisir/skills/;项目级: <workdir>/skills/(只在 workdir 下生效)。
+# skill = {name, description, body, scripts, references, assets, triggers, requirements}
+# - Layer 1: name + description(总在 system prompt,用于触发判断)
+# - Layer 2: SKILL.md body(agent 判断命中时加载到上下文)
+# - Layer 3: scripts/references/assets(agent 主动调用时按需)
+_SKILL_DIRS = ("~/.prisir/skills", "<workdir>/skills")
+_SKILL_INDEX: dict = {}  # 全局缓存 {name: skill_dict};启动时扫一次,装卸时重扫
+_SKILL_INDEX_LOCK = threading.Lock()
+_SKILL_TRIGGER_INDEX: list = []  # [(name, [trigger_words])] 加速命中
+
+# === M3.32 Phase 1 跨 agent file_change registry(2026-09-16) ===
+# 跨进程共享:每个 workdir 一个 <workdir>/_prisir_registry/file_changes.jsonl
+# append-only,每行一个 JSON:{"ts":..., "op":..., "path":..., "agent_alias":..., "agent_pid":..., ...}
+# Phase 1 只记录不上锁;Phase 2 可加 soft lock,Phase 3 可加 Coordinator
+_REGISTRY_DIR_NAME = "_prisir_registry"
+_REGISTRY_FILE_NAME = "file_changes.jsonl"
+# alias 持久化在 ~/.prisir/alias.json(用户级,跨 workdir)
+_ALIAS_FILE_NAME = "alias.json"
+
+# M3.31:扫描 worker 探测到的 candidates(repo_root → [{abs_path, src_blob_sha, src_submodule_path}])
+_GIT_IMPORT_CANDIDATES: dict = {}
+
+# M3.31:已导入索引(.imported_index.json 反序列化)
+_GIT_IMPORTED_INDEX: dict = {}
+
+# M3.31:candidates 字典并发访问锁 — 后台 worker + 同步 API + read_file hook 都可能
+# 同时读写。dict 对象身份稳定(用 .clear() 而非 = {})+ 锁保证一致。
+_GIT_IMPORT_CANDIDATES_LOCK = threading.Lock()
+
+# M3.31:导入索引锁(文件级 fcntl/msvcrt),防止后台 worker 撞车
+_GIT_INDEX_LOCK_PATH = None  # lazy:启动后第一次访问 _WORKDIR/.prisir_snapshots 时创建
+
+
+def _registry_dir_for(workdir: str) -> str:
+    """workdir 的 registry 目录路径。"""
+    return os.path.join(workdir, _REGISTRY_DIR_NAME)
+
+
+def _registry_path_for(workdir: str) -> str:
+    """workdir 的 file_changes.jsonl 路径。"""
+    return os.path.join(_registry_dir_for(workdir), _REGISTRY_FILE_NAME)
+
+
+def _alias_file_path() -> str:
+    """~/.prisir/alias.json(用户级 alias 存储)。"""
+    home = os.path.expanduser("~")
+    prisir_home = os.path.join(home, ".prisir")
+    return os.path.join(prisir_home, _ALIAS_FILE_NAME)
+
+
+def _read_local_alias() -> str:
+    """读本地 agent 的 alias(默认 PID-based fallback)。"""
+    p = _alias_file_path()
+    if os.path.isfile(p):
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                j = json.loads(f.read())
+                a = (j.get("alias") or "").strip()
+                if a:
+                    return a
+        except (OSError, ValueError):
+            pass
+    # fallback: PID-based 自动 alias,跨重启稳定
+    return "agent-" + str(os.getpid())
+
+
+def _write_local_alias(alias: str) -> None:
+    """写本地 agent 的 alias 到 ~/.prisir/alias.json(atomic 写)。"""
+    p = _alias_file_path()
+    home = os.path.dirname(p)
+    os.makedirs(home, exist_ok=True)
+    tmp = p + ".tmp"
+    payload = json.dumps({"alias": alias, "updated_ts": int(time.time())}, ensure_ascii=False, indent=2)
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(payload)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, p)
+
+
+def _registry_append(workdir: str, op: dict) -> None:
+    """往 workdir 的 registry 追加一条 op(append-only,jsonl)。
+    单条用 file lock 串行化(同 agent 多线程安全;跨进程靠 fcntl/msvcrt)。
+    M3.32 fix(2026-09-16):Win 下 msvcrt.locking(fd, LK_NBLCK, 1) 锁 1 字节 + Python
+    'a' mode 第二个 fd append 写入冲突;改用单一 fd 直接 os.write + 锁整个文件区域。
+    """
+    p = _registry_path_for(workdir)
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    op = dict(op)
+    op.setdefault("agent_alias", _read_local_alias())
+    op.setdefault("agent_pid", os.getpid())
+    op.setdefault("ts", int(time.time()))
+    line = json.dumps(op, ensure_ascii=False) + "\n"
+    raw = line.encode("utf-8")
+    fd = None
+    try:
+        fd = os.open(p, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+        try:
+            if os.name == "nt":
+                import msvcrt
+                # 锁大区域(覆盖最大可能行长度,4KB),比锁 1 字节稳
+                try:
+                    msvcrt.locking(fd, msvcrt.LK_NBLCK, 4096)
+                except OSError:
+                    raise BlockingIOError("registry file locked by another process")
+            else:
+                import fcntl
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except OSError:
+                    raise BlockingIOError("registry file locked by another process")
+            os.write(fd, raw)
+            os.fsync(fd)
+        finally:
+            try:
+                if os.name == "nt":
+                    import msvcrt
+                    try: msvcrt.locking(fd, msvcrt.LK_UNLCK, 4096)
+                    except OSError: pass
+                else:
+                    import fcntl
+                    try: fcntl.flock(fd, fcntl.LOCK_UN)
+                    except OSError: pass
+            except Exception:
+                pass
+    except (OSError, BlockingIOError) as e:
+        sys.stderr.write(f"[registry] append failed: {type(e).__name__}: {e}\n")
+    finally:
+        if fd is not None:
+            try: os.close(fd)
+            except OSError: pass
+
+
+def _registry_recent(workdir: str, limit: int = 200, agent_alias: str | None = None,
+                     path_filter: str | None = None) -> list:
+    """读 registry 最近 limit 条(按 ts 倒序),可按 agent / path 过滤。
+    失败返空列表(graceful — registry 是辅助,不影响主流程)。
+
+    M3.32 fix(2026-09-16):Windows 下 _file_lock + open(p, 'r') 第二个 fd 会 PermissionError
+    (msvcrt.locking 持锁后 CreateFileW 共享模式冲突);改用同一个 fd 用 os.read 读全部。
+    """
+    p = _registry_path_for(workdir)
+    if not os.path.isfile(p):
+        return []
+    try:
+        with _file_lock(p) as fd:
+            # 在同一 fd 上读 — 避免第二个 file handle 跟 msvcrt.locking 冲突
+            try:
+                size = os.fstat(fd).st_size
+            except OSError:
+                size = 0
+            if size <= 0:
+                return []
+            try:
+                os.lseek(fd, 0, os.SEEK_SET)
+            except OSError:
+                pass
+            raw = b""
+            while len(raw) < size:
+                chunk = os.read(fd, 65536)
+                if not chunk:
+                    break
+                raw += chunk
+            text = raw.decode("utf-8", errors="replace")
+            lines = text.splitlines()
+    except OSError:
+        return []
+    out = []
+    # 倒序读(最近在前)
+    for ln in reversed(lines):
+        ln = ln.strip()
+        if not ln:
+            continue
+        try:
+            j = json.loads(ln)
+        except ValueError:
+            continue
+        if agent_alias and j.get("agent_alias") != agent_alias:
+            continue
+        if path_filter and not (j.get("path") or "").endswith(path_filter):
+            continue
+        out.append(j)
+        if len(out) >= limit:
+            break
+    return out
+
+
+# === M3.33 skill 系统骨架(2026-09-16) ===
+# 兼容 Claude Code skill 标准:SKILL.md frontmatter(name+description+allowed-tools+license)
+# + body(agent 命中时加载到上下文)
+# + scripts/(按需调)+ references/(按需读)+ assets/(按需加载)
+#
+# 触发机制:
+# - Layer 1 总是加载: name + description(进 system prompt,模型判断要不要激活)
+# - Layer 2 命中时加载: SKILL.md body + Layer 3 路径提示
+# - Layer 3 按需调用: scripts/*.py 用 subprocess,references/*.md Read
+#
+# 目录约定(双层):
+# - 用户级: ~/.prisir/skills/ — 跨 workdir
+# - 项目级: <workdir>/skills/ — 只在本 workdir 生效(项目级覆盖用户级同名)
+#
+# 装载:启动时 _skill_scan_all() 扫一遍;运行时 install/remove/uninstall 触发重扫
+import re as _re_skill
+
+_SKILL_FRONT_RE = _re_skill.compile(r"^---\s*\n(.*?)\n---\s*\n(.*)$", _re_skill.DOTALL)
+
+
+def _skill_dirs() -> list[str]:
+    """返回实际存在的 skill 根目录(用户级 + 项目级),项目级在后(覆盖)。"""
+    wd = _WORKDIR.get("path", "") if hasattr(_WORKDIR, "get") else (_WORKDIR or "")
+    out = [os.path.expanduser("~/.prisir/skills")]
+    if wd:
+        out.append(os.path.join(wd, "skills"))
+    return [d for d in out if os.path.isdir(d)]
+
+
+def _skill_parse_skill_md(path: str) -> dict | None:
+    """解析 SKILL.md:返 {name, description, license, allowed_tools, body, triggers, requirements, dir} 或 None(失败)。"""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            text = f.read()
+    except OSError as e:
+        print(f"[skill] skip {path}: read fail {e}", file=sys.stderr)
+        return None
+    m = _SKILL_FRONT_RE.match(text)
+    if not m:
+        print(f"[skill] skip {path}: frontmatter missing", file=sys.stderr)
+        return None
+    front_text, body = m.group(1), m.group(2).strip()
+    # 简单 YAML:key: value(不支持嵌套)
+    meta: dict = {}
+    for line in front_text.splitlines():
+        line = line.rstrip()
+        if not line or ":" not in line:
+            continue
+        k, _, v = line.partition(":")
+        meta[k.strip()] = v.strip().strip('"').strip("'")
+    name = meta.get("name", "")
+    description = meta.get("description", "")
+    if not name or not description:
+        print(f"[skill] skip {path}: name/description missing", file=sys.stderr)
+        return None
+    # 触发词:description 里中文 2-字切片 + "Use when" 后面跟的关键词 + 显式 triggers: 字段
+    triggers: list[str] = []
+    # 1. "Use when ..." 后面的逗号短语
+    m_use = _re_skill.search(r"[Uu]se when\s+(.+?)(?:\.|$)", description)
+    if m_use:
+        for chunk in _re_skill.split(r"[,、;]", m_use.group(1)):
+            chunk = chunk.strip().strip('"').strip("'")
+            if chunk and len(chunk) <= 32:
+                triggers.append(chunk.lower())
+    # 2. description 里所有中文 2-字串(粗糙但中文触发词用)
+    cn_matches = _re_skill.findall(r"[一-鿿]{2,8}", description)
+    for cn in cn_matches[:8]:
+        triggers.append(cn)
+    # 3. 显式 triggers: 行
+    if "triggers" in meta:
+        for t in _re_skill.split(r"[,;]", meta["triggers"]):
+            t = t.strip().strip('"').strip("'")
+            if t:
+                triggers.append(t.lower())
+    # requirements:env 里要的 env 变量
+    requirements = meta.get("requirements", "")
+    allowed_tools = meta.get("allowed-tools", "")
+    return {
+        "name": name,
+        "description": description,
+        "license": meta.get("license", ""),
+        "allowed_tools": [t.strip() for t in allowed_tools.split(",") if t.strip()] if allowed_tools else [],
+        "requirements": requirements,
+        "body": body,
+        "triggers": triggers,
+        "dir": os.path.dirname(path),
+        "skill_md": path,
+    }
+
+
+def _skill_scan_dir(root: str) -> dict:
+    """扫一个目录(每个子目录若含 SKILL.md 则算一个 skill)。返 {name: skill_dict}。"""
+    out: dict = {}
+    if not os.path.isdir(root):
+        return out
+    for entry in sorted(os.listdir(root)):
+        sub = os.path.join(root, entry)
+        if not os.path.isdir(sub):
+            continue
+        skill_md = os.path.join(sub, "SKILL.md")
+        if not os.path.isfile(skill_md):
+            continue
+        sk = _skill_parse_skill_md(skill_md)
+        if sk:
+            out[sk["name"]] = sk
+    return out
+
+
+def _skill_scan_all() -> dict:
+    """扫所有 skill 根目录,项目级覆盖用户级。"""
+    merged: dict = {}
+    for d in _skill_dirs():
+        for name, sk in _skill_scan_dir(d).items():
+            # 项目级(skill_dirs() 里靠后)覆盖用户级
+            merged[name] = sk
+    return merged
+
+
+def _skill_refresh() -> None:
+    """重扫并刷新全局索引 + 触发词索引(线程安全)。"""
+    global _SKILL_INDEX, _SKILL_TRIGGER_INDEX
+    with _SKILL_INDEX_LOCK:
+        _SKILL_INDEX = _skill_scan_all()
+        _SKILL_TRIGGER_INDEX = [(name, sk["triggers"]) for name, sk in _SKILL_INDEX.items()]
+
+
+def _skill_get(name: str) -> dict | None:
+    """取 skill(优先用缓存;未扫则刷新一次)。"""
+    with _SKILL_INDEX_LOCK:
+        if name in _SKILL_INDEX:
+            return _SKILL_INDEX[name]
+    _skill_refresh()
+    with _SKILL_INDEX_LOCK:
+        return _SKILL_INDEX.get(name)
+
+
+def _skill_match_triggers(text: str) -> list[str]:
+    """在用户消息里扫触发词,返命中的 skill 名(去重,最多 6 个 — 3 图 + 2 音 + 1 视刚好)。"""
+    text_lower = text.lower()
+    hits: list[str] = []
+    seen: set = set()
+    with _SKILL_INDEX_LOCK:
+        idx = list(_SKILL_TRIGGER_INDEX)
+    for name, triggers in idx:
+        if name in seen:
+            continue
+        for trig in triggers:
+            if trig and trig in text_lower:
+                hits.append(name)
+                seen.add(name)
+                break
+        if len(hits) >= 6:
+            break
+    return hits
+
+
+def _skill_run_script(name: str, script_rel: str, args: list[str], cwd: str | None = None, timeout: int = 60) -> dict:
+    """跑 skill 的 scripts/<script_rel>.py。返 {ok, stdout, stderr, code, hint}。
+
+    scripts/ 目录相对路径;args 列表传给脚本 argv。
+    失败时不抛异常(给前端清晰 JSON 即可)。
+    """
+    sk = _skill_get(name)
+    if not sk:
+        return {"ok": False, "err": f"skill not found: {name}"}
+    script_path = os.path.join(sk["dir"], "scripts", script_rel)
+    if not os.path.isfile(script_path):
+        # 兼容省略 .py 后缀
+        if not script_rel.endswith(".py") and os.path.isfile(script_path + ".py"):
+            script_path = script_path + ".py"
+        else:
+            return {"ok": False, "err": f"script not found: scripts/{script_rel} in skill {name}"}
+    # M3.33 #67:默认把 cwd 切到 workdir,这样脚本里 os.path.join("generated", ...) 会落对位置
+    #(若 caller 显式传 cwd 则尊重之 — 向后兼容)
+    run_cwd = cwd if cwd else (_WORKDIR.get("path") if isinstance(_WORKDIR, dict) and _WORKDIR.get("path") else sk["dir"])
+    try:
+        proc = subprocess.run(
+            ["python", script_path] + args,
+            cwd=run_cwd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            encoding="utf-8",
+            errors="replace",
+        )
+        return {
+            "ok": proc.returncode == 0,
+            "code": proc.returncode,
+            "stdout": proc.stdout[-8000:],
+            "stderr": proc.stderr[-4000:],
+        }
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "err": f"script timeout ({timeout}s)"}
+    except Exception as e:
+        return {"ok": False, "err": f"script exception: {e}"}
+
+
+# === M3.31 git 兼容 helper(2026-09-16) ===
+
+def _detect_git(force: bool = False) -> dict:
+    """探测本机是否有 git。force=True 跳过缓存重跑(用于「重检 git」设置项)。
+    返回 {detected, version, err};同时刷新 _GIT_STATE。
+    子进程 1s 超时;PATH 无 git 时 5ms 内返回。"""
+    import subprocess
+    now = time.time()
+    if not force and _GIT_STATE["detected"] is not None and (now - _GIT_STATE["last_check_ts"]) < 86400:
+        return {"detected": _GIT_STATE["detected"], "version": _GIT_STATE["version"], "err": ""}
+    try:
+        r = subprocess.run(
+            ["git", "--version"],
+            capture_output=True, text=True, timeout=1.5,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        if r.returncode == 0:
+            ver = (r.stdout or "").strip().replace("git version ", "")
+            _GIT_STATE.update({"detected": True, "version": ver, "last_check_ts": now})
+            return {"detected": True, "version": ver, "err": ""}
+        _GIT_STATE.update({"detected": False, "version": None, "last_check_ts": now})
+        return {"detected": False, "version": None, "err": (r.stderr or "non-zero exit").strip()[:200]}
+    except FileNotFoundError:
+        _GIT_STATE.update({"detected": False, "version": None, "last_check_ts": now})
+        return {"detected": False, "version": None, "err": "git not found in PATH"}
+    except subprocess.TimeoutExpired:
+        _GIT_STATE.update({"detected": False, "version": None, "last_check_ts": now})
+        return {"detected": False, "version": None, "err": "git --version timeout"}
+    except Exception as e:  # noqa: BLE001
+        _GIT_STATE.update({"detected": False, "version": None, "last_check_ts": now})
+        return {"detected": False, "version": None, "err": f"{type(e).__name__}: {e}"[:200]}
+
+
+def _detect_office_renderer(force: bool = False) -> dict:
+    """M3.32 Phase 2(2026-09-16):探测本机 Office 渲染器(LibreOffice 主,OfficeCLI 兜底)。
+    返回 {lo: {detected, version, path, err}, officecli: {detected, version, path, err}, gate_shown}。
+    缓存 24h(同 _detect_git)。失败只 stderr,不阻塞主流程。
+    """
+    import subprocess
+    now = time.time()
+
+    def _cache_hit(key: str) -> bool:
+        s = _OFFICE_STATE.get(key, {})
+        return (not force and s.get("detected") is not None
+                and (now - s.get("last_check_ts", 0)) < 86400)
+
+    def _check_soffice() -> dict:
+        """探测 LibreOffice(soffice.com / soffice)。Win 默认路径 Program Files / (x86)。"""
+        candidates = []
+        # 先用 where / which 让用户 PATH 优先
+        cmd = "where" if os.name == "nt" else "which"
+        try:
+            r = subprocess.run(
+                [cmd, "soffice"], capture_output=True, text=True, timeout=1.5,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            if r.returncode == 0 and r.stdout.strip():
+                for line in r.stdout.strip().splitlines():
+                    p = line.strip().strip('"')
+                    if p and os.path.isfile(p):
+                        candidates.append(p)
+        except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+            pass
+        # 默认安装路径兜底(Win 7 个常见位置)
+        if os.name == "nt":
+            prog = os.environ.get("ProgramFiles", r"C:\Program Files")
+            prog86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
+            for base in [prog, prog86]:
+                for sub in [
+                    r"LibreOffice\program\soffice.com",
+                    r"LibreOffice\program\soffice.exe",
+                    r"LibreOffice 7\program\soffice.com",
+                ]:
+                    p = os.path.join(base, sub)
+                    if os.path.isfile(p) and p not in candidates:
+                        candidates.append(p)
+        else:
+            for p in ("/usr/bin/soffice", "/usr/local/bin/soffice",
+                      "/Applications/LibreOffice.app/Contents/MacOS/soffice"):
+                if os.path.isfile(p) and p not in candidates:
+                    candidates.append(p)
+        if not candidates:
+            return {"detected": False, "version": None, "path": "", "err": "soffice not found"}
+        soffice = candidates[0]
+        try:
+            r = subprocess.run(
+                [soffice, "--version"], capture_output=True, text=True, timeout=2.5,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            ver = (r.stdout or r.stderr or "").strip()
+            # 输出形如 "LibreOffice 24.2.7.2 420(Build:2)"
+            import re
+            m = re.search(r"LibreOffice\s+([\d.]+)", ver)
+            version = m.group(1) if m else (ver[:40] if ver else "")
+            return {"detected": True, "version": version, "path": soffice, "err": ""}
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+            return {"detected": False, "version": None, "path": soffice,
+                    "err": f"{type(e).__name__}: {e}"[:200]}
+
+    def _check_officecli() -> dict:
+        """探测 OfficeCLI(officecli.exe)。默认路径 AppData\\Local\\OfficeCLI。"""
+        candidates = []
+        cmd = "where" if os.name == "nt" else "which"
+        try:
+            r = subprocess.run(
+                [cmd, "officecli"], capture_output=True, text=True, timeout=1.5,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            if r.returncode == 0 and r.stdout.strip():
+                for line in r.stdout.strip().splitlines():
+                    p = line.strip().strip('"')
+                    if p and os.path.isfile(p):
+                        candidates.append(p)
+        except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+            pass
+        if os.name == "nt":
+            local_app = os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), "AppData", "Local")
+            default = os.path.join(local_app, "OfficeCLI", "officecli.exe")
+            if os.path.isfile(default) and default not in candidates:
+                candidates.append(default)
+            mac = os.path.join("/usr/local/bin/officecli",)
+            if os.path.isfile(mac) and mac not in candidates:
+                candidates.append(mac)
+        if not candidates:
+            return {"detected": False, "version": None, "path": "", "err": "officecli not found"}
+        oc = candidates[0]
+        try:
+            r = subprocess.run(
+                [oc, "--version"], capture_output=True, text=True, timeout=2.5,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+            ver = (r.stdout or r.stderr or "").strip()
+            return {"detected": True, "version": ver[:40], "path": oc, "err": ""}
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+            return {"detected": False, "version": None, "path": oc,
+                    "err": f"{type(e).__name__}: {e}"[:200]}
+
+    if not _cache_hit("lo"):
+        try:
+            _OFFICE_STATE["lo"] = _check_soffice()
+            _OFFICE_STATE["lo"]["last_check_ts"] = now
+        except Exception as e:  # noqa: BLE001
+            _OFFICE_STATE["lo"] = {"detected": False, "version": None, "path": "",
+                                   "err": f"{type(e).__name__}: {e}"[:200],
+                                   "last_check_ts": now}
+    if not _cache_hit("officecli"):
+        try:
+            _OFFICE_STATE["officecli"] = _check_officecli()
+            _OFFICE_STATE["officecli"]["last_check_ts"] = now
+        except Exception as e:  # noqa: BLE001
+            _OFFICE_STATE["officecli"] = {"detected": False, "version": None, "path": "",
+                                         "err": f"{type(e).__name__}: {e}"[:200],
+                                         "last_check_ts": now}
+
+    return {
+        "lo": {k: v for k, v in _OFFICE_STATE["lo"].items() if k != "last_check_ts"},
+        "officecli": {k: v for k, v in _OFFICE_STATE["officecli"].items() if k != "last_check_ts"},
+        "gate_shown": _OFFICE_STATE.get("gate_shown", False),
+    }
+
+
+def _convert_office_to_pdf(src_path: str) -> str | None:
+    """M3.32 Phase 2(2026-09-16):用 LibreOffice headless 把 office 文件转 PDF。
+    返回 PDF 缓存绝对路径,失败返 None。
+    - 缓存:<workdir>/.prisir_office_cache/<sha256(mtime+size)>.pdf
+    - 隔离 profile:<workdir>/.prisir_office_cache/lo_profile/(避免多实例互锁)
+    - 5 分钟缓存(同文件 mtime 不变就复用)
+    - 60s 超时
+    """
+    import hashlib
+    import subprocess
+    import shutil
+    if not _OFFICE_STATE["lo"].get("detected"):
+        return None
+    soffice = _OFFICE_STATE["lo"].get("path") or ""
+    if not soffice or not os.path.isfile(soffice):
+        return None
+    try:
+        st = os.stat(src_path)
+    except OSError:
+        return None
+    # 大小预检:>50MB 直接拒,避免 OOM
+    if st.st_size > 50 * 1024 * 1024:
+        return None
+    # 缓存 key = sha256(path + mtime + size)
+    key_src = f"{src_path}|{st.st_mtime_ns}|{st.st_size}".encode("utf-8")
+    cache_key = hashlib.sha256(key_src).hexdigest()[:16]
+    cache_dir = os.path.join(_WORKDIR.get("path", ""), ".prisir_office_cache")
+    if not cache_dir or not os.path.isdir(os.path.dirname(cache_dir)):
+        return None
+    try:
+        os.makedirs(cache_dir, exist_ok=True)
+    except OSError:
+        return None
+    pdf_path = os.path.join(cache_dir, f"{cache_key}.pdf")
+    # 缓存命中:pdf 存在且 mtime >= src mtime
+    try:
+        if os.path.isfile(pdf_path) and os.path.getmtime(pdf_path) >= st.st_mtime:
+            return pdf_path
+    except OSError:
+        pass
+    # 隔离 profile
+    profile_dir = os.path.join(cache_dir, "lo_profile")
+    try:
+        os.makedirs(profile_dir, exist_ok=True)
+    except OSError:
+        pass
+    profile_url = "file:///" + profile_dir.replace("\\", "/").lstrip("/")
+    # outdir 用唯一临时子目录,避免并发写同一目录
+    import tempfile
+    outdir = tempfile.mkdtemp(prefix="lo_out_", dir=cache_dir)
+    try:
+        cmd = [
+            soffice,
+            f"-env:UserInstallation={profile_url}",
+            "--headless",
+            "--norestore", "--nofirststartwizard", "--nologo",
+            "--convert-to", "pdf",
+            "--outdir", outdir,
+            src_path,
+        ]
+        r = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=60,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        # 找生成的 PDF(outdir 里有且只有一个 pdf)
+        cand = None
+        try:
+            for fn in os.listdir(outdir):
+                if fn.lower().endswith(".pdf"):
+                    cand = os.path.join(outdir, fn)
+                    break
+        except OSError:
+            cand = None
+        if cand and os.path.isfile(cand) and os.path.getsize(cand) > 0:
+            # 移到稳定 cache 路径
+            try:
+                shutil.move(cand, pdf_path)
+            except OSError:
+                # 移动失败(权限等),退而就地返回
+                pdf_path = cand
+            return pdf_path
+        return None
+    except subprocess.TimeoutExpired:
+        return None
+    except Exception as e:  # noqa: BLE001
+        sys.stderr.write(f"[office->pdf] {type(e).__name__}: {e}\n")
+        return None
+    finally:
+        # 清理临时 outdir
+        try: shutil.rmtree(outdir, ignore_errors=True)
+        except OSError: pass
+
+
+def _file_lock(path: str, exclusive: bool = True, blocking: bool = False):
+    """平台无关文件锁(M3.31/M3.32)。返回上下文管理器对象。
+    Win: msvcrt.locking(fd, mode, len);Unix: fcntl.flock(fd, op)。
+    blocking=False 时拿不到锁立即 raise BlockingIOError。"""
+    import contextlib
+
+    @contextlib.contextmanager
+    def _lock_ctx():
+        import os as _os
+        fd = _os.open(path, _os.O_RDWR | _os.O_CREAT, 0o644)
+        try:
+            if _os.name == "nt":
+                import msvcrt
+                mode = msvcrt.LK_NBLCK if exclusive else msvcrt.LK_NBRLCK  # 不区分读写都 NBLCK
+                if not blocking:
+                    mode = msvcrt.LK_NBLCK  # 非阻塞
+                try:
+                    msvcrt.locking(fd, mode, 1)
+                except OSError:
+                    raise BlockingIOError("file locked by another process")
+            else:
+                import fcntl
+                op = (fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+                if not blocking:
+                    op |= fcntl.LOCK_NB
+                try:
+                    fcntl.flock(fd, op)
+                except OSError:
+                    raise BlockingIOError("file locked by another process")
+            yield fd
+        finally:
+            try:
+                if _os.name == "nt":
+                    import msvcrt
+                    try:
+                        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+                    except OSError:
+                        pass
+                else:
+                    import fcntl
+                    try:
+                        fcntl.flock(fd, fcntl.LOCK_UN)
+                    except OSError:
+                        pass
+            finally:
+                _os.close(fd)
+    return _lock_ctx()
+
+
+def _git_run(args: list, cwd: str, timeout: float = 5.0) -> dict:
+    """跑 git 子进程。cwd 必须存在;失败返 {ok:False, err};成功 {ok, stdout, stderr}。
+    不在 PATH 时 no-op(探测过的 _GIT_STATE.detected=False 则直接返 ok:False, err:no_git)。"""
+    if not _GIT_STATE.get("detected"):
+        # 没探测过就探测一次
+        d = _detect_git()
+        if not d["detected"]:
+            return {"ok": False, "err": "no_git", "stdout": "", "stderr": ""}
+    if not os.path.isdir(cwd):
+        return {"ok": False, "err": f"cwd not exists: {cwd}", "stdout": "", "stderr": ""}
+    import subprocess
+    try:
+        r = subprocess.run(
+            ["git"] + args,
+            cwd=cwd, capture_output=True, text=True, timeout=timeout,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        return {
+            "ok": r.returncode == 0,
+            "returncode": r.returncode,
+            "stdout": r.stdout or "",
+            "stderr": (r.stderr or "")[:500],
+        }
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "err": "timeout", "stdout": "", "stderr": ""}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "err": f"{type(e).__name__}: {e}"[:200], "stdout": "", "stderr": ""}
+
+
+def _avail_ram_bytes() -> int:
+    """可估算的可用 RAM;不够精确就保守返 1GB。Win 用 ctypes GlobalMemoryStatusEx;Unix 读 /proc/meminfo。"""
+    try:
+        if os.name == "nt":
+            import ctypes
+            from ctypes import wintypes
+            class MEMORYSTATUSEX(ctypes.Structure):
+                _fields_ = [("dwLength", wintypes.DWORD), ("dwMemoryLoad", wintypes.DWORD),
+                            ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
+                            ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong),
+                            ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong),
+                            ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+            stat = MEMORYSTATUSEX()
+            stat.dwLength = ctypes.sizeof(stat)
+            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))
+            return int(stat.llAvailPhys)
+        # Linux/macOS:从 /proc/meminfo 读 MemAvailable
+        with open("/proc/meminfo", "r", encoding="utf-8", errors="ignore") as f:
+            for ln in f:
+                if ln.startswith("MemAvailable:"):
+                    return int(ln.split()[1]) * 1024  # kB → bytes
+        return 1 << 30  # 兜底 1GB
+    except Exception:  # noqa: BLE001
+        return 1 << 30
+
+
+# === M3.31 git import 扫描/导入(2026-09-16) ===
+
+# 扫描 worker 节流状态
+_GIT_IMPORT_LAST_SCAN: float = 0.0
+_GIT_IMPORT_LAST_WORKDIR: str = ""
+_GIT_IMPORT_THREAD_STARTED: bool = False
+
+# 导入 snapshot 根目录(沿用 prisir_snapshot 的 _versions_root 模式,落到 _data_dir/file_versions/imported/<sha1[:2]>/<sha1>/)
+def _git_import_snapshot_root() -> str:
+    try:
+        from prisir_snapshot import _data_dir  # noqa: PLC0415
+        return os.path.join(str(_data_dir()), "file_versions", "imported")
+    except Exception:  # noqa: BLE001
+        return os.path.join(str(Path.home()), ".local", "share", "prisir", "file_versions", "imported")
+
+
+def _git_import_index_path() -> str:
+    """导入索引落盘路径:<workdir>/.prisir_snapshots/.imported_index.json"""
+    return os.path.join(_WORKDIR["path"], ".prisir_snapshots", ".imported_index.json")
+
+
+def _git_import_index_lock_path() -> str:
+    """导入索引文件锁的占位文件(同目录下,文件名固定)。"""
+    return os.path.join(_WORKDIR["path"], ".prisir_snapshots", ".imported_index.lock")
+
+
+def _load_imported_index() -> dict:
+    """从 .imported_index.json 加载已导入索引。失败返回 {}。"""
+    try:
+        p = _git_import_index_path()
+        if not os.path.isfile(p):
+            return {}
+        with open(p, "r", encoding="utf-8") as f:
+            raw = json.loads(f.read() or "{}")
+        if isinstance(raw, dict):
+            return raw
+        return {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _save_imported_index(index: dict) -> bool:
+    """原子写 .imported_index.json:tmp + rename。失败返回 False。
+    调用方需在文件锁内串行化,避免后台 worker 与同步 import 撞车。"""
+    try:
+        d = os.path.dirname(_git_import_index_path())
+        os.makedirs(d, exist_ok=True)
+        tmp = _git_import_index_path() + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(index, f, ensure_ascii=False, indent=2)
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except Exception:  # noqa: BLE001
+                pass
+        os.replace(tmp, _git_import_index_path())
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _ensure_index_lock_dir() -> bool:
+    """确保 .imported_index.lock 所在目录存在(用于 _file_lock 占位)。"""
+    try:
+        d = os.path.dirname(_git_import_index_lock_path())
+        os.makedirs(d, exist_ok=True)
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _git_import_get_blob(repo_root: str, blob_sha: str) -> str | None:
+    """git cat-file -p <sha> 取 blob 内容。失败返 None。
+    限制 32MB 防内存爆炸(超过则截断 — 视同失败,跳过)。"""
+    if not blob_sha or not _GIT_STATE.get("detected"):
+        if not _detect_git().get("detected"):
+            return None
+    try:
+        r = subprocess.run(
+            ["git", "cat-file", "-p", blob_sha],
+            cwd=repo_root, capture_output=True, timeout=5,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        if r.returncode != 0:
+            try:
+                print(f"[git_import_get_blob] failed repo={repo_root!r} sha={blob_sha!r} rc={r.returncode} stderr={(r.stderr or b'').decode(errors='replace')[:200]}", flush=True)
+            except Exception:
+                pass
+            return None
+        data = r.stdout or ""
+        if len(data) > 32 * 1024 * 1024:
+            return None
+        return data
+    except Exception as e:  # noqa: BLE001
+        try:
+            print(f"[git_import_get_blob] exception repo={repo_root!r} sha={blob_sha!r} err={e!r}", flush=True)
+        except Exception:
+            pass
+        return None
+
+
+def _git_import_is_bare_repo(repo_root: str) -> bool:
+    """检查是否是 bare 仓库(refs/heads + objects 都在根,无 working tree)。
+    bare 仓跳过(模型不能 import 空 working tree 的内容)。"""
+    try:
+        head = os.path.join(repo_root, "HEAD")
+        if not os.path.isfile(head):
+            return False
+        try:
+            with open(head, "r", encoding="utf-8", errors="ignore") as f:
+                hd = f.read(64)
+        except Exception:  # noqa: BLE001
+            return False
+        # bare 仓 HEAD 是 ref: refs/heads/...;non-bare 仓是 gitdir: <path>
+        return "ref: refs/heads/" in hd
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _git_import_walk_repos(workdir: str) -> list[str]:
+    """遍历 workdir 子树,找所有 .git/ 目录的 repo 根。
+    跳过 bare 仓(无 working tree)。"""
+    repos: list[str] = []
+    base = os.path.abspath(workdir)
+    if not os.path.isdir(base):
+        return repos
+    try:
+        for cur, dirs, _files in os.walk(base):
+            # 跳过 .git 自身(避免把 .git/objects 误识别为新仓库)
+            dirs[:] = [d for d in dirs if d != ".git"]
+            if ".git" in os.listdir(cur):
+                repo_root = cur
+                # 子目录里发现 .git 也算一个仓(嵌套 worktree 之类,先单层识别)
+                if not _git_import_is_bare_repo(repo_root):
+                    repos.append(repo_root)
+                # 下钻禁止:进了 repo 就不必再扫其内部
+                dirs[:] = []
+    except Exception:  # noqa: BLE001
+        pass
+    return repos
+
+
+def _git_import_scan_once(force: bool = False) -> dict:
+    """扫描 worker 主体:遍历 workdir,git ls-tree -r HEAD 拿到候选文件 → 进 _GIT_IMPORT_CANDIDATES。
+    force=True → 跳过 30s 节流(用于 API 手动触发)。
+    返回 {ok, candidates, scanned_repos, skipped_submodules} 摘要。
+    整体串行化:一次只允许一个 scan 进行(worker + 同步 API + read_file hook 可能并发)。"""
+    with _GIT_IMPORT_CANDIDATES_LOCK:
+        return _git_import_scan_once_locked(force)
+
+
+def _git_import_scan_once_locked(force: bool = False) -> dict:
+    """_git_import_scan_once 的核心实现 — 调用方必须持有 _GIT_IMPORT_CANDIDATES_LOCK。"""
+    global _GIT_IMPORT_LAST_SCAN, _GIT_IMPORT_LAST_WORKDIR
+    workdir = _WORKDIR["path"]
+    now = time.time()
+    # 节流(force 跳过)
+    if not force:
+        if (now - _GIT_IMPORT_LAST_SCAN) < 30 and workdir == _GIT_IMPORT_LAST_WORKDIR:
+            return {"ok": True, "cached": True, "candidates": len(_GIT_IMPORT_CANDIDATES)}
+    # workdir 变 → 全扫
+    workdir_changed = (workdir != _GIT_IMPORT_LAST_WORKDIR)
+    _GIT_IMPORT_LAST_WORKDIR = workdir
+    _GIT_IMPORT_LAST_SCAN = now
+    if workdir_changed:
+        _GIT_IMPORT_CANDIDATES.clear()
+
+    if not _GIT_STATE.get("detected"):
+        if not _detect_git().get("detected"):
+            return {"ok": True, "candidates": 0, "scanned_repos": 0, "skip": "no_git"}
+
+    # 确保 import index 已从磁盘加载(懒加载)
+    global _GIT_IMPORTED_INDEX
+    if not _GIT_IMPORTED_INDEX:
+        _GIT_IMPORTED_INDEX.update(_load_imported_index())
+
+    repos = _git_import_walk_repos(workdir)
+    new_count = 0
+    sub_count = 0
+    base = os.path.abspath(workdir)
+    try:
+        for repo in repos:
+            # git ls-tree -r HEAD → 每行: <mode> <type> <sha>\t<path>
+            r = _git_run(["ls-tree", "-r", "HEAD"], cwd=repo, timeout=10)
+            if not r.get("ok"):
+                continue
+            # HEAD 不存在(空仓)→ 跳过
+            if not r.get("stdout", "").strip():
+                continue
+            # M3.31 hotfix(2026-09-16):每个 repo 只跑一次 rev-parse,缓存到 commit_sha_per_repo
+            # 原来每个文件都跑一次 rev-parse → 578 个文件 71s;现在 0.07s 总耗时
+            head_r = _git_run(["rev-parse", "HEAD"], cwd=repo, timeout=5)
+            commit_sha = (head_r.get("stdout", "") if head_r.get("ok") else "").strip()
+            for ln in (r["stdout"] or "").splitlines():
+                # 解析:<mode SP <type> SP <sha> TAB <path>>
+                parts = ln.split("\t", 1)
+                if len(parts) != 2:
+                    continue
+                meta, rel = parts
+                mp = meta.split(" ")
+                if len(mp) < 3:
+                    continue
+                mode, _typ, sha = mp[0], mp[1], mp[2]
+                abs_path = os.path.realpath(os.path.join(repo, rel.replace("/", os.sep)))
+                # 必须落在 workdir 内(防 symlink 越界)
+                if not (abs_path == base or abs_path.startswith(base + os.sep)):
+                    continue
+                # symlink(120000)跳过 — 实际不写内容
+                if mode == "120000":
+                    cand = {
+                        "repo_root": repo, "rel_path": rel, "blob_sha": sha,
+                        "submodule": False, "symlink": True,
+                        "commit_sha": "", "size": 0,
+                    }
+                    if abs_path not in _GIT_IMPORT_CANDIDATES:
+                        new_count += 1
+                    _GIT_IMPORT_CANDIDATES[abs_path] = cand
+                    continue
+                # gitlink/submodule(160000)标 submodule=True,不进 import 内容
+                if mode == "160000":
+                    cand = {
+                        "repo_root": repo, "rel_path": rel, "blob_sha": sha,
+                        "submodule": True, "symlink": False,
+                        "commit_sha": "", "size": 0,
+                    }
+                    if abs_path not in _GIT_IMPORT_CANDIDATES:
+                        new_count += 1
+                    _GIT_IMPORT_CANDIDATES[abs_path] = cand
+                    sub_count += 1
+                    continue
+                # 普通 blob:commit_sha 走 repo 级别缓存(见上)
+                size = 0
+                try:
+                    if os.path.isfile(abs_path):
+                        size = os.path.getsize(abs_path)
+                except Exception:  # noqa: BLE001
+                    size = 0
+                cand = {
+                    "repo_root": repo, "rel_path": rel, "blob_sha": sha,
+                    "submodule": False, "symlink": False,
+                    "commit_sha": commit_sha, "size": size,
+                }
+                if abs_path not in _GIT_IMPORT_CANDIDATES:
+                    new_count += 1
+                _GIT_IMPORT_CANDIDATES[abs_path] = cand
+    except Exception as e:  # noqa: BLE001
+        try:
+            _LOGGER.warning("git import scan failed: %s", e)
+        except Exception:  # noqa: BLE001
+            pass
+    return {"ok": True, "candidates": len(_GIT_IMPORT_CANDIDATES),
+            "new_candidates": new_count, "scanned_repos": len(repos),
+            "skipped_submodules": sub_count}
+
+
+def _git_import_write_snapshot(path: str, content, candidate: dict, who: str) -> dict:
+    """写 snapshot(.bin + .meta.json)+ 更新 .imported_index.json。
+    全部 .tmp+rename 原子写,文件锁串行化。失败静默 log,返回 ok=False。"""
+    try:
+        import prisir_snapshot as _snap  # noqa: PLC0415
+        h = _snap._path_hash(path)
+        root = _git_import_snapshot_root()
+        snap_dir = os.path.join(root, h[0:2], h)
+        os.makedirs(snap_dir, exist_ok=True)
+        # size + ts 决定文件名唯一性
+        if isinstance(content, str):
+            data_bytes = content.encode("utf-8", errors="replace")
+        else:
+            data_bytes = bytes(content)
+        size = len(data_bytes)
+        ts = time.time()
+        fname = f"{ts:.6f}_imported_{size}B"
+        bin_path = os.path.join(snap_dir, fname + ".bin")
+        meta_path = os.path.join(snap_dir, fname + ".meta.json")
+        # 写 .bin(.tmp+rename)
+        tmp_bin = bin_path + ".tmp"
+        with open(tmp_bin, "wb") as f:
+            f.write(data_bytes)
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except Exception:  # noqa: BLE001
+                pass
+        os.replace(tmp_bin, bin_path)
+        # 写 .meta.json
+        meta = {
+            "imported": True,
+            "imported_at": ts,
+            "origin": "git-import",
+            "src_repo": candidate.get("repo_root", ""),
+            "src_blob_sha": candidate.get("blob_sha", ""),
+            "src_commit_sha": candidate.get("commit_sha", ""),
+            "src_path": path,
+            "rel_path": candidate.get("rel_path", ""),
+            "size": size,
+            "submodule": bool(candidate.get("submodule")),
+            "tool_who": who or "",
+        }
+        tmp_meta = meta_path + ".tmp"
+        with open(tmp_meta, "w", encoding="utf-8") as f:
+            json.dump(meta, f, ensure_ascii=False, indent=2)
+            f.flush()
+        os.replace(tmp_meta, meta_path)
+        # 更新 index(锁内串行)
+        idx_path = _git_import_index_path()
+        lock_p = _git_import_index_lock_path()
+        # 先确保目录存在,不然 msvcrt/fcntl 拿不到 fd
+        _ensure_index_lock_dir()
+        with _file_lock(lock_p, exclusive=True, blocking=True):
+            cur = _load_imported_index()
+            cur[os.path.realpath(path)] = {
+                "snapshot_ts": ts,
+                "snapshot_file": fname + ".bin",
+                "snapshot_dir": snap_dir,
+                "src_repo": candidate.get("repo_root", ""),
+                "src_blob_sha": candidate.get("blob_sha", ""),
+                "src_commit_sha": candidate.get("commit_sha", ""),
+                "src_path": path,
+                "rel_path": candidate.get("rel_path", ""),
+                "size": size,
+                "submodule": bool(candidate.get("submodule")),
+                "tool_who": who or "",
+                "imported_at": ts,
+            }
+            _save_imported_index(cur)
+            # 同步内存
+            _GIT_IMPORTED_INDEX[os.path.realpath(path)] = cur[os.path.realpath(path)]
+        return {"ok": True, "snapshot_dir": snap_dir, "file": fname + ".bin",
+                "ts": ts, "size": size}
+    except Exception as e:  # noqa: BLE001
+        try:
+            _LOGGER.warning("git import write snapshot failed for %s: %s", path, e)
+        except Exception:  # noqa: BLE001
+            pass
+        return {"ok": False, "err": f"{type(e).__name__}: {e}"[:200]}
+
+
+def _maybe_git_import(path: str, content, who: str = "read_file") -> None:
+    """read_file 触发器:对 workdir 内属于 git repo 的文件,如果本地内容 != git HEAD 内容
+    → 写 snapshot + sidecar + 更新 import index。
+    全程 try/except + log,绝不阻塞主链路。
+    """
+    try:
+        # gate:没 git 跳过
+        if not _GIT_STATE.get("detected"):
+            d = _detect_git()
+            if not d.get("detected"):
+                return
+        abs_p = os.path.realpath(path) if path else ""
+        if not abs_p:
+            return
+        # candidate 必须存在
+        with _GIT_IMPORT_CANDIDATES_LOCK:
+            cand = dict(_GIT_IMPORT_CANDIDATES.get(abs_p) or {})
+        if not cand:
+            return
+        # submodule / symlink 不进内容快照
+        if cand.get("submodule") or cand.get("symlink"):
+            return
+        # 已 import 过 → 去重
+        if _GIT_IMPORTED_INDEX.get(abs_p):
+            return
+        # size 护栏:超过可用 RAM 一半 → skip + log
+        try:
+            sz = len(content) if isinstance(content, (str, bytes)) else 0
+        except Exception:  # noqa: BLE001
+            sz = 0
+        if sz <= 0:
+            return
+        avail = _avail_ram_bytes()
+        if sz > avail // 2:
+            try:
+                _LOGGER.warning("git import skip %s: size=%d > avail_ram/2=%d",
+                                abs_p, sz, avail // 2)
+            except Exception:  # noqa: BLE001
+                pass
+            return
+        # 拿 git 当前 blob 内容比对
+        git_content = _git_import_get_blob(cand.get("repo_root", ""), cand.get("blob_sha", ""))
+        if git_content is None:
+            return
+        # 内容比对(容许 str/bytes 一致)
+        local_str = content if isinstance(content, str) else \
+            (content.decode("utf-8", errors="replace") if isinstance(content, (bytes, bytearray)) else "")
+        if local_str == git_content:
+            # 已与 HEAD 一致 → 不需要 import;但记录「已对齐」状态以便 UI 标识
+            return
+        # 写 snapshot + 更新 index
+        _git_import_write_snapshot(abs_p, content, cand, who=who)
+    except Exception as e:  # noqa: BLE001
+        try:
+            _LOGGER.warning("git import hook failed for %s: %s", path, e)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _git_import_worker_thread() -> None:
+    """后台 worker:每 30s 扫一次 workdir(进程退出自动结束)。"""
+    global _GIT_IMPORT_THREAD_STARTED
+    try:
+        _LOGGER.info("git import worker thread started")
+    except Exception:  # noqa: BLE001
+        pass
+    while True:
+        try:
+            _git_import_scan_once()
+        except Exception as e:  # noqa: BLE001
+            try:
+                _LOGGER.warning("git import worker tick failed: %s", e)
+            except Exception:  # noqa: BLE001
+                pass
+        time.sleep(30)
+
+
+def _start_git_import_worker_once() -> None:
+    """进程初始化阶段启动一次(模块导入后立即调,daemon 线程)。"""
+    global _GIT_IMPORT_THREAD_STARTED
+    if _GIT_IMPORT_THREAD_STARTED:
+        return
+    _GIT_IMPORT_THREAD_STARTED = True
+    try:
+        # 懒加载已存 index
+        global _GIT_IMPORTED_INDEX
+        _GIT_IMPORTED_INDEX.update(_load_imported_index())
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        t = threading.Thread(target=_git_import_worker_thread, daemon=True,
+                             name="git-import-worker")
+        t.start()
+    except Exception as e:  # noqa: BLE001
+        try:
+            _LOGGER.warning("git import worker start failed: %s", e)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+# end of M3.31 helper block
+
+# 用户设置(active_platform 等),持久化到 settings.json
+_SETTINGS = {"active_platform": ""}
+
+
+def _load_settings():
+    """从 settings.json 加载用户设置。"""
+    global _SETTINGS
+    try:
+        if _USER_SETTINGS_PATH.exists():
+            raw = json.loads(_USER_SETTINGS_PATH.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                _SETTINGS.update(raw)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _save_settings():
+    """保存用户设置到 settings.json。"""
+    try:
+        _USER_SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        # 读取现有设置,合并 active_platform
+        existing = {}
+        if _USER_SETTINGS_PATH.exists():
+            try:
+                existing = json.loads(_USER_SETTINGS_PATH.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        existing["active_platform"] = _SETTINGS.get("active_platform", "")
+        _USER_SETTINGS_PATH.write_text(json.dumps(existing, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+# 启动时加载设置
+_load_settings()
+
+# M3.31:启动 git import 后台 worker(daemon 线程,进程退出自动结束)
+_start_git_import_worker_once()
 
 # ---------- 本机文件搜索(prisir_findex,不依赖 Everything) ----------
 # 自建 Rust 索引(只存元数据),默认不扫盘,用户显式开启才建库。
@@ -1019,6 +2355,9 @@ def _run_chat_thread(sid: str, user_text: str, strategy: str, model: str, workdi
 
         use_router = bool(_router.available_platforms())
 
+        # 用户手动选择的平台优先(2026-09-13:点「使用」后固定该平台,除非故障转移)
+        _active_platform = _SETTINGS.get("active_platform", "")
+
         # 实时工具进度(壳三件套①):on_event 把 run_conversation 内部的工具执行事件
         # 实时 append 进 _events[sid],前端轮询 /status 取增量展示「进行中的工具调用」。
         # estop 包装:每个 tool_start 边界检查中断标志,置位则抛 _EstopInterrupt 终止工具链
@@ -1027,8 +2366,66 @@ def _run_chat_thread(sid: str, user_text: str, strategy: str, model: str, workdi
         def _on_tool_event(ev):
             if ev.get("type") == "tool_start" and _estop_event(sid).is_set():
                 raise _EstopInterrupt()
+            # M3.31 git-import hook:read_file 工具开始时拦截 path,触发 _maybe_git_import。
+            # 从 args_preview(200 字符 JSON)解析 path;若失败或超长,降级到本地直接比对。
+            # 静默失败,绝不阻塞主链路。
+            try:
+                if ev.get("type") == "tool_start" and ev.get("name") in ("read_file", "read_file_lines", "read_file_head"):
+                    _ap = ev.get("args_preview") or ""
+                    _p = ""
+                    if _ap:
+                        try:
+                            _args = json.loads(_ap)
+                            _p = _args.get("path", "") if isinstance(_args, dict) else ""
+                        except Exception:  # noqa: BLE001
+                            _p = ""
+                    if _p and _p not in _GIT_IMPORT_CANDIDATES:
+                        # 兼容相对路径:解析到 workdir 下的绝对路径
+                        try:
+                            ok2, _, abs_p2 = self._safe_resolve_workdir_path(_p)
+                            if ok2 and abs_p2 in _GIT_IMPORT_CANDIDATES:
+                                _p = abs_p2
+                        except Exception:  # noqa: BLE001
+                            pass
+                    if _p:
+                        try:
+                            if os.path.isfile(_p):
+                                with open(_p, "rb") as _f:
+                                    _data = _f.read()
+                                _maybe_git_import(_p, _data, who="read_file")
+                        except Exception:  # noqa: BLE001
+                            pass
+            except Exception:  # noqa: BLE001
+                pass
+            # 2026-09-14 会话回放:给每个事件补时间戳(回放时间轴必需),不改原字段。
+            ev = dict(ev, ts=time.time())
             with _events_lock:
                 _events.setdefault(sid, []).append(ev)
+            # M3.32 Phase 1(2026-09-16):write_file/edit_file 成功后,往 <workdir>/_prisir_registry/file_changes.jsonl
+            # 追加一条 op,跨进程记录「哪个 agent 改了什么文件」。失败静默(registry 是辅助)。
+            try:
+                if ev.get("type") == "tool_end" and ev.get("ok") and ev.get("name") in ("write_file", "edit_file"):
+                    _ap = ev.get("args_preview") or ""
+                    _p = ""
+                    if _ap:
+                        try:
+                            _args = json.loads(_ap)
+                            _p = _args.get("path", "") if isinstance(_args, dict) else ""
+                        except Exception:  # noqa: BLE001
+                            _p = ""
+                    if _p:
+                        _wd = _WORKDIR.get("path", "") if hasattr(_WORKDIR, "get") else (_WORKDIR or "")
+                        if _wd:
+                            _registry_append(_wd, {
+                                "op": "write" if ev.get("name") == "write_file" else "edit",
+                                "path": _p,
+                                "sid": sid,
+                                "title": (ev.get("title") or ""),
+                                "tool": ev.get("name"),
+                                "ok": True,
+                            })
+            except Exception:  # noqa: BLE001
+                pass
             # P2 SSE 推流:工具进度实时推给已配对移动端(--lan 时)。
             _sse_broadcast({"type": "tool_event", "session_id": sid, "ev": ev})
 
@@ -1049,17 +2446,25 @@ def _run_chat_thread(sid: str, user_text: str, strategy: str, model: str, workdi
         failover: list = []
         res = None
         used = model
+        # 2026-09-14 同厂商优先:一次性生成完整候选序(锚=active_platform,同厂商桶内优先,
+        # 桶内耗尽才跨厂商),循环按下标取;失败拉黑并进位。保持原有 mask/compact/usage 逻辑不变。
+        _candidates: list = []
+        _cand_idx = 0
+        if use_router:
+            try:
+                _candidates = _router.failover_candidates(
+                    strategy, exclude=exclude, preferred=_active_platform)
+            except Exception:  # noqa: BLE001
+                _candidates = []
         while True:
             if use_router:
-                # Prisir 路由: 用 router 选定平台后,把该平台模型映射到 litellm model 串
-                # exclude 拉黑本次已失败平台;_litellm_model_for 重注入 env 覆盖上一平台 key/base。
-                try:
-                    pick = _router.route(msgs + [{"role": "user", "content": user_text}],
-                                         strategy, exclude=exclude)
-                except RuntimeError as e:
+                # Prisir 路由: 用候选序选平台;_litellm_model_for 重注入 env 覆盖上一平台 key/base。
+                # 2026-09-14: active_platform 已在 failover_candidates 内作为锚处理,无需单独分支。
+                if _cand_idx >= len(_candidates):
                     # 无更多可用平台:把已试轨迹一并落消息(不含 key)
                     trail = " → ".join(f["platform"] for f in failover) or "(无)"
-                    raise RuntimeError(f"所有已配平台均失败:{trail};最后错误: {e}") from e
+                    raise RuntimeError(f"所有已配平台均失败:{trail};候选已耗尽。")
+                pick = _candidates[_cand_idx]
                 platform, cfg = pick["platform"], pick["cfg"]
                 lm = _litellm_model_for(platform, cfg, pick["task_type"])
             else:
@@ -1096,13 +2501,14 @@ def _run_chat_thread(sid: str, user_text: str, strategy: str, model: str, workdi
             if res["rc"] == 2 and is_retryable_error_str(res["out"]):
                 failover.append({"platform": platform, "error": res["out"][:80]})
                 exclude.add(platform)
-                if len(exclude) >= len(_router.available_platforms()):
-                    # 全平台试完仍失败
+                _cand_idx += 1
+                if _cand_idx >= len(_candidates):
+                    # 候选序试完仍失败
                     trail = " → ".join(f["platform"] for f in failover)
                     answer = f"[错误] 所有已配平台均失败:{trail};最后错误: {res['out'][:200]}"
                     res = dict(res, rc=2, out=answer)
                     break
-                continue  # 拉黑当前平台,换下一个重跑
+                continue  # 进位到候选序下一位(同厂商桶内优先),换模型重跑
             break  # rc=1(estop/其它)或不可重试 rc=2(400/401/403 配置错) → 不再试
 
         # 当轮工具轨迹入库(截断后),激活跨轮 masking(档位2)与任务回放。
@@ -1140,6 +2546,19 @@ def _run_chat_thread(sid: str, user_text: str, strategy: str, model: str, workdi
                                  args=(_router, user_text, answer), daemon=True).start()
             except Exception:  # noqa: BLE001
                 pass
+        # 路线A / ACE 记坑半环(2026-09-14):本轮「栽坑」(rc!=0 或 trace 有工具报错)时,
+        # 后台提炼「上次怎么栽的、下次怎么避」进教训区。与成功学习对称互补——
+        # solutions 从成功学解法,pitfalls 从失败学教训。纯本地判信号,后台线程,失败静默。
+        if use_router and res:
+            try:
+                import pitfalls_learner  # noqa: PLC0415
+                _sig = pitfalls_learner.detect_failure_signals(
+                    res.get("trace") or [], res.get("rc", 0), stopped=False)
+                if _sig["failed"]:
+                    threading.Thread(target=pitfalls_learner.learn_pitfall_sync,
+                                     args=(_router, user_text, answer, _sig), daemon=True).start()
+            except Exception:  # noqa: BLE001
+                pass
         # 改后检测暂存(2026-08-24):本轮 write_file 真改了哪些文件 → 落盘校验(exists)
         #   + 代码文件喂 constitution_compliance.scan_text 改后判分,结论暂存 _PENDING_REVIEW[sid],
         #   下一条消息由 _shell_system_prompt 注入一次性自检块(成品后台服务无改后确认回路,
@@ -1174,7 +2593,11 @@ def _run_chat_thread(sid: str, user_text: str, strategy: str, model: str, workdi
         # 把旧历史折叠为摘要。滚动再压缩:已有摘要后,若「摘要+保留区」又涨到近满,
         # 基于全量 DB 历史重压一轮(摘要嵌摘要,keep_from 前进,无限滚动)。
         # 与档位3 交接预提炼并行(交接供「开新窗」,压缩供「同窗口续聊」)。
-        if usage["near_full"]:
+        # SoL-Pi 机制3(2026-09-14):除 near_full 外,子任务完成且经济性通过
+        # (预期省钱>压缩成本)也主动压,_compact_economical 纯本地判定不调 LLM。
+        _eco = _compact_economical(sid, full_msgs, lm if use_router else model,
+                                   res.get("trace") or []) if res else False
+        if usage["near_full"] or _eco:
             threading.Thread(target=_gen_compact_bg, args=(sid,), daemon=True).start()
 
         # 档位3 自动压缩:仅近满(near_full)时,异步提炼交接摘要存 meta,
@@ -1251,8 +2674,17 @@ def _effective_model(sid: str = "") -> str:
     (没配平台/路由异常)时才回退 last_model(该会话上次真实用过的),再退 DEFAULT_MODEL。
 
     sid 仅用于最后的兜底取 last_model;实时路由路径与 sid 无关。
+
+    2026-09-13 新增:若用户手动选择了 active_platform,优先使用该平台。
     """
     try:
+        # 优先使用用户手动选择的平台
+        active = _SETTINGS.get("active_platform", "")
+        if active and active in _router.available_platforms():
+            cfg = _router._platform_cfg(active)
+            if cfg:
+                return _litellm_model_for(active, cfg, "general")
+        # 否则按策略路由
         if _router.available_platforms():
             pick = _router.route([{"role": "user", "content": ""}], DEFAULT_STRATEGY)
             return _litellm_model_for(pick["platform"], pick["cfg"], pick["task_type"])
@@ -1907,6 +3339,48 @@ _COMPACT_COOLDOWN = 300        # 同会话压缩最小间隔(秒),防抖动反�
 _COMPACT_STATE: dict[str, dict] = {}   # sid -> {running, last_ts}
 _COMPACT_LOCK = threading.Lock()
 
+# SoL-Pi 机制3 — Online Context Compact(2026-09-14 移植自 NVlabs/SoL-Pi):
+# 不只 near_full 才压,子任务完成就重估,只有「预期省钱 > 压缩成本」才真压。
+# 判断本身纯本地(不调 LLM),复用 usage_for 估算。开关: PRISIR_SMART_COMPACT=0 关。
+_COMPACT_ECO_MIN_SAVED_TOKENS = 3000   # 每轮至少省这么多 token 才值得压
+_COMPACT_ECO_COST_TOKENS = 2500        # 一次压缩 LLM 调用的估算成本(token)
+_COMPACT_ECO_MIN_TOOLS = 3             # trace 里至少这么多工具调用才算「完成一个实质子任务」
+_COMPACT_ECO_REMAINING_TURNS = 3       # 保守估计剩余受益轮数
+
+
+def _compact_economical(sid: str, full_msgs: list, lm: str, trace: list) -> bool:
+    """经济性压缩判定(SoL-Pi online context compact)。纯本地,不调 LLM。
+
+    子任务完成信号:本轮 run_conversation 的 trace 里有 >=_COMPACT_ECO_MIN_TOOLS
+    个工具调用(完成了一个实质子任务,值得重估上下文)。
+    经济性:压缩后每轮省下的 token × 预计剩余轮数 > 一次压缩调用成本。
+    返回 True=值得压(调用方据此触发 _gen_compact_bg)。失败/不满足一律 False。
+    """
+    try:
+        if os.environ.get("PRISIR_SMART_COMPACT", "1") == "0":
+            return False
+        # 已 near_full 走原有触发,这里不重复判
+        n_tools = sum(1 for s in (trace or []) if (s or {}).get("role") == "tool")
+        if n_tools < _COMPACT_ECO_MIN_TOOLS:
+            return False
+        # 冷却期复用 _COMPACT_STATE(防抖动)
+        with _COMPACT_LOCK:
+            st = _COMPACT_STATE.setdefault(sid, {"running": False, "last_ts": 0.0})
+            if st["running"] or (time.time() - st["last_ts"]) < _COMPACT_COOLDOWN:
+                return False
+        # 估算:可被压缩的旧消息(保留区之前)的 token
+        history = get_messages(sid)
+        if len(history) <= _COMPACT_KEEP_RECENT + 2:
+            return False
+        old = history[: len(history) - _COMPACT_KEEP_RECENT]
+        saved_per_turn = sum(estimate_tokens(str(m.get("content", ""))) + 8 for m in old)
+        if saved_per_turn < _COMPACT_ECO_MIN_SAVED_TOKENS:
+            return False
+        benefit = saved_per_turn * _COMPACT_ECO_REMAINING_TURNS
+        return benefit > _COMPACT_ECO_COST_TOKENS
+    except Exception:  # noqa: BLE001 — 判定失败不压,绝不影响对话
+        return False
+
 
 def _compact_keep_from(sid: str, msgs: list) -> int:
     """取该会话已生效压缩的截断点(0=未压缩)。msgs 是当前完整历史(含当轮 user)。"""
@@ -2096,6 +3570,7 @@ _PAGE = r"""<!DOCTYPE html>
 <style>
   :root {
     --gh-paper:#f6f1e7; --gh-paper-2:#efe8da; --gh-paper-3:#e7dfce; --gh-surface:#fbf8f1;
+    --gh-bg:#fbf8f1;  /* 2026-09-16 M3.30:右栏/回放面板/输入控件背景,补全之前漏掉的 var,否则全透明 */
     --gh-ink:#2f3a34; --gh-ink-soft:#5b6a61; --gh-ink-faint:#8a968e; --gh-line:#d8cfbc;
     --gh-green:#6c7c72; --gh-green-deep:#4a5c52; --gh-seal:#b23a30;
     --gh-user-bg:#b23a30; --gh-user-fg:#fbf6ec; --gh-agent-bg:#fbf8f1; --gh-focus:#4a5c52;
@@ -2109,7 +3584,8 @@ _PAGE = r"""<!DOCTYPE html>
     display:flex; flex-direction:column; height:100vh; }
 
   #topbar { display:flex; align-items:center; gap:12px; padding:10px 18px;
-    background:rgba(246,241,231,.85); backdrop-filter:blur(6px); border-bottom:1px solid var(--gh-line); }
+    background:rgba(246,241,231,.92); backdrop-filter:blur(6px); border-bottom:1px solid var(--gh-line);
+    position:relative; z-index:1100; }  /* 2026-09-16 M3.30:浮在 doc/replay-panel (z=880/900) 之上 */
   #brand { display:flex; align-items:center; gap:10px; }
   #brand img { width:26px; height:26px; border-radius:6px; box-shadow:var(--gh-shadow); }
   #brand .name { font-size:16px; font-weight:600; color:var(--gh-green-deep); }
@@ -2284,9 +3760,12 @@ _PAGE = r"""<!DOCTYPE html>
   #composer .box { display:flex; gap:10px; align-items:flex-start; background:var(--gh-surface);
     border:1px solid var(--gh-line); border-radius:var(--gh-radius-lg); padding:10px 12px; box-shadow:var(--gh-shadow); }
   #composer .box:focus-within { border-color:var(--gh-focus); }
+  /* M3.31.12(2026-09-16):输入框自适应多行 — max-height 由 JS 计算 viewport 控制,
+     默认 textarea 行为超 max-height 就滚动是糟糕 UX,改成 JS 监听 input 动态调 rows=1..8,
+     超过 8 行才出滚动条。min-height 保留 44px 给单行足够视觉。 */
   #input { flex:1; border:none; outline:none; resize:none; background:transparent;
     color:var(--gh-ink); font-size:14.5px; font-family:var(--gh-font); line-height:1.5;
-    max-height:160px; min-height:44px; }
+    min-height:44px; max-height:none; overflow-y:auto; }
   #send { padding:9px 18px; border-radius:9px; border:none; background:var(--gh-green-deep);
     color:#fbf6ec; font-size:14px; cursor:pointer; }
   #send:hover { background:var(--gh-green); }
@@ -2319,6 +3798,7 @@ _PAGE = r"""<!DOCTYPE html>
     border-top-color:var(--gh-green-deep); border-radius:50%; animation:spin .8s linear infinite;
     vertical-align:middle; margin-right:6px; }
   @keyframes spin { to { transform:rotate(360deg); } }
+  @keyframes saveFlash { 0% { transform:scale(1); } 50% { transform:scale(1.05); background:#c8e6c9; } 100% { transform:scale(1); } }
 
   /* key 配置弹层 */
   #keymodal { position:fixed; inset:0; background:rgba(47,58,52,.4); display:none; z-index:100;
@@ -2339,6 +3819,27 @@ _PAGE = r"""<!DOCTYPE html>
   #keylist .k { padding:6px 8px; background:var(--gh-paper-2); border-radius:6px; margin-bottom:4px;
     display:flex; justify-content:space-between; }
   #keylist .k button { border:none; background:none; color:var(--gh-seal); cursor:pointer; }
+  /* task #12 纯规则离线首配引导: 全屏遮蔽 + 聚焦卡。只在「无任何已配置平台」时出现。 */
+  #firstsetup { position:fixed; inset:0; background:rgba(30,40,35,.62); display:none; z-index:200;
+    align-items:center; justify-content:center; backdrop-filter:blur(2px); }
+  #firstsetup.open { display:flex; }
+  #firstsetup .card { background:var(--gh-paper); border-radius:14px; padding:26px; width:540px; max-width:92vw;
+    max-height:86vh; overflow-y:auto; box-shadow:0 16px 48px rgba(0,0,0,.4); border:2px solid var(--gh-green-deep); }
+  #firstsetup h2 { font-size:18px; color:var(--gh-green-deep); margin:0 0 6px; }
+  #firstsetup .sub { font-size:12px; color:var(--gh-ink-faint); margin-bottom:14px; line-height:1.6; }
+  #firstsetup .fs-step { font-size:13px; font-weight:600; color:var(--gh-ink); margin:12px 0 6px; }
+  #firstsetup textarea { width:100%; padding:10px 12px; border:1px solid var(--gh-line); border-radius:8px;
+    font-size:13px; font-family:monospace; background:var(--gh-surface); color:var(--gh-ink);
+    min-height:64px; resize:vertical; }
+  #firstsetup textarea:focus { outline:none; border-color:var(--gh-focus); }
+  #fs-result { margin-top:10px; font-size:12px; padding:10px 12px; border-radius:8px; display:none; }
+  #fs-result.ok { display:block; background:#e8f5ec; border:1px solid var(--gh-green-deep); color:var(--gh-ink); }
+  #fs-result.err { display:block; background:#fbeaea; border:1px solid var(--gh-seal); color:var(--gh-ink); }
+  #fs-result .row2 { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+  #fs-result .tag { font-size:11px; padding:2px 8px; border-radius:10px; background:var(--gh-paper-2); }
+  #firstsetup .row { display:flex; gap:10px; justify-content:flex-end; margin-top:18px; }
+  #firstsetup .teach { margin-top:14px; font-size:11px; color:var(--gh-ink-faint); background:var(--gh-paper-2);
+    border-radius:8px; padding:10px 12px; line-height:1.6; }
 
   /* 反馈问题弹层(目标 A.3) */
   #fbmodal { position:fixed; inset:0; background:rgba(47,58,52,.4); display:none; z-index:110;
@@ -2378,6 +3879,37 @@ _PAGE = r"""<!DOCTYPE html>
   #patchmodal th { color:var(--gh-ink-faint); font-weight:600; }
   #patchmodal .mini { font-size:11px; padding:2px 8px; }
 
+  /* M3.31:git 安装权限闸(未检测到 git 命令时启动弹一次)。
+     复用 fbmodal/patchmodal 的 fixed 居中遮罩 + 卡片风格,z-index 拉高避让 dlg。 */
+  #gitinstallgate { position:fixed; inset:0; background:rgba(47,58,52,.4); display:none; z-index:108;
+    align-items:center; justify-content:center; }
+  #gitinstallgate.open { display:flex; }
+  #gitinstallgate .card { background:var(--gh-paper); border-radius:14px; padding:24px; width:480px; max-width:92vw;
+    max-height:88vh; overflow-y:auto; box-shadow:0 12px 40px rgba(0,0,0,.25); }
+  #gitinstallgate h3 { font-size:16px; color:var(--gh-green-deep); margin-bottom:8px; }
+  #gitinstallgate .sub { font-size:12.5px; color:var(--gh-ink); margin-bottom:10px; line-height:1.55; }
+  #gitinstallgate ul { font-size:12.5px; color:var(--gh-ink); margin:0 0 8px 0; padding-left:22px; line-height:1.7; }
+  #gitinstallgate ul code { font-family:monospace; background:var(--gh-surface); padding:1px 5px; border-radius:3px;
+    font-size:12px; color:var(--gh-green-deep); }
+  #gitinstallgate .row { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; flex-wrap:wrap; }
+
+  /* M3.32 Phase 2(2026-09-16):Office 渲染器装机权限闸 */
+  #officeinstallgate { position:fixed; inset:0; background:rgba(47,58,52,.4); display:none; z-index:108;
+    align-items:center; justify-content:center; }
+  #officeinstallgate.open { display:flex; }
+  #officeinstallgate .card { background:var(--gh-paper); border-radius:14px; padding:24px; width:520px; max-width:92vw;
+    max-height:88vh; overflow-y:auto; box-shadow:0 12px 40px rgba(0,0,0,.25); }
+  #officeinstallgate h3 { font-size:16px; color:var(--gh-green-deep); margin-bottom:8px; }
+  #officeinstallgate .sub { font-size:12.5px; color:var(--gh-ink); margin-bottom:10px; line-height:1.55; }
+  #officeinstallgate .oig-status { font-size:12px; color:var(--gh-ink-soft); background:var(--gh-surface);
+    border:1px solid var(--gh-line); border-radius:6px; padding:6px 10px; margin:6px 0 10px;
+    font-family:monospace; line-height:1.55; }
+  #officeinstallgate .oig-status.ok { color:#1a6b1a; border-color:#b4d8b4; background:#f0f9f0; }
+  #officeinstallgate ul { font-size:12.5px; color:var(--gh-ink); margin:0 0 8px 0; padding-left:22px; line-height:1.7; }
+  #officeinstallgate ul code { font-family:monospace; background:var(--gh-surface); padding:1px 5px; border-radius:3px;
+    font-size:12px; color:var(--gh-green-deep); }
+  #officeinstallgate .row { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; flex-wrap:wrap; }
+
   /* 通用内嵌对话框(Electron sandbox 禁用原生 prompt/confirm) */
   #dlg { position:fixed; inset:0; background:rgba(47,58,52,.4); display:none; z-index:200;
     align-items:center; justify-content:center; }
@@ -2403,7 +3935,58 @@ _PAGE = r"""<!DOCTYPE html>
   /* 倒计时:超时后变红 */
   #dlg-cd.cd-done { background:#fbe5e2 !important; color:#a8332a !important; border-color:#a8332a !important; }
   /* diff 高亮(edit_file 工具结果):红删绿增,对齐 GitHub 风格 */
+  /* doc-panel 文件版本对比(2026-09-16 M3.27):GitHub 同款 */
+  .hljs-deletion { background:#ffeef0; color:#b31d28; display:inline-block; width:100%; padding:0 4px; }
+  .hljs-addition { background:#e6ffec; color:#22863a; display:inline-block; width:100%; padding:0 4px; }
+  .hljs-meta { color:#6e7781; }
+  #doc-diff-view { display:flex; flex-direction:column; flex:1; overflow:hidden; }
+  #doc-diff-head { display:flex; align-items:center; gap:6px; padding:9px 12px;
+    font-size:12px; color:var(--gh-ink-soft); border-bottom:1px solid var(--gh-line); }
+  #doc-diff-head .spacer { flex:1; }
+  #doc-diff-toolbar { display:flex; gap:6px; padding:8px 12px;
+    border-bottom:1px solid var(--gh-line); background:var(--gh-surface);
+    align-items:center; font-size:12px; }
+  #doc-diff-toolbar select { flex:1; min-width:0; padding:4px 6px; font-size:12px;
+    background:var(--gh-bg); color:var(--gh-ink); border:1px solid var(--gh-line); border-radius:5px; }
+  #doc-diff-toolbar button { background:var(--gh-green-deep); color:#fbf6ec; border:none;
+    border-radius:6px; padding:4px 12px; font-size:12px; cursor:pointer; }
+  #doc-diff-toolbar button:hover { background:var(--gh-green); }
+  #doc-diff-body { flex:1; overflow:auto; padding:10px 12px; font-family:monospace;
+    font-size:12.5px; line-height:1.55; background:var(--gh-bg); color:var(--gh-ink); }
+  #doc-diff-body .meta { font-size:11.5px; color:var(--gh-ink-soft); margin-bottom:8px; }
+  #doc-diff-body pre { margin:0; white-space:pre-wrap; word-break:break-all; }
   .hljs-addition { background:#e6ffec; color:#1a7f37; display:block; }
+  /* M3.33 #65:skill 面板卡片样式(参考 doc-timeline 列表) */
+  #doc-skills-view { display:flex; flex-direction:column; flex:1; overflow:hidden; }
+  #doc-skills-head { display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid var(--gh-line); background:var(--gh-paper); font-size:12px; color:var(--gh-ink-soft); }
+  #doc-skills-head button { font-size:13px; padding:3px 10px; border-radius:5px; border:1px solid var(--gh-line); background:var(--gh-surface); color:var(--gh-ink); cursor:pointer; }
+  #doc-skills-head button:hover { background:var(--gh-green); color:#fff; }
+  #doc-skills-body { flex:1; overflow:auto; padding:10px 12px; background:var(--gh-bg); }
+  .skill-card { background:var(--gh-paper); border:1px solid var(--gh-line); border-radius:8px; padding:12px 14px; margin-bottom:10px; box-shadow:var(--gh-shadow); }
+  .skill-card-head { display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:4px; }
+  .skill-name { font-size:13.5px; font-weight:600; color:var(--gh-green-deep); font-family:monospace; }
+  .skill-lic { font-size:10.5px; color:var(--gh-ink-faint); }
+  .skill-desc { font-size:12.5px; color:var(--gh-ink); line-height:1.55; margin:4px 0; }
+  .skill-trig, .skill-req, .skill-dir { font-size:11.5px; color:var(--gh-ink-soft); margin:2px 0; }
+  .skill-actions { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  .skill-actions button { font-size:11.5px; padding:4px 10px; border-radius:5px; border:1px solid var(--gh-line); background:var(--gh-surface); color:var(--gh-ink); cursor:pointer; }
+  .skill-actions button:hover { background:var(--gh-green); color:#fff; }
+  .skill-uninstall { color:#c62828 !important; border-color:#e0b8b8 !important; }
+  .skill-uninstall:hover { background:#c62828 !important; color:#fff !important; }
+  #doc-skills-output { border-top:1px solid var(--gh-line); background:var(--gh-surface); }
+  #doc-skills-output-head { display:flex; align-items:center; padding:6px 12px; font-size:11.5px; color:var(--gh-ink-soft); border-bottom:1px solid var(--gh-line); }
+  #doc-skills-output-head button { font-size:11px; padding:1px 8px; border-radius:4px; border:1px solid var(--gh-line); background:var(--gh-paper); cursor:pointer; }
+  #doc-skills-output-pre { margin:0; padding:10px 14px; max-height:240px; overflow:auto; font-size:11.5px; font-family:monospace; white-space:pre-wrap; word-break:break-all; color:var(--gh-ink); background:#1c1f1a; color:#e0e0d8; border-radius:0; }
+  /* skillview / skillnew 模态(复用 dlg 风格) */
+  #skillview, #skillnew { position:fixed; inset:0; background:rgba(47,58,52,.4); display:none; z-index:108; align-items:center; justify-content:center; }
+  #skillview.open, #skillnew.open { display:flex; }
+  #skillview .card, #skillnew .card { background:var(--gh-paper); border-radius:14px; padding:20px 24px; box-shadow:0 12px 36px rgba(0,0,0,.18); }
+  #skillview .head, #skillnew .head { margin-bottom:10px; font-size:15px; color:var(--gh-green-deep); font-weight:600; }
+  #skillnew label { display:flex; flex-direction:column; gap:4px; color:var(--gh-ink); }
+  #skillnew input:focus, #skillnew textarea:focus, #skillnew select:focus { outline:none; border-color:var(--gh-green-deep); }
+  #skillnew .row button { font-size:12px; padding:6px 14px; border-radius:6px; border:1px solid var(--gh-line); background:var(--gh-surface); color:var(--gh-ink); cursor:pointer; }
+  #skillnew .row button:hover { background:var(--gh-green); color:#fff; }
+  #skillnew #skillnew-ok { background:var(--gh-green-deep); color:#fbf6ec; border-color:var(--gh-green-deep); }
   .hljs-deletion { background:#ffebe9; color:#cf222e; display:block; }
   .hljs-meta { color:#6e7781; }
   /* 代码块内 highlight.js 配色微调,适配国风纸底 */
@@ -2440,6 +4023,115 @@ _PAGE = r"""<!DOCTYPE html>
   .plan-badge { background:linear-gradient(135deg, rgba(201,138,46,.14), rgba(201,138,46,.05));
     border:1px solid rgba(201,138,46,.4); border-radius:10px; padding:8px 12px; margin:6px 0;
     color:var(--gh-ink); font-size:13px; font-weight:600; }
+  /* 2026-09-14 会话回放面板(吸收 Manus replay):右侧滑出,时间轴逐步重放 tool_trace。
+     2026-09-16 M3.30+:top 74px 避开 topbar(实测高 73px),z-index 1200 > topbar 1100,不被挡 */
+  #replay-panel { position:fixed; top:74px; right:-420px; width:400px; max-width:92vw; height:calc(100vh - 74px);
+    background:var(--gh-bg); border-left:1px solid var(--gh-line); border-top:1px solid var(--gh-line);
+    box-shadow:-12px 0 32px rgba(0,0,0,.28);
+    z-index:1200; transition:right .28s ease; display:flex; flex-direction:column; }
+  #replay-panel.open { right:0; }
+  #replay-head { display:flex; align-items:center; gap:8px; padding:12px 14px;
+    border-bottom:1px solid var(--gh-line); font-weight:600; color:var(--gh-ink); }
+  #replay-head .spacer { flex:1; }
+  #replay-head button { background:none; border:1px solid var(--gh-line); border-radius:6px;
+    cursor:pointer; padding:3px 9px; font-size:13px; color:var(--gh-ink); }
+  #replay-progress { padding:8px 14px; border-bottom:1px solid var(--gh-line);
+    font-size:12.5px; color:var(--gh-ink-soft); }
+  #replay-progress input[type=range] { width:100%; margin-top:6px; accent-color:var(--gh-green-deep); }
+  #replay-body { flex:1; overflow-y:auto; padding:12px 14px; }
+  /* 文档右栏(2026-09-16 B 路线):与 replay-panel 同侧滑出,但右侧贴边。
+     2026-09-16 M3.30+:top 74px 避开 topbar(实测高 73px),z-index 1200 > topbar 1100,不被挡 */
+  /* M3.31 GUI 重排(2026-09-16):拉宽到 720px,3 tab 等权(参考 AI 陪聊产品右栏惯例) */
+  #doc-panel { position:fixed; top:74px; right:-720px; width:720px; max-width:80vw; height:calc(100vh - 74px);
+    background:var(--gh-bg); border-left:1px solid var(--gh-line); border-top:1px solid var(--gh-line);
+    box-shadow:-12px 0 32px rgba(0,0,0,.28);
+    z-index:1200; transition:right .28s ease; display:flex; flex-direction:column; }
+  #doc-panel.open { right:0; }
+  #doc-head { display:flex; align-items:center; gap:8px; padding:12px 14px;
+    border-bottom:1px solid var(--gh-line); font-weight:600; color:var(--gh-ink); }
+  #doc-head .spacer { flex:1; }
+  #doc-head button { background:none; border:1px solid var(--gh-line); border-radius:6px;
+    cursor:pointer; padding:3px 9px; font-size:13px; color:var(--gh-ink); }
+  #doc-tabs { display:flex; gap:0; border-bottom:1px solid var(--gh-line);
+    background:var(--gh-surface); }
+  .doc-tab { flex:1; border:none; background:none; padding:9px 8px;
+    color:var(--gh-ink-soft); cursor:pointer; font-size:12.5px; border-bottom:2px solid transparent; }
+  .doc-tab.active { color:var(--gh-green-deep); border-bottom-color:var(--gh-green-deep);
+    background:var(--gh-bg); font-weight:600; }
+  #doc-timeline-head { display:flex; align-items:center; gap:6px; padding:9px 12px;
+    font-size:12px; color:var(--gh-ink-soft); border-bottom:1px solid var(--gh-line); }
+  #doc-timeline-head .spacer { flex:1; }
+  #doc-timeline-head button { background:none; border:none; color:var(--gh-ink-soft);
+    cursor:pointer; font-size:14px; }
+  #doc-timeline-body { flex:1; overflow-y:auto; padding:8px 10px; }
+  .dt-item { border:1px solid var(--gh-line); border-radius:8px; padding:8px 10px;
+    margin:0 0 8px; background:var(--gh-surface); cursor:pointer; }
+  .dt-item:hover { border-color:var(--gh-green-deep); }
+  .dt-item.active { border-color:var(--gh-green-deep); background:var(--gh-bg); }
+  .dt-item .path { font-family:monospace; font-size:12.5px; color:var(--gh-ink);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .dt-item .meta { font-size:11.5px; color:var(--gh-ink-soft); margin-top:3px; }
+  .dt-item .op { display:inline-block; padding:1px 5px; border-radius:3px;
+    font-size:10.5px; margin-right:4px; font-family:monospace; }
+  .dt-item .op.write { background:#dde6dd; color:#2d5e2d; }
+  .dt-item .op.edit { background:#e6e0dd; color:#5e4f2d; }
+  .dt-item .op.rollback { background:#dde0e6; color:#2d3e5e; }
+  .dt-item .op.imported { background:#e0e8f0; color:#2d4e6e; }
+  /* M3.31 GUI 多媒体扩展(2026-09-16):flex 列布局让 pre 滚动条生效(原缺这行导致 flex:1 失效) */
+  #doc-preview-view { display:flex; flex-direction:column; flex:1; overflow:hidden; }
+  /* 多媒体节点居中 + 留 padding */
+  #doc-preview-body > img, #doc-preview-body > embed, #doc-preview-body > video {
+    display:block; margin:auto; max-width:100%; max-height:100%;
+  }
+  #doc-preview-body > audio { display:block; margin:14px auto; max-width:100%; }
+  #doc-preview-body > embed { width:100%; height:100%; }
+  #doc-preview-head { display:flex; align-items:center; gap:8px; padding:9px 12px;
+    border-bottom:1px solid var(--gh-line); font-size:12.5px; color:var(--gh-ink-soft); }
+  #doc-preview-head .spacer { flex:1; }
+  #doc-preview-head button { background:var(--gh-surface); border:1px solid var(--gh-line);
+    border-radius:6px; cursor:pointer; padding:3px 9px; font-size:12px; color:var(--gh-ink); }
+  #doc-dirty-badge { color:#a04040; font-weight:600; }
+  #doc-preview-toolbar { display:flex; gap:6px; padding:7px 12px;
+    border-bottom:1px solid var(--gh-line); background:var(--gh-surface); }
+  #doc-version-select { flex:1; padding:4px 8px; font-size:12px;
+    background:var(--gh-bg); color:var(--gh-ink); border:1px solid var(--gh-line); border-radius:5px; }
+  #doc-rollback { background:var(--gh-surface); border:1px solid var(--gh-line);
+    border-radius:6px; cursor:pointer; padding:4px 10px; font-size:12px; color:var(--gh-ink); }
+  #doc-rollback:hover { background:var(--gh-green-deep); color:white; border-color:var(--gh-green-deep); }
+  /* M3.31 GUI 重排(2026-09-16):textarea → pre,填满下半屏,等宽字体 + wrap */
+  #doc-preview-body { flex:1; overflow:auto; border:none; padding:14px 16px; font-family:monospace;
+    font-size:12.5px; background:var(--gh-bg); color:var(--gh-ink); line-height:1.55;
+    white-space:pre-wrap; word-break:break-all; tab-size:4; margin:0; }
+  #doc-preview-body::selection { background:var(--gh-green-deep); color:#fbf6ec; }
+  /* M3.31.12(2026-09-16):iframe 渲染时父级不撑滚动条,iframe 内部原生滚动;
+     iframe flex:1 自适应占据 body 剩余高度(扣掉底部 hint) */
+  #doc-preview-body.has-iframe { overflow:hidden; padding:0; display:flex; flex-direction:column; }
+  #doc-preview-body.has-iframe > iframe { flex:1; width:100%; border:none; display:block; background:#fff; }
+  #doc-preview-body.has-iframe > div { flex:none; }
+  /* 截断提示 */
+  .doc-trunc-hint { display:block; margin-top:14px; padding:10px 12px;
+    background:var(--gh-paper-2); border:1px dashed var(--gh-line); border-radius:8px;
+    color:var(--gh-ink-soft); font-size:12px; font-family:inherit; }
+  .rp-step { border-left:3px solid var(--gh-line); padding:6px 10px; margin:0 0 10px 6px;
+    position:relative; border-radius:0 8px 8px 0; background:var(--gh-surface);
+    font-size:13px; color:var(--gh-ink-soft); }
+  .rp-step.shown { border-left-color:var(--gh-green-deep); color:var(--gh-ink); }
+  .rp-step.bad.shown { border-left-color:#c0392b; }
+  .rp-step .rp-dot { position:absolute; left:-7px; top:10px; width:11px; height:11px;
+    border-radius:50%; background:var(--gh-line); border:2px solid var(--gh-bg); }
+  .rp-step.shown .rp-dot { background:var(--gh-green-deep); }
+  .rp-step.bad.shown .rp-dot { background:#c0392b; }
+  .rp-step .rp-name { font-weight:600; }
+  .rp-step .rp-ts { font-size:11px; color:var(--gh-ink-faint); margin-left:6px; }
+  .rp-step .rp-prev { margin-top:5px; font-size:12px; white-space:pre-wrap; word-break:break-word;
+    background:var(--gh-bg); border:1px solid var(--gh-line); border-radius:6px; padding:6px 8px;
+    max-height:120px; overflow-y:auto; display:none; }
+  .rp-step.shown .rp-prev { display:block; }
+  #replay-controls { display:flex; gap:6px; padding:10px 14px; border-top:1px solid var(--gh-line); }
+  #replay-controls button { flex:1; background:var(--gh-green-deep); color:#fff; border:none;
+    border-radius:6px; padding:7px 0; cursor:pointer; font-size:13px; }
+  #replay-controls button.ghost { background:var(--gh-surface); color:var(--gh-ink);
+    border:1px solid var(--gh-line); }
   /* 一期② case 故事卡:文科概念的情境叙事块(区别于代码块的暖色叙事卡) */
   .case-card { background:linear-gradient(135deg, rgba(201,138,46,.10), rgba(201,138,46,.04));
     border:1px solid rgba(201,138,46,.40); border-left:4px solid rgba(201,138,46,.65);
@@ -2483,12 +4175,14 @@ _PAGE = r"""<!DOCTYPE html>
 <body>
 <div id="topbar">
   <div id="brand">
-    <img src="/prisiragent/assets/prisIr-flame-48.png" alt="icon">
+    <img src="/prisiragent/assets/prisir-flame-48.png" alt="icon">
     <span class="name">Prisir AI</span>
   </div>
   <div class="spacer"></div>
   <span id="strategy-label"></span>
+  <button class="topbtn" id="replay-btn" onclick="toggleReplay()" data-i18n="replay_panel" data-i18n-title="replay_title">⏵ 回放</button>
   <button class="topbtn" id="files-btn" onclick="toggleFiles()" data-i18n="files" data-i18n-title="files_title">📁 文件</button>
+  <button class="topbtn" id="doc-btn" onclick="toggleDocPanel()" data-i18n="doc_panel" data-i18n-title="doc_panel_title">📑 文档</button>
   <button class="topbtn" onclick="openKeys()" data-i18n="model_key">🔑 模型 Key</button>
   <button class="topbtn" onclick="openFeedback()" data-i18n-title="feedback_title"><span data-i18n="feedback">⚙ 反馈问题</span></button>
   <button class="topbtn" onclick="openPatch()" data-i18n="patch" data-i18n-title="patch_title">🩹 补丁</button>
@@ -2581,21 +4275,123 @@ _PAGE = r"""<!DOCTYPE html>
     </div>
     </div>
   </div>
+  <!-- 文档右栏(2026-09-16 B 路线):只读预览 + 改动时间线 + dirty 检测。
+       默认收起,顶栏 📑 按钮切换。文件改动是 chat 期间的副作用,用时间线统一溯源,
+       而不是依赖外置编辑器;读全文直接走 read_file。 -->
+  <div id="doc-panel" style="display:none">
+    <div id="doc-head">
+      <span data-i18n="doc_panel">📑 文档</span>
+      <span class="spacer"></span>
+      <button id="doc-close" type="button" onclick="toggleDocPanel()" title="收起">✕</button>
+    </div>
+    <div id="doc-tabs">
+      <button class="doc-tab active" id="doc-tab-timeline" type="button"
+        onclick="docSwitchTab('timeline')" data-i18n="doc_timeline">⏱ 改动时间线</button>
+      <button class="doc-tab" id="doc-tab-preview" type="button"
+        onclick="docSwitchTab('preview')" data-i18n="doc_preview">📄 只读预览</button>
+      <button class="doc-tab" id="doc-tab-diff" type="button"
+        onclick="docSwitchTab('diff')" data-i18n="doc_diff">📊 版本对比</button>
+      <button class="doc-tab" id="doc-tab-skills" type="button"
+        onclick="docSwitchTab('skills')" data-i18n="doc_skills">🔧 skills</button>
+    </div>
+    <div id="doc-timeline-view">
+      <div id="doc-timeline-head">
+        <span id="doc-timeline-count" data-i18n="doc_timeline_empty">本对话尚未改动任何文件</span>
+        <span class="spacer"></span>
+        <button type="button" onclick="docRefreshTimeline()" data-i18n-title="doc_refresh_title">⟳</button>
+      </div>
+      <div id="doc-timeline-body"></div>
+    </div>
+    <div id="doc-preview-view" style="display:none">
+      <div id="doc-preview-head">
+        <span id="doc-preview-path" data-i18n="doc_no_file">未选文件</span>
+        <span class="spacer"></span>
+        <span id="doc-dirty-badge" style="display:none"
+          data-i18n="doc_dirty">⚠ 外置有改动</span>
+        <button id="doc-reload" type="button" style="display:none"
+          onclick="docReload()" data-i18n="doc_reload">重新加载</button>
+      </div>
+      <div id="doc-preview-toolbar">
+        <select id="doc-version-select"
+          onchange="docSelectVersion(this.value)"><option value="current"
+          data-i18n="doc_current">当前版本</option></select>
+        <button type="button" id="doc-rollback" style="display:none"
+          onclick="docRollback()" data-i18n="doc_rollback">⤴ 回滚到此版本</button>
+      </div>
+      <pre id="doc-preview-body"></pre>
+    </div>
+    <div id="doc-diff-view" style="display:none">
+      <div id="doc-diff-head">
+        <span id="doc-diff-path" data-i18n="doc_no_file">未选文件</span>
+        <span class="spacer"></span>
+        <span id="doc-diff-stats" style="font-family:monospace"></span>
+      </div>
+      <div id="doc-diff-toolbar">
+        <span style="color:var(--gh-ink-soft)">A</span>
+        <select id="doc-diff-select-a"><option value="">—</option></select>
+        <span style="color:var(--gh-ink-soft)">B</span>
+        <select id="doc-diff-select-b"><option value="">—</option></select>
+        <button type="button" onclick="docLoadDiff()"
+          data-i18n="doc_diff_run">对比</button>
+      </div>
+      <div id="doc-diff-body"></div>
+    </div>
+    <div id="doc-skills-view" style="display:none">
+      <div id="doc-skills-head">
+        <span id="doc-skills-count" data-i18n="doc_skills_loading">加载中…</span>
+        <span class="spacer"></span>
+        <button type="button" onclick="skillRefresh()" title="刷新">⟳</button>
+        <button type="button" onclick="skillNew()" title="新建 skill">+</button>
+      </div>
+      <div id="doc-skills-body"></div>
+      <div id="doc-skills-output" style="display:none">
+        <div id="doc-skills-output-head">
+          <span id="doc-skills-output-title">output</span>
+          <span class="spacer"></span>
+          <button type="button" onclick="document.getElementById('doc-skills-output').style.display='none'">✕</button>
+        </div>
+        <pre id="doc-skills-output-pre"></pre>
+      </div>
+    </div>
+  </div>
 </div>
 
-<div id="keymodal">
-  <div class="card">
+<!-- 2026-09-14 会话回放面板:时间轴重放本会话工具调用轨迹(吸收 Manus replay)。 -->
+<div id="replay-panel">
+  <div id="replay-head">
+    <span data-i18n="replay_panel">⏵ 回放</span>
+    <span class="spacer"></span>
+    <span id="replay-count"></span>
+    <button type="button" onclick="toggleReplay()" data-i18n="close" title="关闭">✕</button>
+  </div>
+  <div id="replay-progress">
+    <span id="replay-pos"></span>
+    <input type="range" id="replay-slider" min="0" max="0" value="0" oninput="replaySeek(this.value)">
+  </div>
+  <div id="replay-body"></div>
+  <div id="replay-controls">
+    <button type="button" onclick="replayPlay()" id="replay-play-btn" data-i18n="play">▶ 播放</button>
+    <button type="button" class="ghost" onclick="replayStep(1)" data-i18n="step">+1 步</button>
+    <button type="button" class="ghost" onclick="replayShowAll()" data-i18n="show_all">全部</button>
+  </div>
+</div>
+
+<div id="keymodal">  <div class="card">
     <h3 data-i18n="model_endpoints">模型端点</h3>
     <div class="sub">无账号:key 只存本地。可登记多个平台,每个一行(平台名+协议+base_url+key+模型)。
       子代/竞速按「平台名」选用模型。对话路由按任务类型挑平台:openai/anthropic 优先于自定义平台;
       只填自定义平台时该平台即默认。同名保存=覆盖。</div>
     <div class="kf">
       <label data-i18n="custom_endpoint">模型端点</label>
-      <div class="hint">平台名:小写字母/数字/-/_,如 openai、anthropic、kimi、qwen-coder、custom。
+      <div class="hint">从列表选平台会自动填 base_url 和默认模型;选「⌨ 自定义」可手填完整字段。
+        平台名:小写字母/数字/-/_,如 openai、anthropic、kimi、qwen-coder、custom。
         同名保存=覆盖。openai/anthropic 可空 base_url 用官方默认。<br>
         协议:openai=OpenAI 兼容(/chat/completions);anthropic=Anthropic Messages(/v1/messages)。<br>
         base_url 填到版本前缀,如 https://api.kimi.com/coding/v1、
         http://127.0.0.1:11434/v1(本地 Ollama);Anthropic 协议端点填到 /v1 或其根。</div>
+      <select id="k-platform-pick" onchange="onPlatformPick()" style="width:100%;padding:9px 12px;border:1px solid var(--gh-line);border-radius:8px;font-size:13px;background:var(--gh-surface);color:var(--gh-ink);margin-bottom:6px">
+        <option value="">— 加载中… —</option>
+      </select>
       <input id="k-platform" type="text" placeholder="平台名, e.g. kimi / qwen-coder / custom" style="width:100%;padding:9px 12px;border:1px solid var(--gh-line);border-radius:8px;font-size:13px;background:var(--gh-surface);color:var(--gh-ink);margin-bottom:6px">
       <select id="k-custom-proto" style="width:100%;padding:9px 12px;border:1px solid var(--gh-line);border-radius:8px;font-size:13px;background:var(--gh-surface);color:var(--gh-ink);margin-bottom:6px">
         <option value="openai">openai(OpenAI 兼容,多数平台)</option>
@@ -2604,10 +4400,13 @@ _PAGE = r"""<!DOCTYPE html>
       <input id="k-custom-url" type="text" placeholder="base_url, e.g. https://...">
       <input id="k-custom-key" type="password" data-i18n-ph="key_ph" placeholder="key(本地可空)" style="margin-top:6px">
       <div style="display:flex;gap:6px;margin-top:6px">
-        <input id="k-custom-model" type="text" list="k-model-list" data-i18n-ph="model_ph" placeholder="模型名(可手填或拉取)" style="flex:1">
+        <div style="flex:1;position:relative">
+          <input id="k-custom-model" type="text" data-i18n-ph="model_ph" placeholder="模型名(可手填或拉取)" style="width:100%" onfocus="showModelDropdown()" onblur="hideModelDropdownDelayed()">
+          <div id="k-model-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;max-height:200px;overflow-y:auto;background:var(--gh-surface);border:1px solid var(--gh-line);border-radius:0 0 8px 8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);z-index:1000"></div>
+        </div>
         <button class="topbtn" type="button" onclick="pullModels()" data-i18n="pull" title="从端点拉取可选模型">拉取</button>
       </div>
-      <datalist id="k-model-list"></datalist>
+      <div id="k-platform-note" style="font-size:11px;color:var(--gh-ink-faint);margin-top:6px"></div>
       <div id="k-model-hint" style="font-size:11px;color:var(--gh-ink-faint);margin-top:4px"></div>
     </div>
     <div class="kf">
@@ -2621,9 +4420,29 @@ _PAGE = r"""<!DOCTYPE html>
     </div>
     <div class="row">
       <button class="topbtn" onclick="saveKeys()" data-i18n="save">保存</button>
+      <button class="topbtn" onclick="resetRouter()" data-i18n="reset_router" title="清除指定平台,恢复智能路由">恢复路由</button>
       <button class="topbtn" onclick="closeKeys()" data-i18n="close">关闭</button>
     </div>
     <div id="keylist"></div>
+  </div>
+</div>
+
+<!-- task #12 纯规则离线首配引导: 仅当无任何已配置平台时启动弹出。粘 key/url → 规则识别 → 一键保存。 -->
+<div id="firstsetup">
+  <div class="card">
+    <h2 data-i18n="fs_title">👋 欢迎使用 PrisirAI</h2>
+    <div class="sub" data-i18n="fs_sub">先配一个模型平台就能开始对话。把你从模型平台复制的 <b>API key</b>(或直接粘平台提供的 base_url)粘贴到下面,系统自动识别平台并填好配置——<b>全程离线识别,不会上传</b>。</div>
+    <div class="fs-step" data-i18n="fs_step1">第 1 步 · 粘贴 key 或地址</div>
+    <textarea id="fs-input" data-i18n-ph="fs_input_ph" placeholder="例如: sk-ant-...  或  https://dashscope.aliyuncs.com/compatible-mode/v1"></textarea>
+    <div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end">
+      <button class="topbtn primary" onclick="fsIdentify()" data-i18n="fs_identify">识别</button>
+    </div>
+    <div id="fs-result"></div>
+    <div class="row">
+      <button class="topbtn" onclick="fsSkip()" data-i18n="fs_skip">稍后再配</button>
+      <button class="topbtn" onclick="fsOpenAdvanced()" data-i18n="fs_advanced">手动配置</button>
+    </div>
+    <div class="teach" data-i18n="fs_teach">💡 小提示:以后你也可以直接在<b>主对话里粘贴 key</b>对我说「帮我配置」,或点右上角「🔑 模型 Key」随时改。这个引导只在第一次没配置时出现。</div>
   </div>
 </div>
 
@@ -2667,6 +4486,43 @@ _PAGE = r"""<!DOCTYPE html>
   </div>
 </div>
 
+<!-- M3.31:git 安装权限闸(未检测到 git 命令时启动弹一次,选「暂不启用」后不再弹) -->
+<div id="gitinstallgate">
+  <div class="card">
+    <h3>📦 检测到外部版本管理兼容功能需要 git</h3>
+    <div class="sub">本机未检测到 git 命令。启用该功能需要先安装:</div>
+    <ul>
+      <li>Windows: Git for Windows(<a href="https://git-scm.com/downloads" target="_blank" rel="noopener">git-scm.com/downloads</a>)</li>
+      <li>macOS: <code>brew install git</code></li>
+      <li>Linux: 包管理器安装(apt / dnf / pacman 等)</li>
+    </ul>
+    <div class="row">
+      <button class="topbtn primary" id="gitinstallgate-open">打开下载页</button>
+      <button class="topbtn" id="gitinstallgate-skip">暂不启用</button>
+    </div>
+  </div>
+</div>
+
+<!-- M3.32 Phase 2(2026-09-16):Office(docx/xlsx/pptx)渲染器装机权限闸
+     触发条件:点击 docx/xlsx/pptx 文件预览时,后端 415 + lo_detected=false
+     范围收紧:只推 LibreOffice(纯本地可执行),officecli 因外网 CDN 依赖被排除 -->
+<div id="officeinstallgate">
+  <div class="card">
+    <h3>📄 Office 文件预览需要 LibreOffice</h3>
+    <div class="sub">本机未检测到 LibreOffice。预览 docx/xlsx/pptx 文件需先安装:</div>
+    <div class="oig-status" id="officeinstallgate-status">检测中...</div>
+    <ul>
+      <li>LibreOffice(完全本地、样式保真度高,纯离线):<a href="https://www.libreoffice.org/download" target="_blank" rel="noopener">libreoffice.org/download</a>(约 1GB,装完重启本服务即可)</li>
+    </ul>
+    <div class="sub" style="margin-top:8px;font-size:12px;color:var(--gh-ink-faint)">我们只调本地已装的 soffice.com,不会联网下载任何东西。</div>
+    <div class="row">
+      <button class="topbtn" id="officeinstallgate-recheck">重新检测</button>
+      <button class="topbtn primary" id="officeinstallgate-open">装 LibreOffice</button>
+      <button class="topbtn" id="officeinstallgate-skip">暂不启用</button>
+    </div>
+  </div>
+</div>
+
 <!-- 通用内嵌对话框:Electron sandbox 渲染进程里 window.prompt/confirm 被禁用,改用 DOM 模态 --><div id="dlg">
   <div class="card">
     <div class="head" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
@@ -2678,6 +4534,44 @@ _PAGE = r"""<!DOCTYPE html>
     <div class="row" style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
       <button class="topbtn" id="dlg-ok" data-i18n="ok">确定</button>
       <button class="topbtn" id="dlg-cancel" data-i18n="cancel">取消</button>
+    </div>
+  </div>
+</div>
+<!-- M3.33 #65 skill 面板:查看 SKILL.md body 模态,复用 dlg-input 不够(要 textarea),自己起一个 -->
+<div id="skillview" style="display:none">
+  <div class="card" style="width:720px;max-width:96vw;max-height:80vh;overflow:auto">
+    <div class="head" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+      <h3 id="skillview-title" style="margin:0">SKILL.md</h3>
+      <span class="spacer"></span>
+      <button class="topbtn" id="skillview-close">✕</button>
+    </div>
+    <div class="sub" id="skillview-meta" style="font-size:11px;color:var(--gh-ink-soft)"></div>
+    <pre id="skillview-body" style="white-space:pre-wrap;background:var(--gh-surface);padding:12px;border-radius:6px;max-height:50vh;overflow:auto;font-size:12px;font-family:monospace"></pre>
+  </div>
+</div>
+<div id="skillnew" style="display:none">
+  <div class="card" style="width:520px;max-width:92vw">
+    <div class="head" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+      <h3 style="margin:0">+ 新建 skill</h3>
+      <span class="spacer"></span>
+      <button class="topbtn" id="skillnew-close">✕</button>
+    </div>
+    <div class="sub" style="font-size:11.5px;color:var(--gh-ink-soft);line-height:1.55">对话式 skill-builder:填字段 → 落盘 SKILL.md + scripts/ + README。
+      项目级目录:<code id="skillnew-dst"></code></div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+      <label style="font-size:12px">name(小写+短横线,2-63 字符)<input id="skillnew-name" type="text" style="width:100%;padding:7px;border:1px solid var(--gh-line);border-radius:6px;font-size:12px"></label>
+      <label style="font-size:12px">description(1-1024 chars,含「Use when ...」)<textarea id="skillnew-desc" rows="3" style="width:100%;padding:7px;border:1px solid var(--gh-line);border-radius:6px;font-size:12px;resize:vertical"></textarea></label>
+      <label style="font-size:12px">triggers(中英文逗号分隔)<input id="skillnew-triggers" type="text" style="width:100%;padding:7px;border:1px solid var(--gh-line);border-radius:6px;font-size:12px" placeholder="抽卡,画一张,cyberpunk"></label>
+      <label style="font-size:12px">requirements(API key / GPU / 服务 URL)<input id="skillnew-req" type="text" style="width:100%;padding:7px;border:1px solid var(--gh-line);border-radius:6px;font-size:12px" placeholder="NVIDIA 12GB+"></label>
+      <label style="font-size:12px">template(image / audio / video / text)
+        <select id="skillnew-tpl" style="width:100%;padding:7px;border:1px solid var(--gh-line);border-radius:6px;font-size:12px">
+          <option value="image">image</option><option value="audio">audio</option>
+          <option value="video">video</option><option value="text">text</option>
+        </select></label>
+    </div>
+    <div class="row" style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+      <button class="topbtn" id="skillnew-ok">落盘</button>
+      <button class="topbtn" id="skillnew-cancel">取消</button>
     </div>
   </div>
 </div>
@@ -2698,6 +4592,7 @@ const I18N = {
     model_endpoints:'模型端点', custom_endpoint:'自定义端点', workdir:'工作目录',
     workdir_hint:'PrisirAI 读写文件/跑命令的基准目录(影响 read_file/run_shell 相对路径)',
     save:'保存', close:'关闭', cancel:'取消', ok:'确定', apply:'应用', pull:'拉取',
+    reset_router:'恢复路由', use:'使用',
     fb_title:'⚙ 反馈问题', fb_cancel:'取消', fb_pack:'仅打包到桌面', fb_publish:'发布到反馈论坛',
     continue_topic:'延续话题', replay_loading:'回放加载中…', new_conv:'新会话',
     open_new_win:'🔀 开新窗接续', split_screen:'🗔 分屏接续', remove:'移除',
@@ -2717,6 +4612,19 @@ const I18N = {
     patch_sub:'只发改动文件,不重装整个程序。选补丁包(.zip)应用,重启后生效;可随时回滚。',
     patch_apply:'应用', patch_applied:'已应用的补丁', patch_applying:'应用中…', patch_applied_ok:'已应用,重启后生效:',
     patch_none:'尚未应用任何补丁', patch_rollback:'回滚', patch_pick:'请先选择补丁包(.zip)',
+    replay_panel:'⏵ 回放', replay_title:'回放本会话的工具调用时间轴(逐步重放)',
+    play:'▶ 播放', step:'+1 步', show_all:'全部',
+    fs_title:'👋 欢迎使用 PrisirAI',
+    fs_sub:'先配一个模型平台就能开始对话。把你从模型平台复制的 <b>API key</b>(或直接粘平台提供的 base_url)粘贴到下面,系统自动识别平台并填好配置——<b>全程离线识别,不会上传</b>。',
+    fs_step1:'第 1 步 · 粘贴 key 或地址', fs_input_ph:'例如: sk-ant-...  或  https://dashscope.aliyuncs.com/compatible-mode/v1',
+    fs_identify:'识别', fs_skip:'稍后再配', fs_advanced:'手动配置',
+    fs_teach:'💡 小提示:以后你也可以直接在<b>主对话里粘贴 key</b>对我说「帮我配置」,或点右上角「🔑 模型 Key」随时改。这个引导只在第一次没配置时出现。',
+    doc_panel:'📑 文档', doc_panel_title:'显示/收起文档右栏(只读预览+改动时间线+外置 dirty 检测)',
+    doc_timeline:'⏱ 改动时间线', doc_timeline_empty:'本对话尚未改动任何文件',
+    doc_preview:'📄 只读预览', doc_no_file:'未选文件',
+    doc_dirty:'⚠ 外置有改动', doc_reload:'重新加载', doc_refresh_title:'刷新',
+    doc_current:'当前版本', doc_rollback:'⤴ 回滚到此版本',
+    doc_skills:'🔧 skills', doc_skills_loading:'加载中…', skill_refresh_title:'刷新 skill 列表',
   },
   en: {
     send:'Send', new_session:'+ New chat', model_key:'🔑 Model Key', feedback:'⚙ Feedback',
@@ -2731,6 +4639,7 @@ const I18N = {
     model_endpoints:'Model Endpoints', custom_endpoint:'Custom endpoint', workdir:'Working directory',
     workdir_hint:'Base directory PrisirAI reads/writes files and runs commands in (affects read_file/run_shell relative paths)',
     save:'Save', close:'Close', cancel:'Cancel', ok:'OK', apply:'Apply', pull:'Pull',
+    reset_router:'Reset Router', use:'Use',
     fb_title:'⚙ Feedback', fb_cancel:'Cancel', fb_pack:'Pack to desktop only', fb_publish:'Publish to feedback forum',
     continue_topic:'Continue topic', replay_loading:'Loading replay…', new_conv:'New chat',
     open_new_win:'🔀 Continue in new window', split_screen:'🗔 Split-screen continue', remove:'Remove',
@@ -2751,6 +4660,19 @@ const I18N = {
     patch_sub:'Ships only changed files — no full reinstall. Pick a patch (.zip) and apply; takes effect after restart; roll back anytime.',
     patch_apply:'Apply', patch_applied:'Applied patches', patch_applying:'Applying…', patch_applied_ok:'Applied, takes effect after restart:',
     patch_none:'No patches applied yet', patch_rollback:'Roll back', patch_pick:'Pick a patch (.zip) first',
+    replay_panel:'⏵ Replay', replay_title:'Replay this session\'s tool-call timeline (step by step)',
+    play:'▶ Play', step:'+1 step', show_all:'All',
+    fs_title:'👋 Welcome to PrisirAI',
+    fs_sub:'Configure a model platform to start chatting. Paste the <b>API key</b> you copied from a model platform (or the base_url it provides) below — the system auto-identifies the platform and fills in the config, <b>fully offline, nothing is uploaded</b>.',
+    fs_step1:'Step 1 · Paste key or URL', fs_input_ph:'e.g. sk-ant-...  or  https://dashscope.aliyuncs.com/compatible-mode/v1',
+    fs_identify:'Identify', fs_skip:'Later', fs_advanced:'Manual',
+    fs_teach:'💡 Tip: you can also paste a key right in the <b>main chat</b> and say "help me configure", or click "🔑 Model Key" (top-right) anytime. This guide only appears when nothing is configured yet.',
+    doc_panel:'📑 Document', doc_panel_title:'Show/hide the document right panel (read-only preview + change timeline + external-edit dirty detection)',
+    doc_timeline:'⏱ Timeline', doc_timeline_empty:'No files changed in this session yet',
+    doc_preview:'📄 Preview', doc_no_file:'No file selected',
+    doc_dirty:'⚠ External change', doc_reload:'Reload', doc_refresh_title:'Refresh',
+    doc_current:'Current version', doc_rollback:'⤴ Roll back to this version',
+    doc_skills:'🔧 skills', doc_skills_loading:'Loading…', skill_refresh_title:'Refresh skill list',
   }
 };
 let LANG = (function(){
@@ -2798,6 +4720,87 @@ function toggleFiles() {
   document.getElementById('files-btn').classList.toggle('on', filesOpen);
   if (filesOpen) loadFileTree();
 }
+
+// 2026-09-14 会话回放(吸收 Manus replay):右侧滑出面板,按时间轴逐步重放本会话
+// 工具调用轨迹。数据源 /api/tool_trace(DB 持久,重启不丢)。播放=定时逐条点亮。
+let _rpSteps = [], _rpPos = 0, _rpTimer = null, _rpOpen = false;
+function toggleReplay() {
+  _rpOpen = !_rpOpen;
+  document.getElementById('replay-panel').classList.toggle('open', _rpOpen);
+  document.getElementById('replay-btn').classList.toggle('on', _rpOpen);
+  if (_rpOpen) loadReplay(); else replayStop();
+}
+async function loadReplay() {
+  const body = document.getElementById('replay-body');
+  body.innerHTML = '<div style="padding:12px;color:var(--gh-ink-faint)">' +
+    (LANG==='zh'?'回放加载中…':'Loading replay…') + '</div>';
+  replayStop();
+  let r;
+  try { r = await api('/tool_trace?session_id=' + encodeURIComponent(sessionId)); }
+  catch(e) { body.innerHTML = '<div style="padding:12px;color:#c0392b">' + esc(String(e)) + '</div>'; return; }
+  if (!r.ok) { body.innerHTML = '<div style="padding:12px;color:#c0392b">' + esc(r.error||'error') + '</div>'; return; }
+  _rpSteps = r.steps || [];
+  document.getElementById('replay-count').textContent =
+    (LANG==='zh'?'共 ':'') + _rpSteps.length + (LANG==='zh'?' 步':' steps');
+  const sl = document.getElementById('replay-slider');
+  sl.max = Math.max(0, _rpSteps.length); sl.value = 0;
+  _rpPos = 0;
+  renderReplayBody();
+  updateReplayPos();
+}
+function renderReplayBody() {
+  const body = document.getElementById('replay-body');
+  body.innerHTML = '';
+  if (!_rpSteps.length) {
+    body.innerHTML = '<div style="padding:12px;color:var(--gh-ink-faint)">' +
+      (LANG==='zh'?'本会话还没有工具调用记录':'No tool calls in this session yet') + '</div>';
+    return;
+  }
+  _rpSteps.forEach((s, i) => {
+    const d = document.createElement('div');
+    d.className = 'rp-step' + (s.ok ? '' : ' bad');
+    d.dataset.idx = i;
+    const ts = s.ts ? new Date(s.ts*1000).toLocaleTimeString() : '';
+    d.innerHTML = '<span class="rp-dot"></span>' +
+      '<span class="rp-name">' + (s.ok?'✓':'✗') + ' 🔧 ' + esc(s.name) + '</span>' +
+      '<span class="rp-ts">' + esc(ts) + '</span>' +
+      '<div class="rp-prev">' + esc(s.preview||'') + '</div>';
+    body.appendChild(d);
+  });
+}
+function updateReplayPos() {
+  document.querySelectorAll('#replay-body .rp-step').forEach((el, i) => {
+    el.classList.toggle('shown', i < _rpPos);
+  });
+  document.getElementById('replay-pos').textContent =
+    (LANG==='zh'?'已播放 ':'Played ') + _rpPos + ' / ' + _rpSteps.length;
+  document.getElementById('replay-slider').value = _rpPos;
+}
+function replaySeek(v) { replayStop(); _rpPos = parseInt(v)||0; updateReplayPos();
+  const shown = document.querySelectorAll('#replay-body .rp-step.shown');
+  if (shown.length) shown[shown.length-1].scrollIntoView({block:'nearest'}); }
+function replayStep(n) { replayStop(); _rpPos = Math.min(_rpSteps.length, Math.max(0, _rpPos + n));
+  updateReplayPos();
+  const shown = document.querySelectorAll('#replay-body .rp-step.shown');
+  if (shown.length) shown[shown.length-1].scrollIntoView({block:'nearest'}); }
+function replayShowAll() { replayStop(); _rpPos = _rpSteps.length; updateReplayPos(); }
+function replayPlay() {
+  if (_rpTimer) { replayStop(); return; }
+  if (_rpPos >= _rpSteps.length) _rpPos = 0;
+  document.getElementById('replay-play-btn').textContent = (LANG==='zh'?'⏸ 暂停':'⏸ Pause');
+  _rpTimer = setInterval(() => {
+    if (_rpPos >= _rpSteps.length) { replayStop(); return; }
+    _rpPos++; updateReplayPos();
+    const shown = document.querySelectorAll('#replay-body .rp-step.shown');
+    if (shown.length) shown[shown.length-1].scrollIntoView({block:'nearest'});
+  }, 550);
+}
+function replayStop() {
+  if (_rpTimer) { clearInterval(_rpTimer); _rpTimer = null; }
+  const b = document.getElementById('replay-play-btn');
+  if (b) b.textContent = (LANG==='zh'?'▶ 播放':'▶ Play');
+}
+
 async function loadFileTree() {
   const tree = document.getElementById('frail-tree');
   tree.innerHTML = '<div class="ft-empty">' + (LANG==='zh'?'加载中…':'Loading…') + '</div>';
@@ -2851,15 +4854,16 @@ function fileNode(f) {
   row.className = 'ft-file';
   row.title = f.path + ' (' + f.size + ' B)';
   row.innerHTML = '<span class="ft-ico">' + fileIcon(f.name) + '</span><span class="ft-name">' + esc(f.name) + '</span>';
-  // 操作钮:👁查看(内联展开) / ⤵引用(贴路径进输入框)
+  // M3.31 GUI 重排(2026-09-16):👁 查看内容 → 整体联动 doc-panel preview tab(去内联冗余)
   const view = document.createElement('span');
   view.className = 'ft-op'; view.textContent = '👁'; view.title = LANG==='zh'?'查看内容':'View';
-  view.onclick = function(e){ e.stopPropagation(); toggleFileView(wrap, f); };
+  view.onclick = function(e){ e.stopPropagation(); docOpenFromPath(f.path); };
   const ref = document.createElement('span');
   ref.className = 'ft-op'; ref.textContent = '⤵'; ref.title = LANG==='zh'?'引用到输入框':'Insert into input';
   ref.onclick = function(e){ e.stopPropagation(); insertRef(f.path); };
   row.appendChild(view); row.appendChild(ref);
-  row.onclick = function() { toggleFileView(wrap, f); };
+  // 文件名直接点击 → 引用到输入框(不再内联展开预览,避免与 doc-panel 冗余)
+  row.onclick = function() { insertRef(f.path); };
   wrap.appendChild(row);
   return wrap;
 }
@@ -2869,19 +4873,213 @@ function insertRef(p) {
   inp.value = (cur ? cur.replace(/\s+$/,'') + ' ' : '') + p;
   inp.focus();
 }
-function toggleFileView(wrap, f) {
-  let pv = wrap.querySelector('.ft-preview');
-  if (pv) { pv.remove(); return; }  // 再点收起
-  pv = document.createElement('div');
-  pv.className = 'ft-preview';
-  pv.textContent = LANG==='zh'?'加载中…':'Loading…';
-  wrap.appendChild(pv);
-  fetch('/prisiragent/api/file?path=' + encodeURIComponent(f.path))
-    .then(r => r.text()).then(t => {
-      const max = 4000;
-      pv.textContent = t.length > max ? t.slice(0,max) + '\n…(' + (LANG==='zh'?'已截断':'truncated') + ')' : t;
-    })
-    .catch(e => { pv.textContent = (LANG==='zh'?'读取失败: ':'Read failed: ') + e.message; });
+// M3.31 GUI 多媒体扩展(2026-09-16):按 mime 类型分派渲染策略
+//  - text/* → <pre> + 可选 hljs 代码高亮(CSV 自动转 <table>)
+//  - text/html → <iframe sandbox> 安全渲染(禁脚本)
+//  - image/* → <img>
+//  - application/pdf → <embed>(浏览器原生 PDF viewer)
+//  - audio/* → <audio controls>
+//  - video/* → <video controls>
+//  - 其它 → <pre>(二进制不可读,fallback)
+// 文本文件 2MB 软上限截断保留;helper 改名为 _docPreviewRender 表达分派意图。
+function _docPreviewRender(content, mime) {
+  const body = document.getElementById('doc-preview-body');
+  if (!body) return;
+  // 清掉旧媒体节点(若有)— 完整清空
+  while (body.firstChild) body.removeChild(body.firstChild);
+  body.removeAttribute('class'); body.removeAttribute('data-lang');
+  mime = (mime || '').toLowerCase();
+  if (mime.startsWith('image/')) {
+    const img = document.createElement('img');
+    img.src = '/prisiragent/api/file?path=' + encodeURIComponent(window.__docState.currentPath);
+    img.style.maxWidth = '100%';
+    img.style.maxHeight = '100%';
+    img.style.objectFit = 'contain';
+    img.style.background = '#fff';
+    img.alt = window.__docState.currentPath;
+    body.appendChild(img);
+    return;
+  }
+  if (mime === 'application/pdf') {
+    const em = document.createElement('embed');
+    em.src = '/prisiragent/api/file?path=' + encodeURIComponent(window.__docState.currentPath);
+    em.type = 'application/pdf';
+    em.style.width = '100%';
+    em.style.height = '100%';
+    body.appendChild(em);
+    return;
+  }
+  if (mime.startsWith('audio/')) {
+    const au = document.createElement('audio');
+    au.controls = true;
+    au.style.width = '100%';
+    au.src = '/prisiragent/api/file?path=' + encodeURIComponent(window.__docState.currentPath);
+    body.appendChild(au);
+    const hint = document.createElement('div');
+    hint.style.cssText = 'padding:12px;color:var(--gh-ink-soft);font-size:12px';
+    hint.textContent = window.__docState.currentPath;
+    body.appendChild(hint);
+    return;
+  }
+  if (mime.startsWith('video/')) {
+    const v = document.createElement('video');
+    v.controls = true;
+    v.style.width = '100%';
+    v.style.maxHeight = '100%';
+    v.style.background = '#000';
+    v.src = '/prisiragent/api/file?path=' + encodeURIComponent(window.__docState.currentPath);
+    body.appendChild(v);
+    return;
+  }
+  // M3.31.11(2026-09-16):HTML 安全渲染 — iframe sandbox(不给 allow-scripts,本地 file:// 同源加载)
+  if (mime === 'text/html' || mime === 'application/xhtml+xml') {
+    const iframe = document.createElement('iframe');
+    iframe.src = '/prisiragent/api/file?path=' + encodeURIComponent(window.__docState.currentPath);
+    // sandbox:不给 allow-scripts → 文档内 <script> 不会执行;allow-same-origin 让相对路径/CSS 解析
+    iframe.setAttribute('sandbox', 'allow-same-origin');
+    body.classList.add('has-iframe');  // 关闭父级滚动条,iframe 自己滚
+    body.appendChild(iframe);
+    const hint = document.createElement('div');
+    hint.style.cssText = 'padding:6px 12px;color:var(--gh-ink-soft);font-size:11px;background:var(--gh-bg);border-top:1px solid var(--gh-line);flex:none';
+    hint.textContent = (LANG === 'zh')
+      ? '🔒 HTML 安全预览(sandbox 沙箱,脚本已禁用):' + window.__docState.currentPath
+      : '🔒 HTML safe preview (sandbox, scripts disabled):' + window.__docState.currentPath;
+    body.appendChild(hint);
+    return;
+  }
+  // 文本 fallback
+  const MAX = 2 * 1024 * 1024;
+  let text = (typeof content === 'string') ? content : (content == null ? '' : String(content));
+  const path = (window.__docState.currentPath || '').toLowerCase();
+  // M3.31.11(2026-09-16):CSV 自动转 <table>(简单实现,逗号/制表符分隔,首行表头)
+  if (/\.csv$/.test(path) && text) {
+    try { _docPreviewRenderCsvTable(body, text); return; }
+    catch (e) { /* 解析失败 fallback 文本 */ }
+  }
+  if (text.length > MAX) {
+    const hint = (LANG === 'zh')
+      ? '\n\n… (已截断,显示前 2MB;完整内容请用文本编辑器打开 / 切到 doc_diff 对比完整两版)'
+      : '\n\n… (truncated to 2MB; open in editor or use doc_diff for full two-version comparison)';
+    text = text.slice(0, MAX) + hint;
+  }
+  body.textContent = text;
+  // M3.31 多媒体扩展(2026-09-16):代码高亮(hljs 已由页面 <script> 加载)
+  // 仅对常见代码/文本扩展触发;html/md 等不触发(避免误染色)
+  const ext = path.match(/\.([a-z0-9]+)$/);
+  const lang = ext ? _hljsLangFromExt(ext[1]) : null;
+  if (lang && window.hljs && typeof window.hljs.highlightElement === 'function') {
+    body.className = 'hljs ' + lang;
+    try { window.hljs.highlightElement(body); } catch (e) { /* 静默 */ }
+  }
+}
+// M3.31.11(2026-09-16):CSV → <table> 简易渲染(无依赖,~50 行 JS)
+//  - 自动识别分隔符:逗号 / 制表符 / 分号(出现频次最多者)
+//  - 首行作 <thead>
+//  - 转义 < > & " ' 防 XSS(全部来自 user 文件)
+//  - 单元格内 \n 转 <br>(常见于带换行的 csv)
+//  - 上限 5000 行防 OOM(超出截断 + 提示)
+function _docPreviewRenderCsvTable(body, text) {
+  const MAX_ROWS = 5000;
+  // 探测分隔符
+  const sample = text.split(/\r?\n/).slice(0, 5).join('\n');
+  const seps = [',', '\t', ';'];
+  let bestSep = ',', bestCount = -1;
+  for (const s of seps) {
+    const c = (sample.match(new RegExp('\\' + s, 'g')) || []).length;
+    if (c > bestCount) { bestCount = c; bestSep = s; }
+  }
+  const rows = text.split(/\r?\n/).filter(l => l.length > 0);
+  const truncated = rows.length > MAX_ROWS;
+  const useRows = truncated ? rows.slice(0, MAX_ROWS) : rows;
+  // 简易 RFC4180 解析:支持 "" 包裹 + "" 转义 "
+  function parseRow(line) {
+    const cells = [];
+    let cur = '', inQuote = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inQuote) {
+        if (ch === '"') {
+          if (line[i + 1] === '"') { cur += '"'; i++; }
+          else { inQuote = false; }
+        } else { cur += ch; }
+      } else {
+        if (ch === '"') inQuote = true;
+        else if (ch === bestSep) { cells.push(cur); cur = ''; }
+        else cur += ch;
+      }
+    }
+    cells.push(cur);
+    return cells;
+  }
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\n/g, '<br>');
+  }
+  const table = document.createElement('table');
+  table.className = 'csv-table';
+  table.style.cssText = 'border-collapse:collapse;width:100%;font-size:12px;font-family:monospace;color:var(--gh-ink);background:var(--gh-bg)';
+  if (useRows.length) {
+    const thead = document.createElement('thead');
+    const trh = document.createElement('tr');
+    parseRow(useRows[0]).forEach(c => {
+      const th = document.createElement('th');
+      th.innerHTML = esc(c);
+      // M3.31.13(2026-09-16):sticky thead 加 box-shadow 让它跟下方数据视觉分隔
+      // (之前被用户报告「被 toolbar 遮挡」— 实际是 thead 飘起来后视觉上跟 toolbar 下边缘邻接像被切)
+      // z-index:5 + box-shadow + 背景不透明彻底解决
+      th.style.cssText = 'padding:6px 10px;background:var(--gh-surface);color:var(--gh-ink);border:1px solid var(--gh-line);text-align:left;position:sticky;top:0;z-index:5;box-shadow:0 2px 4px rgba(0,0,0,0.08)';
+      trh.appendChild(th);
+    });
+    thead.appendChild(trh);
+    table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    for (let i = 1; i < useRows.length; i++) {
+      const tr = document.createElement('tr');
+      parseRow(useRows[i]).forEach(c => {
+        const td = document.createElement('td');
+        td.innerHTML = esc(c);
+        td.style.cssText = 'padding:5px 10px;border:1px solid var(--gh-line);vertical-align:top';
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+  }
+  body.appendChild(table);
+  if (truncated) {
+    const hint = document.createElement('div');
+    hint.style.cssText = 'padding:12px;color:var(--gh-ink-soft);font-size:11px;text-align:center';
+    hint.textContent = (LANG === 'zh')
+      ? '… (已截断,显示前 ' + MAX_ROWS + ' 行;共 ' + rows.length + ' 行)'
+      : '… (truncated; showing first ' + MAX_ROWS + ' rows of ' + rows.length + ')';
+    body.appendChild(hint);
+  }
+}
+function _hljsLangFromExt(ext) {
+  const m = {
+    py:'python', js:'javascript', ts:'typescript', json:'json',
+    html:'xml', xml:'xml', md:'xml', sh:'bash', bash:'bash',
+    sql:'sql', yaml:'yaml', yml:'yaml', css:'xml',
+    java:'java', cpp:'cpp', c:'cpp', h:'cpp', go:'go',
+    rs:'rust', php:'xml', rb:'xml', kt:'xml',
+  };
+  return m[ext] || null;
+}
+// 兼容旧名字(本轮 18 处 body.value 调用)— 都改成 _docPreviewRender(content, mime)
+// 调用方需要先 fetch 时拿到 Content-Type header;这里提供单文本便捷版(向后兼容旧测试)
+function _docPreviewWriteText(content) {
+  _docPreviewRender(content, 'text/plain');
+}
+// M3.31 GUI 重排(2026-09-16):文件树 → 文档面板整体联动 helper。
+// frai 👁 按钮 → 自动打开 doc-panel + 切 preview tab + 全宽显示内容。
+async function docOpenFromPath(relPath) {
+  // 清掉 frai 任何残留行内预览(兼容性,即便 fileNode 已不创建)
+  document.querySelectorAll('.ft-preview').forEach(p => p.remove());
+  const p = document.getElementById('doc-panel');
+  if (window.__docState && !window.__docState.open) toggleDocPanel();
+  docSwitchTab('preview');
+  await docLoadPreview(relPath);
 }
 
 function esc(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
@@ -3670,7 +5868,76 @@ async function pollResult() {
   polling = false;
 }
 
-function openKeys(){ document.getElementById('keymodal').classList.add('open'); renderKeys(); loadWorkdir(); }
+function openKeys(){ document.getElementById('keymodal').classList.add('open'); renderKeys(); loadWorkdir(); loadPlatformList(); }
+
+// M3.22.2 — 下拉选厂商:auto填 base_url / 默认 model / kind(走 /llm/upsert)
+var _llmProviders = [];  // [{platform_id, display, kind, base_url, default_model, note, fields}]
+
+async function loadPlatformList(){
+  try {
+    const r = await api('/llm/providers');
+    if(r && r.providers && r.providers.length){
+      _llmProviders = r.providers;
+    } else {
+      _llmProviders = [];
+    }
+  } catch(e){
+    _llmProviders = [];
+  }
+  const sel = document.getElementById('k-platform-pick');
+  if(!sel) return;
+  const zh = (LANG === 'zh');
+  // 默认 3 项:留空 = 不选 / custom = 自定义输入
+  const opts = ['<option value="">— '+(zh?'选平台(可跳过选自定义)':'Pick platform (or skip & customize)')+' —</option>'];
+  // M3.22.3 分组显示:云端 / 本地 — 按 spec.local 字段(不是 kind)
+  const cloud = _llmProviders.filter(p => !p.local);
+  const local = _llmProviders.filter(p => p.local);
+  if(cloud.length){
+    opts.push('<optgroup label="'+(zh?'☁ 云端':'☁ Cloud')+'">');
+    cloud.forEach(p => opts.push(`<option value="${esc(p.platform_id)}">${esc(p.display)} — ${esc(p.default_model||'')}</option>`));
+    opts.push('</optgroup>');
+  }
+  if(local.length){
+    opts.push('<optgroup label="'+(zh?'💻 本地(隐私优先)':'💻 Local (privacy-first)')+'">');
+    local.forEach(p => opts.push(`<option value="${esc(p.platform_id)}">${esc(p.display)} — ${esc(p.default_model||'')}</option>`));
+    opts.push('</optgroup>');
+  }
+  opts.push('<option value="__custom__">⌨ '+(zh?'自定义(手填全部字段)':'Custom (fill all fields manually)')+'</option>');
+  sel.innerHTML = opts.join('');
+}
+
+function onPlatformPick(){
+  const sel = document.getElementById('k-platform-pick');
+  const v = sel.value;
+  const note = document.getElementById('k-platform-note');
+  if(!v){
+    if(note) note.textContent = '';
+    return;
+  }
+  if(v === '__custom__'){
+    // 自定义模式:清空 url/model,聚焦到 k-platform 输入框
+    document.getElementById('k-platform').value = 'custom';
+    document.getElementById('k-custom-url').value = '';
+    document.getElementById('k-custom-model').value = '';
+    document.getElementById('k-custom-proto').value = 'openai';
+    if(note) note.textContent = (LANG==='zh'?'已切到自定义模式 — 在下方手填 platform / base_url / model / key':'Switched to custom — fill platform / base_url / model / key below');
+    return;
+  }
+  const p = _llmProviders.find(x => x.platform_id === v);
+  if(!p){
+    if(note) note.textContent = (LANG==='zh'?'平台未找到':'Platform not found');
+    return;
+  }
+  document.getElementById('k-platform').value = p.platform_id;
+  document.getElementById('k-custom-url').value = p.base_url || '';
+  document.getElementById('k-custom-model').value = p.default_model || '';
+  document.getElementById('k-custom-proto').value = (p.kind === 'anthropic') ? 'anthropic' : 'openai';
+  document.getElementById('k-custom-key').value = '';
+  document.getElementById('k-custom-key').placeholder =
+    (LANG==='zh'?'填 API key(留空=保留原 key;首次必须填)':'Enter API key (empty=keep existing; required for first save)');
+  if(note) note.textContent = (LANG==='zh'?('✓ 已预填「'+p.display+'」 — '+(p.note||'请填 key 后保存')):('✓ Prefilled "'+p.display+'" — '+(p.note||'enter key and save')));
+  _pulledModels = [];  // 切平台后清空旧列表,免误导
+}
 function closeKeys(){ document.getElementById('keymodal').classList.remove('open'); }
 
 // ---- v2.0 反馈卡(目标 A.3) ----
@@ -3843,57 +6110,218 @@ function renderAttach(){
     row.appendChild(chip);
   });
 }
+// 存储拉取到的模型列表
+var _pulledModels = [];
+
 async function pullModels(){
   const hint = document.getElementById('k-model-hint');
   const url = document.getElementById('k-custom-url').value.trim();
   const key = document.getElementById('k-custom-key').value.trim();
+  const platform = document.getElementById('k-platform').value.trim().toLowerCase();
   const zh = (LANG === 'zh');
   if(!url){ hint.textContent = zh ? '先填 base_url 再拉取' : 'Enter base_url first'; return; }
+  // M3.22.3 — 国内云端 + openai/anthropic/openrouter/groq/openai-compat 都要 key;本地(ollama/llama-server)不需要
+  const localKinds = ['ollama', 'llama-server'];
+  const localPlatforms = ['ollama', 'llama-server'];
+  if(!key && !localPlatforms.includes(platform)){
+    hint.textContent = zh ? '⚠ 大多数平台需先填 KEY(401 会拒绝);ollama/llama-server 本地服务可留空' : '⚠ Most platforms require a KEY (401 otherwise); ollama/llama-server may stay empty';
+    hint.style.color = '#c9463d';
+    return;
+  }
   hint.textContent = zh ? '拉取中…' : 'Pulling…';
+  hint.style.color = 'var(--gh-ink-faint)';
   try {
     const r = await api('/models?base_url='+encodeURIComponent(url)+'&api_key='+encodeURIComponent(key));
-    const dl = document.getElementById('k-model-list');
-    dl.innerHTML = '';
+    const dropdown = document.getElementById('k-model-dropdown');
+    dropdown.innerHTML = '';
+    _pulledModels = [];
     if(r.ok && r.models && r.models.length){
-      r.models.forEach(m => { const o=document.createElement('option'); o.value=m; dl.appendChild(o); });
-      hint.textContent = zh ? ('拉到 '+r.models.length+' 个模型,点模型名输入框下拉选择') : ('Pulled '+r.models.length+' models — click the model input to pick');
-      if(r.models.length && !document.getElementById('k-custom-model').value)
-        document.getElementById('k-custom-model').value = r.models[0];
+      _pulledModels = r.models;
+      r.models.forEach(m => {
+        const item = document.createElement('div');
+        item.style.cssText = 'padding:10px 12px;cursor:pointer;border-bottom:1px solid var(--gh-line);font-size:13px';
+        item.textContent = m;
+        item.onmouseenter = () => item.style.background = 'var(--gh-paper)';
+        item.onmouseleave = () => item.style.background = 'transparent';
+        item.onmousedown = (e) => { e.preventDefault(); selectModel(m); };
+        dropdown.appendChild(item);
+      });
+      hint.textContent = zh ? ('✓ 拉到 '+r.models.length+' 个模型,点击输入框查看全部') : ('✓ Pulled '+r.models.length+' models — click input to see all');
+      hint.style.color = '#2d8a4e';  // 成功绿色
+      // 自动展开下拉显示所有模型
+      showModelDropdown();
     } else {
       hint.textContent = zh ? ('未拉到('+(r.error||'空')+'),可继续手填模型名') : ('Nothing pulled ('+(r.error||'empty')+') — you can still type the model name');
+      hint.style.color = '#c9463d';  // 错误红色
     }
-  } catch(e){ hint.textContent = (zh ? '拉取失败:' : 'Pull failed: ') + e; }
+  } catch(e){
+    hint.textContent = (zh ? '拉取失败:' : 'Pull failed: ') + e;
+    hint.style.color = '#c9463d';
+  }
 }
-async function saveKeys(){
-  const body = {
-    platform: document.getElementById('k-platform').value.trim().toLowerCase(),
-    custom_proto: document.getElementById('k-custom-proto').value,
-    custom_url: document.getElementById('k-custom-url').value.trim(),
-    custom_key: document.getElementById('k-custom-key').value.trim(),
-    custom_model: document.getElementById('k-custom-model').value.trim(),
-  };
+
+function showModelDropdown(){
+  const dropdown = document.getElementById('k-model-dropdown');
+  if(_pulledModels.length > 0){
+    dropdown.style.display = 'block';
+  }
+}
+
+function hideModelDropdownDelayed(){
+  setTimeout(() => {
+    document.getElementById('k-model-dropdown').style.display = 'none';
+  }, 200);
+}
+
+function selectModel(m){
+  document.getElementById('k-custom-model').value = m;
+  document.getElementById('k-model-dropdown').style.display = 'none';
   const hint = document.getElementById('k-model-hint');
   const zh = (LANG === 'zh');
+  hint.textContent = zh ? ('已选择: '+m) : ('Selected: '+m);
+  hint.style.color = '#2d8a4e';
+}
+
+async function saveKeys(){
+  const hint = document.getElementById('k-model-hint');
+  const zh = (LANG === 'zh');
+  const platformPick = document.getElementById('k-platform-pick').value;
+  const platform = document.getElementById('k-platform').value.trim().toLowerCase();
+  const proto = document.getElementById('k-custom-proto').value;
+  const url = document.getElementById('k-custom-url').value.trim();
+  const key = document.getElementById('k-custom-key').value.trim();
+  const model = document.getElementById('k-custom-model').value.trim();
+  // M3.22.2 分流:从 dropdown 选了有效平台(非 __custom__ 非空)→ 走新 /llm/upsert
+  // 否则(自定义 / 未选 dropdown)→ 走老 /keys 全字段
+  if(platformPick && platformPick !== '__custom__' && _llmProviders.find(p => p.platform_id === platformPick)){
+    // 新路径:platform_id + api_key + model + endpoint(仅 ollama/llama-server)
+    const spec = _llmProviders.find(p => p.platform_id === platformPick);
+    const body = {
+      platform_id: platformPick,
+      api_key: key,  // 留空或以 *** 开头 → 后端保留旧 key
+      model: model,
+    };
+    if(spec.kind === 'ollama' || platformPick === 'llama-server'){
+      body.endpoint = url;
+    }
+    const r = await api('/llm/upsert', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(r && r.ok === false){
+      hint.textContent = (zh?'❌ 保存失败: ':'❌ Save failed: ') + (r.error||'');
+      hint.style.color = '#c9463d';
+      return;
+    }
+    hint.textContent = zh ? ('✓ 已保存「'+platformPick+'」! '+(r.platform&&r.platform.api_key_len?'(key 长度='+r.platform.api_key_len+')':''))
+                          : ('✓ Saved "'+platformPick+'"! '+(r.platform&&r.platform.api_key_len?'(key len='+r.platform.api_key_len+')':''));
+    hint.style.cssText = 'font-size:14px;font-weight:600;color:#2d8a4e;margin-top:6px;padding:8px;background:#e8f5e9;border-radius:6px;animation:saveFlash 0.5s ease';
+    document.getElementById('k-custom-key').value = '';
+    document.getElementById('k-platform-pick').value = '';  // 重置 dropdown 让用户能继续选
+    renderKeys();
+    setTimeout(() => { hint.style.cssText = 'font-size:11px;color:var(--gh-ink-faint);margin-top:4px'; }, 3000);
+    return;
+  }
+  // 老路径:全字段写 /keys(自定义模式)
+  const body = {
+    platform: platform,
+    custom_proto: proto,
+    custom_url: url,
+    custom_key: key,
+    custom_model: model,
+  };
   const r = await api('/keys', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  if(r && r.ok === false){ hint.textContent = (zh?'保存失败: ':'Save failed: ') + (r.error||''); return; }
-  hint.textContent = zh ? ('已保存平台「'+body.platform+'」') : ('Saved platform "'+body.platform+'"');
+  if(r && r.ok === false){
+    hint.textContent = (zh?'❌ 保存失败: ':'❌ Save failed: ') + (r.error||'');
+    hint.style.color = '#c9463d';
+    return;
+  }
+  hint.textContent = zh ? ('✓ 已保存「'+body.platform+'」!') : ('✓ Saved "'+body.platform+'"!');
+  hint.style.cssText = 'font-size:14px;font-weight:600;color:#2d8a4e;margin-top:6px;padding:8px;background:#e8f5e9;border-radius:6px;animation:saveFlash 0.5s ease';
   document.getElementById('k-custom-key').value = '';
   renderKeys();
+  setTimeout(() => { hint.style.cssText = 'font-size:11px;color:var(--gh-ink-faint);margin-top:4px'; }, 3000);
 }
+
+async function resetRouter(){
+  const hint = document.getElementById('k-model-hint');
+  const zh = (LANG === 'zh');
+  try {
+    const r = await api('/keys/activate', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({platform:''})  // 空平台=清除指定
+    });
+    if(r && r.ok){
+      hint.textContent = zh ? '✓ 已恢复智能路由!' : '✓ Smart routing restored!';
+      hint.style.cssText = 'font-size:14px;font-weight:600;color:#2d8a4e;margin-top:6px;padding:8px;background:#e8f5e9;border-radius:6px;animation:saveFlash 0.5s ease';
+      renderKeys();
+      // 更新路由标签
+      const info = await api('/info');
+      let routeTxt = T('routing') + info.strategy + (info.platforms.length ? ' · ' + info.platforms.join('/') : T('no_key'));
+      if (info.current_model) routeTxt += ' · ' + String(info.current_model).split('/').pop();
+      document.getElementById('strategy-label').textContent = routeTxt;
+      setTimeout(() => {
+        hint.style.cssText = 'font-size:11px;color:var(--gh-ink-faint);margin-top:4px';
+      }, 3000);
+    }
+  } catch(e){
+    hint.textContent = (zh?'❌ 恢复失败: ':'❌ Reset failed: ') + e;
+    hint.style.color = '#c9463d';
+  }
+}
+
 async function renderKeys(){
   const ks = await api('/keys');
   const el = document.getElementById('keylist');
-  el.innerHTML = ks.length ? '<div class="sub" style="margin:8px 0 4px">' + (LANG==='zh'?'已配置(点「填入」载回表单编辑):':'Configured (click "load" to edit):') + '</div>' : '';
+  // 获取当前活跃平台
+  const info = await api('/info');
+  const activePlatform = info.active_platform || '';
+  el.innerHTML = ks.length ? '<div class="sub" style="margin:8px 0 4px">' + (LANG==='zh'?'已配置(点「使用」切换为当前模型):':'Configured (click "Use" to switch):') + '</div>' : '';
   ks.forEach(k => {
     const d = document.createElement('div'); d.className='k';
     const proto = (k.meta && k.meta.proto) ? ' ['+k.meta.proto+']' : '';
+    const isActive = (k.platform === activePlatform);
+    const activeStyle = isActive ? 'background:#e8f5e9;border-left:3px solid #2d8a4e;' : '';
+    const activeBadge = isActive ? '<span style="color:#2d8a4e;font-weight:600;margin-right:6px">● 当前</span>' : '';
     const label = esc(k.platform)+proto+' '+esc(k.base_url||'(默认)')+' 模型='+esc(k.model||'(未设)')+' '+esc(k.key_hint);
-    d.innerHTML = '<span style="flex:1">'+label+'</span>'
-      + '<button onclick=\'loadKey('+JSON.stringify(k)+')\'>' + (LANG==='zh'?'填入':'load') + '</button>'
+    d.innerHTML = '<span style="flex:1;'+activeStyle+'padding:4px">'+activeBadge+label+'</span>'
+      + '<button class="'+(isActive?'':'primary')+'" onclick=\'useKey('+JSON.stringify(k)+')\'>' + (LANG==='zh'?'使用':'Use') + '</button>'
       + '<button onclick="delKey(\''+k.platform+'\')">' + T('del') + '</button>';
     el.appendChild(d);
   });
 }
+
+async function useKey(k){
+  const zh = (LANG === 'zh');
+  const hint = document.getElementById('k-model-hint');
+  hint.textContent = zh ? '切换中…' : 'Switching…';
+  hint.style.color = 'var(--gh-ink-faint)';
+  try {
+    const r = await api('/keys/activate', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({platform:k.platform})
+    });
+    if(r && r.ok){
+      hint.textContent = zh ? ('✓ 已切换到「'+k.platform+'」!') : ('✓ Switched to "'+k.platform+'"!');
+      hint.style.cssText = 'font-size:14px;font-weight:600;color:#2d8a4e;margin-top:6px;padding:8px;background:#e8f5e9;border-radius:6px;animation:saveFlash 0.5s ease';
+      renderKeys();
+      // 更新路由标签
+      const info = await api('/info');
+      let routeTxt = T('routing') + info.strategy + (info.platforms.length ? ' · ' + info.platforms.join('/') : T('no_key'));
+      if (info.current_model) routeTxt += ' · ' + String(info.current_model).split('/').pop();
+      document.getElementById('strategy-label').textContent = routeTxt;
+      setTimeout(() => {
+        hint.style.cssText = 'font-size:11px;color:var(--gh-ink-faint);margin-top:4px';
+      }, 3000);
+    } else {
+      hint.textContent = (zh?'❌ 切换失败: ':'❌ Switch failed: ') + (r.error||'');
+      hint.style.color = '#c9463d';
+    }
+  } catch(e){
+    hint.textContent = (zh?'❌ 切换失败: ':'❌ Switch failed: ') + e;
+    hint.style.color = '#c9463d';
+  }
+}
+
 function loadKey(k){
   document.getElementById('k-platform').value = k.platform || 'custom';
   document.getElementById('k-custom-proto').value = (k.meta && k.meta.proto) || 'openai';
@@ -3907,6 +6335,24 @@ async function delKey(p){ await api('/keys/delete',{method:'POST',headers:{'Cont
 document.getElementById('input').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 });
+// M3.31.12(2026-09-16):输入框自适应多行 — 按内容行数动态 rows,直到 8 行才出滚动条
+// 原本 max-height:160px + rows=2 导致只能容 2 行,再多就压缩出滚动条,UX 糟
+function _autoResizeInput() {
+  const el = document.getElementById('input');
+  if (!el) return;
+  // 用 \n 数 + wrap(每行宽度估算):textarea scrollHeight 已经按 wrap 折算,
+  // 但因 min-height:44px 即使 1 行 scrollHeight=44,需按 value 实际行数算
+  const value = el.value || '';
+  const wrappedLines = value.split('\n').reduce((sum, line) => {
+    // 估算每行字符宽:14.5px font * 0.6 ≈ 8.7px 字符,box width ~700px → ~80 字符/行
+    const colsPerLine = 80;
+    return sum + Math.max(1, Math.ceil(line.length / colsPerLine));
+  }, 0);
+  el.rows = Math.max(1, Math.min(8, wrappedLines));
+}
+document.getElementById('input').addEventListener('input', _autoResizeInput);
+// 初始化(防首次加载就有内容)
+setTimeout(_autoResizeInput, 0);
 
 // 左栏 tab 切换 + 合并(退出分屏)
 document.getElementById('sl-tab-summary').addEventListener('click', () => _slTab('summary'));
@@ -3922,7 +6368,566 @@ document.getElementById('sl-merge').addEventListener('click', () => exitSplit())
   document.getElementById('strategy-label').textContent = routeTxt;
   await loadSessions();
   if (sessions.length) switchSession(sessions[0].id);
+  // task #12 纯规则离线首配: 无任何已配置平台时,启动弹出一次性引导(遮蔽式)。
+  if (!r.platforms.length) fsShow();
+  // M3.31:git 检测闸 — 未装 git 且本会话未弹过才显示;不阻塞其他初始化。
+  gitGateInit();
+  // M3.32 Phase 2(2026-09-16):officecli/LO 检测闸 — 仅在用户点击 docx/xlsx/pptx 时按需弹
+  officeinstallgateInit();
+  // M3.33 #65:skill 面板事件绑定
+  skillInit();
 })();
+
+/* ===== M3.31 git 安装权限闸(只在用户主动 reload 时 fetch,不做 polling) ===== */
+let _gitGateShown = false;  // 前端本会话内存标记,防止重复 fetch
+async function gitGateInit() {
+  if (_gitGateShown) return;
+  try {
+    const r = await fetch("/prisiragent/api/git_detect");
+    const j = await r.json();
+    if (!j.ok) return;                // 后端失败不打扰
+    if (j.detected) return;           // 已装 git,不弹
+    if (j.gate_shown) return;         // 用户本会话已选「暂不启用」,不骚扰
+    const gate = document.getElementById("gitinstallgate");
+    if (!gate) return;
+    _gitGateShown = true;
+    gate.classList.add("open");
+    document.getElementById("gitinstallgate-open").onclick = async () => {
+      window.open("https://git-scm.com/downloads", "_blank", "noopener");
+      try { await fetch("/prisiragent/api/git_gate_ack", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ choice: "yes" }) }); } catch (e) {}
+      gate.classList.remove("open");
+    };
+    document.getElementById("gitinstallgate-skip").onclick = async () => {
+      try { await fetch("/prisiragent/api/git_gate_ack", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ choice: "no" }) }); } catch (e) {}
+      gate.classList.remove("open");
+    };
+  } catch (e) {
+    // 网络异常静默吞掉,不影响主流程
+  }
+}
+
+/* ===== M3.32 Phase 2(2026-09-16):Office 渲染器装机权限闸
+   与 git 闸不同:启动时不弹,只在用户点 docx/xlsx/pptx 且后端 415 时弹。
+   这样不打扰只用代码/笔记的用户。
+   expose:officeinstallgateShow() 让 docLoadPreview 415 时手动触发。*/
+let _officeinstallgateInited = false;
+let _officeinstallgateShown = false;
+function officeinstallgateInit() {
+  if (_officeinstallgateInited) return;
+  _officeinstallgateInited = true;
+  const gate = document.getElementById("officeinstallgate");
+  if (!gate) return;
+  document.getElementById("officeinstallgate-open").onclick = async () => {
+    window.open("https://www.libreoffice.org/download", "_blank", "noopener");
+    try { await fetch("/prisiragent/api/office_gate_ack", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ choice: "yes" }) }); } catch (e) {}
+    gate.classList.remove("open");
+    _officeinstallgateShown = false;
+  };
+  document.getElementById("officeinstallgate-skip").onclick = async () => {
+    try { await fetch("/prisiragent/api/office_gate_ack", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ choice: "no" }) }); } catch (e) {}
+    gate.classList.remove("open");
+    _officeinstallgateShown = true;
+  };
+  document.getElementById("officeinstallgate-recheck").onclick = async () => {
+    const st = document.getElementById("officeinstallgate-status");
+    if (st) { st.className = "oig-status"; st.textContent = "重新检测中..."; }
+    try {
+      const r = await fetch("/prisiragent/api/office_renderer_status?force=1");
+      const j = await r.json();
+      if (!j.ok) throw new Error(j.error || "detect failed");
+      officeinstallgateRenderStatus(j);
+      // 如果这次 LO 装了,关弹窗
+      if (j.lo.detected || j.officecli.detected) {
+        gate.classList.remove("open");
+        _officeinstallgateShown = false;
+        // 重新加载当前预览
+        const p = window.__docState && window.__docState.currentPath;
+        if (p && typeof docLoadPreview === "function") docLoadPreview(p);
+      }
+    } catch (e) {
+      if (st) { st.textContent = "重检失败: " + e.message; }
+    }
+  };
+}
+function officeinstallgateRenderStatus(j) {
+  const st = document.getElementById("officeinstallgate-status");
+  if (!st) return;
+  const loTxt = j.lo.detected
+    ? ("✓ LibreOffice 已装 — " + (j.lo.version || "?") + " — " + (j.lo.path || ""))
+    : ("✗ LibreOffice 未装 — " + (j.lo.err || ""));
+  const ocTxt = j.officecli.detected
+    ? ("✓ OfficeCLI 已装 — " + (j.officecli.version || "?") + " — " + (j.officecli.path || ""))
+    : ("✗ OfficeCLI 未装 — " + (j.officecli.err || ""));
+  st.className = "oig-status" + (j.lo.detected ? " ok" : "");
+  st.textContent = loTxt + "\n" + ocTxt;
+}
+async function officeinstallgateShow(hint) {
+  const gate = document.getElementById("officeinstallgate");
+  if (!gate) return;
+  // 拿最新探测状态(force 重扫一遍,确保用户刚装完软件也能识别)
+  let j = null;
+  try {
+    const r = await fetch("/prisiragent/api/office_renderer_status?force=1");
+    j = await r.json();
+  } catch (e) { /* 静默 */ }
+  if (!j || !j.ok) return;
+  if (j.lo.detected || j.officecli.detected) {
+    // 已经有渲染器了,不弹闸(可能用户刚装完)— 让 docLoadPreview 重试
+    return;
+  }
+  if (j.gate_shown || _officeinstallgateShown) return;  // 本会话已 ack,不再骚扰
+  _officeinstallgateShown = true;
+  officeinstallgateRenderStatus(j);
+  const hintEl = document.createElement("div");
+  hintEl.style.cssText = "font-size:12px;color:#a45a00;margin-bottom:8px";
+  hintEl.textContent = "⚠ " + (hint || "office 文件预览失败");
+  const card = gate.querySelector(".card");
+  if (card && !card.querySelector(".oig-hint")) {
+    hintEl.className = "oig-hint";
+    card.insertBefore(hintEl, card.children[2] || null);
+  }
+  gate.classList.add("open");
+}
+
+/* ===== task #12 首配引导(纯规则离线识别) ===== */
+let _fsIdentified = null;  // 最近一次识别结果(保存用)
+function fsShow(){ document.getElementById('firstsetup').classList.add('open');
+  setTimeout(()=>document.getElementById('fs-input').focus(), 100); }
+function fsHide(){ document.getElementById('firstsetup').classList.remove('open'); }
+function fsSkip(){ fsHide(); }  // 稍后再配:关掉即可,下次未配置仍会弹
+function fsOpenAdvanced(){ fsHide(); openKeys(); }  // 手动配置:转完整 keymodal
+
+async function fsIdentify(){
+  const text = document.getElementById('fs-input').value.trim();
+  const box = document.getElementById('fs-result');
+  const zh = (LANG === 'zh');
+  if(!text){ box.className='err'; box.textContent = zh?'请先粘贴 key 或地址':'Paste a key or URL first'; return; }
+  box.className=''; box.style.display='none'; _fsIdentified=null;
+  const r = await api('/identify_key', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});
+  if(!r || !r.ok){
+    box.className='err';
+    box.textContent = (zh?'⚠ 未识别。':'⚠ Not recognized. ') + (r && r.hint ? r.hint : (zh?'请补充平台名或 base_url':'add platform name or base_url'));
+    // 未识别也给出「仍要手动配置」出口
+    const btn = document.createElement('button');
+    btn.className='topbtn'; btn.style.marginTop='8px';
+    btn.textContent = zh?'手动配置':'Configure manually';
+    btn.onclick = fsOpenAdvanced;
+    box.appendChild(document.createElement('br')); box.appendChild(btn);
+    return;
+  }
+  _fsIdentified = r;
+  box.className='ok';
+  const byTxt = r.by==='url' ? (zh?'(按地址识别)':'(by URL)') : (zh?'(按 key 前缀识别)':'(by key prefix)');
+  box.innerHTML = (zh?'✓ 识别为平台 ':'✓ Identified platform ')
+    + '<b>'+r.platform+'</b> '+byTxt
+    + '<div class="row2">'
+    + '<span class="tag">proto: '+r.proto+'</span>'
+    + (r.base_url?'<span class="tag">url: '+r.base_url+'</span>':'')
+    + (r.model?'<span class="tag">model: '+r.model+'</span>':'')
+    + '</div>';
+  // 若只按前缀识别(openai 兜底),提醒可补 url 提准
+  if(r.by==='prefix' && r.platform==='openai'){
+    box.innerHTML += '<div style="margin-top:6px;font-size:11px;color:#8a6d1a">'
+      + (zh?'ℹ 仅按前缀判断为 openai 兼容;若实为 deepseek/kimi 等,请改粘该平台的 base_url 更准。':'ℹ Guessed openai by prefix; paste the platform base_url for accuracy.')+'</div>';
+  }
+  const saveBtn = document.createElement('button');
+  saveBtn.className='topbtn primary'; saveBtn.style.marginTop='10px';
+  saveBtn.textContent = zh?'✓ 确认并保存':'✓ Confirm & save';
+  saveBtn.onclick = fsSave;
+  box.appendChild(saveBtn);
+}
+
+async function fsSave(){
+  const box = document.getElementById('fs-result');
+  const zh = (LANG === 'zh');
+  if(!_fsIdentified){ box.className='err'; box.textContent = zh?'请先点「识别」':'Click Identify first'; return; }
+  const r = _fsIdentified;
+  // 提取用户粘贴里的原始 key(识别端点不回传 key,需从输入框取)。优先 sk- 开头;否则取长 token。
+  const raw = document.getElementById('fs-input').value.trim();
+  const skm = raw.match(/sk-[A-Za-z0-9_\-]+/);
+  const anym = raw.match(/[A-Za-z0-9_\-]{20,}/);
+  const key = skm ? skm[0] : (anym ? anym[0] : '');
+  const body = { platform:r.platform, custom_proto:r.proto, custom_url:r.base_url,
+                 custom_key:key, custom_model:r.model };
+  const res = await api('/keys', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(res && res.ok === false){
+    box.className='err'; box.textContent = (zh?'❌ 保存失败: ':'❌ Save failed: ')+(res.error||''); return;
+  }
+  box.className='ok';
+  box.innerHTML = (zh?'🎉 已配好「':'🎉 Configured "') + r.platform + (zh?'」,可以开始对话了!':'", ready to chat!');
+  // 更新路由标签
+  const info = await api('/info');
+  let routeTxt = T('routing') + info.strategy + (info.platforms.length ? ' · ' + info.platforms.join('/') : T('no_key'));
+  if (info.current_model) routeTxt += ' · ' + String(info.current_model).split('/').pop();
+  document.getElementById('strategy-label').textContent = routeTxt;
+  setTimeout(fsHide, 1400);
+}
+</script>
+
+<script>
+// 文档右栏(2026-09-16 B 路线):只读预览 + 时间线 + dirty 检测。
+// 时间线复用 chat 库;dirty 每 5s 轮询 /api/file_stat;关窗询问 dirty 未处理时拦。
+"use strict";
+window.__docState = {
+  open: false,
+  tab: "timeline",
+  currentPath: null,
+  currentStat: null,
+  currentDirty: false,
+  currentStatTimer: null,
+  timeline: [],
+  dirtyGlobal: false,
+  versions: [],          // M3.27 文件版本列表(供 diff 双下拉用)
+  diffA: "",             // M3.27 选中的 ts_a
+  diffB: "",             // M3.27 选中的 ts_b
+};
+function toggleDocPanel() {
+  const p = document.getElementById("doc-panel");
+  window.__docState.open = !window.__docState.open;
+  p.classList.toggle("open", window.__docState.open);
+  p.style.display = window.__docState.open ? "flex" : "none";
+  if (window.__docState.open) {
+    docSwitchTab(window.__docState.tab);
+    if (window.__docState.tab === "timeline") docRefreshTimeline();
+    else if (window.__docState.tab === "preview" && window.__docState.currentPath) docLoadPreview(window.__docState.currentPath);
+  }
+}
+function docSwitchTab(tab) {
+  window.__docState.tab = tab;
+  const tlv = document.getElementById("doc-timeline-view");
+  const prv = document.getElementById("doc-preview-view");
+  const drv = document.getElementById("doc-diff-view");
+  const skv = document.getElementById("doc-skills-view");
+  const tlb = document.getElementById("doc-tab-timeline");
+  const prb = document.getElementById("doc-tab-preview");
+  const drb = document.getElementById("doc-tab-diff");
+  const skb = document.getElementById("doc-tab-skills");
+  const show = (el, on) => { if (el) el.style.display = on ? "" : "none"; };
+  const act = (el, on) => { if (!el) return; el.classList.toggle("active", !!on); };
+  if (tab === "timeline") {
+    show(tlv, true); show(prv, false); show(drv, false); show(skv, false);
+    act(tlb, true); act(prb, false); act(drb, false); act(skb, false);
+    docRefreshTimeline();
+  } else if (tab === "preview") {
+    show(tlv, false); show(prv, true); show(drv, false); show(skv, false);
+    act(tlb, false); act(prb, true); act(drb, false); act(skb, false);
+    if (window.__docState.currentPath) docLoadPreview(window.__docState.currentPath);
+    else document.getElementById("doc-preview-path").textContent =
+      (window.i18n && window.i18n.doc_no_file) || "未选文件";
+  } else if (tab === "diff") {
+    show(tlv, false); show(prv, false); show(drv, true); show(skv, false);
+    act(tlb, false); act(prb, false); act(drb, true); act(skb, false);
+    if (window.__docState.currentPath) docLoadDiffVersions(window.__docState.currentPath);
+    else document.getElementById("doc-diff-path").textContent =
+      (window.i18n && window.i18n.doc_no_file) || "未选文件";
+  } else if (tab === "skills") {
+    // M3.33 #65:skill 面板
+    show(tlv, false); show(prv, false); show(drv, false); show(skv, true);
+    act(tlb, false); act(prb, false); act(drb, false); act(skb, true);
+    skillRefresh();
+  }
+}
+function docEscapeHtml(s) {
+  return (s || "").replace(/[&<>"']/g, c =>
+    ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c]);
+}
+async function docRefreshTimeline() {
+  const body = document.getElementById("doc-timeline-body");
+  const count = document.getElementById("doc-timeline-count");
+  if (!body || !count) return;
+  body.innerHTML = '<div style="padding:12px;color:var(--gh-ink-soft)">⏳ ...</div>';
+  try {
+    const r = await fetch("/prisiragent/api/file_changes");
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.err || "fetch failed");
+    const ops = j.ops || [];
+    window.__docState.timeline = ops;
+    count.textContent = ops.length
+      ? "共 " + ops.length + " 次文件改动"
+      : ((window.i18n && window.i18n.doc_timeline_empty) || "本对话尚未改动任何文件");
+    if (!ops.length) { body.innerHTML = ""; return; }
+    body.innerHTML = ops.map((o, i) => {
+      const when = o.ts ? new Date(o.ts * 1000).toLocaleString() : "?";
+      const opClass = o.op === "write" ? "write" : (o.op === "edit" ? "edit" : (o.op === "imported" ? "imported" : "rollback"));
+      const titlePrefix = o.op === "imported" ? "📥 imported from git — " : "";
+      return '<div class="dt-item" data-idx="' + i + '" onclick="docOpenFromTimeline(' + i + ')">' +
+        '<div class="path">' + docEscapeHtml(o.path) + '</div>' +
+        '<div class="meta"><span class="op ' + opClass + '">' + o.op + '</span>' +
+        docEscapeHtml(titlePrefix + (o.title || (o.sid || "").slice(0,8))) + ' · ' + when + '</div>' +
+      '</div>';
+    }).join("");
+  } catch (e) {
+    body.innerHTML = '<div style="padding:12px;color:#a04040">' + docEscapeHtml(String(e)) + '</div>';
+  }
+}
+function docOpenFromTimeline(i) {
+  const op = (window.__docState.timeline || [])[i];
+  if (!op) return;
+  document.querySelectorAll("#doc-timeline-body .dt-item").forEach(el => el.classList.remove("active"));
+  const el = document.querySelector("#doc-timeline-body .dt-item[data-idx=\"" + i + "\"]");
+  if (el) el.classList.add("active");
+  docSwitchTab("preview");
+  docLoadPreview(op.path);
+}
+async function docLoadPreview(relPath) {
+  const pathLbl = document.getElementById("doc-preview-path");
+  const body = document.getElementById("doc-preview-body");
+  const sel = document.getElementById("doc-version-select");
+  const rbk = document.getElementById("doc-rollback");
+  const dirty = document.getElementById("doc-dirty-badge");
+  const reload = document.getElementById("doc-reload");
+  if (!relPath) {
+    pathLbl.textContent = (window.i18n && window.i18n.doc_no_file) || "未选文件";
+    _docPreviewWriteText(""); sel.innerHTML = '<option value="current">当前版本</option>';
+    rbk.style.display = "none"; dirty.style.display = "none"; reload.style.display = "none";
+    return;
+  }
+  window.__docState.currentPath = relPath;
+  pathLbl.textContent = relPath;
+  _docPreviewWriteText("⏳ ..."); sel.innerHTML = ""; rbk.style.display = "none";
+  try {
+    const r = await fetch("/prisiragent/api/file_versions?path=" + encodeURIComponent(relPath));
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.err || "list failed");
+    sel.innerHTML = '<option value="current">当前版本</option>';
+    (j.versions || []).forEach(v => {
+      const when = new Date(v.ts * 1000).toLocaleString();
+      const sz = v.size || 0;
+      const tag = when + " (" + (v.tool || "?") + ", " + sz + "B)";
+      const op = document.createElement("option");
+      op.value = v.version_id; op.textContent = tag;
+      sel.appendChild(op);
+    });
+  } catch (e) {
+    _docPreviewWriteText("list versions err: " + e.message);
+  }
+  try {
+    const r = await fetch("/prisiragent/api/file?path=" + encodeURIComponent(relPath));
+    // M3.32 Phase 2(2026-09-16):415 = Office mime + LO 未装,弹装机闸
+    if (r.status === 415) {
+      let j415 = {};
+      try { j415 = await r.json(); } catch (e) {}
+      _docPreviewWriteText("📄 Office 文件需要 LibreOffice 渲染 — " + (j415.err || "") + "\n\n正在弹出装机指引…");
+      if (typeof officeinstallgateShow === "function") {
+        officeinstallgateShow(j415.hint || ("需要装 LibreOffice 才能预览 " + relPath.split('/').pop()));
+      }
+      return;
+    }
+    if (!r.ok) { _docPreviewWriteText("(file not in workdir or not found)"); return; }
+    // M3.31 GUI 多媒体扩展(2026-09-16):按 Content-Type 分派渲染(图片/PDF/音视频/HTML 跳过读全文)
+    // M3.31.11(2026-09-16):HTML 加 iframe sandbox,不需要拉全文(浏览器自己渲染)
+    const ctype = (r.headers.get("Content-Type") || "").toLowerCase();
+    const isMedia = /^(image|audio|video)\//.test(ctype) || ctype === 'application/pdf'
+      || ctype === 'text/html' || ctype === 'application/xhtml+xml';
+    if (isMedia) {
+      _docPreviewRender(null, ctype);
+    } else {
+      _docPreviewRender(await r.text(), ctype);
+    }
+  } catch (e) {
+    _docPreviewWriteText("load err: " + e.message);
+  }
+  try {
+    const r = await fetch("/prisiragent/api/file_stat?path=" + encodeURIComponent(relPath));
+    const j = await r.json();
+    if (j.ok) {
+      window.__docState.currentStat = { size: j.size || 0, mtime: j.mtime || 0, exists: j.exists };
+      window.__docState.currentDirty = false;
+      dirty.style.display = "none"; reload.style.display = "none";
+    }
+  } catch (e) {}
+  if (window.__docState.currentStatTimer) clearInterval(window.__docState.currentStatTimer);
+  window.__docState.currentStatTimer = setInterval(docPollStat, 5000);
+  window.__docState.dirtyGlobal = false;
+}
+// === M3.27 文件版本对比(diff tab)===
+// docLoadDiffVersions:复用 file_versions API,把版本下拉填到 #doc-diff-select-a/b。
+// 选最近两版自动预填 a=旧 b=新,用户可手动改。缓存到 __docState.versions。
+async function docLoadDiffVersions(relPath) {
+  const pathLbl = document.getElementById("doc-diff-path");
+  const selA = document.getElementById("doc-diff-select-a");
+  const selB = document.getElementById("doc-diff-select-b");
+  if (!selA || !selB) return;
+  if (!relPath) {
+    pathLbl.textContent = (window.i18n && window.i18n.doc_no_file) || "未选文件";
+    selA.innerHTML = '<option value="">—</option>';
+    selB.innerHTML = '<option value="">—</option>';
+    document.getElementById("doc-diff-body").innerHTML = "";
+    document.getElementById("doc-diff-stats").textContent = "";
+    return;
+  }
+  window.__docState.currentPath = relPath;
+  pathLbl.textContent = relPath;
+  selA.innerHTML = '<option value="">—</option>';
+  selB.innerHTML = '<option value="">—</option>';
+  try {
+    const r = await fetch("/prisiragent/api/file_versions?path=" + encodeURIComponent(relPath));
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.err || "list failed");
+    const vs = j.versions || [];
+    window.__docState.versions = vs;
+    // 默认 a=最旧、b=最新(list_versions 返新→旧,所以反一下)
+    vs.slice().reverse().forEach(v => {
+      const when = new Date(v.ts * 1000).toLocaleString();
+      const sz = v.size || 0;
+      const tag = when + " (" + (v.tool || "?") + ", " + sz + "B)";
+      [selA, selB].forEach(s => {
+        const op = document.createElement("option");
+        op.value = v.version_id; op.textContent = tag;
+        s.appendChild(op);
+      });
+    });
+    if (vs.length >= 2) {
+      // 默认 a=旧版(列表最后一个),b=最新版(列表第一个)
+      selA.value = vs[vs.length - 1].version_id;
+      selB.value = vs[0].version_id;
+      window.__docState.diffA = selA.value;
+      window.__docState.diffB = selB.value;
+    } else if (vs.length === 1) {
+      selA.value = vs[0].version_id;
+      selB.value = vs[0].version_id;
+      window.__docState.diffA = selA.value;
+      window.__docState.diffB = selB.value;
+    } else {
+      window.__docState.diffA = "";
+      window.__docState.diffB = "";
+    }
+    document.getElementById("doc-diff-body").innerHTML = "";
+    document.getElementById("doc-diff-stats").textContent = "";
+  } catch (e) {
+    document.getElementById("doc-diff-body").textContent = "list versions err: " + e.message;
+  }
+}
+// docLoadDiff:从 select-a/b 拿 ts,调 /file_diff → highlight.js 红绿高亮。
+async function docLoadDiff() {
+  const selA = document.getElementById("doc-diff-select-a");
+  const selB = document.getElementById("doc-diff-select-b");
+  const body = document.getElementById("doc-diff-body");
+  const stats = document.getElementById("doc-diff-stats");
+  const path = window.__docState.currentPath;
+  if (!path) { body.innerHTML = ""; return; }
+  const tsA = selA.value || ""; const tsB = selB.value || "";
+  window.__docState.diffA = tsA; window.__docState.diffB = tsB;
+  body.innerHTML = "⏳ ...";
+  stats.textContent = "";
+  if (!tsA || !tsB) { body.innerHTML = "请选 A、B 两个版本"; return; }
+  if (tsA === tsB) { body.innerHTML = "A、B 是同一版本,无差异"; stats.textContent = ""; return; }
+  try {
+    const url = "/prisiragent/api/file_diff?path=" + encodeURIComponent(path)
+              + "&ts_a=" + encodeURIComponent(tsA) + "&ts_b=" + encodeURIComponent(tsB);
+    const r = await fetch(url);
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.err || "diff failed");
+    const diffText = j.diff || "";
+    if (!diffText) {
+      body.innerHTML = "<div style='color:var(--gh-ink-soft)'>两个版本内容相同</div>";
+      stats.textContent = "+0 -0";
+      return;
+    }
+    // 自实现红绿 split(不依赖 hljs — cdn 可能异步或被代理挡)
+    const lines = diffText.split("\n");
+    const parts = lines.map(ln => {
+      const esc = docEscapeHtml(ln);
+      if (ln.startsWith("+++") || ln.startsWith("---") || ln.startsWith("@@")) {
+        return '<span class="hljs-meta">' + esc + '</span>';
+      }
+      if (ln.startsWith("+")) return '<span class="hljs-addition">' + esc + '</span>';
+      if (ln.startsWith("-")) return '<span class="hljs-deletion">' + esc + '</span>';
+      return esc;
+    });
+    body.innerHTML = '<pre><code class="language-diff">' + parts.join("\n") + '</code></pre>';
+    stats.textContent = "+" + (j.added || 0) + " -" + (j.removed || 0);
+  } catch (e) {
+    body.innerHTML = "diff err: " + docEscapeHtml(e.message);
+  }
+}
+async function docSelectVersion(vid) {
+  const body = document.getElementById("doc-preview-body");
+  const rbk = document.getElementById("doc-rollback");
+  const path = window.__docState.currentPath;
+  if (!path) return;
+  if (vid === "current") {
+    try {
+      const r = await fetch("/prisiragent/api/file?path=" + encodeURIComponent(path));
+      _docPreviewWriteText(r.ok ? await r.text() : "(not found)");
+    } catch (e) { _docPreviewWriteText("err: " + e.message); }
+    rbk.style.display = "none";
+    return;
+  }
+  _docPreviewWriteText("⏳ ..."); rbk.style.display = "";
+  try {
+    const r = await fetch("/prisiragent/api/file_preview?path=" + encodeURIComponent(path) + "&ts=" + encodeURIComponent(vid));
+    const j = await r.json();
+    if (!j.ok) { _docPreviewWriteText("preview err: " + j.err); return; }
+    _docPreviewWriteText(j.content || "");
+  } catch (e) {
+    _docPreviewWriteText("err: " + e.message);
+  }
+}
+async function docRollback() {
+  const sel = document.getElementById("doc-version-select");
+  const vid = sel.value;
+  const path = window.__docState.currentPath;
+  if (!vid || vid === "current") return;
+  if (!confirm("回滚 " + path + " 到选中版本?\n(回滚前会自动备份当前内容,可再次回滚找回)")) return;
+  try {
+    const r = await fetch("/prisiragent/api/file_restore", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ path: path, ts: vid }),
+    });
+    const j = await r.json();
+    if (!j.ok) { alert("回滚失败: " + (j.err || j.msg || "未知")); return; }
+    alert("已回滚: " + j.msg);
+    docLoadPreview(path);
+    docRefreshTimeline();
+  } catch (e) {
+    alert("err: " + e.message);
+  }
+}
+async function docPollStat() {
+  const path = window.__docState.currentPath;
+  const stat = window.__docState.currentStat;
+  if (!path || !stat) return;
+  const dirty = document.getElementById("doc-dirty-badge");
+  const reload = document.getElementById("doc-reload");
+  try {
+    const r = await fetch("/prisiragent/api/file_stat?path=" + encodeURIComponent(path));
+    const j = await r.json();
+    if (!j.ok) return;
+    const ns = j.size || 0, nm = j.mtime || 0;
+    if (ns !== stat.size || nm !== stat.mtime) {
+      if (!window.__docState.currentDirty) {
+        window.__docState.currentDirty = true;
+        window.__docState.dirtyGlobal = true;
+        dirty.style.display = "";
+        reload.style.display = "";
+        document.title = "⚠ " + document.title;
+      }
+    }
+  } catch (e) {}
+}
+async function docReload() {
+  const path = window.__docState.currentPath;
+  if (!path) return;
+  window.__docState.dirtyGlobal = false;
+  document.title = document.title.replace(/^⚠ /, "");
+  docLoadPreview(path);
+}
+window.addEventListener("beforeunload", function(e) {
+  if (window.__docState.dirtyGlobal) {
+    e.preventDefault(); e.returnValue = "";
+    return "";
+  }
+});
 </script>
 </body>
 </html>
@@ -3975,7 +6980,7 @@ def _static_shell(title_key: str, body_zh: str, body_en: str, extra_head: str = 
 <body>
 <div class="wrap">
   <div id="brand">
-    <img src="/prisiragent/assets/prisIr-flame-48.png" alt="">
+    <img src="/prisiragent/assets/prisir-flame-48.png" alt="">
     <span class="name">Prisir AI</span>
     <span class="ver">v{APP_VERSION}</span>
   </div>
@@ -4290,7 +7295,7 @@ _FINDEX_PAGE = r"""<!DOCTYPE html>
 <body>
 <div class="wrap">
   <div id="brand">
-    <img src="/prisiragent/assets/prisIr-flame-48.png" alt="">
+    <img src="/prisiragent/assets/prisir-flame-48.png" alt="">
     <span class="name">探囊</span>
     <span class="sub">本机文件搜索 · 探囊取物,毫秒即得 · 自建索引 · 不读文件内容</span>
   </div>
@@ -4582,12 +7587,42 @@ _FCONTENT_PAGE = r"""<!DOCTYPE html>
   #rootsInput:focus{border-color:var(--gh-green-deep);}
   .ocrbox{margin-top:10px;padding:10px 12px;border:1px dashed var(--gh-line);border-radius:8px;
     background:var(--gh-paper-2);font-size:12px;color:var(--gh-ink-soft);line-height:1.6;}
+  /* M3.31 git 安装权限闸(沿用主页面风格) */
+  #gitinstallgate { position:fixed; inset:0; background:rgba(47,58,52,.4); display:none; z-index:108;
+    align-items:center; justify-content:center; }
+  #gitinstallgate.open { display:flex; }
+  #gitinstallgate .card { background:#fff; border-radius:14px; padding:24px; width:480px; max-width:92vw;
+    max-height:88vh; overflow-y:auto; box-shadow:0 12px 40px rgba(0,0,0,.25); }
+  #gitinstallgate h3 { font-size:16px; color:#2E7D32; margin-bottom:8px; }
+  #gitinstallgate .sub { font-size:12.5px; color:#333; margin-bottom:10px; line-height:1.55; }
+  #gitinstallgate ul { font-size:12.5px; color:#333; margin:0 0 8px 0; padding-left:22px; line-height:1.7; }
+  #gitinstallgate ul code { font-family:monospace; background:#f5f5f5; padding:1px 5px; border-radius:3px;
+    font-size:12px; color:#2E7D32; }
+  #gitinstallgate .row { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; flex-wrap:wrap; }
+
+  /* M3.32 Phase 2(2026-09-16):Office 渲染器装机权限闸 */
+  #officeinstallgate { position:fixed; inset:0; background:rgba(47,58,52,.4); display:none; z-index:108;
+    align-items:center; justify-content:center; }
+  #officeinstallgate.open { display:flex; }
+  #officeinstallgate .card { background:var(--gh-paper); border-radius:14px; padding:24px; width:520px; max-width:92vw;
+    max-height:88vh; overflow-y:auto; box-shadow:0 12px 40px rgba(0,0,0,.25); }
+  #officeinstallgate h3 { font-size:16px; color:var(--gh-green-deep); margin-bottom:8px; }
+  #officeinstallgate .sub { font-size:12.5px; color:var(--gh-ink); margin-bottom:10px; line-height:1.55; }
+  #officeinstallgate .oig-status { font-size:12px; color:var(--gh-ink-soft); background:var(--gh-surface);
+    border:1px solid var(--gh-line); border-radius:6px; padding:6px 10px; margin:6px 0 10px;
+    font-family:monospace; line-height:1.55; }
+  #officeinstallgate .oig-status.ok { color:#1a6b1a; border-color:#b4d8b4; background:#f0f9f0; }
+  #officeinstallgate ul { font-size:12.5px; color:var(--gh-ink); margin:0 0 8px 0; padding-left:22px; line-height:1.7; }
+  #officeinstallgate ul code { font-family:monospace; background:var(--gh-surface); padding:1px 5px; border-radius:3px;
+    font-size:12px; color:var(--gh-green-deep); }
+  #officeinstallgate .row { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; flex-wrap:wrap; }
+  .dt-item .op.imported { background:#e0e8f0; color:#2d4e6e; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <div id="brand">
-    <img src="/prisiragent/assets/prisIr-flame-48.png" alt="">
+    <img src="/prisiragent/assets/prisir-flame-48.png" alt="">
     <span class="name">探囊</span>
     <span class="sub">本机内容搜索 · 按正文找文件 · 独立可选模块 · 只存分词结果不出本机</span>
   </div>
@@ -4823,6 +7858,617 @@ $('#shotAuthBtn').onclick=async()=>{
 };
 refreshShotDir();
 </script>
+
+<!-- 文档右栏(2026-09-16 B 路线):只读预览 + 时间线 + dirty 检测。
+     - 时间线:复用会话库 chat tool_call,提取 write_file/edit_file/rollback 三类,按时倒序。
+     - dirty 检测:每 5s 拉 /api/file_stat,与本地缓存 size+mtime 比对;变了 → 弹 dirty + reload 按钮。
+     - 关窗询问:有 dirty 未处理时 beforeunload 弹原生 confirm。 -->
+<script>
+"use strict";
+window.__docState = {
+  open: false,
+  tab: "timeline",          // timeline / preview
+  currentPath: null,        // 相对路径(空=无选择)
+  currentStat: null,        // {size, mtime}
+  currentDirty: false,      // 外置改动未处理
+  currentStatTimer: null,
+  timeline: [],             // [{op:"write"|"edit"|"rollback", path, ts, sid, extra}, ...]
+  sessionsIndex: [],        // [{sid, ts, ...}, ...]
+  dirtyGlobal: false,       // 任一打开文件 dirty → beforeunload 拦
+};
+
+function toggleDocPanel() {
+  const p = document.getElementById("doc-panel");
+  window.__docState.open = !window.__docState.open;
+  p.classList.toggle("open", window.__docState.open);
+  p.style.display = window.__docState.open ? "flex" : "none";
+  if (window.__docState.open) {
+    docSwitchTab(window.__docState.tab);
+    if (window.__docState.tab === "timeline") docRefreshTimeline();
+    else if (window.__docState.tab === "preview" && window.__docState.currentPath) docLoadPreview(window.__docState.currentPath);
+  }
+}
+
+function docSwitchTab(tab) {
+  window.__docState.tab = tab;
+  const tlv = document.getElementById("doc-timeline-view");
+  const prv = document.getElementById("doc-preview-view");
+  const drv = document.getElementById("doc-diff-view");
+  const skv = document.getElementById("doc-skills-view");
+  const tlb = document.getElementById("doc-tab-timeline");
+  const prb = document.getElementById("doc-tab-preview");
+  const drb = document.getElementById("doc-tab-diff");
+  const skb = document.getElementById("doc-tab-skills");
+  const show = (el, on) => { if (el) el.style.display = on ? "" : "none"; };
+  const act = (el, on) => { if (!el) return; el.classList.toggle("active", !!on); };
+  if (tab === "timeline") {
+    show(tlv, true); show(prv, false); show(drv, false); show(skv, false);
+    act(tlb, true); act(prb, false); act(drb, false); act(skb, false);
+    docRefreshTimeline();
+  } else if (tab === "preview") {
+    show(tlv, false); show(prv, true); show(drv, false); show(skv, false);
+    act(tlb, false); act(prb, true); act(drb, false); act(skb, false);
+    if (window.__docState.currentPath) docLoadPreview(window.__docState.currentPath);
+    else document.getElementById("doc-preview-path").textContent =
+      (window.i18n && window.i18n.doc_no_file) || "未选文件";
+  } else if (tab === "diff") {
+    show(tlv, false); show(prv, false); show(drv, true); show(skv, false);
+    act(tlb, false); act(prb, false); act(drb, true); act(skb, false);
+    if (window.__docState.currentPath) docLoadDiffVersions(window.__docState.currentPath);
+    else document.getElementById("doc-diff-path").textContent =
+      (window.i18n && window.i18n.doc_no_file) || "未选文件";
+  } else if (tab === "skills") {
+    // M3.33 #65:skill 面板
+    show(tlv, false); show(prv, false); show(drv, false); show(skv, true);
+    act(tlb, false); act(prb, false); act(drb, false); act(skb, true);
+    skillRefresh();
+  }
+}
+
+function docEscapeHtml(s) {
+  return (s || "").replace(/[&<>"']/g, c =>
+    ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c]);
+}
+
+// 时间线:复用现有 chat 会话库接口
+async function docRefreshTimeline() {
+  const body = document.getElementById("doc-timeline-body");
+  const count = document.getElementById("doc-timeline-count");
+  if (!body || !count) return;
+  body.innerHTML = '<div style="padding:12px;color:var(--gh-ink-soft)">⏳ ...</div>';
+  try {
+    // 后端已预解析 path 并按时倒序(2026-09-16 B 路线)
+    const r = await fetch("/prisiragent/api/file_changes");
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.err || "fetch failed");
+    const ops = j.ops || [];
+    window.__docState.timeline = ops;
+    count.textContent = ops.length
+      ? `共 ${ops.length} 次文件改动`
+      : ((window.i18n && window.i18n.doc_timeline_empty) || "本对话尚未改动任何文件");
+    if (!ops.length) { body.innerHTML = ""; return; }
+    body.innerHTML = ops.map((o, i) => {
+      const when = o.ts ? new Date(o.ts * 1000).toLocaleString() : "?";
+      const opClass = o.op === "write" ? "write" : (o.op === "edit" ? "edit" : (o.op === "imported" ? "imported" : "rollback"));
+      const titlePrefix = o.op === "imported" ? "📥 imported from git — " : "";
+      return `<div class="dt-item" data-idx="${i}" onclick="docOpenFromTimeline(${i})">
+        <div class="path">${docEscapeHtml(o.path)}</div>
+        <div class="meta"><span class="op ${opClass}">${o.op}</span>${docEscapeHtml(titlePrefix + (o.title || (o.sid || "").slice(0,8)))} · ${when}</div>
+      </div>`;
+    }).join("");
+  } catch (e) {
+    body.innerHTML = '<div style="padding:12px;color:#a04040">' + docEscapeHtml(String(e)) + '</div>';
+  }
+}
+
+function docOpenFromTimeline(i) {
+  const op = (window.__docState.timeline || [])[i];
+  if (!op) return;
+  document.querySelectorAll("#doc-timeline-body .dt-item").forEach(el => el.classList.remove("active"));
+  const el = document.querySelector(`#doc-timeline-body .dt-item[data-idx="${i}"]`);
+  if (el) el.classList.add("active");
+  docSwitchTab("preview");
+  docLoadPreview(op.path);
+}
+
+// 只读预览
+async function docLoadPreview(relPath) {
+  const pathLbl = document.getElementById("doc-preview-path");
+  const body = document.getElementById("doc-preview-body");
+  const sel = document.getElementById("doc-version-select");
+  const rbk = document.getElementById("doc-rollback");
+  const dirty = document.getElementById("doc-dirty-badge");
+  const reload = document.getElementById("doc-reload");
+  if (!relPath) {
+    pathLbl.textContent = (window.i18n && window.i18n.doc_no_file) || "未选文件";
+    _docPreviewWriteText(""); sel.innerHTML = '<option value="current">' + ((window.i18n && window.i18n.doc_current) || "当前版本") + '</option>';
+    rbk.style.display = "none"; dirty.style.display = "none"; reload.style.display = "none";
+    return;
+  }
+  window.__docState.currentPath = relPath;
+  pathLbl.textContent = relPath;
+  _docPreviewWriteText("⏳ ..."); sel.innerHTML = ""; rbk.style.display = "none";
+  // 1) 拉版本列表
+  try {
+    const r = await fetch("/prisiragent/api/file_versions?path=" + encodeURIComponent(relPath));
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.err || "list failed");
+    sel.innerHTML = '<option value="current">' + ((window.i18n && window.i18n.doc_current) || "当前版本") + '</option>';
+    (j.versions || []).forEach(v => {
+      const when = new Date(v.ts * 1000).toLocaleString();
+      const sz = v.size || 0;
+      const tag = `${when} (${v.tool || "?"}, ${sz}B)`;
+      const op = document.createElement("option");
+      op.value = v.version_id; op.textContent = tag;
+      sel.appendChild(op);
+    });
+  } catch (e) {
+    _docPreviewWriteText("list versions err: " + e.message);
+  }
+  // 2) 拉当前版本内容
+  try {
+    const r = await fetch("/prisiragent/api/file?path=" + encodeURIComponent(relPath));
+    // M3.32 Phase 2(2026-09-16):415 = Office mime + LO 未装,弹装机闸
+    if (r.status === 415) {
+      let j415 = {};
+      try { j415 = await r.json(); } catch (e) {}
+      _docPreviewWriteText("📄 Office 文件需要 LibreOffice 渲染 — " + (j415.err || "") + "\n\n正在弹出装机指引…");
+      if (typeof officeinstallgateShow === "function") {
+        officeinstallgateShow(j415.hint || ("需要装 LibreOffice 才能预览 " + relPath.split('/').pop()));
+      }
+      return;
+    }
+    if (!r.ok) { _docPreviewWriteText("(file not in workdir or not found)"); return; }
+    // M3.31 GUI 多媒体扩展(2026-09-16):按 Content-Type 分派渲染(图片/PDF/音视频/HTML 跳过读全文)
+    // M3.31.11(2026-09-16):HTML 加 iframe sandbox,不需要拉全文(浏览器自己渲染)
+    const ctype = (r.headers.get("Content-Type") || "").toLowerCase();
+    const isMedia = /^(image|audio|video)\//.test(ctype) || ctype === 'application/pdf'
+      || ctype === 'text/html' || ctype === 'application/xhtml+xml';
+    if (isMedia) {
+      _docPreviewRender(null, ctype);
+    } else {
+      _docPreviewRender(await r.text(), ctype);
+    }
+  } catch (e) {
+    _docPreviewWriteText("load err: " + e.message);
+  }
+  // 3) 取 stat 进 dirty 检测
+  try {
+    const r = await fetch("/prisiragent/api/file_stat?path=" + encodeURIComponent(relPath));
+    const j = await r.json();
+    if (j.ok) {
+      window.__docState.currentStat = { size: j.size || 0, mtime: j.mtime || 0, exists: j.exists };
+      window.__docState.currentDirty = false;
+      dirty.style.display = "none"; reload.style.display = "none";
+    }
+  } catch (e) {}
+  // 4) 起轮询
+  if (window.__docState.currentStatTimer) clearInterval(window.__docState.currentStatTimer);
+  window.__docState.currentStatTimer = setInterval(docPollStat, 5000);
+  window.__docState.dirtyGlobal = false;
+}
+// === M3.27 文件版本对比(diff tab,second def)===
+async function docLoadDiffVersions(relPath) {
+  const pathLbl = document.getElementById("doc-diff-path");
+  const selA = document.getElementById("doc-diff-select-a");
+  const selB = document.getElementById("doc-diff-select-b");
+  if (!selA || !selB) return;
+  if (!relPath) {
+    pathLbl.textContent = (window.i18n && window.i18n.doc_no_file) || "未选文件";
+    selA.innerHTML = '<option value="">—</option>';
+    selB.innerHTML = '<option value="">—</option>';
+    document.getElementById("doc-diff-body").innerHTML = "";
+    document.getElementById("doc-diff-stats").textContent = "";
+    return;
+  }
+  window.__docState.currentPath = relPath;
+  pathLbl.textContent = relPath;
+  selA.innerHTML = '<option value="">—</option>';
+  selB.innerHTML = '<option value="">—</option>';
+  try {
+    const r = await fetch("/prisiragent/api/file_versions?path=" + encodeURIComponent(relPath));
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.err || "list failed");
+    const vs = j.versions || [];
+    window.__docState.versions = vs;
+    vs.slice().reverse().forEach(v => {
+      const when = new Date(v.ts * 1000).toLocaleString();
+      const sz = v.size || 0;
+      const tag = `${when} (${v.tool || "?"}, ${sz}B)`;
+      [selA, selB].forEach(s => {
+        const op = document.createElement("option");
+        op.value = v.version_id; op.textContent = tag;
+        s.appendChild(op);
+      });
+    });
+    if (vs.length >= 2) {
+      selA.value = vs[vs.length - 1].version_id;
+      selB.value = vs[0].version_id;
+      window.__docState.diffA = selA.value;
+      window.__docState.diffB = selB.value;
+    } else if (vs.length === 1) {
+      selA.value = selB.value = vs[0].version_id;
+      window.__docState.diffA = window.__docState.diffB = vs[0].version_id;
+    } else {
+      window.__docState.diffA = window.__docState.diffB = "";
+    }
+    document.getElementById("doc-diff-body").innerHTML = "";
+    document.getElementById("doc-diff-stats").textContent = "";
+  } catch (e) {
+    document.getElementById("doc-diff-body").textContent = "list versions err: " + e.message;
+  }
+}
+async function docLoadDiff() {
+  const selA = document.getElementById("doc-diff-select-a");
+  const selB = document.getElementById("doc-diff-select-b");
+  const body = document.getElementById("doc-diff-body");
+  const stats = document.getElementById("doc-diff-stats");
+  const path = window.__docState.currentPath;
+  if (!path) { body.innerHTML = ""; return; }
+  const tsA = selA.value || ""; const tsB = selB.value || "";
+  window.__docState.diffA = tsA; window.__docState.diffB = tsB;
+  body.innerHTML = "⏳ ...";
+  stats.textContent = "";
+  if (!tsA || !tsB) { body.innerHTML = "请选 A、B 两个版本"; return; }
+  if (tsA === tsB) { body.innerHTML = "A、B 是同一版本,无差异"; stats.textContent = ""; return; }
+  try {
+    const url = "/prisiragent/api/file_diff?path=" + encodeURIComponent(path)
+              + "&ts_a=" + encodeURIComponent(tsA) + "&ts_b=" + encodeURIComponent(tsB);
+    const r = await fetch(url);
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.err || "diff failed");
+    const diffText = j.diff || "";
+    if (!diffText) {
+      body.innerHTML = "<div style='color:var(--gh-ink-soft)'>两个版本内容相同</div>";
+      stats.textContent = "+0 -0";
+      return;
+    }
+    // 自实现红绿 split(不依赖 hljs — cdn 可能异步或被代理挡)
+    // 行级分类: @@/+/-(内容) → hljs-meta; + → hljs-addition; - → hljs-deletion;
+    // 其它(背景行无前缀)按原色。
+    const lines = diffText.split("\n");
+    const parts = lines.map(ln => {
+      const esc = docEscapeHtml(ln);
+      if (ln.startsWith("+++") || ln.startsWith("---") || ln.startsWith("@@")) {
+        return '<span class="hljs-meta">' + esc + '</span>';
+      }
+      if (ln.startsWith("+")) return '<span class="hljs-addition">' + esc + '</span>';
+      if (ln.startsWith("-")) return '<span class="hljs-deletion">' + esc + '</span>';
+      return esc;
+    });
+    body.innerHTML = '<pre><code class="language-diff">' + parts.join("\n") + '</code></pre>';
+    stats.textContent = "+" + (j.added || 0) + " -" + (j.removed || 0);
+  } catch (e) {
+    body.innerHTML = "diff err: " + docEscapeHtml(e.message);
+  }
+}
+
+async function docSelectVersion(vid) {
+  const body = document.getElementById("doc-preview-body");
+  const rbk = document.getElementById("doc-rollback");
+  const path = window.__docState.currentPath;
+  if (!path) return;
+  if (vid === "current") {
+    // 重读当前文件
+    try {
+      const r = await fetch("/prisiragent/api/file?path=" + encodeURIComponent(path));
+      _docPreviewWriteText(r.ok ? await r.text() : "(not found)");
+    } catch (e) { _docPreviewWriteText("err: " + e.message); }
+    rbk.style.display = "none";
+    return;
+  }
+  _docPreviewWriteText("⏳ ..."); rbk.style.display = "";
+  try {
+    const r = await fetch("/prisiragent/api/file_preview?path=" + encodeURIComponent(path) + "&ts=" + encodeURIComponent(vid));
+    const j = await r.json();
+    if (!j.ok) { _docPreviewWriteText("preview err: " + j.err); return; }
+    _docPreviewWriteText(j.content || "");
+  } catch (e) {
+    _docPreviewWriteText("err: " + e.message);
+  }
+}
+
+async function docRollback() {
+  const sel = document.getElementById("doc-version-select");
+  const vid = sel.value;
+  const path = window.__docState.currentPath;
+  if (!vid || vid === "current") return;
+  if (!confirm("回滚 " + path + " 到选中版本?\n(回滚前会自动备份当前内容,可再次回滚找回)")) return;
+  try {
+    const r = await fetch("/prisiragent/api/file_restore", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ path: path, ts: vid }),
+    });
+    const j = await r.json();
+    if (!j.ok) { alert("回滚失败: " + (j.err || j.msg || "未知")); return; }
+    alert("已回滚: " + j.msg);
+    docLoadPreview(path);  // 重载 + 刷新 stat
+    docRefreshTimeline();
+  } catch (e) {
+    alert("err: " + e.message);
+  }
+}
+
+// M3.33 #65:skill 面板函数(被 docSwitchTab('skills') 触发)
+async function skillRefresh() {
+  const body = document.getElementById("doc-skills-body");
+  const count = document.getElementById("doc-skills-count");
+  if (!body || !count) return;
+  body.innerHTML = '<div style="padding:14px;color:var(--gh-ink-soft)">⏳ 加载中…</div>';
+  count.textContent = "加载中…";
+  try {
+    const r = await fetch("/prisiragent/api/skill_list?refresh=1");
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.err || "fetch failed");
+    const items = j.skills || [];
+    count.textContent = "📦 已装 skill: " + items.length;
+    if (items.length === 0) {
+      body.innerHTML = '<div style="padding:14px;color:var(--gh-ink-soft)">还没有 skill。点右上角「+」新建一个,或 /api/skill_install 装已有。</div>';
+      return;
+    }
+    body.innerHTML = items.map(skillCardHtml).join("");
+  } catch (e) {
+    body.innerHTML = '<div style="padding:14px;color:#c62828">err: ' + docEscapeHtml(e.message) + '</div>';
+  }
+}
+function skillCardHtml(s) {
+  const triggers = (s.triggers || []).join(" · ");
+  const req = s.requirements || "(无)";
+  const lic = s.license ? ' · ' + s.license : "";
+  return '' +
+    '<div class="skill-card">' +
+      '<div class="skill-card-head">' +
+        '<span class="skill-name">' + docEscapeHtml(s.name) + '</span>' +
+        '<span class="skill-lic">' + docEscapeHtml(lic) + '</span>' +
+      '</div>' +
+      '<div class="skill-desc">' + docEscapeHtml(s.description || "") + '</div>' +
+      '<div class="skill-trig">🏷 ' + docEscapeHtml(triggers || "(未填 triggers)") + '</div>' +
+      '<div class="skill-req">📋 ' + docEscapeHtml(req) + '</div>' +
+      '<div class="skill-dir">📁 ' + docEscapeHtml(s.dir || "") + '</div>' +
+      '<div class="skill-actions">' +
+        '<button class="topbtn" data-act="view" data-name="' + docEscapeHtml(s.name) + '">查看 SKILL.md</button>' +
+        '<button class="topbtn" data-act="run-check" data-name="' + docEscapeHtml(s.name) + '">跑 check</button>' +
+        '<button class="topbtn" data-act="run-stub" data-name="' + docEscapeHtml(s.name) + '">跑 generate(stub)</button>' +
+        '<button class="topbtn skill-uninstall" data-act="uninstall" data-name="' + docEscapeHtml(s.name) + '">卸载</button>' +
+      '</div>' +
+    '</div>';
+}
+async function skillShow(name) {
+  try {
+    const r = await fetch("/prisiragent/api/skill_show?name=" + encodeURIComponent(name));
+    if (!r.ok) { alert("skill_show 失败: HTTP " + r.status); return; }
+    const j = await r.json();
+    if (!j.ok) { alert("err: " + j.err); return; }
+    document.getElementById("skillview-title").textContent = "📜 " + j.name + " — SKILL.md";
+    document.getElementById("skillview-meta").textContent = "dir=" + j.dir + "  ·  scripts=" + (j.scripts || []).join(",") + "  ·  license=" + (j.license || "");
+    document.getElementById("skillview-body").textContent = j.body || "(无 body)";
+    document.getElementById("skillview").style.display = "flex";
+  } catch (e) {
+    alert("err: " + e.message);
+  }
+}
+async function skillRun(name, script, args) {
+  const out = document.getElementById("doc-skills-output");
+  const title = document.getElementById("doc-skills-output-title");
+  const pre = document.getElementById("doc-skills-output-pre");
+  title.textContent = "▶ " + name + " · scripts/" + script + (args && args.length ? " " + args.join(" ") : "");
+  pre.textContent = "⏳ 跑中…(最长 60s)";
+  out.style.display = "block";
+  try {
+    const r = await fetch("/prisiragent/api/skill_run", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ name: name, script: script, args: args || [] }),
+    });
+    const j = await r.json();
+    let txt = "";
+    if (j.ok) {
+      txt = "[ok] exit=" + (j.code || 0) + "\n";
+      if (j.stdout) txt += "── stdout ──\n" + j.stdout + "\n";
+      if (j.stderr) txt += "── stderr ──\n" + j.stderr + "\n";
+    } else {
+      txt = "[fail] " + (j.err || ("HTTP " + r.status)) + "\n";
+      if (j.stdout) txt += "stdout: " + j.stdout + "\n";
+      if (j.stderr) txt += "stderr: " + j.stderr + "\n";
+    }
+    pre.textContent = txt;
+  } catch (e) {
+    pre.textContent = "[exception] " + e.message;
+  }
+}
+async function skillUninstall(name) {
+  if (!confirm("确认卸载 skill '" + name + "'?\n这会删除 ~/.prisir/skills/" + name + "/ 目录。")) return;
+  try {
+    const r = await fetch("/prisiragent/api/skill_uninstall", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ name: name, target: "user" }),
+    });
+    const j = await r.json();
+    if (!j.ok) { alert("卸载失败: " + (j.err || "")); return; }
+    skillRefresh();
+  } catch (e) {
+    alert("err: " + e.message);
+  }
+}
+async function skillNewSubmit() {
+  const name = document.getElementById("skillnew-name").value.trim();
+  const desc = document.getElementById("skillnew-desc").value.trim();
+  const trig = document.getElementById("skillnew-triggers").value.trim();
+  const req = document.getElementById("skillnew-req").value.trim();
+  const tpl = document.getElementById("skillnew-tpl").value;
+  if (!name || !desc) { alert("name 和 description 必填"); return; }
+  try {
+    const r = await fetch("/prisiragent/api/skill_new", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        name: name, description: desc, triggers: trig ? trig.split(/[,,]/) : [],
+        provider: "stub", requirements: req || "none", template: tpl,
+      }),
+    });
+    const j = await r.json();
+    if (!j.ok) { alert("新建失败: " + (j.err || ("HTTP " + r.status))); return; }
+    document.getElementById("skillnew").style.display = "none";
+    skillRefresh();
+  } catch (e) {
+    alert("err: " + e.message);
+  }
+}
+function skillNew() {
+  document.getElementById("skillnew-name").value = "";
+  document.getElementById("skillnew-desc").value = "";
+  document.getElementById("skillnew-triggers").value = "";
+  document.getElementById("skillnew-req").value = "";
+  document.getElementById("skillnew-dst").textContent = "<workdir>/skills/<name>/";
+  document.getElementById("skillnew").style.display = "flex";
+}
+function skillInit() {
+  // 事件代理:doc-skills-body 内按钮分发
+  const body = document.getElementById("doc-skills-body");
+  if (body && !body._skillBound) {
+    body._skillBound = true;
+    body.addEventListener("click", (ev) => {
+      const btn = ev.target.closest("button[data-act]");
+      if (!btn) return;
+      const act = btn.getAttribute("data-act");
+      const name = btn.getAttribute("data-name");
+      if (act === "view") skillShow(name);
+      else if (act === "run-check") skillRun(name, "check", []);
+      else if (act === "run-stub") {
+        if (!confirm("本期 generate.py 默认 stub(不需 GPU);真跑需要装好对应服务。继续?")) return;
+        skillRun(name, "generate", ["--help"]);
+      } else if (act === "uninstall") skillUninstall(name);
+    });
+  }
+  // skillview / skillnew 模态事件绑定(幂等)
+  const sv = document.getElementById("skillview");
+  if (sv && !sv._svBound) {
+    sv._svBound = true;
+    document.getElementById("skillview-close").onclick = () => { sv.style.display = "none"; };
+  }
+  const sn = document.getElementById("skillnew");
+  if (sn && !sn._snBound) {
+    sn._snBound = true;
+    document.getElementById("skillnew-close").onclick = () => { sn.style.display = "none"; };
+    document.getElementById("skillnew-cancel").onclick = () => { sn.style.display = "none"; };
+    document.getElementById("skillnew-ok").onclick = skillNewSubmit;
+  }
+}
+
+// dirty 轮询:每 5s 比对 stat
+async function docPollStat() {
+  const path = window.__docState.currentPath;
+  const stat = window.__docState.currentStat;
+  if (!path || !stat) return;
+  const dirty = document.getElementById("doc-dirty-badge");
+  const reload = document.getElementById("doc-reload");
+  try {
+    const r = await fetch("/prisiragent/api/file_stat?path=" + encodeURIComponent(path));
+    const j = await r.json();
+    if (!j.ok) return;
+    const ns = j.size || 0, nm = j.mtime || 0;
+    if (ns !== stat.size || nm !== stat.mtime) {
+      if (!window.__docState.currentDirty) {
+        window.__docState.currentDirty = true;
+        window.__docState.dirtyGlobal = true;
+        dirty.style.display = "";
+        reload.style.display = "";
+        document.title = "⚠ " + document.title;
+      }
+    }
+  } catch (e) {}
+}
+
+async function docReload() {
+  const path = window.__docState.currentPath;
+  if (!path) return;
+  window.__docState.dirtyGlobal = false;
+  document.title = document.title.replace(/^⚠ /, "");
+  docLoadPreview(path);
+}
+
+// 关窗询问
+window.addEventListener("beforeunload", (e) => {
+  if (window.__docState.dirtyGlobal) {
+    e.preventDefault(); e.returnValue = "";
+    return "";
+  }
+});
+
+// 顶栏按钮同步显隐(若隐藏文档面板)
+document.addEventListener("DOMContentLoaded", () => {
+  // 无需特殊初始化;按钮点击 toggleDocPanel
+  gitGateInit();
+  officeinstallgateInit();  // M3.32 Phase 2 — 注册事件监听(不主动弹,等 docLoadPreview 415 触发)
+});
+
+/* ===== M3.31 git 安装权限闸(只在用户主动 reload 时 fetch,不做 polling) ===== */
+let _gitGateShown = false;  // 前端本会话内存标记,防止重复 fetch
+async function gitGateInit() {
+  if (_gitGateShown) return;
+  try {
+    const r = await fetch("/prisiragent/api/git_detect");
+    const j = await r.json();
+    if (!j.ok) return;                // 后端失败不打扰
+    if (j.detected) return;           // 已装 git,不弹
+    if (j.gate_shown) return;         // 用户本会话已选「暂不启用」,不骚扰
+    const gate = document.getElementById("gitinstallgate");
+    if (!gate) return;
+    _gitGateShown = true;
+    gate.classList.add("open");
+    document.getElementById("gitinstallgate-open").onclick = async () => {
+      window.open("https://git-scm.com/downloads", "_blank", "noopener");
+      try { await fetch("/prisiragent/api/git_gate_ack", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ choice: "yes" }) }); } catch (e) {}
+      gate.classList.remove("open");
+    };
+    document.getElementById("gitinstallgate-skip").onclick = async () => {
+      try { await fetch("/prisiragent/api/git_gate_ack", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ choice: "no" }) }); } catch (e) {}
+      gate.classList.remove("open");
+    };
+  } catch (e) {
+    // 网络异常静默吞掉,不影响主流程
+  }
+}
+</script>
+<!-- M3.31:git 安装权限闸 -->
+<div id="gitinstallgate">
+  <div class="card">
+    <h3>📦 检测到外部版本管理兼容功能需要 git</h3>
+    <div class="sub">本机未检测到 git 命令。启用该功能需要先安装:</div>
+    <ul>
+      <li>Windows: Git for Windows(<a href="https://git-scm.com/downloads" target="_blank" rel="noopener">git-scm.com/downloads</a>)</li>
+      <li>macOS: <code>brew install git</code></li>
+      <li>Linux: 包管理器安装(apt / dnf / pacman 等)</li>
+    </ul>
+    <div class="row">
+      <button class="topbtn primary" id="gitinstallgate-open">打开下载页</button>
+      <button class="topbtn" id="gitinstallgate-skip">暂不启用</button>
+    </div>
+  </div>
+</div>
+<!-- M3.32 Phase 2(2026-09-16):Office 渲染器装机权限闸(只推 LO,纯本地) -->
+<div id="officeinstallgate">
+  <div class="card">
+    <h3>📄 Office 文件预览需要 LibreOffice</h3>
+    <div class="sub">本机未检测到 LibreOffice。预览 docx/xlsx/pptx 文件需先安装:</div>
+    <div class="oig-status" id="officeinstallgate-status">检测中...</div>
+    <ul>
+      <li>LibreOffice(完全本地、样式保真度高,纯离线):<a href="https://www.libreoffice.org/download" target="_blank" rel="noopener">libreoffice.org/download</a>(约 1GB,装完重启本服务即可)</li>
+    </ul>
+    <div class="sub" style="margin-top:8px;font-size:12px;color:var(--gh-ink-faint)">我们只调本地已装的 soffice.com,不会联网下载任何东西。</div>
+    <div class="row">
+      <button class="topbtn" id="officeinstallgate-recheck">重新检测</button>
+      <button class="topbtn primary" id="officeinstallgate-open">装 LibreOffice</button>
+      <button class="topbtn" id="officeinstallgate-skip">暂不启用</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
 """
@@ -4951,34 +8597,134 @@ class Handler(BaseHTTPRequestHandler):
             "Set-Cookie",
             f"{self._cookie_name()}={tok}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000")
 
+    def _safe_resolve_workdir_path(self, rel_path: str) -> tuple:
+        """共享工作目录路径解析(2026-09-16 #16,供版本管理/read_file/inline view 复用):
+        仅接受相对路径;realpath 归一并校验前缀必须落在 workdir 内,防目录穿越。
+        返回 (ok, err_or_empty, abs_path)。失败 ok=False,err 非空。
+        """
+        try:
+            base = os.path.realpath(_WORKDIR["path"])
+            rel = (rel_path or "").lstrip("/\\")
+            if not rel:
+                return False, "path 必填", ""
+            target = os.path.realpath(os.path.join(base, rel))
+            if not target.startswith(base + os.sep) and target != base:
+                return False, "forbidden: 越出工作目录", ""
+            return True, "", target
+        except Exception as e:  # noqa: BLE001
+            return False, f"{type(e).__name__}: {e}", ""
+
     def _serve_workdir_file(self, rel_path: str):
         # 产物内联查看(壳三件套③):安全地从 workdir 取文件。
         # 红线:realpath 必须落在 workdir 内,拒目录穿越;读文件边界同 read_file。
+        # M3.31 GUI 多媒体扩展(2026-09-16):加 Range header 支持,大 mp4 seek/视频随机定位可用。
         import mimetypes
-        base = os.path.realpath(_WORKDIR["path"])
-        # 仅允许相对路径(拒绝对路径/盘符),再 realpath 归一并校验前缀
-        rel = (rel_path or "").lstrip("/\\")
-        target = os.path.realpath(os.path.join(base, rel))
-        if not target.startswith(base + os.sep) and target != base:
-            self._json({"ok": False, "error": "forbidden: 越出工作目录"}, 403)
+        ok, err, target = self._safe_resolve_workdir_path(rel_path)
+        if not ok:
+            self._json({"ok": False, "error": err}, 403 if "forbidden" in err else 400)
             return
         if not os.path.isfile(target):
             self._json({"ok": False, "error": "not found"}, 404)
             return
         mime, _ = mimetypes.guess_type(target)
         ext = os.path.splitext(target)[1].lower()
+        # md 强制 text/plain,前端再渲染(防直接当 html)
         if ext == ".md":
-            mime = "text/plain; charset=utf-8"  # md 以文本取回,前端再渲染(防直接当 html)
+            mime = "text/plain; charset=utf-8"
+        # Windows mimetypes 不一定全,补几个多媒体扩展
+        if not mime:
+            _EXTRA_MIME = {
+                ".webp": "image/webp", ".svg": "image/svg+xml",
+                ".ogg": "audio/ogg", ".oga": "audio/ogg",
+                ".ogv": "video/ogg", ".m4a": "audio/mp4",
+                ".flac": "audio/flac", ".opus": "audio/opus",
+                ".mkv": "video/x-matroska", ".mov": "video/quicktime",
+            }
+            mime = _EXTRA_MIME.get(ext)
         mime = mime or "application/octet-stream"
+        # M3.32 Phase 2(2026-09-16):Office 三件套(docx/xlsx/pptx + 老 doc/xls/ppt)经 LO 转换后
+        # 直接当 PDF mime 返回,前端 <embed application/pdf> 复用现有渲染。
+        # LO 没装或转换失败 → 返 415 + office_install 提示,前端弹装机闸。
+        _OFFICE_EXT = (".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt")
+        _OFFICE_MIME_PREFIXES = (
+            "application/vnd.openxmlformats-officedocument.",
+            "application/vnd.ms-",
+            "application/msword",
+        )
+        is_office = (ext in _OFFICE_EXT
+                     or any(mime.startswith(p) for p in _OFFICE_MIME_PREFIXES))
+        if is_office:
+            qs = parse_qs(urlparse(self.path).query)
+            force_text = (qs.get("force_text") or [""])[0].lower() in ("1", "true", "yes")
+            if force_text:
+                # officecli text 兜底(本期 1.5 期实现转换,先返 501)
+                self._json({"ok": False, "err": "office text fallback not yet wired (1.5 期)",
+                            "hint": "请用 PDF 路径或装 LibreOffice"}, 501)
+                return
+            pdf_path = _convert_office_to_pdf(target)
+            if pdf_path and os.path.isfile(pdf_path):
+                # 把 target 换成 pdf,后续 Range / read 走新文件
+                target = pdf_path
+                mime = "application/pdf"
+                try:
+                    file_size = os.path.getsize(target)
+                except OSError as e:
+                    self._json({"ok": False, "error": f"pdf stat error: {e}"}, 500)
+                    return
+            else:
+                # LO 没装 / 转换失败 → 提示装机闸
+                lo_st = _OFFICE_STATE.get("lo", {})
+                oc_st = _OFFICE_STATE.get("officecli", {})
+                hint = ("请安装 LibreOffice(完全本地,纯离线);装完重启本服务即可。"
+                        f"LO:{lo_st.get('detected')}/{lo_st.get('err','')[:80]}")
+                self._json({"ok": False, "err": "office renderer unavailable", "hint": hint,
+                            "lo_detected": bool(lo_st.get("detected")),
+                            "officecli_detected": bool(oc_st.get("detected")),
+                            "office_install_url": "https://www.libreoffice.org/download"},
+                           415)
+                return
+        try:
+            file_size = os.path.getsize(target)
+        except OSError as e:
+            self._json({"ok": False, "error": f"stat error: {e}"}, 500)
+            return
+        # Range 请求处理(简单实现,够用 mp4 seek):bytes=A-B
+        range_hdr = (self.headers.get("Range") or "").strip()
+        start, end = 0, file_size - 1
+        is_range = False
+        if range_hdr.startswith("bytes="):
+            try:
+                spec = range_hdr[len("bytes="):].split("-", 1)
+                if spec[0]:
+                    start = max(0, int(spec[0]))
+                if len(spec) > 1 and spec[1]:
+                    end = min(file_size - 1, int(spec[1]))
+                if start > end or start >= file_size:
+                    self.send_response(416)
+                    self.send_header("Content-Range", f"bytes */{file_size}")
+                    self.end_headers()
+                    return
+                is_range = True
+            except (ValueError, IndexError):
+                start, end = 0, file_size - 1
+                is_range = False
+        length = end - start + 1
         try:
             with open(target, "rb") as f:
-                data = f.read()
+                if start > 0:
+                    f.seek(start)
+                data = f.read(length)
         except OSError as e:
             self._json({"ok": False, "error": f"read error: {e}"}, 500)
             return
-        self.send_response(200)
+        if is_range:
+            self.send_response(206)
+            self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
+        else:
+            self.send_response(200)
         self.send_header("Content-Type", mime)
         self.send_header("Content-Length", str(len(data)))
+        self.send_header("Accept-Ranges", "bytes")  # 让 <video>/<audio> 知道支持 range
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(data)
@@ -5121,6 +8867,7 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"strategy": DEFAULT_STRATEGY, "workdir": _WORKDIR["path"],
                         "platforms": _router.available_platforms(),
                         "current_model": _effective_model(),  # 透出当前真实模型(路由结果),前端路由标签用
+                        "active_platform": _SETTINGS.get("active_platform", ""),  # 用户手动选择的平台
                         "port": WEB_PORT, "lan_ip": _lan_ip(),
                         "lan_enabled": lan_pair.instance() is not None})
         elif path == "/prisiragent/api/pair/offer":
@@ -5170,6 +8917,36 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._json({"ok": True, "id": sid, "title": sess[1],
                         "messages": get_messages(sid)})
+        elif path == "/prisiragent/api/tool_trace":
+            # 2026-09-14 会话回放(吸收 Manus replay):把一次会话里的工具调用轨迹解析成
+            # 结构化时间轴,供前端「回放面板」按时间序重放。数据源=DB 持久消息(role=tool,
+            # 格式 '[🔧 name]\ncontent'),纯只读、不写库、不调 LLM。
+            sid = (qs.get("session_id") or [""])[0]
+            sess = get_session(sid)
+            if not sess:
+                self._json({"ok": False, "error": "会话不存在"}, 404)
+                return
+            steps = []
+            for m in get_messages(sid):
+                if m.get("role") != "tool":
+                    continue
+                content = m.get("content", "")
+                nm = "tool"
+                body = content
+                if content.startswith("[🔧 "):
+                    nl = content.find("]")
+                    if nl > 0:
+                        # 去掉前缀 '[🔧 ' 与结尾 ']'(按分隔符切片,不数 emoji 码点)
+                        nm = content[content.find("🔧") + 1:nl].strip()
+                        body = content[nl + 1:].lstrip("\n")
+                # 成功判定:错误/拦截文案以 '[' 开头([run_shell 被权限闸拦截]/[error] 等),
+                # 但 [ok]/[ok]/[done]/[write_file ok] 等是成功标记,需排除误判。
+                _b = body.lstrip().lower()
+                _err = _b.startswith("[") and not _b.startswith(("[ok]", "[ok ", "[done]", "[done "))
+                steps.append({"name": nm, "ok": not _err,
+                              "preview": body[:400], "ts": m.get("ts", 0)})
+            self._json({"ok": True, "id": sid, "title": sess[1], "steps": steps,
+                        "count": len(steps)})
         elif path == "/prisiragent/api/status":
             sid = (qs.get("session_id") or [""])[0]
             with _running_lock:
@@ -5213,8 +8990,417 @@ class Handler(BaseHTTPRequestHandler):
             # 产物内联查看(壳三件套③):从 workdir 安全取文件供 md 内联 img/视频/设计稿。
             # 红线:realpath 必须落在 workdir 内,拒目录穿越(同 read_file 边界纪律)。
             self._serve_workdir_file((qs.get("path") or [""])[0])
+        elif path == "/prisiragent/api/file_stat":
+            # 文件 mtime+size(2026-09-16 B 路线 dirty 检测):前端轮询对比,
+            # 决定是否标 dirty/弹"外置有改动,是否 reload"。
+            vp = (qs.get("path") or [""])[0]
+            ok, err, abs_p = self._safe_resolve_workdir_path(vp)
+            if not ok:
+                self._json({"ok": False, "err": err}, status=403 if "forbidden" in err else 400)
+                return
+            try:
+                st = os.stat(abs_p)
+                self._json({"ok": True, "path": abs_p,
+                            "size": st.st_size, "mtime": st.st_mtime,
+                            "exists": True})
+            except FileNotFoundError:
+                self._json({"ok": True, "exists": False, "path": abs_p,
+                            "size": 0, "mtime": 0})
+            except Exception as e:  # noqa: BLE001
+                self._json({"ok": False, "err": f"{type(e).__name__}: {e}"}, status=500)
+        elif path == "/prisiragent/api/file_changes":
+            # B 路线改动时间线数据(2026-09-16):遍历所有会话,提取 write_file/edit_file/rollback
+            # 三类工具调用,预解析 args.path,按时倒序返回。前端只渲染不需 regex。
+            # 与 tool_trace 区别:这里只关心文件类操作,且带 session 标题方便显示。
+            ops: list = []
+            try:
+                all_sess = list_sessions() if callable(list_sessions) else []
+            except Exception:  # noqa: BLE001
+                all_sess = []
+            for s in all_sess or []:
+                sid = s.get("id") or s.get("sid") or s.get("session_id") or ""
+                title = s.get("title") or sid[:8]
+                if not sid:
+                    continue
+                try:
+                    for m in get_messages(sid):
+                        if m.get("role") != "tool":
+                            continue
+                        content = m.get("content", "") or ""
+                        if not content.startswith("[🔧 "):
+                            continue
+                        nl = content.find("]")
+                        if nl <= 0:
+                            continue
+                        nm = content[content.find("🔧") + 1:nl].strip()
+                        if nm not in ("write_file", "edit_file"):
+                            continue
+                        body = content[nl + 1:].lstrip("\n")
+                        # 解析 path:行首形如 "[write_file] path = '...'" 或 "[edit_file] path = ..."
+                        path = ""
+                        for ln in body.splitlines()[:6]:
+                            ln2 = ln.strip()
+                            if ln2.lower().startswith("path"):
+                                # "path = '...'" 或 'path = "..."'
+                                eq = ln2.find("=")
+                                if eq < 0:
+                                    continue
+                                rest = ln2[eq + 1:].strip().strip("'\"")
+                                path = rest
+                                break
+                        if not path:
+                            continue
+                        ops.append({
+                            "op": "write" if nm == "write_file" else "edit",
+                            "path": path,
+                            "ts": m.get("ts", 0),
+                            "sid": sid,
+                            "title": title,
+                            "ok": not (body.lstrip().lower().startswith("[")
+                                       and not body.lstrip().lower().startswith(("[ok]", "[ok ", "[done]"))),
+                        })
+                except Exception:  # noqa: BLE001
+                    continue
+            # M3.31 hotfix(2026-09-16):把已 import 的 git 文件合成 op:"imported"
+            # 注入 timeline — 这些不是对话里 write/edit 出来的,是 git import worker 自动写入的
+            try:
+                _idx_items = list((_GIT_IMPORTED_INDEX or {}).items()) if isinstance(_GIT_IMPORTED_INDEX, dict) else []
+                for abs_p, meta in _idx_items:
+                    if not isinstance(meta, dict):
+                        continue
+                    ops.append({
+                        "op": "imported",
+                        "path": abs_p,
+                        "ts": float(meta.get("imported_at") or 0),
+                        "sid": "git-import",
+                        "title": "git HEAD blob",
+                        "src_blob_sha": meta.get("src_blob_sha", ""),
+                        "src_commit_sha": meta.get("src_commit_sha", ""),
+                        "src_repo": meta.get("src_repo", ""),
+                        "ok": True,
+                    })
+            except Exception:  # noqa: BLE001
+                pass
+            # M3.32 Phase 1(2026-09-16):从 <workdir>/_prisir_registry/file_changes.jsonl
+            # 合并跨进程 file_change 记录(其它 agent 在同一 workdir 里的 write/edit/rollback)。
+            # - 这些 op 已带 agent_alias / agent_pid
+            # - 本会话内的 write/edit(上方 get_messages 提取的)优先显示,registry 跨 agent 补全
+            try:
+                # M3.32 fix(2026-09-16):_WORKDIR 是 {"path": ...} 字典,要用 ["path"] 取
+                wd = _WORKDIR.get("path", "") if hasattr(_WORKDIR, "get") else (_WORKDIR or "")
+                if wd and os.path.isdir(wd):
+                    for reg_op in _registry_recent(wd, limit=300):
+                        if not isinstance(reg_op, dict):
+                            continue
+                        # tag 来源 + 默认字段
+                        ops.append({
+                            "op": reg_op.get("op") or "reg-edit",
+                            "path": reg_op.get("path") or "",
+                            "ts": float(reg_op.get("ts") or 0),
+                            "sid": reg_op.get("sid") or ("reg:" + str(reg_op.get("agent_pid") or 0)),
+                            "title": reg_op.get("title") or reg_op.get("agent_alias") or "?",
+                            "ok": reg_op.get("ok", True),
+                            "agent_alias": reg_op.get("agent_alias") or "",
+                            "agent_pid": reg_op.get("agent_pid") or 0,
+                            "src": "registry",
+                        })
+            except Exception:  # noqa: BLE001
+                pass
+            ops.sort(key=lambda x: x.get("ts", 0), reverse=True)
+            self._json({"ok": True, "ops": ops, "count": len(ops), "registry_alias": _read_local_alias()})
+        elif path == "/prisiragent/api/file_versions":
+            # 文件版本管理(2026-09-16 #16):列历史版本;支持按 path 查询;
+            # 必须落在 workdir 内(与 _serve_workdir_file 同边界),防路径穿越。
+            vp = (qs.get("path") or [""])[0]
+            if not vp:
+                self._json({"ok": False, "err": "path 必填", "versions": []}, status=400)
+                return
+            ok, err, abs_p = self._safe_resolve_workdir_path(vp)
+            if not ok:
+                self._json({"ok": False, "err": err, "versions": []}, status=403 if "forbidden" in err else 400)
+                return
+            try:
+                import prisir_snapshot as _snap
+                versions = _snap.list_versions(abs_p)
+                self._json({"ok": True, "path": abs_p, "versions": versions})
+            except Exception as e:  # noqa: BLE001
+                self._json({"ok": False, "err": f"{type(e).__name__}: {e}", "versions": []}, status=500)
+        elif path == "/prisiragent/api/file_preview":
+            # 预览某历史版本内容(只读,不修改文件)。
+            vp = (qs.get("path") or [""])[0]
+            vid = (qs.get("ts") or [""])[0]
+            if not vp or not vid:
+                self._json({"ok": False, "err": "path+ts 必填"}, status=400)
+                return
+            ok, err, abs_p = self._safe_resolve_workdir_path(vp)
+            if not ok:
+                self._json({"ok": False, "err": err}, status=403 if "forbidden" in err else 400)
+                return
+            try:
+                import prisir_snapshot as _snap
+                content = _snap.read_version(abs_p, vid)
+                if content is None:
+                    self._json({"ok": False, "err": "版本不存在或无可读内容"}, status=404)
+                    return
+                self._json({"ok": True, "path": abs_p, "ts": vid, "content": content})
+            except Exception as e:  # noqa: BLE001
+                self._json({"ok": False, "err": f"{type(e).__name__}: {e}"}, status=500)
+        elif path == "/prisiragent/api/file_diff":
+            # 行级 diff(2026-09-16 M3.26):选两个历史版本 → unified diff → 前端红绿高亮。
+            # query: ?path=...&ts_a=...&ts_b=...;a/b 任一缺失或相同 → 返 ok=False 400。
+            # 二进制文件无法走 unified diff(按行)→ 返 ok=False 提示。
+            # 注意:_json(data, code=200) 没有 status kwarg — 用 positional 第二参。
+            vp = (qs.get("path") or [""])[0]
+            ts_a = (qs.get("ts_a") or [""])[0].strip()
+            ts_b = (qs.get("ts_b") or [""])[0].strip()
+            if not vp or not ts_a or not ts_b:
+                self._json({"ok": False, "err": "path+ts_a+ts_b 必填", "diff": ""}, 400)
+                return
+            if ts_a == ts_b:
+                self._json({"ok": False, "err": "ts_a == ts_b(请选两个不同版本)", "diff": ""}, 400)
+                return
+            ok, err, abs_p = self._safe_resolve_workdir_path(vp)
+            if not ok:
+                self._json({"ok": False, "err": err, "diff": ""},
+                           403 if "forbidden" in err else 400)
+                return
+            try:
+                import prisir_snapshot as _snap
+                content_a = _snap.read_version(abs_p, ts_a)
+                content_b = _snap.read_version(abs_p, ts_b)
+            except Exception as e:  # noqa: BLE001
+                self._json({"ok": False, "err": f"snapshot 读失败: {e}", "diff": ""}, 500)
+                return
+            if content_a is None or content_b is None:
+                missing = []
+                if content_a is None: missing.append(f"a={ts_a}")
+                if content_b is None: missing.append(f"b={ts_b}")
+                self._json({"ok": False, "err": f"版本不存在: {', '.join(missing)}", "diff": ""}, 404)
+                return
+            # 二进制嗅探:任一含 NUL → 拒
+            if "\x00" in content_a or "\x00" in content_b:
+                self._json({"ok": False, "err": "二进制文件不支持行级 diff", "diff": ""}, 415)
+                return
+            import difflib
+            # n=3 上下文(对齐 GitHub);lineterm="" 保留原始行尾(避免 Windows/Linux 错乱)
+            diff_lines = difflib.unified_diff(
+                content_a.splitlines(keepends=True),
+                content_b.splitlines(keepends=True),
+                fromfile=f"a/{os.path.basename(abs_p)}  ({ts_a})",
+                tofile=f"b/{os.path.basename(abs_p)}  ({ts_b})",
+                fromfiledate=ts_a, tofiledate=ts_b,
+                n=3, lineterm="")
+            diff_text = "".join(diff_lines)
+            self._json({
+                "ok": True,
+                "path": abs_p,
+                "ts_a": ts_a, "ts_b": ts_b,
+                "diff": diff_text,
+                "added": sum(1 for ln in diff_text.splitlines() if ln.startswith("+") and not ln.startswith("+++")),
+                "removed": sum(1 for ln in diff_text.splitlines() if ln.startswith("-") and not ln.startswith("---")),
+            })
+        # === M3.31 GET 路由(2026-09-16)===
+        elif path == "/prisiragent/api/git_detect":
+            # GET 也支持(无 body),返回当前缓存;force 用 qs。
+            force = (qs.get("force") or [""])[0].lower() in ("1", "true", "yes")
+            d = _detect_git(force=force)
+            self._json({
+                "ok": True,
+                "detected": d["detected"],
+                "version": d["version"],
+                "err": d["err"],
+                "gate_shown": _GIT_STATE.get("gate_shown", False),
+            })
+        elif path == "/prisiragent/api/office_renderer_status":
+            # M3.32 Phase 2(2026-09-16):探测 LibreOffice + OfficeCLI,前端用此判断是否弹装机闸。
+            force = (qs.get("force") or [""])[0].lower() in ("1", "true", "yes")
+            d = _detect_office_renderer(force=force)
+            self._json({
+                "ok": True,
+                "lo": d["lo"],
+                "officecli": d["officecli"],
+                "gate_shown": d.get("gate_shown", False),
+                "workdir": _WORKDIR.get("path", "") if hasattr(_WORKDIR, "get") else (_WORKDIR or ""),
+            })
+        elif path == "/prisiragent/api/office_gate_ack":
+            # M3.32 Phase 2(2026-09-16):用户选「暂不启用」装机闸后写 ack,前端不再骚扰。
+            body = self._read_body() if self.command == "POST" else {}
+            choice = (body.get("choice") or "").lower()
+            if choice in ("no", "skip", "dismiss"):
+                _OFFICE_STATE["gate_shown"] = True
+            elif choice in ("yes", "reset"):
+                _OFFICE_STATE["gate_shown"] = False
+            self._json({"ok": True, "gate_shown": _OFFICE_STATE.get("gate_shown", False)})
+        elif path == "/prisiragent/api/skill_list":
+            # M3.33(2026-09-16):列已装 skill(只返 Layer 1: name+description+triggers,body 不返)
+            refresh = (qs.get("refresh") or [""])[0].lower() in ("1", "true", "yes")
+            if refresh:
+                _skill_refresh()
+            with _SKILL_INDEX_LOCK:
+                items = [
+                    {
+                        "name": sk["name"],
+                        "description": sk["description"],
+                        "triggers": sk["triggers"][:6],
+                        "requirements": sk["requirements"],
+                        "license": sk["license"],
+                        "dir": sk["dir"],
+                    }
+                    for sk in _SKILL_INDEX.values()
+                ]
+            self._json({"ok": True, "skills": items, "count": len(items)})
+        elif path == "/prisiragent/api/skill_show":
+            # M3.33(2026-09-16):返单个 skill 完整内容(Layer 2 body + 目录 + 是否有 scripts)
+            name = (qs.get("name") or [""])[0]
+            if not name:
+                self._json({"ok": False, "err": "name 必填"}, 400)
+                return
+            sk = _skill_get(name)
+            if not sk:
+                self._json({"ok": False, "err": f"skill not found: {name}"}, 404)
+                return
+            scripts_dir = os.path.join(sk["dir"], "scripts")
+            scripts = []
+            if os.path.isdir(scripts_dir):
+                for f in sorted(os.listdir(scripts_dir)):
+                    if f.endswith(".py"):
+                        scripts.append(f[:-3])
+            refs_dir = os.path.join(sk["dir"], "references")
+            refs = []
+            if os.path.isdir(refs_dir):
+                refs = sorted(f for f in os.listdir(refs_dir) if f.endswith(".md"))
+            self._json({
+                "ok": True,
+                "name": sk["name"],
+                "description": sk["description"],
+                "body": sk["body"],
+                "triggers": sk["triggers"],
+                "requirements": sk["requirements"],
+                "license": sk["license"],
+                "allowed_tools": sk["allowed_tools"],
+                "dir": sk["dir"],
+                "scripts": scripts,
+                "references": refs,
+            })
+        elif path == "/prisiragent/api/skill_match":
+            # M3.33(2026-09-16):在用户消息里扫触发词,返命中的 skill(给 agent 用)
+            text = (qs.get("text") or [""])[0]
+            if not text:
+                self._json({"ok": False, "err": "text 必填"}, 400)
+                return
+            hits = _skill_match_triggers(text)
+            self._json({"ok": True, "matches": hits})
+        elif path == "/prisiragent/api/skill_refresh":
+            # M3.33(2026-09-16):重扫 skill 目录(用户装了新 skill 后调一次)
+            _skill_refresh()
+            with _SKILL_INDEX_LOCK:
+                self._json({"ok": True, "count": len(_SKILL_INDEX)})
+        elif path == "/prisiragent/api/git_import_status":
+            vp = (qs.get("path") or [""])[0]
+            if not vp:
+                self._json({"ok": False, "err": "path 必填"}, 400)
+                return
+            ok, err, abs_p = self._safe_resolve_workdir_path(vp)
+            if not ok:
+                self._json({"ok": False, "err": err, "is_imported": False}, 403)
+                return
+            entry = _GIT_IMPORTED_INDEX.get(abs_p) or _GIT_IMPORTED_INDEX.get(os.path.realpath(abs_p))
+            if entry:
+                self._json({"ok": True, "is_imported": True, "path": abs_p,
+                            "snapshot_ts": entry.get("snapshot_ts"),
+                            "src_blob_sha": entry.get("src_blob_sha"),
+                            "src_commit_sha": entry.get("src_commit_sha"),
+                            "src_repo": entry.get("src_repo"),
+                            "submodule": entry.get("submodule", False)})
+            else:
+                self._json({"ok": True, "is_imported": False, "path": abs_p})
+        elif path == "/prisiragent/api/git_import_list":
+            items = []
+            for k, v in (_GIT_IMPORTED_INDEX or {}).items():
+                items.append({"abs_path": k, **v})
+            items.sort(key=lambda x: x.get("snapshot_ts") or 0, reverse=True)
+            self._json({"ok": True, "count": len(items), "items": items,
+                        "git_detected": _GIT_STATE.get("detected")})
+        elif path == "/prisiragent/api/git_import_scan":
+            # 手动触发扫描(force,跳过 30s 节流)。返回 candidates / new / skipped / repos。
+            res = _git_import_scan_once(force=True)
+            with _GIT_IMPORT_CANDIDATES_LOCK:
+                cands_snapshot = list(_GIT_IMPORT_CANDIDATES.keys())
+                cand_count = len(cands_snapshot)
+            already = sum(1 for k in cands_snapshot if _GIT_IMPORTED_INDEX.get(k))
+            self._json({
+                "ok": True,
+                "candidates_count": cand_count,
+                "new_candidates": res.get("new_candidates", 0),
+                "skipped_already_imported": already,
+                "scanned_repos": res.get("scanned_repos", 0),
+                "skipped_submodules": res.get("skipped_submodules", 0),
+                "git_detected": _GIT_STATE.get("detected"),
+                "workdir": _WORKDIR.get("path", ""),
+            })
+        # === M3.32 Phase 1:alias / registry API ===
+        elif path == "/prisiragent/api/registry_alias":
+            # GET 返本地 alias + alias 文件路径;POST 写新 alias 并立即可读
+            if self.command == "POST":
+                body = self._read_body()
+                alias = (body.get("alias") or "").strip()
+                if not alias:
+                    self._json({"ok": False, "err": "alias 必填"}, 400)
+                    return
+                if len(alias) > 32 or any(c in alias for c in '<>:"/\\|?*\n\r\t'):
+                    self._json({"ok": False, "err": "alias 含非法字符或超 32 字符"}, 400)
+                    return
+                try:
+                    _write_local_alias(alias)
+                    self._json({"ok": True, "alias": alias, "alias_file": _alias_file_path()})
+                except OSError as e:
+                    self._json({"ok": False, "err": f"写 alias 失败: {e}"}, 500)
+                return
+            self._json({"ok": True, "alias": _read_local_alias(), "alias_file": _alias_file_path()})
+        elif path == "/prisiragent/api/registry_recent":
+            wd = _WORKDIR.get("path", "") if hasattr(_WORKDIR, "get") else (_WORKDIR or "")
+            limit = int((qs.get("limit") or ["200"])[0])
+            agent_alias = (qs.get("agent") or [None])[0] or None
+            path_filter = (qs.get("path") or [None])[0] or None
+            items = _registry_recent(wd, limit=limit, agent_alias=agent_alias, path_filter=path_filter)
+            self._json({"ok": True, "count": len(items), "items": items,
+                        "workdir": wd, "local_alias": _read_local_alias()})
+        # end M3.31 GET
+        elif path == "/prisiragent/api/file_restore":
+            # 回滚到某历史版本(POST, 写动作, 必须 POST)
+            if "POST" not in method:
+                self._json({"ok": False, "err": "POST required"}, status=405)
+                return
+            try:
+                n = int(self.headers.get("Content-Length") or 0)
+                body_raw = self.rfile.read(n) if n else b"{}"
+                body = json.loads(body_raw.decode("utf-8", errors="replace")) if body_raw else {}
+            except Exception:  # noqa: BLE001
+                self._json({"ok": False, "err": "JSON 解析失败"}, status=400)
+                return
+            vp = (body.get("path") or "").strip()
+            vid = (body.get("ts") or "").strip()
+            if not vp or not vid:
+                self._json({"ok": False, "err": "path+ts 必填"}, status=400)
+                return
+            ok, err, abs_p = self._safe_resolve_workdir_path(vp)
+            if not ok:
+                self._json({"ok": False, "err": err}, status=403 if "forbidden" in err else 400)
+                return
+            try:
+                import prisir_snapshot as _snap
+                msg = _snap.rollback_to(abs_p, vid)
+                # 0 失败字串都视为可读结果(rollback_to 不抛, 走错误字符串约定)
+                ok2 = not msg.startswith("[rollback")
+                self._json({"ok": ok2, "msg": msg, "path": abs_p, "ts": vid})
+            except Exception as e:  # noqa: BLE001
+                self._json({"ok": False, "err": f"{type(e).__name__}: {e}"}, status=500)
         elif path == "/prisiragent/api/keys":
             self._json(_key_store.list_platforms())
+        elif path == "/prisiragent/api/llm/providers":
+            # M3.22 端点配置优化:返回 13 平台 spec(下拉选厂商用的元数据)。
+            # 排序:国内云端 → 国外云端 → 本地优先(隐私),与 companion_llm_providers.py 同序。
+            self._json({"providers": _list_llm_providers()})
         elif path == "/prisiragent/api/models":
             # 拉取端点模型列表:优先用查询参数里的 base_url/key(未保存时),
             # 否则用已存的 custom 端点。只回模型名,不回显完整 key。
@@ -5437,6 +9623,201 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/prisiragent/api/new":
             self._json({"session_id": create_session()})
+        elif path == "/prisiragent/api/registry_alias":
+            # M3.32 Phase 1(2026-09-16):设置本地 agent alias
+            alias = (body.get("alias") or "").strip() if isinstance(body, dict) else ""
+            if not alias:
+                self._json({"ok": False, "err": "alias 必填"}, 400)
+                return
+            if len(alias) > 32 or any(c in alias for c in '<>:"/\\|?*\n\r\t'):
+                self._json({"ok": False, "err": "alias 含非法字符或超 32 字符"}, 400)
+                return
+            try:
+                _write_local_alias(alias)
+                self._json({"ok": True, "alias": alias, "alias_file": _alias_file_path()})
+            except OSError as e:
+                self._json({"ok": False, "err": f"写 alias 失败: {e}"}, 500)
+        elif path == "/prisiragent/api/skill_install":
+            # M3.33(2026-09-16):从本地路径或 git URL 装 skill(简化版 — 本期只支持本地路径)
+            # 安全边界:不允许任意 URL 下载,只允许白名单路径或 git clone 已有本地 repo
+            src = (body.get("src") or "").strip() if isinstance(body, dict) else ""
+            target = (body.get("target") or "user").strip()  # "user" or "project"
+            if not src:
+                self._json({"ok": False, "err": "src 必填(本地 skill 目录路径)"}, 400)
+                return
+            if not os.path.isdir(src):
+                self._json({"ok": False, "err": f"src 不存在或不是目录: {src}"}, 404)
+                return
+            sk_md = os.path.join(src, "SKILL.md")
+            if not os.path.isfile(sk_md):
+                self._json({"ok": False, "err": f"src 不含 SKILL.md: {src}"}, 400)
+                return
+            sk = _skill_parse_skill_md(sk_md)
+            if not sk:
+                self._json({"ok": False, "err": "SKILL.md 解析失败"}, 400)
+                return
+            # 决定目标目录
+            if target == "project":
+                wd = _WORKDIR.get("path", "") if hasattr(_WORKDIR, "get") else (_WORKDIR or "")
+                if not wd:
+                    self._json({"ok": False, "err": "无 workdir 不能装到 project"}, 400)
+                    return
+                base = os.path.join(wd, "skills")
+            else:
+                base = os.path.expanduser("~/.prisir/skills")
+            os.makedirs(base, exist_ok=True)
+            dst = os.path.join(base, sk["name"])
+            if os.path.exists(dst):
+                self._json({"ok": False, "err": f"已存在: {dst}(用 uninstall 先卸)"}, 409)
+                return
+            try:
+                shutil.copytree(src, dst)
+                _skill_refresh()
+                self._json({"ok": True, "skill": sk["name"], "dst": dst, "triggers": sk["triggers"][:6]})
+            except Exception as e:
+                self._json({"ok": False, "err": f"复制失败: {e}"}, 500)
+        elif path == "/prisiragent/api/skill_uninstall":
+            # M3.33(2026-09-16):卸载 skill(只动 ~/.prisir/skills/ 或 <workdir>/skills/ 子目录)
+            name = (body.get("name") or "").strip() if isinstance(body, dict) else ""
+            target = (body.get("target") or "user").strip()
+            if not name:
+                self._json({"ok": False, "err": "name 必填"}, 400)
+                return
+            if target == "project":
+                wd = _WORKDIR.get("path", "") if hasattr(_WORKDIR, "get") else (_WORKDIR or "")
+                if not wd:
+                    self._json({"ok": False, "err": "无 workdir"}, 400)
+                    return
+                base = os.path.join(wd, "skills")
+            else:
+                base = os.path.expanduser("~/.prisir/skills")
+            dst = os.path.join(base, name)
+            if not os.path.isdir(dst):
+                self._json({"ok": False, "err": f"不存在: {dst}"}, 404)
+                return
+            try:
+                shutil.rmtree(dst)
+                _skill_refresh()
+                self._json({"ok": True, "removed": dst})
+            except Exception as e:
+                self._json({"ok": False, "err": f"删除失败: {e}"}, 500)
+        elif path == "/prisiragent/api/skill_new":
+            # M3.33(2026-09-16):对话式 skill-builder — 用户填字段 → 落盘
+            name = (body.get("name") or "").strip() if isinstance(body, dict) else ""
+            description = (body.get("description") or "").strip() if isinstance(body, dict) else ""
+            triggers = body.get("triggers", []) if isinstance(body, dict) else []
+            provider = (body.get("provider") or "").strip() if isinstance(body, dict) else ""
+            requirements = (body.get("requirements") or "").strip() if isinstance(body, dict) else ""
+            template = (body.get("template") or "image").strip() if isinstance(body, dict) else "image"
+            if not name or not description:
+                self._json({"ok": False, "err": "name 和 description 必填"}, 400)
+                return
+            if not _re_skill.match(r"^[a-z][a-z0-9\-]{1,62}$", name):
+                self._json({"ok": False, "err": "name 必须 kebab-case(小写字母/数字/-),2-63 字符"}, 400)
+                return
+            wd = _WORKDIR.get("path", "") if hasattr(_WORKDIR, "get") else (_WORKDIR or "")
+            base = os.path.join(wd, "skills") if wd else os.path.expanduser("~/.prisir/skills")
+            dst = os.path.join(base, name)
+            if os.path.exists(dst):
+                self._json({"ok": False, "err": f"已存在: {dst}"}, 409)
+                return
+            os.makedirs(os.path.join(dst, "scripts"), exist_ok=True)
+            os.makedirs(os.path.join(dst, "references"), exist_ok=True)
+            # SKILL.md
+            trig_str = ", ".join(triggers) if isinstance(triggers, list) else str(triggers)
+            skill_md = (
+                f"---\n"
+                f"name: {name}\n"
+                f"description: {description}\n"
+                f"license: MIT\n"
+                f"triggers: {trig_str}\n"
+                f"requirements: {requirements}\n"
+                f"---\n\n"
+                f"# {name}\n\n"
+                f"## 用途\n{description}\n\n"
+                f"## 触发场景\n{trig_str}\n\n"
+                f"## 依赖\n{requirements or '无(纯本地脚本)'}\n\n"
+                f"## 工作流\n1. 读用户消息,抽取 prompt / 参数\n"
+                f"2. 跑 scripts/{template}_generate.py\n"
+                f"3. 把结果写到 <workdir>/generated/(由调用方提供路径)\n\n"
+                f"## 安全\n不联网下载模型/资源;调用本地已装服务或环境变量里的 API key。\n"
+            )
+            with open(os.path.join(dst, "SKILL.md"), "w", encoding="utf-8") as f:
+                f.write(skill_md)
+            # generate.py 模板
+            gen_py = (
+                "# -*- coding: utf-8 -*-\n"
+                f'"""{name} 生成脚本模板。\n\n'
+                f"用法: python generate.py <prompt> [--output PATH] [--seed N]\n"
+                f"Provider: {provider or 'comfyui-local'}\n"
+                f"Requirements: {requirements or '无'}\n"
+                '"""\n'
+                "import sys, os, argparse\n\n"
+                "def main():\n"
+                "    ap = argparse.ArgumentParser()\n"
+                "    ap.add_argument('prompt')\n"
+                "    ap.add_argument('--output', default='generated/output.png')\n"
+                "    ap.add_argument('--seed', type=int, default=-1)\n"
+                "    args = ap.parse_args()\n"
+                "    # TODO: 调真实生成(provider=" + (provider or 'comfyui-local') + ")\n"
+                "    # 本期返回 stub,告诉用户怎么接真实 provider\n"
+                f"    print(f'[skill:{name}] prompt={{args.prompt!r}} output={{args.output}} seed={{args.seed}}')\n"
+                "    print('[skill] stub — 编辑 scripts/generate.py 接真实 provider')\n"
+                "    return 0\n\n"
+                "if __name__ == '__main__':\n"
+                "    sys.exit(main())\n"
+            )
+            with open(os.path.join(dst, "scripts", f"{template}_generate.py"), "w", encoding="utf-8") as f:
+                f.write(gen_py)
+            # check.py 前置检查
+            check_py = (
+                "# -*- coding: utf-8 -*-\n"
+                f'"""{name} 前置检查 — 跑 generate 前先跑这个,失败提示用户怎么修。"""\n'
+                "import sys, os\n\n"
+                f"PROVIDER = {provider or 'comfyui-local'!r}\n"
+                f"REQS = {requirements or ''!r}\n\n"
+                "def check():\n"
+                "    msgs = []\n"
+                "    # TODO: 真实检查(VRAM / API key / 服务端口)\n"
+                "    msgs.append(('info', f'provider={PROVIDER}; 依赖={REQS or \"无\"}; 本期 stub'))\n"
+                "    return msgs\n\n"
+                "if __name__ == '__main__':\n"
+                "    for level, m in check():\n"
+                "        print(f'[{level}] {m}')\n"
+            )
+            with open(os.path.join(dst, "scripts", "check.py"), "w", encoding="utf-8") as f:
+                f.write(check_py)
+            # README
+            readme = (
+                f"# {name}\n\n"
+                f"{description}\n\n"
+                f"## 触发词\n{trig_str}\n\n"
+                f"## 依赖\n{requirements or '无'}\n\n"
+                f"## 跑法\n"
+                f"```bash\n"
+                f"python scripts/check.py        # 前置检查\n"
+                f"python scripts/{template}_generate.py '你的 prompt' --output generated/out.png\n"
+                f"```\n"
+            )
+            with open(os.path.join(dst, "README.md"), "w", encoding="utf-8") as f:
+                f.write(readme)
+            _skill_refresh()
+            self._json({
+                "ok": True,
+                "skill": name,
+                "dst": dst,
+                "hint": "已生成 skill 模板。装上用:\n/skill install " + dst,
+            })
+        elif path == "/prisiragent/api/skill_run":
+            # M3.33(2026-09-16):跑 skill 的某个脚本
+            name = (body.get("name") or "").strip() if isinstance(body, dict) else ""
+            script = (body.get("script") or "").strip() if isinstance(body, dict) else ""
+            args = body.get("args", []) if isinstance(body, dict) else []
+            if not name or not script:
+                self._json({"ok": False, "err": "name 和 script 必填"}, 400)
+                return
+            result = _skill_run_script(name, script, args if isinstance(args, list) else [str(args)])
+            self._json(result)
         elif path == "/prisiragent/api/pair/confirm":
             # P1 配对:手机回扫,一次性令牌换持久令牌(用后即焚)。
             lp = lan_pair.instance()
@@ -5452,6 +9833,17 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": False, "error": "invalid or expired offer"}, code=403)
         elif path == "/prisiragent/api/chat":
             self._handle_chat(body)
+        elif path == "/prisiragent/api/complete":
+            # 2026-09-14 Tab 内联补全(轨道A/B 共享端点):输入已写文本,返回续写建议+耗时。
+            # 供对话输入框(轨道A)与系统输入法探针(轨道B)共用。同步调用,带超时不阻塞。
+            text = body.get("text", "")
+            try:
+                from fastlane.providers.llm_prisir import suggest_completion  # noqa: PLC0415
+                res = asyncio.run(suggest_completion(_router, text))
+            except Exception as e:  # noqa: BLE001
+                res = {"suggestion": "", "ms": 0, "ok": False,
+                       "error": f"{type(e).__name__}: {str(e)[:80]}"}
+            self._json(res)
         elif path == "/prisiragent/api/estop":
             # 紧急停止:置中断标志 + 唤醒挂起的权限卡。前端「停止」按钮调用。
             sid = body.get("session_id", "")
@@ -5537,9 +9929,64 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"ok": True})
         elif path == "/prisiragent/api/keys":
             self._handle_save_keys(body)
+        elif path == "/prisiragent/api/llm/upsert":
+            # M3.22 端点配置优化:按 spec 写 keys.db(下拉选厂商+填 key 的提交入口)。
+            # body {platform_id, api_key?, model?, endpoint?}。
+            # - api_key 留空或以 mask 占位(***/…)开头 → 保留已存 key(只改端点/model)。
+            # - model 留空 → 落 spec.default_model。
+            # - endpoint 只对 ollama/llama-server 生效;其它锚死 spec.base_url(防协议错配)。
+            # - secret 字段不回显,响应只返 platform/base_url/model/api_key_len。
+            platform_id = (body.get("platform_id") or "").strip()
+            if not platform_id:
+                self._json({"ok": False, "error": "platform_id_required"}, 400)
+                return
+            raw_key = (body.get("api_key") or "").strip()
+            MASK_PREFIXES = ("***", "…")
+            if not raw_key or any(raw_key.startswith(p) for p in MASK_PREFIXES):
+                # 保留旧 key(用户改的是端点不是密钥)
+                existing = _key_store.get_key(platform_id) or {}
+                keep_key = existing.get("api_key") or ""
+                if not keep_key:
+                    self._json({"ok": False,
+                                "error": f"平台 {platform_id} 尚未配置 key,首次必须填入"},
+                               400)
+                    return
+                api_key_for_write = keep_key
+            else:
+                api_key_for_write = raw_key
+            form = {"api_key": api_key_for_write,
+                    "model": body.get("model") or "",
+                    "endpoint": body.get("endpoint") or ""}
+            try:
+                rec = upsert_key_from_form(_key_store, platform_id, form)
+            except RuntimeError as e:
+                self._json({"ok": False, "error": str(e)}, 400)
+                return
+            self._json({"ok": True, "platform": rec})
+        elif path == "/prisiragent/api/identify_key":
+            # task #12 纯规则离线首配: 粘 key/url → 平台+proto+base_url(零模型、零网络)。
+            from fastlane.providers.llm_prisir import identify_key
+            self._json(identify_key(body.get("text", "")))
         elif path == "/prisiragent/api/keys/delete":
             _key_store.delete_key(body.get("platform", ""))
             self._json({"ok": True})
+        elif path == "/prisiragent/api/keys/activate":
+            # 切换当前使用的模型平台:设置 active_platform,路由时优先使用
+            # 空 platform = 清除指定,恢复智能路由
+            platform = (body.get("platform") or "").strip()
+            if not platform:
+                _SETTINGS["active_platform"] = ""
+                _save_settings()
+                self._json({"ok": True, "active_platform": "", "router_restored": True})
+                return
+            rec = _key_store.get_key(platform)
+            if not rec or not rec.get("api_key"):
+                self._json({"ok": False, "error": f"平台 {platform} 无有效 key"}, 400)
+                return
+            # 保存 active_platform 到 settings
+            _SETTINGS["active_platform"] = platform
+            _save_settings()
+            self._json({"ok": True, "active_platform": platform})
         elif path == "/prisiragent/api/workdir":
             wd = (body.get("workdir") or "").strip()
             if not wd:
@@ -5556,6 +10003,105 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:  # noqa: BLE001
                 pass
             self._json({"ok": True, "workdir": p})
+        # === M3.31 外部版本管理兼容(2026-09-16)===
+        elif path == "/prisiragent/api/git_detect":
+            # 探测本机是否有 git;force=true 跳过缓存重跑。
+            force = str(body.get("force") or "").lower() in ("1", "true", "yes")
+            d = _detect_git(force=force)
+            self._json({
+                "ok": True,
+                "detected": d["detected"],
+                "version": d["version"],
+                "err": d["err"],
+                "gate_shown": _GIT_STATE.get("gate_shown", False),
+            })
+        elif path == "/prisiragent/api/git_gate_ack":
+            # 前端权限闸点了「是 / 否」后回调;否 → 缓存 gate_shown, 避免每次启动都弹
+            choice = (body.get("choice") or "").strip()  # "yes" | "no"
+            _GIT_STATE["gate_shown"] = True
+            if choice == "yes":
+                # 用户想装/已经装 → 触发一次强制重探测
+                d = _detect_git(force=True)
+                self._json({"ok": True, "ack": "yes", "detected_after": d["detected"]})
+            else:
+                self._json({"ok": True, "ack": "no", "detected_after": _GIT_STATE.get("detected")})
+        elif path == "/prisiragent/api/office_gate_ack":
+            # M3.32 Phase 2(2026-09-16):officecli/LO 装机闸 ack
+            choice = (body.get("choice") or "").strip().lower()
+            if choice == "yes":
+                _OFFICE_STATE["gate_shown"] = False
+                d = _detect_office_renderer(force=True)
+                self._json({"ok": True, "ack": "yes",
+                            "lo_detected": d["lo"]["detected"],
+                            "officecli_detected": d["officecli"]["detected"]})
+            else:
+                _OFFICE_STATE["gate_shown"] = True
+                self._json({"ok": True, "ack": "no", "gate_shown": True})
+        elif path == "/prisiragent/api/git_import_status":
+            # 查单个文件是否已纳入 import 索引
+            vp = (qs.get("path") or [""])[0]
+            if not vp:
+                self._json({"ok": False, "err": "path 必填"}, 400)
+                return
+            ok, err, abs_p = self._safe_resolve_workdir_path(vp)
+            if not ok:
+                self._json({"ok": False, "err": err, "is_imported": False}, 403)
+                return
+            entry = _GIT_IMPORTED_INDEX.get(abs_p) or _GIT_IMPORTED_INDEX.get(os.path.realpath(abs_p))
+            if entry:
+                self._json({"ok": True, "is_imported": True, "path": abs_p,
+                            "snapshot_ts": entry.get("snapshot_ts"),
+                            "src_blob_sha": entry.get("src_blob_sha"),
+                            "src_commit_sha": entry.get("src_commit_sha"),
+                            "src_repo": entry.get("src_repo"),
+                            "submodule": entry.get("submodule", False)})
+            else:
+                self._json({"ok": True, "is_imported": False, "path": abs_p})
+        elif path == "/prisiragent/api/git_import_list":
+            # 列出已 import 的所有文件(e2e + 设置面板用)
+            items = []
+            for k, v in (_GIT_IMPORTED_INDEX or {}).items():
+                items.append({"abs_path": k, **v})
+            items.sort(key=lambda x: x.get("snapshot_ts") or 0, reverse=True)
+            self._json({"ok": True, "count": len(items), "items": items,
+                        "git_detected": _GIT_STATE.get("detected")})
+        elif path == "/prisiragent/api/git_import_now":
+            # e2e 入口:强制立即 import 单个文件(body: {path})
+            vp = (body.get("path") or "").strip()
+            if not vp:
+                self._json({"ok": False, "err": "path 必填"}, 400)
+                return
+            ok, err, abs_p = self._safe_resolve_workdir_path(vp)
+            if not ok:
+                self._json({"ok": False, "err": err}, 403 if "forbidden" in err else 400)
+                return
+            with _GIT_IMPORT_CANDIDATES_LOCK:
+                cand = (_GIT_IMPORT_CANDIDATES.get(abs_p)
+                        or _GIT_IMPORT_CANDIDATES.get(os.path.realpath(abs_p))
+                        or {})
+            if not cand:
+                self._json({"ok": False, "err": "not_in_candidates:不在 git 仓内或未扫描到",
+                            "hint": "先调 /api/git_import_scan"}, 404)
+                return
+            if cand.get("submodule"):
+                self._json({"ok": False, "err": "is_submodule:submodule 不导入内容",
+                            "submodule": True}, 400)
+                return
+            if cand.get("symlink"):
+                self._json({"ok": False, "err": "is_symlink:symlink 跳过"}, 400)
+                return
+            if _GIT_IMPORTED_INDEX.get(abs_p) or _GIT_IMPORTED_INDEX.get(os.path.realpath(abs_p)):
+                self._json({"ok": True, "already_imported": True, "path": abs_p})
+                return
+            # M3.31 hotfix(2026-09-16):必须读 git HEAD blob,不是磁盘当前内容。
+            # 之前的实现读了 disk 文件 + 标 src_blob_sha=git → sidecar 撒谎,snapshot 不是 git 版本
+            git_content = _git_import_get_blob(cand.get("repo_root", ""), cand.get("blob_sha", ""))
+            if git_content is None:
+                self._json({"ok": False, "err": "git_blob_unreadable:无法读 git HEAD blob"}, 500)
+                return
+            res = _git_import_write_snapshot(abs_p, git_content, cand, who="git_import_now")
+            self._json({"ok": bool(res.get("ok")), "path": abs_p, **res})
+        # end M3.31
         elif path == "/prisiragent/api/hooks_status":
             # P3 hooks:报告当前 workdir 的 hooks.json 摘要(设置面板/调试)。
             try:
@@ -5935,6 +10481,15 @@ def main():
         _LOGGER.info("perm_gate init ok workdir=%s", DEFAULT_WORKDIR)
     except Exception as e:  # noqa: BLE001 — init 失败则 perm_gate 保持 fail-closed
         _LOGGER.warning("perm_gate init failed (fail-closed): %s", e)
+
+    # M3.33 skill 系统:启动扫一次 skill 目录
+    try:
+        _skill_refresh()
+        with _SKILL_INDEX_LOCK:
+            _LOGGER.info("skill scan ok: %d skills loaded from %s",
+                         len(_SKILL_INDEX), _skill_dirs())
+    except Exception as e:  # noqa: BLE001 — skill 扫失败不致命(只是没 skill 用)
+        _LOGGER.warning("skill scan failed (no skills available): %s", e)
 
     srv = ThreadingHTTPServer((WEB_HOST, args.port), Handler)
     _LOGGER.info("PrisirAI 对话模式 http://%s:%d  路由=%s  数据=%s",

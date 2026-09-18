@@ -33,7 +33,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-log = logging.getLogger("mcp_oiagent.mcp_client_bridge")
+log = logging.getLogger("mcp_prisiragent.mcp_client_bridge")
 
 # 配置路径(与 daemon 的 TOOLS_CONFIG 同目录)
 MCP_SERVERS_CONFIG = (

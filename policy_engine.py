@@ -93,9 +93,11 @@ def check_dangerous_args(base_cmd: str, parts: list[str]) -> str | None:
 # ─────────────────────────────────────────────────
 # approved_rules 持久化(P0-3 单源)
 # ─────────────────────────────────────────────────
-_POLICY_DB = Path(os.environ.get(
-    "OIAGENT_POLICY_DB",
-    str(Path.home() / ".local" / "share" / "aureon" / "policy_rules.db")))
+_POLICY_DB = Path(
+    os.environ.get("PRISIRAGENT_POLICY_DB")
+    or os.environ.get("OIAGENT_POLICY_DB")
+    or str(Path.home() / ".local" / "share" / "aureon" / "policy_rules.db")
+)
 _policy_lock = threading.Lock()
 _policy_conn: sqlite3.Connection | None = None
 

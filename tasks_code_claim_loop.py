@@ -159,7 +159,7 @@ def cmd_complete(task_id: int, result_file: str) -> int:
     except Exception:  # noqa: BLE001
         pass
     try:
-        import oiagent_dev_consumer as cons
+        import prisiragent_dev_consumer as cons
         cons._emit_done(task_id, f"[tasks-code]#{task_id}", len(reply), rep.to_dict())
     except Exception:  # noqa: BLE001
         pass

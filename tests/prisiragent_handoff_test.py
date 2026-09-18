@@ -1,12 +1,12 @@
-"""tests/oiagent_handoff_test.py — 交接摘要 + 新窗接续单元测试(档位3)。
+"""tests/prisiragent_handoff_test.py — 交接摘要 + 新窗接续单元测试(档位3)。
 
-覆盖 oiagent_web 的接续链路(纯本地路径,不依赖 LLM key):
+覆盖 prisiragent_web 的接续链路(纯本地路径,不依赖 LLM key):
   - build_handoff_rules 规则兜底(无 key 时 _build_handoff 回退 rules)
   - _wrap_handoff_as_data 防注入包装(只当资料)
   - _continue_in_new_window: 新建会话、首条带交接块、meta 记录 continued_from
   - trace 入库: _run_chat_thread 的工具轨迹落库路径(用假 run_conversation 注入)
 
-跑法: python tests/oiagent_handoff_test.py  →  打印 PASS/FAIL
+跑法: python tests/prisiragent_handoff_test.py  →  打印 PASS/FAIL
 """
 import os
 import sys
@@ -14,7 +14,7 @@ import tempfile
 from pathlib import Path
 
 # 用临时 DB,不碰真实 chats.db
-_tmp = tempfile.mkdtemp(prefix="oiagent_handoff_test_")
+_tmp = tempfile.mkdtemp(prefix="prisiragent_handoff_test_")
 os.environ["PRISIR_DATA"] = _tmp
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -143,7 +143,7 @@ def test_trace_ingestion_into_db():
 
 
 def main():
-    print("=== oiagent_handoff 接续链路测试 ===\n")
+    print("=== prisiragent_handoff 接续链路测试 ===\n")
     test_wrap_injection_guard()
     print()
     test_handoff_rules_fallback_no_key()

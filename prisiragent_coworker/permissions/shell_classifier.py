@@ -37,7 +37,7 @@ from typing import Literal
 from prisiragent_coworker.permissions.engine import _DESTRUCTIVE_PATTERNS, AuditSink
 
 __all__ = [
-    "OIagentCoworkerShellClassifier",
+    "prisiragentCoworkerShellClassifier",
     "ShellClassification",
     "ShellRiskLevel",
 ]
@@ -128,7 +128,7 @@ _SAFE_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 
 
-class OIagentCoworkerShellClassifier:
+class prisiragentCoworkerShellClassifier:
     """Classify shell command strings, with destructive precedence."""
 
     def __init__(self, audit_sink: AuditSink | None = None) -> None:

@@ -262,10 +262,10 @@ fi
 
 # ---------- 5. GTK theme 图标(xfwm4 标题栏图标) ----------
 echo "[7/10] 装 GTK theme 图标..."
-ICON_SRC="$INSTALL_DIR/assets/prisIr-flame-256.png"
+ICON_SRC="$INSTALL_DIR/assets/prisir-flame-256.png"
 if [[ ! -f "$ICON_SRC" ]]; then
     # 退而求其次:用 48px
-    ICON_SRC=$(ls "$INSTALL_DIR/assets"/prisIr-flame-*.png 2>/dev/null | head -1)
+    ICON_SRC=$(ls "$INSTALL_DIR/assets"/prisir-flame-*.png 2>/dev/null | head -1)
 fi
 if [[ -n "$ICON_SRC" && -f "$ICON_SRC" ]]; then
     ICON_DIR_BASE="$HOME/.local/share/icons/hicolor"
@@ -283,7 +283,7 @@ if [[ -n "$ICON_SRC" && -f "$ICON_SRC" ]]; then
     fi
     echo "  GTK theme 图标就位(prisiraiclass/PrisirAI/prisirai 三 alias)"
 else
-    echo "WARN: 在 assets/ 找不到 prisIr-flame 图标,标题栏图标可能不显示" >&2
+    echo "WARN: 在 assets/ 找不到 prisir-flame 图标,标题栏图标可能不显示" >&2
 fi
 
 # ---------- 6. .desktop entry ----------

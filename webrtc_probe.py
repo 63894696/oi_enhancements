@@ -4,7 +4,7 @@
 变成 agent 可调用的功能块。这正是 securedm-webrtc-dev-status 排查方向 #1 缺失的工具。
 
 干什么:
-  以**被动第三者**身份 join 一个通话房间(默认 call-bob__oiagent),静默监听
+  以**被动第三者**身份 join 一个通话房间(默认 call-bob__prisiragent),静默监听
   服务器转发的 offer/answer 信令,解析每个 m-line 的媒体方向
   (a=sendrecv/sendonly/recvonly/inactive)与 mid,输出**结构化 JSON 断言**。
 
@@ -14,8 +14,8 @@
   - 超时没抓到 answer → ok=true 但 answers=0, hint 提示"房间当前无通话,需在通话进行中跑"
 
 用法:
-  python webrtc_probe.py                          # 抓 call-bob__oiagent,等 30s
-  python webrtc_probe.py --room call-bob__oiagent --wait 45 --json
+  python webrtc_probe.py                          # 抓 call-bob__prisiragent,等 30s
+  python webrtc_probe.py --room call-bob__prisiragent --wait 45 --json
   python webrtc_probe.py --assert-answer-video sendrecv   # 断言应答方 video 方向
 
 退出码: 0=抓到并完成断言(或无断言仅抓取成功); 2=连接/授权失败; 3=断言失败。
@@ -202,7 +202,7 @@ async def probe(url: str, room: str, wait: float, peer_id: str) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser(description="SecureDM 通话 SDP 方向嗅探功能块")
     ap.add_argument("--url", default=DEFAULT_URL)
-    ap.add_argument("--room", default="call-bob__oiagent")
+    ap.add_argument("--room", default="call-bob__prisiragent")
     ap.add_argument("--wait", type=float, default=30.0, help="监听秒数")
     ap.add_argument("--peer", default="probe", help="probe 在房间里的 peer 名")
     ap.add_argument("--json", action="store_true", help="只输出 JSON(默认也输出)")

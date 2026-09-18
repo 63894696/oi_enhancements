@@ -13,7 +13,7 @@
 > **后续补入**(同一日,fast-forward,无 SHA 变更):
 > `b55083d` 增补 `.gitignore`(11 类本地产物/凭证/兄弟仓);
 > `21a6ec7` 批量补入 167 份业务代码 + 13 份 Brand 资产
-> (prisir-browser / agent_economy / prisiragent_coworker / securedm-shell /
+> (prisiragent-browser / agent_economy / prisiragent_coworker / securedm-shell /
 >  wasm_meter / memory / a2 测试向量 / 根目录 simplex_*.py 等)。
 > 跟踪文件从 329 → 492。**a2/ 私钥/totp/integrity 注册表一律不入仓**。
 

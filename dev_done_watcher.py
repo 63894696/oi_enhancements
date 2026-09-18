@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-# dev_done_watcher.py — 消费 oiagent_dev_consumer 写的 done-feed(协作链「完成了没人知道」的反馈通道)。
+# dev_done_watcher.py — 消费 prisiragent_dev_consumer 写的 done-feed(协作链「完成了没人知道」的反馈通道)。
 #
-# consumer 每完成一个 task,往 ~/.local/share/aureon/log/oiagent_dev_done_feed.jsonl
+# consumer 每完成一个 task,往 ~/.local/share/aureon/log/prisiragent_dev_done_feed.jsonl
 # 追加一行 {task_id,title,result_len,gate_verdict,gate_warn,ts,iso}。
 # 本脚本由主会话的 cron 定期调用:读取 feed 中尚未消费的条目(游标在 cursor 文件),
 # 对每个新完成的 task 做宪法闸门复检,输出一段可贴给用户的中文简报。
@@ -19,8 +19,8 @@ import sys as _s
 _s.path.insert(0, str(ROOT))
 
 LOG_DIR = Path.home() / ".local" / "share" / "aureon" / "log"
-FEED = LOG_DIR / "oiagent_dev_done_feed.jsonl"
-CURSOR = LOG_DIR / "oiagent_dev_done_feed.cursor"
+FEED = LOG_DIR / "prisiragent_dev_done_feed.jsonl"
+CURSOR = LOG_DIR / "prisiragent_dev_done_feed.cursor"
 
 
 def _read_feed() -> list[dict]:

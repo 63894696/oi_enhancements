@@ -2,7 +2,7 @@
 //
 // 定位(prisirwork-foundation-integration-design §5.1 / F7):
 //   不启浏览器也能和 prisiragent 对话。主进程负责:
-//     ① spawn + 看护 oiagent_web.py(127.0.0.1:18802,国画风聊天 UI,SQLite 持久化)
+//     ① spawn + 看护 prisiragent_web.py(127.0.0.1:18802,国画风聊天 UI,SQLite 持久化)
 //     ② 系统托盘(最小化到托盘,不退出)
 //     ③ 全局热键(默认 Ctrl+Shift+O 呼出/隐藏)
 //     ④ 开机自启(可配)
@@ -11,9 +11,9 @@
 //   - PrisirWork token 只在主进程读取(0600 配置文件),经 preload 以「是否存在」
 //     布尔告知渲染层,绝不把 token 本体打进 renderer bundle / 暴露给页面 JS。
 //   - 渲染进程 contextIsolation 开、nodeIntegration 关,只经白名单 IPC 与主进程通信。
-//   - oiagent_web 只监听 127.0.0.1;壳加载的也是回环地址,不触外网。
+//   - prisiragent_web 只监听 127.0.0.1;壳加载的也是回环地址,不触外网。
 //
-// 与已归档 securedm-shell(Tauri)不同:本壳走 Electron(用户拍板),复用 oiagent_web.py。
+// 与已归档 securedm-shell(Tauri)不同:本壳走 Electron(用户拍板),复用 prisiragent_web.py。
 const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, nativeImage, shell, Notification } = require("electron");
 const { spawn } = require("child_process");
 const path = require("path");
@@ -71,7 +71,7 @@ process.on("unhandledRejection", (reason) => {
 //   装包后:prisiragent-shell/ 在 $INSTDIR\PrisirAI\ 内 → REPO_ROOT = $INSTDIR(PrisirAI.exe 同级)
 // 探测多候选路径,保证装包后能找到 PrisirAI.exe。
 const PARENT_DIR = path.resolve(__dirname, "..");
-const WEB_SCRIPT = path.join(PARENT_DIR, "oiagent_web.py");
+const WEB_SCRIPT = path.join(PARENT_DIR, "prisiragent_web.py");
 // 发布态(装包后):$INSTDIR\PrisirAI.exe;开发态:$REPO/dist/PrisirAI.exe;旧 .bak 也认。
 const CORE_EXE_CANDIDATES = [
   path.join(PARENT_DIR, "PrisirAI.exe"),                    // 装包后:与 prisiragent-shell 同级
@@ -88,8 +88,8 @@ const REPO_ROOT = PARENT_DIR;          // 兼容旧代码(暂留,实际未用)
 const WEB_HOST = "127.0.0.1";
 const WEB_PORT = parseInt(process.env.PRISIRAGENT_WEB_PORT || process.env.OIAGENT_WEB_PORT || "18802", 10);
 const WEB_URL = `http://${WEB_HOST}:${WEB_PORT}`;
-const HOTKEY = process.env.OIAGENT_SHELL_HOTKEY || "CommandOrControl+Shift+O";
-const PYTHON = process.env.OIAGENT_PYTHON || "python";
+const HOTKEY = process.env.PRISIRAGENT_SHELL_HOTKEY || process.env.OIAGENT_SHELL_HOTKEY || "CommandOrControl+Shift+O";
+const PYTHON = process.env.PRISIRAGENT_PYTHON || process.env.OIAGENT_PYTHON || "python";
 // 输入法悬浮栏 AI 按钮的 toggle 命名事件:Prisir TSF 插件 trigger_plugin("ai") SetEvent 同名事件。
 // 壳在此监听,事件触发 = 把窗口置前(等价热键的「show」半支),让用户能从输入法一键唤起对话。
 const AI_TOGGLE_EVENT = process.env.PRISIR_AI_TOGGLE_EVENT || "PrisirLingXi_AiToggle_Event";
@@ -108,7 +108,7 @@ function prisirTokenPresent() {
 }
 // 注意:绝不把 token 本体暴露给渲染层。下面的 IPC 只回布尔。
 
-// ---------- oiagent_web 子进程看护 ----------
+// ---------- prisiragent_web 子进程看护 ----------
 let webProc = null;
 let webReady = false;
 
@@ -130,7 +130,7 @@ function startWeb() {
       webReady = true; loadWhenReady(); return;   // 关键:复用已起后端也要触发加载
     }
     // 发布态:优先 spawn 打包好的 PrisirAI.exe(用户免装 Python);
-    // 开发态:exe 不存在则回退 python oiagent_web.py。
+    // 开发态:exe 不存在则回退 python prisiragent_web.py。
     const coreExe = resolveCoreExe();
     const useExe = fs.existsSync(coreExe);
     const cmd = useExe ? coreExe : PYTHON;
@@ -138,8 +138,9 @@ function startWeb() {
     // 若不带 --lan,手机遥控页永远显示「未开启」且无开启途径=死功能(用户实测反馈)。
     // 安全由令牌门禁兜底:--lan 下非回环来源必须持持久配对令牌否则 401,配对码出示在 PC 屏
     // 由人抄进手机,公网来源连 offer 都拦。本地对话主链行为不变(回环不带令牌)。
-    // 可用 OIAGENT_SHELL_NO_LAN=1 显式关回默认 127.0.0.1。
-    const wantLan = !process.env.OIAGENT_SHELL_NO_LAN;
+    // 可用 PRISIRAGENT_SHELL_NO_LAN=1 显式关回默认 127.0.0.1。
+    // 兼容旧名 OIAGENT_SHELL_NO_LAN。
+    const wantLan = !(process.env.PRISIRAGENT_SHELL_NO_LAN || process.env.OIAGENT_SHELL_NO_LAN);
     const lanArgs = wantLan ? ["--lan"] : [];
     const args = useExe
       ? ["--port", String(WEB_PORT), ...lanArgs]
@@ -547,16 +548,16 @@ if (!gotLock) {
 
 // 退出时把后端清干净:webProc.kill() 只杀直接 spawn 的进程,杀不掉它再起的孙进程,
 // 且「复用端口」路径下 webProc=null 根本不杀——残留后端占着 18802,下次启动误「复用」旧版。
-// 故除 kill 直接子进程外,再按命令行特征兜底清残留 oiagent_web/PrisirAI 后端进程。
+// 故除 kill 直接子进程外,再按命令行特征兜底清残留 prisiragent_web/PrisirAI 后端进程。
 function killBackend() {
   if (webProc) { try { webProc.kill(); } catch {} webProc = null; }
   try {
-    // 清自己 workdir 下起的 oiagent_web/PrisirAI 后端(不动别人的/系统 python)。
-    // 用 CIM 过滤命令行含 oiagent_web 或 PrisirAI.exe --port 的进程。
+    // 清自己 workdir 下起的 prisiragent_web/PrisirAI 后端(不动别人的/系统 python)。
+    // 用 CIM 过滤命令行含 prisiragent_web 或 PrisirAI.exe --port 的进程。
     spawn("powershell", ["-NoProfile", "-Command",
       "Get-CimInstance Win32_Process | Where-Object { " +
       "($_.Name -match '^(python|PrisirAI)\\.exe$') -and " +
-      "($_.CommandLine -match 'oiagent_web|PrisirAI\\.exe.*--port') } | " +
+      "($_.CommandLine -match 'prisiragent_web|PrisirAI\\.exe.*--port') } | " +
       "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
     ], { detached: true, stdio: "ignore", windowsHide: true }).unref();
     logInfo("killBackend", "sweep issued");

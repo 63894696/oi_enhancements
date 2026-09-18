@@ -142,7 +142,7 @@ def main():
         fc2.close()
 
         # [12] 截图存档:save_shot 落盘 + 元数据 + shot_image 白名单(纯函数级,不走 HTTP)
-        import oiagent_web as W  # noqa: PLC0415
+        import prisiragent_web as W  # noqa: PLC0415
         import base64 as _b64, io as _io
         from PIL import Image as _Img, ImageDraw as _ID, ImageFont as _IF
         _fnt = _IF.truetype(r"C:\Windows\Fonts\msyh.ttc", 28)

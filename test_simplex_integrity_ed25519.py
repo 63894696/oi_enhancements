@@ -68,11 +68,11 @@ class TestIdentityKey(unittest.TestCase):
 
     def test_db_prefix_isolation_no_env(self):
         """bob 铁证:env 完全无 DM_DB_PREFIX/DM_IDENTITY/SECUREDM_INSTANCE,两个不同
-        _db_prefix 的 runtime 必须隔离出**不同**身份密钥(防 oiagent/bob 串钥)。"""
+        _db_prefix 的 runtime 必须隔离出**不同**身份密钥(防 prisiragent/bob 串钥)。"""
         clean = {k: v for k, v in os.environ.items()
                  if k not in ("DM_DB_PREFIX", "DM_IDENTITY", "SECUREDM_INSTANCE")}
         with mock.patch.dict(os.environ, clean, clear=True):
-            rt_a = _mk_rt(str(self.root / "a" / "oiagent_simplex"))
+            rt_a = _mk_rt(str(self.root / "a" / "prisiragent_simplex"))
             rt_b = _mk_rt(str(self.root / "b" / "bob_simplex"))
             ka = si._load_or_create_identity(rt_a)
             kb = si._load_or_create_identity(rt_b)
@@ -275,7 +275,7 @@ class TestEd25519SignVerify(unittest.TestCase):
 
         真实 bug("两窗口交换发文件都来自 bob"):verify 用 chat_items 取回**双向**消息,
         旧代码对每条 trust 都消费,本端自己的回声(dir=me)也进 pin。bob 的公告 id 更靠后
-        → 覆盖 oiagent 的钥 → oiagent 侧把 bob 的钥钉成"对方公钥",两侧 pin 都是 bob 的钥,
+        → 覆盖 prisiragent 的钥 → prisiragent 侧把 bob 的钥钉成"对方公钥",两侧 pin 都是 bob 的钥,
         manifest 又恰好用它签 → 双向 verify 都"通过"且 sender=bob。
         修复:只消费 dir=="them" 的 trust/manifest。本测试:them(对方钥) + me(自己回声)
         同会话,且 me 排后(最易被误钉的次序)—— pin 必须是对方钥,verify 必须 verified=True

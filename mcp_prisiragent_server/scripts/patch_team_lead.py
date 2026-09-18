@@ -28,8 +28,8 @@ OBSIDIAN_EXPERIENCES_DIR.mkdir(parents=True, exist_ok=True)
 '''
 
 content = content.replace(
-    'TRACE_DIR = Path.home() / ".claude" / "oiagent_harness_training"',
-    'TRACE_DIR = Path.home() / ".claude" / "oiagent_harness_training"' + constants
+    'TRACE_DIR = Path.home() / ".claude" / "prisiragent_harness_training"',
+    'TRACE_DIR = Path.home() / ".claude" / "prisiragent_harness_training"' + constants
 )
 
 # Add save function after _append_trace
@@ -121,7 +121,7 @@ def _save_team_experience_to_obsidian(event: str, payload: dict) -> None:
             "",
             "## 关联",
             "- [[note-to-obsidian]]",
-            "- [[mcp_oiagent_routing]]",
+            "- [[mcp_prisiragent_routing]]",
             "",
             "## 原始事件",
             "```json",

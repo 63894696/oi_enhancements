@@ -21,8 +21,8 @@
 | Prisiragent Android runtime | MuMu + AVD | heartbeat 8000+ running |
 | Prisiragent host service | `aureon-prisiragent.py` | IPC 18791 live |
 | Prisiragent supervisor | `aureon-service.py` | HKCU Run key registered |
-| init.rc | `oiagent_init_android.rc` | runs after `boot_completed=1` |
-| Shell script | `oiagent_android.sh` | toybox + curl via cc-switch |
+| init.rc | `prisiragent_init_android.rc` | runs after `boot_completed=1` |
+| Shell script | `prisiragent_android.sh` | toybox + curl via cc-switch |
 | Display tool | `mumu_capture.py` | 1.5MB PNG screenshots live |
 | MIUI style | Lawnchair 1.2.0.1884 | took over AVD as default |
 | File push | `aureon-filesync.py push` | 195.7 MB/s verified |
@@ -78,7 +78,7 @@ C:/Users/Administrator/oi_enhancements/aureon/
 ```bash
 # v0.18 Prisiragent live (real)
 adb -s emulator-5556 install lawnchair.apk
-adb -s emulator-5556 shell sh /data/local/tmp/oiagent_android.sh
+adb -s emulator-5556 shell sh /data/local/tmp/prisiragent_android.sh
 curl http://127.0.0.1:18791/health
 
 # v0.19 Nix expressions (ready, pending nix binary)

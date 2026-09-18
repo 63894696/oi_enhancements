@@ -13,7 +13,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-# 用独立实例身份 + 临时库前缀,避免碰到真实 oiagent/bob 库
+# 用独立实例身份 + 临时库前缀,避免碰到真实 prisiragent/bob 库
 _TMP = tempfile.mkdtemp(prefix="sdm_a2_")
 os.environ["DM_IDENTITY"] = "a2test"
 os.environ["DM_DB_PREFIX"] = str(Path(_TMP) / "a2test_simplex")
