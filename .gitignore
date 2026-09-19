@@ -231,3 +231,10 @@ session_trace_*/
 # 安装包构建时由 build 脚本从本机 stage 目录读;克隆仓库不含模型,需单独下发。
 installer/stage/voice/sensevoice-small/model.onnx
 installer/stage/voice/sensevoice-small/tokens.json
+
+# 旧 Electron oiagent-shell 残留(已迁 Tauri prisiragent-tauri/,2026-09-19 确认)
+# 磁盘保留(每份 276MB,含完整 node_modules),但不进 git
+# 注:.tmp_extract/ 与 installer/_staging/ 已被父规则覆盖,这里显式列名方便后人理解意图
+.tmp_extract/oiagent-shell/
+installer/_staging/oiagent-shell/
+installer/_staging/oiagent-shell-clean/
