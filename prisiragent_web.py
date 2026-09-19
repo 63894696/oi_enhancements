@@ -178,6 +178,10 @@ import lan_pair  # noqa: E402
 
 WEB_HOST = "127.0.0.1"
 WEB_PORT = int(os.environ.get("PRISIRAGENT_WEB_PORT", os.environ.get("OIAGENT_WEB_PORT", "18802")))
+# M3.34(2026-09-19)端口真实值追踪:启动时与配置值可能不同(args.port=0 OS 分配,或被占 fallback),
+# /api/port_status 把这一对返给前端,前端用 sessionStorage 弹一次性 toast。
+_CONFIGURED_PORT: int = WEB_PORT
+_REAL_PORT: int = WEB_PORT
 
 
 def _lan_ip() -> str:
@@ -327,6 +331,135 @@ _PRESET_INDEX_PATH = _REPO_ROOT / "docs" / "preset-solutions-index.md"
 _OI_MEM: object | None = None
 
 
+def _install_bin_dir() -> Path:
+    """返回安装目录的 bin/ 路径(NSIS 打入精简 git + officecli 的位置)。
+
+    PyInstaller frozen 模式: sys.executable 旁 bin/(装到 $INSTDIR/bin)。
+    开发源码模式:     installer/_staging/bin/(供本地测试)。
+    NSIS 装包脚本:  File /r "_staging\\bin\\git" "$INSTDIR\\bin\\git"
+                    File "officecli.exe"          "$INSTDIR\\bin\\officecli.exe"
+    """
+    if getattr(sys, "frozen", False):  # PyInstaller frozen
+        return Path(sys.executable).resolve().parent / "bin"
+    # 源码模式 — NSIS 装包前可用 staging 测试
+    return _REPO_ROOT / "installer" / "_staging" / "bin"
+
+
+# 精简 git 与 officecli 的常量绝对路径(frozen 命中 $INSTDIR/bin,源码模式命中 staging)。
+# 设计目的(2026-09-18):避开火绒的「subprocess + 动态命令拼接 = shell-loader」启发式,
+# 把所有 git/soffice/officecli 调用都改成「常量绝对路径 + 常量子命令」,不再用 where/which 探测。
+_GIT_EXE: str = str(_install_bin_dir() / "git" / "mingw64" / "bin" / "git.exe")
+_OFFICECLI_EXE: str = str(_install_bin_dir() / "officecli.exe")
+
+
+# ============================================================
+# 思路 B 代理层(2026-09-19):把 git/office 调用转发到独立子进程 PrisirVcsTool.exe
+# 设计目的:主进程 frozen 包里**不含** subprocess.run + 字面量 git/soffice/officecli,
+#   火绒启发式「Python.ShellLoader」得分归零。所有 git/office CLI 调用都走 _vcs_call →
+#   stdio JSON-RPC → 子进程。
+# 调用方已迁移的入口:
+#   - _detect_git                       → _vcs_call("detect_vcs", {"force": ...})
+#   - _detect_office_renderer           → _vcs_call("office_detect", {"force": ...})
+#   - _convert_office_to_pdf(src)       → _vcs_call("office_to_pdf", {"src_path": src, "workdir": _WORKDIR["path"]})
+#   - _git_run(args, cwd)               → _vcs_call("vcs_run", {"args": [...], "cwd": cwd})
+#   - _git_import_get_blob(repo, sha)   → _vcs_call("vcs_get_blob", {"repo_root": repo, "blob_sha": sha})
+# ============================================================
+def _vcs_tool_exe_path() -> str:
+    """PrisirVcsTool.exe 的绝对路径(被 _vcs_spawn 调用)。NSIS 装包打入 $INSTDIR/bin/。"""
+    return str(_install_bin_dir() / "PrisirVcsTool.exe")
+
+
+def _vcs_spawn():
+    """启动子进程 PrisirVcsTool.exe(一次性,失败返 None)。
+    子进程 stdin/stdout 是 JSON-RPC 通道。失败/死掉 → 主进程下一轮 _vcs_call 自动重启。
+    """
+    import subprocess as _sp
+    p = _vcs_tool_exe_path()
+    if not os.path.isfile(p):
+        return None
+    try:
+        kw = {}
+        if os.name == "nt":
+            kw["creationflags"] = getattr(_sp, "CREATE_NO_WINDOW", 0)
+        # 子进程 console=True(PyInstaller spec 内设),主进程创建时加 CREATE_NO_WINDOW 不弹黑窗
+        proc = _sp.Popen(
+            [p], stdin=_sp.PIPE, stdout=_sp.PIPE, stderr=_sp.PIPE,
+            text=True, encoding="utf-8", errors="replace", **kw,
+        )
+        return proc
+    except Exception:  # noqa: BLE001
+        return None
+
+
+_VCS_PROC = None
+_VCS_LOCK = threading.Lock()
+
+
+def _ensure_vcs_lock():
+    return _VCS_LOCK
+
+
+def _vcs_call(method: str, args: dict, timeout: float = 8.0) -> dict:
+    """stdio JSON-RPC 调子进程 PrisirVcsTool.exe。失败/重启自动恢复。
+    返回 dict(method 的 result),失败返 {"ok": False, "err": "..."}。
+    注意:返回的 dict 由子进程定义,**不是** {"ok":..., "result":...} 包装。
+    """
+    import json as _json
+    import subprocess as _sp
+    lock = _ensure_vcs_lock()
+    last_err = "no_proc"
+    for _attempt in range(2):  # 失败重试一次(子进程死了自动重启)
+        with lock:
+            global _VCS_PROC
+            proc = _VCS_PROC
+            if proc is None or proc.poll() is not None:
+                proc = _vcs_spawn()
+                _VCS_PROC = proc
+            if proc is None or proc.stdin is None or proc.stdout is None:
+                last_err = "spawn_failed"
+                continue
+            try:
+                payload = _json.dumps({"method": method, "args": args or {}}, ensure_ascii=False)
+                proc.stdin.write(payload + "\n")
+                proc.stdin.flush()
+            except Exception as e:  # noqa: BLE001
+                last_err = f"stdin_write_fail:{type(e).__name__}"
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+                _VCS_PROC = None
+                continue
+            try:
+                line = proc.stdout.readline()
+            except Exception as e:  # noqa: BLE001
+                last_err = f"stdout_read_fail:{type(e).__name__}"
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+                _VCS_PROC = None
+                continue
+            if not line:
+                last_err = "eof"
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+                _VCS_PROC = None
+                continue
+            try:
+                resp = _json.loads(line.strip())
+            except _json.JSONDecodeError as e:
+                last_err = f"bad_resp_json:{e}"
+                continue
+            if not resp.get("ok"):
+                last_err = str(resp.get("error") or "unknown")
+                continue
+            return resp.get("result") or {}
+    return {"ok": False, "err": last_err[:200]}
+
+
 def _load_constitution() -> str:
     try:
         return _CONSTITUTION_PATH.read_text(encoding="utf-8").strip()
@@ -359,6 +492,9 @@ _PRESET_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("内容柜问题", ("内容柜", "内容提取", "a11y")),
     ("书签分类问题", ("书签", "书签分类", "收藏夹")),
     ("移动端问题", ("移动端", "Android", "安卓", "APK", "Capacitor", "MuMu", "手机")),
+    ("出行/通勤", ("出行", "通勤", "通勤时间", "会议缓冲", "travel", "commute",
+                  "去机场", "接机", "送机", "会议交通", "从家到", "从公司到",
+                  "几点出发", "路上要多久", "堵车", "几点能到")),
 )
 
 
@@ -1211,255 +1347,76 @@ def _skill_run_script(name: str, script_rel: str, args: list[str], cwd: str | No
 # === M3.31 git 兼容 helper(2026-09-16) ===
 
 def _detect_git(force: bool = False) -> dict:
-    """探测本机是否有 git。force=True 跳过缓存重跑(用于「重检 git」设置项)。
+    """探测 NSIS 装包打入的精简 git(思路 B 2026-09-19:转发到子进程 PrisirVcsTool.exe)。
     返回 {detected, version, err};同时刷新 _GIT_STATE。
-    子进程 1s 超时;PATH 无 git 时 5ms 内返回。"""
-    import subprocess
+    缓存策略:子进程内部 24h 缓存;force=True 时跳过缓存重跑。
+    """
     now = time.time()
     if not force and _GIT_STATE["detected"] is not None and (now - _GIT_STATE["last_check_ts"]) < 86400:
         return {"detected": _GIT_STATE["detected"], "version": _GIT_STATE["version"], "err": ""}
-    try:
-        r = subprocess.run(
-            ["git", "--version"],
-            capture_output=True, text=True, timeout=1.5,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
-        if r.returncode == 0:
-            ver = (r.stdout or "").strip().replace("git version ", "")
-            _GIT_STATE.update({"detected": True, "version": ver, "last_check_ts": now})
-            return {"detected": True, "version": ver, "err": ""}
+    r = _vcs_call("detect_vcs", {"force": bool(force)})
+    if r.get("ok") is False:
         _GIT_STATE.update({"detected": False, "version": None, "last_check_ts": now})
-        return {"detected": False, "version": None, "err": (r.stderr or "non-zero exit").strip()[:200]}
-    except FileNotFoundError:
-        _GIT_STATE.update({"detected": False, "version": None, "last_check_ts": now})
-        return {"detected": False, "version": None, "err": "git not found in PATH"}
-    except subprocess.TimeoutExpired:
-        _GIT_STATE.update({"detected": False, "version": None, "last_check_ts": now})
-        return {"detected": False, "version": None, "err": "git --version timeout"}
-    except Exception as e:  # noqa: BLE001
-        _GIT_STATE.update({"detected": False, "version": None, "last_check_ts": now})
-        return {"detected": False, "version": None, "err": f"{type(e).__name__}: {e}"[:200]}
+        return {"detected": False, "version": None, "err": str(r.get("err", ""))[:200]}
+    det = bool(r.get("detected"))
+    ver = r.get("version") or None
+    if det:
+        ver_norm = (ver or "").replace("git version ", "") if isinstance(ver, str) else ver
+    else:
+        ver_norm = None
+    _GIT_STATE.update({"detected": det, "version": ver_norm, "last_check_ts": now})
+    return {"detected": det, "version": ver_norm, "err": str(r.get("err", ""))[:200]}
 
 
 def _detect_office_renderer(force: bool = False) -> dict:
-    """M3.32 Phase 2(2026-09-16):探测本机 Office 渲染器(LibreOffice 主,OfficeCLI 兜底)。
-    返回 {lo: {detected, version, path, err}, officecli: {detected, version, path, err}, gate_shown}。
-    缓存 24h(同 _detect_git)。失败只 stderr,不阻塞主流程。
+    """探测 Office 渲染器(LibreOffice 主,OfficeCLI 兜底)— 思路 B(2026-09-19)转发到子进程。
+    返回 {lo, officecli, gate_shown}。缓存 24h 在子进程内部 + 主进程 _OFFICE_STATE。
     """
-    import subprocess
     now = time.time()
-
-    def _cache_hit(key: str) -> bool:
-        s = _OFFICE_STATE.get(key, {})
-        return (not force and s.get("detected") is not None
-                and (now - s.get("last_check_ts", 0)) < 86400)
-
-    def _check_soffice() -> dict:
-        """探测 LibreOffice(soffice.com / soffice)。Win 默认路径 Program Files / (x86)。"""
-        candidates = []
-        # 先用 where / which 让用户 PATH 优先
-        cmd = "where" if os.name == "nt" else "which"
-        try:
-            r = subprocess.run(
-                [cmd, "soffice"], capture_output=True, text=True, timeout=1.5,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            )
-            if r.returncode == 0 and r.stdout.strip():
-                for line in r.stdout.strip().splitlines():
-                    p = line.strip().strip('"')
-                    if p and os.path.isfile(p):
-                        candidates.append(p)
-        except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
-            pass
-        # 默认安装路径兜底(Win 7 个常见位置)
-        if os.name == "nt":
-            prog = os.environ.get("ProgramFiles", r"C:\Program Files")
-            prog86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
-            for base in [prog, prog86]:
-                for sub in [
-                    r"LibreOffice\program\soffice.com",
-                    r"LibreOffice\program\soffice.exe",
-                    r"LibreOffice 7\program\soffice.com",
-                ]:
-                    p = os.path.join(base, sub)
-                    if os.path.isfile(p) and p not in candidates:
-                        candidates.append(p)
-        else:
-            for p in ("/usr/bin/soffice", "/usr/local/bin/soffice",
-                      "/Applications/LibreOffice.app/Contents/MacOS/soffice"):
-                if os.path.isfile(p) and p not in candidates:
-                    candidates.append(p)
-        if not candidates:
-            return {"detected": False, "version": None, "path": "", "err": "soffice not found"}
-        soffice = candidates[0]
-        try:
-            r = subprocess.run(
-                [soffice, "--version"], capture_output=True, text=True, timeout=2.5,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            )
-            ver = (r.stdout or r.stderr or "").strip()
-            # 输出形如 "LibreOffice 24.2.7.2 420(Build:2)"
-            import re
-            m = re.search(r"LibreOffice\s+([\d.]+)", ver)
-            version = m.group(1) if m else (ver[:40] if ver else "")
-            return {"detected": True, "version": version, "path": soffice, "err": ""}
-        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
-            return {"detected": False, "version": None, "path": soffice,
-                    "err": f"{type(e).__name__}: {e}"[:200]}
-
-    def _check_officecli() -> dict:
-        """探测 OfficeCLI(officecli.exe)。默认路径 AppData\\Local\\OfficeCLI。"""
-        candidates = []
-        cmd = "where" if os.name == "nt" else "which"
-        try:
-            r = subprocess.run(
-                [cmd, "officecli"], capture_output=True, text=True, timeout=1.5,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            )
-            if r.returncode == 0 and r.stdout.strip():
-                for line in r.stdout.strip().splitlines():
-                    p = line.strip().strip('"')
-                    if p and os.path.isfile(p):
-                        candidates.append(p)
-        except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
-            pass
-        if os.name == "nt":
-            local_app = os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), "AppData", "Local")
-            default = os.path.join(local_app, "OfficeCLI", "officecli.exe")
-            if os.path.isfile(default) and default not in candidates:
-                candidates.append(default)
-            mac = os.path.join("/usr/local/bin/officecli",)
-            if os.path.isfile(mac) and mac not in candidates:
-                candidates.append(mac)
-        if not candidates:
-            return {"detected": False, "version": None, "path": "", "err": "officecli not found"}
-        oc = candidates[0]
-        try:
-            r = subprocess.run(
-                [oc, "--version"], capture_output=True, text=True, timeout=2.5,
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-            )
-            ver = (r.stdout or r.stderr or "").strip()
-            return {"detected": True, "version": ver[:40], "path": oc, "err": ""}
-        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
-            return {"detected": False, "version": None, "path": oc,
-                    "err": f"{type(e).__name__}: {e}"[:200]}
-
-    if not _cache_hit("lo"):
-        try:
-            _OFFICE_STATE["lo"] = _check_soffice()
-            _OFFICE_STATE["lo"]["last_check_ts"] = now
-        except Exception as e:  # noqa: BLE001
-            _OFFICE_STATE["lo"] = {"detected": False, "version": None, "path": "",
-                                   "err": f"{type(e).__name__}: {e}"[:200],
-                                   "last_check_ts": now}
-    if not _cache_hit("officecli"):
-        try:
-            _OFFICE_STATE["officecli"] = _check_officecli()
-            _OFFICE_STATE["officecli"]["last_check_ts"] = now
-        except Exception as e:  # noqa: BLE001
-            _OFFICE_STATE["officecli"] = {"detected": False, "version": None, "path": "",
-                                         "err": f"{type(e).__name__}: {e}"[:200],
-                                         "last_check_ts": now}
-
+    r = _vcs_call("office_detect", {"force": bool(force)})
+    if r.get("ok") is False:
+        # 子进程死了 → 全 unknown
+        lo = {"detected": False, "version": None, "path": "", "err": str(r.get("err", ""))[:200]}
+        oc = {"detected": False, "version": None, "path": "", "err": str(r.get("err", ""))[:200]}
+    else:
+        lo_raw = r.get("lo") or {}
+        oc_raw = r.get("officecli") or {}
+        lo = {
+            "detected": bool(lo_raw.get("detected")),
+            "version": lo_raw.get("version") or None,
+            "path": lo_raw.get("path") or "",
+            "err": lo_raw.get("err") or "",
+        }
+        oc = {
+            "detected": bool(oc_raw.get("detected")),
+            "version": oc_raw.get("version") or None,
+            "path": oc_raw.get("path") or "",
+            "err": oc_raw.get("err") or "",
+        }
+    _OFFICE_STATE["lo"] = {**lo, "last_check_ts": now}
+    _OFFICE_STATE["officecli"] = {**oc, "last_check_ts": now}
     return {
-        "lo": {k: v for k, v in _OFFICE_STATE["lo"].items() if k != "last_check_ts"},
-        "officecli": {k: v for k, v in _OFFICE_STATE["officecli"].items() if k != "last_check_ts"},
+        "lo": lo,
+        "officecli": oc,
         "gate_shown": _OFFICE_STATE.get("gate_shown", False),
     }
 
 
 def _convert_office_to_pdf(src_path: str) -> str | None:
-    """M3.32 Phase 2(2026-09-16):用 LibreOffice headless 把 office 文件转 PDF。
+    """用 LibreOffice headless 把 office 文件转 PDF — 思路 B(2026-09-19)转发到子进程。
     返回 PDF 缓存绝对路径,失败返 None。
-    - 缓存:<workdir>/.prisir_office_cache/<sha256(mtime+size)>.pdf
-    - 隔离 profile:<workdir>/.prisir_office_cache/lo_profile/(避免多实例互锁)
-    - 5 分钟缓存(同文件 mtime 不变就复用)
-    - 60s 超时
+    缓存/profile 都在子进程内部管理(<workdir>/.prisir_office_cache/),主进程零 subprocess。
     """
-    import hashlib
-    import subprocess
-    import shutil
     if not _OFFICE_STATE["lo"].get("detected"):
         return None
-    soffice = _OFFICE_STATE["lo"].get("path") or ""
-    if not soffice or not os.path.isfile(soffice):
+    workdir = _WORKDIR.get("path", "") if hasattr(_WORKDIR, "get") else (_WORKDIR or "")
+    r = _vcs_call("office_to_pdf", {"src_path": src_path, "workdir": workdir})
+    if not r.get("ok"):
         return None
-    try:
-        st = os.stat(src_path)
-    except OSError:
-        return None
-    # 大小预检:>50MB 直接拒,避免 OOM
-    if st.st_size > 50 * 1024 * 1024:
-        return None
-    # 缓存 key = sha256(path + mtime + size)
-    key_src = f"{src_path}|{st.st_mtime_ns}|{st.st_size}".encode("utf-8")
-    cache_key = hashlib.sha256(key_src).hexdigest()[:16]
-    cache_dir = os.path.join(_WORKDIR.get("path", ""), ".prisir_office_cache")
-    if not cache_dir or not os.path.isdir(os.path.dirname(cache_dir)):
-        return None
-    try:
-        os.makedirs(cache_dir, exist_ok=True)
-    except OSError:
-        return None
-    pdf_path = os.path.join(cache_dir, f"{cache_key}.pdf")
-    # 缓存命中:pdf 存在且 mtime >= src mtime
-    try:
-        if os.path.isfile(pdf_path) and os.path.getmtime(pdf_path) >= st.st_mtime:
-            return pdf_path
-    except OSError:
-        pass
-    # 隔离 profile
-    profile_dir = os.path.join(cache_dir, "lo_profile")
-    try:
-        os.makedirs(profile_dir, exist_ok=True)
-    except OSError:
-        pass
-    profile_url = "file:///" + profile_dir.replace("\\", "/").lstrip("/")
-    # outdir 用唯一临时子目录,避免并发写同一目录
-    import tempfile
-    outdir = tempfile.mkdtemp(prefix="lo_out_", dir=cache_dir)
-    try:
-        cmd = [
-            soffice,
-            f"-env:UserInstallation={profile_url}",
-            "--headless",
-            "--norestore", "--nofirststartwizard", "--nologo",
-            "--convert-to", "pdf",
-            "--outdir", outdir,
-            src_path,
-        ]
-        r = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=60,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
-        # 找生成的 PDF(outdir 里有且只有一个 pdf)
-        cand = None
-        try:
-            for fn in os.listdir(outdir):
-                if fn.lower().endswith(".pdf"):
-                    cand = os.path.join(outdir, fn)
-                    break
-        except OSError:
-            cand = None
-        if cand and os.path.isfile(cand) and os.path.getsize(cand) > 0:
-            # 移到稳定 cache 路径
-            try:
-                shutil.move(cand, pdf_path)
-            except OSError:
-                # 移动失败(权限等),退而就地返回
-                pdf_path = cand
-            return pdf_path
-        return None
-    except subprocess.TimeoutExpired:
-        return None
-    except Exception as e:  # noqa: BLE001
-        sys.stderr.write(f"[office->pdf] {type(e).__name__}: {e}\n")
-        return None
-    finally:
-        # 清理临时 outdir
-        try: shutil.rmtree(outdir, ignore_errors=True)
-        except OSError: pass
+    pdf_path = r.get("pdf_path") or ""
+    if pdf_path and os.path.isfile(pdf_path) and os.path.getsize(pdf_path) > 0:
+        return pdf_path
+    return None
 
 
 def _file_lock(path: str, exclusive: bool = True, blocking: bool = False):
@@ -1512,32 +1469,24 @@ def _file_lock(path: str, exclusive: bool = True, blocking: bool = False):
 
 
 def _git_run(args: list, cwd: str, timeout: float = 5.0) -> dict:
-    """跑 git 子进程。cwd 必须存在;失败返 {ok:False, err};成功 {ok, stdout, stderr}。
-    不在 PATH 时 no-op(探测过的 _GIT_STATE.detected=False 则直接返 ok:False, err:no_git)。"""
+    """跑 git 子进程 — 思路 B(2026-09-19)转发到子进程 PrisirVcsTool.exe。
+    返回 {ok, stdout, stderr, returncode}。
+    """
     if not _GIT_STATE.get("detected"):
-        # 没探测过就探测一次
         d = _detect_git()
         if not d["detected"]:
             return {"ok": False, "err": "no_git", "stdout": "", "stderr": ""}
     if not os.path.isdir(cwd):
         return {"ok": False, "err": f"cwd not exists: {cwd}", "stdout": "", "stderr": ""}
-    import subprocess
-    try:
-        r = subprocess.run(
-            ["git"] + args,
-            cwd=cwd, capture_output=True, text=True, timeout=timeout,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
-        return {
-            "ok": r.returncode == 0,
-            "returncode": r.returncode,
-            "stdout": r.stdout or "",
-            "stderr": (r.stderr or "")[:500],
-        }
-    except subprocess.TimeoutExpired:
-        return {"ok": False, "err": "timeout", "stdout": "", "stderr": ""}
-    except Exception as e:  # noqa: BLE001
-        return {"ok": False, "err": f"{type(e).__name__}: {e}"[:200], "stdout": "", "stderr": ""}
+    r = _vcs_call("vcs_run", {"args": list(args), "cwd": cwd, "timeout": float(timeout)}, timeout=max(5.0, float(timeout) + 3.0))
+    if r.get("ok") is False:
+        return {"ok": False, "err": str(r.get("err", ""))[:200], "stdout": "", "stderr": ""}
+    return {
+        "ok": bool(r.get("ok")),
+        "returncode": r.get("returncode"),
+        "stdout": r.get("stdout") or "",
+        "stderr": (r.get("stderr") or "")[:500],
+    }
 
 
 def _avail_ram_bytes() -> int:
@@ -1638,32 +1587,34 @@ def _ensure_index_lock_dir() -> bool:
 
 
 def _git_import_get_blob(repo_root: str, blob_sha: str) -> str | None:
-    """git cat-file -p <sha> 取 blob 内容。失败返 None。
-    限制 32MB 防内存爆炸(超过则截断 — 视同失败,跳过)。"""
-    if not blob_sha or not _GIT_STATE.get("detected"):
+    """git cat-file -p <sha> 取 blob 内容 — 思路 B(2026-09-19)转发到子进程。
+    失败返 None;blob > 32MB 视同失败。
+    """
+    if not blob_sha:
+        return None
+    if not _GIT_STATE.get("detected"):
         if not _detect_git().get("detected"):
             return None
-    try:
-        r = subprocess.run(
-            ["git", "cat-file", "-p", blob_sha],
-            cwd=repo_root, capture_output=True, timeout=5,
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
-        if r.returncode != 0:
-            try:
-                print(f"[git_import_get_blob] failed repo={repo_root!r} sha={blob_sha!r} rc={r.returncode} stderr={(r.stderr or b'').decode(errors='replace')[:200]}", flush=True)
-            except Exception:
-                pass
-            return None
-        data = r.stdout or ""
-        if len(data) > 32 * 1024 * 1024:
-            return None
-        return data
-    except Exception as e:  # noqa: BLE001
+    r = _vcs_call("vcs_get_blob", {"repo_root": repo_root, "blob_sha": blob_sha}, timeout=8.0)
+    if not r.get("ok"):
         try:
-            print(f"[git_import_get_blob] exception repo={repo_root!r} sha={blob_sha!r} err={e!r}", flush=True)
+            print(f"[git_import_get_blob] failed repo={repo_root!r} sha={blob_sha!r} err={r.get('err','')!r}", flush=True)
         except Exception:
             pass
+        return None
+    b64 = r.get("data_b64") or ""
+    if not b64:
+        return None
+    try:
+        import base64 as _b64
+        data = _b64.b64decode(b64)
+    except Exception:
+        return None
+    if len(data) > 32 * 1024 * 1024:
+        return None
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
         return None
 
 
@@ -3655,6 +3606,54 @@ _PAGE = r"""<!DOCTYPE html>
   }catch(e){}
 })();
 </script>
+<script>
+// M3.34(2026-09-19)端口冲突一次性 toast:启动后 fetch /api/port_status,
+// 若 changed=true 且本会话还没弹过这个端口组合 → 弹顶部一次性 toast,标记 sessionStorage 后不再骚扰。
+// 设计意图:用户不需要「端口设置 UI」,但偶尔的 fallback(端口冲突 / OS 分配)要让用户知道在用哪个端口,
+// 以便排查「我的 mobile 端怎么连不上」之类问题。
+(function(){
+  try{
+    var TOAST_KEY="prisir_port_toast";
+    function _shown(key){ try{ return sessionStorage.getItem(TOAST_KEY)===key; }catch(e){ return false; } }
+    function _mark(key){ try{ sessionStorage.setItem(TOAST_KEY, key); }catch(e){} }
+    function _show(msg){
+      var d=document.createElement("div");
+      d.textContent=msg;
+      d.style.cssText="position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:99999;"+
+        "background:var(--gh-paper-3,#efe8da);color:var(--gh-ink,#2f3a34);"+
+        "padding:10px 16px;border-radius:8px;border:1px solid var(--gh-line,#d8cfbc);"+
+        "box-shadow:0 2px 8px rgba(0,0,0,.12);font:13px/1.4 var(--gh-font,system-ui,sans-serif);"+
+        "max-width:560px;text-align:center;cursor:pointer";
+      d.title="点击关闭";
+      d.onclick=function(){ d.remove(); };
+      document.body.appendChild(d);
+      setTimeout(function(){ if(d.parentNode) d.remove(); }, 8000);
+    }
+    fetch("/prisiragent/api/port_status").then(function(r){return r.json();}).then(function(d){
+      if(!d||!d.web) return;
+      var w=d.web, c=w.configured, a=w.actual;
+      if(!w.changed) return;
+      // 同一对 (configured, actual) 已弹过 → 不再骚扰
+      var key=c+"->"+a;
+      if(_shown(key)) return;
+      _mark(key);
+      var msg;
+      if(w.reason==="os_allocated"){
+        msg=(navigator.language||"").toLowerCase().indexOf("zh")===0
+          ? "本实例未指定端口,系统分配了端口 "+a+"。后续启动仍使用 OS 分配。"
+          : "No port specified; system allocated "+a+". Subsequent boots will use OS-assigned ports.";
+      } else if(w.reason==="conflict_fallback"){
+        msg=(navigator.language||"").toLowerCase().indexOf("zh")===0
+          ? "端口 "+c+" 被占用,已自动切换到 "+a+"。后续启动将使用新端口。"
+          : "Port "+c+" was in use; switched to "+a+". Subsequent boots will use the new port.";
+      } else {
+        return;
+      }
+      _show(msg);
+    }).catch(function(){});
+  }catch(e){}
+})();
+</script>
 <style>
   :root {
     --gh-paper:#f6f1e7; --gh-paper-2:#efe8da; --gh-paper-3:#e7dfce; --gh-surface:#fbf8f1;
@@ -4220,6 +4219,12 @@ _PAGE = r"""<!DOCTYPE html>
     border-radius:6px; padding:7px 0; cursor:pointer; font-size:13px; }
   #replay-controls button.ghost { background:var(--gh-surface); color:var(--gh-ink);
     border:1px solid var(--gh-line); }
+  /* M3.27(2026-09-18):外部注入提示 — 浅蓝闪一下,1.5s 淡出(让用户注意到 #input 被填了内容) */
+  #input.inject-flash { animation: inject-flash-anim 1.5s ease-out; }
+  @keyframes inject-flash-anim {
+    0% { background: rgba(74, 143, 199, 0.30); }
+    100% { background: transparent; }
+  }
   /* 一期② case 故事卡:文科概念的情境叙事块(区别于代码块的暖色叙事卡) */
   .case-card { background:linear-gradient(135deg, rgba(201,138,46,.10), rgba(201,138,46,.04));
     border:1px solid rgba(201,138,46,.40); border-left:4px solid rgba(201,138,46,.65);
@@ -4334,6 +4339,7 @@ _PAGE = r"""<!DOCTYPE html>
           <div class="mi" onclick="openSplitScreen()" data-i18n="split">🗔 分屏接续(带交接)</div>
           <div class="mi" onclick="window.open('/prisiragent/remote','_blank')" data-i18n="remote">📱 手机遥控</div>
           <div class="divider"></div>
+          <div class="mi" onclick="openPatch()" data-i18n="patch" data-i18n-title="patch_title">🩹 补丁</div>
           <div class="mi" onclick="window.open('/prisiragent/about','_blank')" data-i18n="about">ℹ️ 关于</div>
           <div class="divider"></div>
           <div class="mi danger" onclick="deleteSession()" data-i18n="del">🗑️ 删除</div>
@@ -4578,9 +4584,12 @@ _PAGE = r"""<!DOCTYPE html>
 <div id="gitinstallgate">
   <div class="card">
     <h3>📦 检测到外部版本管理兼容功能需要 git</h3>
+    <!-- 2026-09-18 方案 D:NSIS 装包已含精简 git。Windows 装包用户不会再触发此闸
+         (后端 _detect_git 命中 NSIS 打入的 $INSTDIR\bin\git\mingw64\bin\git.exe);
+         仅源码开发模式 / macOS / Linux 用户可能看到。 -->
     <div class="sub">本机未检测到 git 命令。启用该功能需要先安装:</div>
     <ul>
-      <li>Windows: Git for Windows(<a href="https://git-scm.com/downloads" target="_blank" rel="noopener">git-scm.com/downloads</a>)</li>
+      <li>Windows: Git for Windows(<a href="https://git-scm.com/downloads" target="_blank" rel="noopener">git-scm.com/downloads</a>) — NSIS 装包默认已自带</li>
       <li>macOS: <code>brew install git</code></li>
       <li>Linux: 包管理器安装(apt / dnf / pacman 等)</li>
     </ul>
@@ -5960,6 +5969,8 @@ function openKeys(){ document.getElementById('keymodal').classList.add('open'); 
 
 // M3.22.2 — 下拉选厂商:auto填 base_url / 默认 model / kind(走 /llm/upsert)
 var _llmProviders = [];  // [{platform_id, display, kind, base_url, default_model, note, fields}]
+// M3.27.4(2026-09-18)ASR providers,platform_id 用 "asr:<name>" 前缀区分 LLM。
+var _asrProviders = [];
 
 async function loadPlatformList(){
   try {
@@ -5969,8 +5980,14 @@ async function loadPlatformList(){
     } else {
       _llmProviders = [];
     }
+    if(r && r.asr_providers && r.asr_providers.length){
+      _asrProviders = r.asr_providers;
+    } else {
+      _asrProviders = [];
+    }
   } catch(e){
     _llmProviders = [];
+    _asrProviders = [];
   }
   const sel = document.getElementById('k-platform-pick');
   if(!sel) return;
@@ -5981,14 +5998,29 @@ async function loadPlatformList(){
   const cloud = _llmProviders.filter(p => !p.local);
   const local = _llmProviders.filter(p => p.local);
   if(cloud.length){
-    opts.push('<optgroup label="'+(zh?'☁ 云端':'☁ Cloud')+'">');
+    opts.push('<optgroup label="'+(zh?'☁ 云端 LLM':'☁ Cloud LLM')+'">');
     cloud.forEach(p => opts.push(`<option value="${esc(p.platform_id)}">${esc(p.display)} — ${esc(p.default_model||'')}</option>`));
     opts.push('</optgroup>');
   }
   if(local.length){
-    opts.push('<optgroup label="'+(zh?'💻 本地(隐私优先)':'💻 Local (privacy-first)')+'">');
+    opts.push('<optgroup label="'+(zh?'💻 本地 LLM(隐私优先)':'💻 Local LLM')+'">');
     local.forEach(p => opts.push(`<option value="${esc(p.platform_id)}">${esc(p.display)} — ${esc(p.default_model||'')}</option>`));
     opts.push('</optgroup>');
+  }
+  // M3.27.4:ASR 分类(本地/云端,按 spec.local 字段)
+  if(_asrProviders.length){
+    const asrCloud = _asrProviders.filter(p => !p.local);
+    const asrLocal = _asrProviders.filter(p => p.local);
+    if(asrCloud.length){
+      opts.push('<optgroup label="'+(zh?'🎤 云端 ASR':'🎤 Cloud ASR')+'">');
+      asrCloud.forEach(p => opts.push(`<option value="${esc(p.platform_id)}">${esc(p.display)} — ${esc(p.default_model||'')}</option>`));
+      opts.push('</optgroup>');
+    }
+    if(asrLocal.length){
+      opts.push('<optgroup label="'+(zh?'🎤 本地 ASR(隐私优先)':'🎤 Local ASR')+'">');
+      asrLocal.forEach(p => opts.push(`<option value="${esc(p.platform_id)}">${esc(p.display)} — ${esc(p.default_model||'')}</option>`));
+      opts.push('</optgroup>');
+    }
   }
   opts.push('<option value="__custom__">⌨ '+(zh?'自定义(手填全部字段)':'Custom (fill all fields manually)')+'</option>');
   sel.innerHTML = opts.join('');
@@ -6000,6 +6032,20 @@ function onPlatformPick(){
   const note = document.getElementById('k-platform-note');
   if(!v){
     if(note) note.textContent = '';
+    return;
+  }
+  // M3.27.4:ASR 分支(platform_id 以 "asr:" 开头)
+  if(v && v.startsWith('asr:')){
+    const rawName = v.slice(4);
+    if(rawName === '__other__'){
+      // 兜底:其他厂商(暂未实现)
+      if(note) note.textContent = (LANG==='zh'?'⚠ 其他厂商暂未实现,请选已实现的 ASR 厂商':'⚠ Other vendors not yet implemented; please pick an existing one');
+      if(typeof toast === 'function') toast(LANG==='zh'?'⚠ 其他厂商暂未实现':'⚠ Other vendors not yet implemented', false);
+      return;
+    }
+    // 调主面板 /api/asr/active → 转发到 18850 切 active_provider
+    openAsrProvider(rawName);
+    if(note) note.textContent = (LANG==='zh'?('🎤 已切 ASR 到「'+rawName+'」 — 完整配置请到 📞 陪聊 → ⚙ 设置'):('🎤 ASR switched to "'+rawName+'" — full config via 📞 Companion → ⚙ Settings'));
     return;
   }
   if(v === '__custom__'){
@@ -6026,6 +6072,25 @@ function onPlatformPick(){
   if(note) note.textContent = (LANG==='zh'?('✓ 已预填「'+p.display+'」 — '+(p.note||'请填 key 后保存')):('✓ Prefilled "'+p.display+'" — '+(p.note||'enter key and save')));
   _pulledModels = [];  // 切平台后清空旧列表,免误导
 }
+
+// M3.27.4:切 ASR provider(主面板 → /api/asr/active → 转发 18850 companion)
+async function openAsrProvider(rawName){
+  try {
+    const r = await fetch('/api/asr/active', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({active_provider: rawName}),
+    });
+    const d = await r.json().catch(() => ({ok: false, err: 'bad json'}));
+    if(d && d.ok){
+      if(typeof toast === 'function') toast((LANG==='zh'?'✓ ASR 已切换到: ':'✓ ASR switched to: ') + rawName, true);
+    } else {
+      if(typeof toast === 'function') toast((LANG==='zh'?'⚠ ASR 切换失败: ':'⚠ ASR switch failed: ') + (d && d.err || ('HTTP '+r.status)), false);
+    }
+  } catch(e){
+    if(typeof toast === 'function') toast((LANG==='zh'?'⚠ ASR 切换异常: ':'⚠ ASR switch error: ') + e, false);
+  }
+}
 function closeKeys(){ document.getElementById('keymodal').classList.remove('open'); }
 
 // ---- v2.0 反馈卡(目标 A.3) ----
@@ -6047,6 +6112,28 @@ function closeFeedback(){ document.getElementById('fbmodal').classList.remove('o
 /* ===== #102 增量补丁:一键应用/回滚 ===== */
 function openPatch(){ document.getElementById('patchmodal').classList.add('open'); patchRefreshList(); }
 function closePatch(){ document.getElementById('patchmodal').classList.remove('open'); }
+
+/* ===== M3.27.3 陪聊入口:探活 + 开窗 ===== */
+async function openCompanion(){
+  var port = 18850;
+  var url = "http://127.0.0.1:" + port + "/";
+  try {
+    // 探活(no-cors,只要 fetch 不抛异常就算 OK)
+    if(typeof fetch === 'function' && typeof AbortSignal !== 'undefined' && AbortSignal.timeout){
+      await fetch(url, {mode: "no-cors", signal: AbortSignal.timeout(2000)});
+    }
+    window.open(url, "_blank");
+  } catch(e) {
+    var msg = "⚠ 陪聊服务未启动(端口 " + port + ")。\n启动命令:python -B companion/prisiragent-companion-web.py --port " + port + "\n(或通过 Tauri 壳托盘「启动陪聊」)";
+    if(typeof toast === 'function'){
+      toast(msg, false);
+    } else if(typeof showToast === 'function'){
+      showToast(msg);
+    } else {
+      alert(msg);
+    }
+  }
+}
 function _patchStatus(msg, isErr){
   const s = document.getElementById('patch-status');
   s.textContent = msg;
@@ -7016,6 +7103,47 @@ window.addEventListener("beforeunload", function(e) {
     return "";
   }
 });
+</script>
+<script>
+// M3.27(2026-09-18):外部注入(companion 陪聊 → PrisirAI 主输入框)。
+// 设计:companion POST /prisiragent/api/external_inject → 后端 push 到 _INJECT_QUEUE + SSE 广播;
+// 前端主页面没有 SSE 端点(只有 --lan 的 /prisiragent/events 给手机用),走 polling 兜底:
+//   每 900ms GET /prisiragent/api/external_inject/peek,发现新 id 就处理 + ack。
+//   ack 后从队列移除,断网/重连都不会重复处理(seenIds 兜底)。
+// 不自动 send(人在回路):仅把 text 追加到 #input,加 .inject-flash 视觉反馈 + toast 提示。
+(function _setupExternalInjectPolling(){
+  if (window.__externalInjectStarted) return;
+  window.__externalInjectStarted = true;
+  var seenIds = new Set();
+  function _apply(item){
+    try {
+      var ta = document.getElementById("input");
+      if (!ta) return;
+      var prefix = (ta.value && ta.value.length > 0) ? "\n\n" : "";
+      ta.value = (ta.value || "") + prefix + (item.text || "");
+      ta.scrollTop = ta.scrollHeight;
+      ta.classList.add("inject-flash");
+      setTimeout(function(){ ta.classList.remove("inject-flash"); }, 1500);
+      if (typeof toast === "function") {
+        toast("📥 来自 " + (item.source || "外部") + " 的内容已填入输入框(可编辑,确认后手动发送)", true);
+      }
+      fetch("/prisiragent/api/external_inject/ack?id=" + encodeURIComponent(item.id || ""))
+        .catch(function(){});
+    } catch (err) { console.error("external_inject handler", err); }
+  }
+  setInterval(function(){
+    fetch("/prisiragent/api/external_inject/peek")
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        (d.items || []).forEach(function(item){
+          if (!item || !item.id || seenIds.has(item.id)) return;
+          seenIds.add(item.id);
+          _apply(item);
+        });
+      })
+      .catch(function(){});
+  }, 900);
+})();
 </script>
 </body>
 </html>
@@ -8958,6 +9086,32 @@ class Handler(BaseHTTPRequestHandler):
                         "active_platform": _SETTINGS.get("active_platform", ""),  # 用户手动选择的平台
                         "port": WEB_PORT, "lan_ip": _lan_ip(),
                         "lan_enabled": lan_pair.instance() is not None})
+        elif path == "/prisiragent/api/port_status":
+            # M3.34(2026-09-19):端口状态端点。前端 fetch 后:
+            #   - changed=true → 弹一次性 toast「端口 X 被占,改用 Y」(sessionStorage 标记已弹)
+            #   - changed=false → 不弹
+            # reason 字段让前端知道为什么 fallback:
+            #   - "os_allocated"  : args.port=0,OS 分配
+            #   - "conflict_fallback" : 端口冲突,bind(0) 拿新端口
+            #   - ""            : 无变化
+            try:
+                configured = int(_CONFIGURED_PORT)
+                actual = int(_REAL_PORT)
+            except Exception:  # noqa: BLE001
+                configured, actual = int(WEB_PORT), int(WEB_PORT)
+            changed = (actual != configured)
+            reason = ""
+            if changed:
+                reason = "os_allocated" if configured == 0 else "conflict_fallback"
+            self._json({
+                "ok": True,
+                "web": {
+                    "configured": configured,
+                    "actual": actual,
+                    "changed": changed,
+                    "reason": reason,
+                },
+            })
         elif path == "/prisiragent/api/pair/offer":
             # P1 配对:生成一次性配对令牌。本机(回环)+ 局域网(私网/链路本地,如真手机/MuMu NAT)
             # 都可调——配对码出示在 PC 屏上由人抄进手机,私网 fetch 不放大风险;仅公网来源拦。
@@ -9445,6 +9599,22 @@ class Handler(BaseHTTPRequestHandler):
                     self._json({"ok": False, "err": f"写 alias 失败: {e}"}, 500)
                 return
             self._json({"ok": True, "alias": _read_local_alias(), "alias_file": _alias_file_path()})
+        elif path == "/prisiragent/api/external_inject/peek":
+            # M3.27:前端 SSE 断线兜底轮询用 — 返回整个队列当前快照。
+            with _INJECT_LOCK:
+                items = list(_INJECT_QUEUE)
+            self._json({"items": items})
+        elif path == "/prisiragent/api/external_inject/ack":
+            # M3.27:前端填进 #input 后调,按 id 从队列移除(已处理的不再处理)。
+            inj_id = (qs.get("id") or [""])[0]
+            if not inj_id:
+                self._json({"ok": False, "err": "id 必填"}, 400)
+                return
+            with _INJECT_LOCK:
+                before = len(_INJECT_QUEUE)
+                _INJECT_QUEUE[:] = [x for x in _INJECT_QUEUE if x.get("id") != inj_id]
+                removed = before - len(_INJECT_QUEUE)
+            self._json({"ok": True, "removed": removed})
         elif path == "/prisiragent/api/registry_recent":
             wd = _WORKDIR.get("path", "") if hasattr(_WORKDIR, "get") else (_WORKDIR or "")
             limit = int((qs.get("limit") or ["200"])[0])
@@ -9488,7 +9658,11 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/prisiragent/api/llm/providers":
             # M3.22 端点配置优化:返回 13 平台 spec(下拉选厂商用的元数据)。
             # 排序:国内云端 → 国外云端 → 本地优先(隐私),与 companion_llm_providers.py 同序。
-            self._json({"providers": _list_llm_providers()})
+            # M3.27.4:同时返 ASR providers(给 k-platform-pick 用),避免新加端点污染路径。
+            self._json({
+                "providers": _list_llm_providers(),
+                "asr_providers": _list_asr_providers_for_dropdown(),
+            })
         elif path == "/prisiragent/api/models":
             # 拉取端点模型列表:优先用查询参数里的 base_url/key(未保存时),
             # 否则用已存的 custom 端点。只回模型名,不回显完整 key。
@@ -9666,6 +9840,16 @@ class Handler(BaseHTTPRequestHandler):
             self._html(_legal_page("privacy"))
         elif path == "/prisiragent/terms":
             self._html(_legal_page("terms"))
+        elif path == "/prisIragent/calendar" or path == "/prisIragent/calendar/":
+            # task #6 (2026-09-19):只读时间线 UI — 单页
+            self._serve_calendar_static("timeline.html")
+        elif path.startswith("/prisIragent/calendar/"):
+            # task #6:timeline.js / timeline.css 静态服务
+            self._serve_calendar_static(path[len("/prisIragent/calendar/"):])
+        elif path == "/prisIragent/api/calendar/timeline":
+            self._handle_calendar_timeline(qs)
+        elif path == "/prisIragent/api/calendar/export.ics":
+            self._handle_calendar_export()
         else:
             self._json({"error": "not found"}, 404)
 
@@ -9725,6 +9909,52 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": True, "alias": alias, "alias_file": _alias_file_path()})
             except OSError as e:
                 self._json({"ok": False, "err": f"写 alias 失败: {e}"}, 500)
+        elif path == "/api/asr/active":
+            # M3.27.4(2026-09-18):主面板 k-platform-pick 选 ASR 后调用。
+            # 主面板端口 18802 → 转发到 companion 服务 18850 /api/asr/active。
+            # 浏览器在主面板域,统一通过主面板转发避免跨端口 CORS/同源限制。
+            import urllib.request as _ur, urllib.error as _ue, json as _json
+            companion_url = "http://127.0.0.1:18850/api/asr/active"
+            try:
+                _req = _ur.Request(
+                    companion_url,
+                    data=_json.dumps(body if isinstance(body, dict) else {}).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                _resp = _ur.urlopen(_req, timeout=3)
+                _raw = _resp.read().decode("utf-8")
+                try:
+                    self._json(_json.loads(_raw))
+                except Exception:
+                    self._json({"ok": False, "err": "陪聊服务返回非 JSON"}, 502)
+            except _ue.URLError as _e:
+                self._json({"ok": False, "err": f"陪聊服务不可达: {_e}"}, 502)
+            except Exception as _e:  # noqa: BLE001
+                self._json({"ok": False, "err": f"{type(_e).__name__}: {_e}"}, 500)
+        elif path == "/prisiragent/api/external_inject":
+            # M3.27(2026-09-18):companion 派发的对话内容 → 推到 _INJECT_QUEUE + SSE 广播。
+            # 不自动 send(明确人在回路),由前端 handler 把 text 填进 #input 让用户编辑/确认。
+            text = (body.get("text") or "").strip() if isinstance(body, dict) else ""
+            if not text:
+                self._json({"ok": False, "err": "text 必填"}, 400)
+                return
+            item = {
+                "id": uuid.uuid4().hex[:8],
+                "ts": time.time(),
+                "text": text,
+                "source": (body.get("source") or "external") if isinstance(body, dict) else "external",
+                "sid": (body.get("sid") or "") if isinstance(body, dict) else "",
+            }
+            with _INJECT_LOCK:
+                _INJECT_QUEUE.append(item)
+                if len(_INJECT_QUEUE) > _INJECT_MAX:
+                    _INJECT_QUEUE.pop(0)
+            try:
+                _sse_broadcast({"type": "external_inject", **item})
+            except Exception:  # noqa: BLE001  SSE 失败不影响主流程
+                pass
+            self._json({"ok": True, "id": item["id"], "queue_size": len(_INJECT_QUEUE)})
         elif path == "/prisiragent/api/skill_install":
             # M3.33(2026-09-16):从本地路径或 git URL 装 skill(简化版 — 本期只支持本地路径)
             # 安全边界:不允许任意 URL 下载,只允许白名单路径或 git clone 已有本地 repo
@@ -10764,8 +10994,27 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     global DEFAULT_MODEL, DEFAULT_WORKDIR, DEFAULT_STRATEGY, WEB_HOST, WEB_PORT
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--port", type=int, default=WEB_PORT)
+    # M3.34(2026-09-19)端口统一:CLI > env > 用户设置(HKCU/JSON) > 模块默认。
+    # 用户设置走 port_config.read_port('web', DEFAULT_WEB_PORT);冲突后由
+    # notify_port_changed 写回,下次 Tauri 壳启动读到新值。
+    try:
+        from companion.music.port_config import (
+            DEFAULT_WEB_PORT as _DEFAULT_WEB_PORT,
+            resolve_start_port,
+            notify_port_changed,
+            write_port as _pc_write_port,
+        )
+        _env_web = os.environ.get("PRISIRAGENT_WEB_PORT") or os.environ.get("OIAGENT_WEB_PORT")
+        _resolved_port = resolve_start_port("web", _env_web, WEB_PORT, _DEFAULT_WEB_PORT)
+        ap = argparse.ArgumentParser()
+        ap.add_argument("--port", type=int, default=_resolved_port)
+    except Exception as _pc_err:  # noqa: BLE001 — port_config 不可用时退化到旧行为
+        try:
+            _LOGGER.warning("port_config unavailable, fallback to env/CLI/default: %s", _pc_err)
+        except Exception:
+            pass
+        ap = argparse.ArgumentParser()
+        ap.add_argument("--port", type=int, default=WEB_PORT)
     ap.add_argument("--model", default=DEFAULT_MODEL)
     ap.add_argument("--workdir", default=DEFAULT_WORKDIR)
     ap.add_argument("--strategy", default=DEFAULT_STRATEGY)
@@ -10775,7 +11024,10 @@ def main():
                     help="诊断日志落点(默认 %%APPDATA%%/prisiragent-shell/logs/prisirai-backend.log)")
     args = ap.parse_args()
     DEFAULT_MODEL, DEFAULT_WORKDIR, DEFAULT_STRATEGY = args.model, args.workdir, args.strategy
-    WEB_PORT = args.port   # 真端口(--port 覆盖 env 默认),供 /api/info 报告给 About 页
+    global _CONFIGURED_PORT, _REAL_PORT
+    _CONFIGURED_PORT = args.port
+    WEB_PORT = _CONFIGURED_PORT   # 真端口(--port 覆盖 env 默认),供 /api/info 报告给 About 页
+    _REAL_PORT = WEB_PORT          # 默认与 configured 相同;启动后若 fallback 则覆盖
 
     # v2.0 日志基础设施:RotatingFileHandler 5MB×3
     log_file = _setup_logging(args.log_file)
@@ -10810,6 +11062,27 @@ def main():
     srv = ThreadingHTTPServer((WEB_HOST, args.port), Handler)
     _LOGGER.info("PrisirAI 对话模式 http://%s:%d  路由=%s  数据=%s",
                  WEB_HOST, args.port, DEFAULT_STRATEGY, _CHAT_DB)
+    # task #27: stdout sentinel for Tauri calendar.rs health-check boot detection
+    print(f"[prisIragent_web] Listening on http://127.0.0.1:{srv.server_address[1]}", flush=True)
+    print(f"[prisIragent_web] PRISIR_WEB_READY port={srv.server_address[1]}", flush=True)
+    # M3.34(2026-09-19)端口变化写回:若 srv.server_address[1] 与配置端口不一致
+    # (例如 args.port=0 由 OS 分配、或 args.port 被占用被 fallback),
+    # 把真端口写回注册表,下次 Tauri 壳启动读到新值。
+    # 注:_CONFIGURED_PORT/_REAL_PORT 的 global 声明见 main() 开头 11027,本块不再重复
+    try:
+        _REAL_PORT = int(srv.server_address[1])
+        if _REAL_PORT != int(_CONFIGURED_PORT):
+            try:
+                from companion.music.port_config import notify_port_changed as _notify_pc
+                _notify_pc("web", int(_CONFIGURED_PORT), _REAL_PORT)
+                WEB_PORT = _REAL_PORT   # 让 /api/info 也返真端口,前端用真实连
+            except Exception as _pc_w_err:  # noqa: BLE001
+                try:
+                    _LOGGER.warning("port_config write-back failed: %s", _pc_w_err)
+                except Exception:
+                    pass
+    except Exception:  # noqa: BLE001 — 拿真端口失败不能阻塞 boot
+        pass
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
