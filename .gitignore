@@ -212,11 +212,11 @@ tests/_agent_memory_selfcheck.js
 tests/_m2b_migration_selfcheck.js
 tests/_skill_loader_selfcheck.js
 tests/_comet_credits.py
-# prisIragent-browser mixin 调试片段
-prisIragent-browser/mixin/_build_dm.py
-prisIragent-browser/mixin/_dm_bridge.js
-prisIragent-browser/mixin/_dm_emoji_js.txt
-prisIragent-browser/mixin/_dm_emoji_snippet.txt
+# prisiragent-browser mixin 调试片段
+prisiragent-browser/mixin/_build_dm.py
+prisiragent-browser/mixin/_dm_bridge.js
+prisiragent-browser/mixin/_dm_emoji_js.txt
+prisiragent-browser/mixin/_dm_emoji_snippet.txt
 # wasm_meter 调试 / 自检 / 单次运行产物
 wasm_meter/_cap_reject.mjs
 wasm_meter/_cap_reject.py
