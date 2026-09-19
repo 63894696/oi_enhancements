@@ -93,6 +93,85 @@ from companion_llm_providers import (  # noqa: E402
     list_llm_providers as _list_llm_providers,
     upsert_key_from_form,
 )
+
+# ============================================================
+# M3.27.4 (2026-09-18):主面板 k-platform-pick 追加 ASR 分类
+# spec 来源:companion_asr_providers.PROVIDERS(只列已实现 4 个 + 1 个「其他厂商」)
+# 选 ASR 后 → 调 /api/asr/active(主面板转发到 18850 companion 服务)
+# ============================================================
+def _strip_model_suffix(name: str) -> str:
+    """M3.27.4:去末尾版本/日期后缀,显示主模型名。
+    规则:
+      -v[0-9]+         → bailian-paraformer-v2 → bailian-paraformer
+      -20YYMMDD        → xxx-20250901 → xxx
+      -20YY-MM-DD      → xxx-2025-09-18 → xxx
+    """
+    import re as _re
+    s = name or ""
+    s = _re.sub(r"-v\d+$", "", s)
+    s = _re.sub(r"-\d{8}$", "", s)
+    s = _re.sub(r"-\d{4}-\d{2}-\d{2}$", "", s)
+    return s
+
+
+def _list_asr_providers_for_dropdown() -> list:
+    """M3.27.4:从 companion_asr_providers.PROVIDERS 取已实现的,加显示字段。
+    - platform_id 用 "asr:<name>" 前缀区分 LLM(LLM 直接 = 名字)
+    - 只列已实现(spec.factory 非 None 且 ≠ _not_implemented_factory)
+    - 末尾追加 1 个「其他厂商(暂未实现)」兜底
+    """
+    import sys as _sys
+    from pathlib import Path as _Path
+    _COMP_DIR = _Path(__file__).resolve().parent / "companion"
+    if str(_COMP_DIR) not in _sys.path:
+        _sys.path.insert(0, str(_COMP_DIR))
+    try:
+        from companion_asr_providers import PROVIDERS as _APROV, list_providers as _alist  # noqa: E402
+    except ImportError as _e:
+        log.warning("[M3.27.4] companion_asr_providers import err: %s", _e)
+        return [{
+            "platform_id": "asr:__other__",
+            "kind": "asr",
+            "display": "其他厂商(暂未实现)",
+            "default_model": "",
+            "local": False,
+            "raw_asr_name": "",
+        }]
+    _stub_name = "_not_implemented_factory"
+    out: list = []
+    for p in _alist():
+        spec = _APROV.get(p["name"])
+        if spec is None:
+            continue
+        f = spec.factory
+        if f is None:
+            continue
+        # 判定"未实现"占位 — 用 __qualname__ 含 "_not_implemented_factory"(内嵌 factory)
+        # 真实 factory 的 __qualname__ 是 _make_* 或 <lambda>
+        qn = getattr(f, "__qualname__", "") or ""
+        if _stub_name in qn:
+            continue
+        raw_name = p["name"]
+        display_name = _strip_model_suffix(raw_name)
+        out.append({
+            "platform_id": f"asr:{raw_name}",
+            "kind": "asr",
+            "display": display_name,
+            "default_model": display_name,
+            "local": raw_name.startswith("local-"),
+            "raw_asr_name": raw_name,
+        })
+    # 兜底:其他厂商(暂未实现)
+    out.append({
+        "platform_id": "asr:__other__",
+        "kind": "asr",
+        "display": "其他厂商(暂未实现)",
+        "default_model": "",
+        "local": False,
+        "raw_asr_name": "",
+    })
+    return out
+
 # 2026-08-25 P1 局域网联动:配对令牌 + mDNS 发现广播(docs/prisir-android-win-link-2026-08-25.md)。
 # 纯 stdlib 模块,惰性启用——仅 --lan 时才监听局域网;默认 127.0.0.1 本机访问不带令牌。
 import lan_pair  # noqa: E402
@@ -2740,6 +2819,15 @@ _SSE_LOCK = threading.Lock()
 _SSE_KEEPALIVE_SEC = 20          # 无事件时每 20s 发一行注释(:ka)防代理/浏览器超时断链
 
 
+# M3.27(2026-09-18):外部注入队列(companion 陪聊 → PrisirAI 主输入框,FIFO)。
+# 设计:每条入队后用 _sse_broadcast({"type":"external_inject", ...}) 推给所有 SSE 订阅者;
+# 前端 EventSource handler 填 #input(不 send),然后调 /external_inject/ack 从队列移除。
+# FIFO + 32 上限:常态不会满;满则丢最老,新消息不丢(写入路径优先)。
+_INJECT_QUEUE: list = []          # [{id, ts, text, source, sid}]
+_INJECT_MAX = 32
+_INJECT_LOCK = threading.Lock()
+
+
 def _sse_register():
     """新建一条 SSE 连接队列并注册,返回 queue。"""
     import queue as _q
@@ -4185,7 +4273,7 @@ _PAGE = r"""<!DOCTYPE html>
   <button class="topbtn" id="doc-btn" onclick="toggleDocPanel()" data-i18n="doc_panel" data-i18n-title="doc_panel_title">📑 文档</button>
   <button class="topbtn" onclick="openKeys()" data-i18n="model_key">🔑 模型 Key</button>
   <button class="topbtn" onclick="openFeedback()" data-i18n-title="feedback_title"><span data-i18n="feedback">⚙ 反馈问题</span></button>
-  <button class="topbtn" onclick="openPatch()" data-i18n="patch" data-i18n-title="patch_title">🩹 补丁</button>
+  <button class="topbtn" id="topbtnCompanion" onclick="openCompanion()" data-i18n-title="companion_title" title="陪聊(语音/文字轻量对话,可派发到主面板)">📞 陪聊</button>
   <button class="topbtn" onclick="newSession()" data-i18n="new_session">+ 新会话</button>
 </div>
 <div id="main">
@@ -10383,8 +10471,236 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:  # noqa: BLE001
                 _LOGGER.exception("feedback_zip failed: %s", e)
                 self._json({"ok": False, "error": str(e)}, 500)
+        elif path == "/prisIragent/api/calendar/dismiss":
+            self._handle_calendar_dismiss(body)
+        elif path == "/prisIragent/api/calendar/scan":
+            self._handle_calendar_scan(body)
         else:
             self._json({"error": "not found"}, 404)
+
+    # ============================================================
+    # task #6 (2026-09-19):Prisir 日历 — 只读时间线 UI 路由
+    # 前端文件:prisIragent_calendar/static/{timeline.html, .js, .css}
+    # 约束:不引入 FastAPI,复用现有 BaseHTTPRequestHandler + _json/_html/_download 助手。
+    # ============================================================
+
+    # ---- 单例:CalendarStore ----
+    # 取 workdir/<db>,跟 _CHAT_DB 同目录策略。frozen 下 workdir 不变。
+    _CALENDAR_DB_PATH = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "prisIr_calendar_data", "calendar.db"
+    )
+    _calendar_store_singleton = None
+    _calendar_store_lock = threading.Lock()
+
+    @classmethod
+    def _get_calendar_store(cls):
+        """懒初始化 + 线程安全。frozen 下同样工作(os.path 拿的是 _MEIPASS 之外的 exe 所在目录)。
+        """
+        if cls._calendar_store_singleton is not None:
+            return cls._calendar_store_singleton
+        with cls._calendar_store_lock:
+            if cls._calendar_store_singleton is not None:
+                return cls._calendar_store_singleton
+            try:
+                from prisIr_calendar.store import CalendarStore  # noqa: PLC0415
+            except Exception as e:  # noqa: BLE001 — frozen 缺包时静默
+                _LOGGER.warning("prisIr_calendar.store import failed: %s", e)
+                return None
+            try:
+                store = CalendarStore(cls._CALENDAR_DB_PATH)
+                store.init_schema()
+                cls._calendar_store_singleton = store
+                _LOGGER.info("calendar store init at %s", cls._CALENDAR_DB_PATH)
+            except Exception as e:  # noqa: BLE001
+                _LOGGER.warning("calendar store init failed (%s): %s", cls._CALENDAR_DB_PATH, e)
+                return None
+            return cls._calendar_store_singleton
+
+    def _serve_calendar_static(self, name: str):
+        """服务 prisIragent_calendar/static/ 下的静态文件 (.html/.js/.css)。
+
+        路径锁死在仓库根的 prisIragent_calendar/static/,
+        防止 ../ 之类越界(name 已用 os.path.basename 兜底)。
+        """
+        safe = os.path.basename(name)  # 防穿越
+        if safe != name:
+            self._json({"error": "bad path"}, 400)
+            return
+        base = Path(__file__).resolve().parent / "prisIragent_calendar" / "static"
+        path = base / safe
+        if not path.is_file():
+            self._json({"error": "not found"}, 404)
+            return
+        try:
+            data = path.read_bytes()
+        except OSError as e:  # noqa: BLE001
+            self._json({"error": f"read failed: {e}"}, 500)
+            return
+        if safe.endswith(".html"):
+            ctype = "text/html; charset=utf-8"
+        elif safe.endswith(".js"):
+            ctype = "application/javascript; charset=utf-8"
+        elif safe.endswith(".css"):
+            ctype = "text/css; charset=utf-8"
+        else:
+            ctype = "application/octet-stream"
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "max-age=60")
+        if WEB_HOST == "0.0.0.0":
+            self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _handle_calendar_timeline(self, qs):
+        """GET /prisIragent/api/calendar/timeline?days=14 → TodayView JSON.
+
+        TodayView 来自 prisIr_calendar.agent_ops.reader.get_today_view。
+        user_profile 走 user_profile.load_travel_profile()(无画像则空 dict)。
+        """
+        store = self._get_calendar_store()
+        if store is None:
+            self._json({"error": "calendar store unavailable"}, 503)
+            return
+        try:
+            days_str = (qs.get("days") or ["14"])[0]
+            days = int(days_str) if days_str.isdigit() else 14
+            days = max(1, min(days, 60))  # 限 1..60 天
+        except (ValueError, IndexError):
+            days = 14
+        try:
+            import asyncio as _aio
+            from datetime import datetime as _dt, timezone as _tz
+            from prisIr_calendar.agent_ops.reader import get_today_view  # noqa: PLC0415
+            try:
+                import user_profile  # noqa: PLC0415
+                profile = user_profile.load_travel_profile()
+            except Exception:  # noqa: BLE001
+                profile = {}
+            view = _aio.run(get_today_view(
+                store, user_profile=profile, now=_dt.now(_tz.utc),
+                days=days,
+            ))
+            payload = view.to_dict()
+            # 兼容 task #6:前端读 14 天,这里把 scope 报告出去。
+            payload["requested_days"] = days
+            self._json(payload)
+        except Exception as e:  # noqa: BLE001
+            _LOGGER.exception("calendar_timeline failed: %s", e)
+            self._json({"error": str(e)}, 500)
+
+    def _handle_calendar_export(self):
+        """GET /prisIragent/api/calendar/export.ics → ICS 文件下载。
+
+        MediaType: text/calendar; Content-Disposition: attachment。
+        """
+        store = self._get_calendar_store()
+        if store is None:
+            self._json({"error": "calendar store unavailable"}, 503)
+            return
+        try:
+            ics_bytes = store.export_ics()
+        except Exception as e:  # noqa: BLE001
+            _LOGGER.exception("calendar_export failed: %s", e)
+            self._json({"error": str(e)}, 500)
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "text/calendar; charset=utf-8")
+        self.send_header("Content-Length", str(len(ics_bytes)))
+        self.send_header(
+            "Content-Disposition",
+            'attachment; filename="prisIr_calendar.ics"'
+        )
+        if WEB_HOST == "0.0.0.0":
+            self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(ics_bytes)
+
+    def _handle_calendar_dismiss(self, body: dict):
+        """POST /prisIragent/api/calendar/dismiss → dismiss_event + ledger_sink。
+
+        body: {"event_id": "...", "buffer_id": "...", "reason": "user_clicked_x"}
+        ledger_sink 走 user_profile.append_dismissed_buffer(契约 #8)。
+        """
+        store = self._get_calendar_store()
+        if store is None:
+            self._json({"ok": False, "error": "calendar store unavailable"}, 503)
+            return
+        event_id = (body.get("event_id") or "").strip() if isinstance(body, dict) else ""
+        buffer_id = (body.get("buffer_id") or "").strip() if isinstance(body, dict) else ""
+        reason = (body.get("reason") or "user_clicked_x").strip() if isinstance(body, dict) else "user_clicked_x"
+        if not event_id:
+            self._json({"ok": False, "error": "event_id 必填"}, 400)
+            return
+        if reason not in ("user_clicked_x", "user_edited", "user_moved"):
+            reason = "user_clicked_x"
+        try:
+            import asyncio as _aio
+            from prisIr_calendar.agent_ops.writer import dismiss_event  # noqa: PLC0415
+
+            # ledger_sink 走 user_profile.append_dismissed_buffer。
+            # best-effort:解析失败也不阻塞 dismiss 主流程。
+            try:
+                import user_profile  # noqa: PLC0415
+
+                def _ledger_sink(rec: dict) -> None:
+                    try:
+                        user_profile.append_dismissed_buffer(
+                            event_id=event_id,
+                            origin=rec.get("origin", ""),
+                            destination=rec.get("destination", ""),
+                            mode=rec.get("mode", ""),
+                            reason=reason,
+                            buffer_id=buffer_id or rec.get("buffer_id", "") or None,
+                        )
+                    except Exception as e:  # noqa: BLE001
+                        _LOGGER.warning("dismiss ledger_sink raised %s", e)
+
+                ok = _aio.run(dismiss_event(
+                    store, event_id=event_id, reason=reason, ledger_sink=_ledger_sink
+                ))
+            except Exception:  # noqa: BLE001 — 没 user_profile 也能 dismiss
+                _LOGGER.warning("calendar_dismiss: user_profile unavailable, sink skipped")
+                ok = _aio.run(dismiss_event(
+                    store, event_id=event_id, reason=reason, ledger_sink=None
+                ))
+            self._json({"ok": bool(ok), "event_id": event_id})
+        except Exception as e:  # noqa: BLE001
+            _LOGGER.exception("calendar_dismiss failed: %s", e)
+            self._json({"ok": False, "error": str(e)}, 500)
+
+    def _handle_calendar_scan(self, body: dict):
+        """POST /prisIragent/api/calendar/scan → TravelBufferAgent.scan_and_protect。
+
+        body: {"days": 14}(可选)。返回 ScanReport.to_dict()。
+        """
+        store = self._get_calendar_store()
+        if store is None:
+            self._json({"error": "calendar store unavailable"}, 503)
+            return
+        try:
+            days_str = (body.get("days") if isinstance(body, dict) else None) or 14
+            days = int(days_str) if str(days_str).isdigit() else 14
+            days = max(1, min(days, 60))
+        except (ValueError, TypeError):
+            days = 14
+        try:
+            import asyncio as _aio
+            from prisIr_calendar.agent_ops.travel_buffer import (  # noqa: PLC0415
+                TravelBufferAgent,
+            )
+            try:
+                import user_profile  # noqa: PLC0415
+                profile = user_profile.load_travel_profile()
+            except Exception:  # noqa: BLE001
+                profile = {}
+            agent = TravelBufferAgent(store, user_profile=profile)
+            report = _aio.run(agent.scan_and_protect(days=days))
+            self._json(report.to_dict())
+        except Exception as e:  # noqa: BLE001
+            _LOGGER.exception("calendar_scan failed: %s", e)
+            self._json({"error": str(e)}, 500)
 
     def _handle_chat(self, body: dict):
         message = (body.get("message") or "").strip()

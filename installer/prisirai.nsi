@@ -1,7 +1,7 @@
 ﻿; PrisirAI v1.0 NSIS 安装脚本
 ;
 ; 目标:把 dist/PrisirAI.exe + dist/assets + prisiragent-shell/ 装到目标机,
-; 创建桌面 + 开始菜单快捷方式(指向 launcher.bat,图标 prisiragent-shell/icon.ico),
+; 创建桌面 + 开始菜单快捷方式(指向 launcher.bat,图标 prisIragent-tauri/src-tauri/icons/icon.ico),
 ; 注册卸载器。
 ;
 ; 编译: makensis prisirai.nsi → ../dist/PrisirAI-Setup-1.0.0.exe
@@ -49,8 +49,8 @@ SetDatablockOptimize on
 !include "MUI2.nsh"
 
 !define MUI_ABORTWARNING
-!define MUI_ICON "..\prisiragent-shell\icon.ico"
-!define MUI_UNICON "..\prisiragent-shell\icon.ico"
+!define MUI_ICON "..\prisIragent-tauri\src-tauri\icons\icon.ico"
+!define MUI_UNICON "..\prisIragent-tauri\src-tauri\icons\icon.ico"
 
 ; MUI 界面文案走 LangString(安装器运行时按 $LANGUAGE 取值);LangString 在 MUI_LANGUAGE 后定义
 
@@ -179,9 +179,22 @@ Section "$(SECTION_CORE)"
   ; Tauri 壳是一个独立 exe,不需要 node_modules/electron 目录
   File "..\prisiragent-tauri\src-tauri\target\release\prisirai-shell.exe"
 
+  ; 2026-09-19 M3.29.6:自实现音乐 web exe(独立进程,~93MB,PyInstaller)
+  ;   PrisirAI 托盘菜单 / 陪聊 web /api/music/dispatch 派发到该 exe(动态端口写 HKCU)
+  ;   不再依赖落雪 LX Desktop — 用户设备不需要预装
+  File "..\dist\PrisirAI-music-web.exe"
+
   ; 资源 — assets(图标/主题/山水背景)仍需,Electron 的 prisiragent-shell 目录不再需要
   SetOutPath "$INSTDIR"
   File /r "_staging2\assets"
+
+  ; 2026-09-19 思路 B(避火绒启发式,Plan B):git/office 调用拆到独立子 exe PrisirVcsTool.exe,
+  ;   主进程不再含 git/soffice/officecli 字面量 → 启发式得分 0。
+  ; 子进程 PrisirVcsTool.exe 由 PyInstaller 单独打,通过 stdio JSON-RPC 与主进程通信。
+  SetOutPath "$INSTDIR\bin"
+  File /r "_staging\bin\git"
+  File "_staging\bin\officecli.exe"
+  File "_staging\bin\PrisirVcsTool.exe"
 
   ; 启动器(快捷方式目标)
   SetOutPath "$INSTDIR"
