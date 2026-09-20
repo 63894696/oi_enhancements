@@ -185,6 +185,7 @@ module.exports = {
   readWebPort,
   readCompanionPort,
   readMusicPort,
+  writeJson,
   // 给测试用
   _readWinreg: readWinreg,
   _readJson: readJson,

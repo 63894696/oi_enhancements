@@ -86,8 +86,13 @@ function resolveCoreExe() {
 }
 const REPO_ROOT = PARENT_DIR;          // 兼容旧代码(暂留,实际未用)
 const WEB_HOST = "127.0.0.1";
-const WEB_PORT = parseInt(process.env.PRISIRAGENT_WEB_PORT || process.env.OIAGENT_WEB_PORT || "18802", 10);
-const WEB_URL = `http://${WEB_HOST}:${WEB_PORT}`;
+// P2.5+11:端口解析从 env → HKCU/JSON → 默认,与 Tauri 三段优先级对齐。
+// env 仍优先(dev 覆盖用),无 env 时由 port_config.readWebPort() 走 HKCU → JSON → 18802。
+const _envPort = parseInt(process.env.PRISIRAGENT_WEB_PORT || process.env.OIAGENT_WEB_PORT || "", 10);
+let WEB_PORT = (_envPort >= 1 && _envPort <= 65535)
+  ? _envPort
+  : require("./port_config").readWebPort();
+let WEB_URL = `http://${WEB_HOST}:${WEB_PORT}`;
 const HOTKEY = process.env.PRISIRAGENT_SHELL_HOTKEY || process.env.OIAGENT_SHELL_HOTKEY || "CommandOrControl+Shift+O";
 const PYTHON = process.env.PRISIRAGENT_PYTHON || process.env.OIAGENT_PYTHON || "python";
 // 输入法悬浮栏 AI 按钮的 toggle 命名事件:Prisir TSF 插件 trigger_plugin("ai") SetEvent 同名事件。
@@ -112,8 +117,8 @@ function prisirTokenPresent() {
 let webProc = null;
 let webReady = false;
 
-function webUp(cb) {
-  const req = http.get({ host: WEB_HOST, port: WEB_PORT, path: "/", timeout: 1500 }, (res) => {
+function webUp(host, port, cb) {
+  const req = http.get({ host, port, path: "/", timeout: 1500 }, (res) => {
     res.resume();
     cb(true);
   });
@@ -124,7 +129,7 @@ function webUp(cb) {
 function startWeb() {
   if (webProc) return;
   // 已被别的进程占用端口就直接复用,不重复起。
-  webUp((up) => {
+  webUp(WEB_HOST, WEB_PORT, (up) => {
     if (up) {
       logInfo("startWeb", "port already up, reusing", `port=${WEB_PORT}`);
       webReady = true; loadWhenReady(); return;   // 关键:复用已起后端也要触发加载
@@ -160,10 +165,37 @@ function startWeb() {
       return;
     }
     // 手动把 stdout/stderr 流接进 spawn-*.log(append 模式,fs.WriteStream 跨平台稳)。
+    // P2.5+11:同时行级扫描 `[prisIragent_web] PRISIR_WEB_READY port=<n>` sentinel(Python 端 line 11455)
+    // 拿到真实端口(端口冲突 fallback 时与请求端口不同),立即改 WEB_PORT + 触发 loadWhenReady(),
+    // 避免 30s 轮询超时 + 窗口卡「正在唤醒」。
     try {
       const outFd = fs.openSync(LOG_STDOUT, "a");
       const errFd = fs.openSync(LOG_STDERR, "a");
-      webProc.stdout.on("data", (chunk) => { try { fs.writeSync(outFd, chunk); } catch (_) {} });
+      let _stdoutBuf = "";
+      const SENTINEL_RE = /\[prisIragent_web\] PRISIR_WEB_READY port=(\d+)/;
+      webProc.stdout.on("data", (chunk) => {
+        try { fs.writeSync(outFd, chunk); } catch (_) {}
+        _stdoutBuf += chunk.toString("utf8");
+        let nl;
+        while ((nl = _stdoutBuf.indexOf("\n")) >= 0) {
+          const line = _stdoutBuf.slice(0, nl).trim();
+          _stdoutBuf = _stdoutBuf.slice(nl + 1);
+          const m = line.match(SENTINEL_RE);
+          if (m) {
+            const realPort = parseInt(m[1], 10);
+            if (realPort >= 1 && realPort <= 65535 && realPort !== WEB_PORT) {
+              logInfo("startWeb", "sentinel port changed", `expected=${WEB_PORT} real=${realPort}`);
+              WEB_PORT = realPort;
+              WEB_URL = `http://${WEB_HOST}:${WEB_PORT}`;
+            }
+            if (!webReady) {
+              webReady = true;
+              logInfo("startWeb", "sentinel ready", `port=${WEB_PORT}`);
+              loadWhenReady();
+            }
+          }
+        }
+      });
       webProc.stderr.on("data", (chunk) => { try { fs.writeSync(errFd, chunk); } catch (_) {} });
       webProc.on("close", () => { try { fs.closeSync(outFd); fs.closeSync(errFd); } catch (_) {} });
     } catch (e) {
@@ -182,7 +214,7 @@ function startWeb() {
     });
     // 轮询等就绪
     const t = setInterval(() => {
-      webUp((up) => {
+      webUp(WEB_HOST, WEB_PORT, (up) => {
         if (up) {
           webReady = true;
           clearInterval(t);

@@ -1,0 +1,3708 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Language" content="zh, en">
+<title>Prisir(湃睿思) AI</title>
+<script>
+// 2026-08-25 多语言:按浏览器语言切 <html lang>(海外用户系统/浏览器是英文则 en,否则 zh)。
+// 对话层语言感知由后端系统提示词负责(用户用英文问 agent 用英文答);界面硬编码文案
+// 双语化是大工程,本批次只做 <html lang> + title 动态切,完整文案双语留后续批次。
+(function(){
+  var lang=(navigator.language||navigator.userLanguage||"zh").toLowerCase();
+  if(!lang.startsWith("zh")){
+    document.documentElement.setAttribute("lang","en");
+    document.title="Prisir AI";
+  }
+})();
+</script>
+<script>
+// 2026-08-25 局域网遥控器授权兜底:配对手机经 iframe 打开 /?token=xxx,后端会 Set-Cookie,
+// 但 Android WebView 的 iframe 第三方 cookie 持久化各版本不一;App 重开后若 cookie 丢失,
+// 页面内相对 fetch('/prisiragent/api/...') 会 401(会话/模型/图标全空,用户实测「重开 App 又没了」)。
+// 双保险:把 URL 上的 token 存进 sessionStorage,并重写 fetch 给同源 /prisiragent/api 请求自动
+// 补 ?token=。本机回环访问 URL 无 token,这段是 no-op,行为不变。
+(function(){
+  try{
+    var q=new URLSearchParams(location.search);
+    var t=q.get("token");
+    if(t){ try{ sessionStorage.setItem("prisir_tok", t); }catch(e){} }
+    var saved=t|| (function(){ try{ return sessionStorage.getItem("prisir_tok")||""; }catch(e){ return ""; } })();
+    if(!saved) return;
+    var _fetch=window.fetch.bind(window);
+    window.fetch=function(url, opts){
+      try{
+        var u=(typeof url==="string")?url:(url&&url.url)||"";
+        // 只补同源 /prisiragent/ 的相对或绝对请求,且未带 token 的
+        if(u.indexOf("/prisiragent/")===0 || u.indexOf(location.origin+"/prisiragent/")===0){
+          if(u.indexOf("token=")<0){
+            u=u+(u.indexOf("?")<0?"?":"&")+"token="+encodeURIComponent(saved);
+            if(typeof url==="string"){ url=u; } else { url=new Request(u, url); }
+          }
+        }
+      }catch(e){}
+      return _fetch(url, opts);
+    };
+    // <img src> 不走 fetch,得单独补 token(图标/背景等 asset 也会被 _gate 401)。
+    // 遍历所有指向 /prisiragent/ 的 img,给 src 追加 token。cookie 持久化在部分 WebView 版本
+    // 不可靠(iframe 第三方 cookie),这是图标的兜底。DOMContentLoaded + 延迟各跑一次,
+    // 覆盖静态标签与后续 JS 动态插入的 img。
+    var fixImgs=function(){
+      try{
+        document.querySelectorAll('img[src^="/prisiragent/"]').forEach(function(im){
+          if(im.src.indexOf("token=")<0){
+            im.src=im.src+(im.src.indexOf("?")<0?"?":"&")+"token="+encodeURIComponent(saved);
+          }
+        });
+      }catch(e){}
+    };
+    if(document.readyState==="loading"){ document.addEventListener("DOMContentLoaded", fixImgs); }
+    else { fixImgs(); }
+    setTimeout(fixImgs, 800); setTimeout(fixImgs, 2500);
+  }catch(e){}
+})();
+</script>
+<script>
+// M3.34(2026-09-19)端口冲突一次性 toast:启动后 fetch /api/port_status,
+// 若 changed=true 且本会话还没弹过这个端口组合 → 弹顶部一次性 toast,标记 sessionStorage 后不再骚扰。
+// 设计意图:用户不需要「端口设置 UI」,但偶尔的 fallback(端口冲突 / OS 分配)要让用户知道在用哪个端口,
+// 以便排查「我的 mobile 端怎么连不上」之类问题。
+(function(){
+  try{
+    var TOAST_KEY="prisir_port_toast";
+    function _shown(key){ try{ return sessionStorage.getItem(TOAST_KEY)===key; }catch(e){ return false; } }
+    function _mark(key){ try{ sessionStorage.setItem(TOAST_KEY, key); }catch(e){} }
+    function _show(msg){
+      var d=document.createElement("div");
+      d.textContent=msg;
+      d.style.cssText="position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:99999;"+
+        "background:var(--gh-paper-3,#efe8da);color:var(--gh-ink,#2f3a34);"+
+        "padding:10px 16px;border-radius:8px;border:1px solid var(--gh-line,#d8cfbc);"+
+        "box-shadow:0 2px 8px rgba(0,0,0,.12);font:13px/1.4 var(--gh-font,system-ui,sans-serif);"+
+        "max-width:560px;text-align:center;cursor:pointer";
+      d.title="点击关闭";
+      d.onclick=function(){ d.remove(); };
+      document.body.appendChild(d);
+      setTimeout(function(){ if(d.parentNode) d.remove(); }, 8000);
+    }
+    fetch("/prisiragent/api/port_status").then(function(r){return r.json();}).then(function(d){
+      if(!d||!d.web) return;
+      var w=d.web, c=w.configured, a=w.actual;
+      if(!w.changed) return;
+      // 同一对 (configured, actual) 已弹过 → 不再骚扰
+      var key=c+"->"+a;
+      if(_shown(key)) return;
+      _mark(key);
+      var msg;
+      if(w.reason==="os_allocated"){
+        msg=(navigator.language||"").toLowerCase().indexOf("zh")===0
+          ? "本实例未指定端口,系统分配了端口 "+a+"。后续启动仍使用 OS 分配。"
+          : "No port specified; system allocated "+a+". Subsequent boots will use OS-assigned ports.";
+      } else if(w.reason==="conflict_fallback"){
+        msg=(navigator.language||"").toLowerCase().indexOf("zh")===0
+          ? "端口 "+c+" 被占用,已自动切换到 "+a+"。后续启动将使用新端口。"
+          : "Port "+c+" was in use; switched to "+a+". Subsequent boots will use the new port.";
+      } else {
+        return;
+      }
+      _show(msg);
+    }).catch(function(){});
+  }catch(e){}
+})();
+</script>
+<script>
+// P2.5+8(2026-09-20):日历+todo+番茄钟 AI 主动编排 — 首次明细弹卡 + 控制台入口。
+// 设计:首次启动(或 revoke 后)→ 弹顶部持久 banner,用户点「同意」调 grant → 后台跑提炼写入。
+// 已批准 → banner 隐藏,console 「🧹 清空 AI 编排记录」按钮可用(调 history clear)。
+// 与端口 toast 不同的样式:持续显示直到用户批准(不自动 8s 消失)。
+(function(){
+  if (window.__scheduleConsentStarted) return;
+  window.__scheduleConsentStarted = true;
+  var KEY = "prisir_schedule_consent_banner_shown";
+  function _hasShown(){
+    try { return sessionStorage.getItem(KEY)==="1"; }catch(e){ return false; }
+  }
+  function _markShown(){
+    try { sessionStorage.setItem(KEY, "1"); }catch(e){}
+  }
+  function _showBanner(title, summary, details){
+    if (document.getElementById("schedule-consent-banner")) return;
+    var d = document.createElement("div");
+    d.id = "schedule-consent-banner";
+    d.style.cssText = "position:fixed;top:14px;right:14px;z-index:99998;width:340px;max-width:calc(100vw - 28px);"
+      + "background:var(--gh-paper-3,#efe8da);color:var(--gh-ink,#2f3a34);"
+      + "border:1px solid var(--gh-line,#d8cfbc);border-radius:10px;"
+      + "box-shadow:0 4px 14px rgba(0,0,0,.16);padding:14px 16px;"
+      + "font:13px/1.5 var(--gh-font,system-ui,sans-serif);";
+    var html = "<div style='font-size:14px;font-weight:600;margin-bottom:6px;color:var(--gh-green-deep,#4a5c52);'>"
+      + (title||"AI 日程主动编排") + "</div>";
+    html += "<div style='margin-bottom:8px;color:var(--gh-ink-soft,#5b6a61);'>"
+      + (summary||"") + "</div>";
+    if (details && details.length){
+      html += "<ul style='margin:0 0 10px 18px;color:var(--gh-ink-faint,#8a968e);font-size:12px;'>";
+      for (var i=0;i<details.length;i++){
+        html += "<li>" + details[i] + "</li>";
+      }
+      html += "</ul>";
+    }
+    html += "<div style='display:flex;gap:8px;justify-content:flex-end;'>"
+      + "<button id='sc-deny' style='padding:5px 12px;border-radius:6px;border:1px solid var(--gh-line,#d8cfbc);"
+      + "background:var(--gh-surface,#fbf8f1);color:var(--gh-ink-soft,#5b6a61);font-size:12px;cursor:pointer;'>稍后</button>"
+      + "<button id='sc-grant' style='padding:5px 14px;border-radius:6px;border:1px solid var(--gh-green-deep,#4a5c52);"
+      + "background:var(--gh-green-deep,#4a5c52);color:#fbf8f1;font-size:12px;cursor:pointer;font-weight:600;'>同意启用</button>"
+      + "</div>";
+    d.innerHTML = html;
+    document.body.appendChild(d);
+    document.getElementById("sc-grant").onclick = function(){
+      fetch("/prisiragent/api/schedule/consent", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({action: "grant"})
+      }).then(function(r){return r.json();}).then(function(){
+        d.remove();
+        _markShown();
+      }).catch(function(){ d.remove(); });
+    };
+    document.getElementById("sc-deny").onclick = function(){
+      fetch("/prisiragent/api/schedule/consent", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({action: "revoke"})
+      }).then(function(){ d.remove(); _markShown(); }).catch(function(){ d.remove(); });
+    };
+  }
+  function _check(){
+    fetch("/prisiragent/api/schedule/consent").then(function(r){return r.json();}).then(function(d){
+      if (!d) return;
+      if (d.consent_required && !_hasShown()){
+        _markShown();
+        _showBanner(
+          "AI 日程主动编排",
+          "本对话提到时间/事件/任务时,PrisirAI 会自动建日历事件与 todo 任务,并建议番茄钟时段。",
+          [
+            "可写入:本地 SQLite 日历事件(可在 📅 日历入口查看)",
+            "可写入:todo 扩展 JSON 文件(可在 todo 抽屉查看/删除)",
+            "可记录:番茄钟建议(只控制台记录,不主动开始计时)",
+            "不会:发送任何数据到云端",
+            "不会:删除或修改你已存在的事件/任务",
+            "随时可在 console 「🧹 清空 AI 编排记录」一键清除并重新弹卡"
+          ]
+        );
+      }
+    }).catch(function(){});
+  }
+  // 启动后稍延迟检查(等其它 toast 弹完)
+  setTimeout(_check, 1500);
+})();
+</script>
+<style>
+  :root {
+    --gh-paper:#f6f1e7; --gh-paper-2:#efe8da; --gh-paper-3:#e7dfce; --gh-surface:#fbf8f1;
+    --gh-bg:#fbf8f1;  /* 2026-09-16 M3.30:右栏/回放面板/输入控件背景,补全之前漏掉的 var,否则全透明 */
+    --gh-ink:#2f3a34; --gh-ink-soft:#5b6a61; --gh-ink-faint:#8a968e; --gh-line:#d8cfbc;
+    --gh-green:#6c7c72; --gh-green-deep:#4a5c52; --gh-seal:#b23a30;
+    --gh-user-bg:#b23a30; --gh-user-fg:#fbf6ec; --gh-agent-bg:#fbf8f1; --gh-focus:#4a5c52;
+    --gh-radius:10px; --gh-radius-lg:14px; --gh-shadow:0 1px 3px rgba(74,92,82,.12);
+    --gh-font:'Segoe UI','Microsoft YaHei',system-ui,sans-serif;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html,body { height:100%; }
+  body { font-family:var(--gh-font); color:var(--gh-ink);
+    background:var(--gh-paper) url('/prisiragent/assets/guohua_bg_wide.png') center bottom/cover fixed no-repeat;
+    display:flex; flex-direction:column; height:100vh; }
+
+  #topbar { display:flex; align-items:center; gap:12px; padding:10px 18px;
+    background:rgba(246,241,231,.92); backdrop-filter:blur(6px); border-bottom:1px solid var(--gh-line);
+    position:relative; z-index:1100; }  /* 2026-09-16 M3.30:浮在 doc/replay-panel (z=880/900) 之上 */
+  #brand { display:flex; align-items:center; gap:10px; }
+  #brand img { width:26px; height:26px; border-radius:6px; box-shadow:var(--gh-shadow); }
+  #brand .name { font-size:16px; font-weight:600; color:var(--gh-green-deep); }
+  #topbar .spacer { flex:1; }
+  .topbtn { padding:6px 12px; border-radius:8px; border:1px solid var(--gh-line);
+    background:var(--gh-surface); color:var(--gh-green-deep); font-size:13px; cursor:pointer; }
+  .topbtn:hover { border-color:var(--gh-green-deep); }
+  #strategy-label { font-size:12px; color:var(--gh-ink-faint); }
+
+  #main { flex:1; display:flex; min-height:0; }
+  /* 左右分屏(#39):主对话区包 #split-wrap;默认右栏满宽(左栏隐藏),分屏态左右并列 */
+  #split-wrap { flex:1; display:flex; min-width:0; min-height:0; }
+  #split-left { display:none; flex:0 0 42%; min-width:260px; max-width:80%;
+    border-right:none; background:rgba(251,248,241,.92); flex-direction:column; min-height:0; }
+  #split-wrap.split #split-left { display:flex; }
+  #split-bar { display:none; flex:0 0 6px; cursor:col-resize; background:var(--gh-line); }
+  #split-bar:hover, #split-bar.dragging { background:var(--gh-green); }
+  #split-wrap.split #split-bar { display:block; }
+  #split-wrap.split #conv { flex:1; }
+  #sl-head { display:flex; align-items:center; gap:6px; padding:8px 10px;
+    border-bottom:1px solid var(--gh-line); }
+  .sl-tab { padding:4px 12px; font-size:12px; border:1px solid var(--gh-line); border-radius:8px;
+    background:var(--gh-surface); color:var(--gh-ink-soft); cursor:pointer; }
+  .sl-tab.active { background:var(--gh-green-deep); color:#fbf6ec; border-color:var(--gh-green-deep); }
+  #sl-title { flex:1; font-size:12px; color:var(--gh-ink-faint); white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis; }
+  #sl-merge { padding:4px 10px; font-size:12px; border:1px solid var(--gh-line); border-radius:8px;
+    background:var(--gh-surface); color:var(--gh-seal); cursor:pointer; white-space:nowrap; }
+  #sl-merge:hover { border-color:var(--gh-seal); }
+  #sl-body { flex:1; overflow-y:auto; padding:14px 14px; min-height:0; }
+  #sl-summary-src { font-size:11px; color:var(--gh-ink-faint); margin-bottom:8px; }
+  #sl-summary-text { white-space:pre-wrap; word-break:break-word; line-height:1.6;
+    font-size:13.5px; color:var(--gh-ink); user-select:text; }
+  #sl-replay { display:flex; flex-direction:column; gap:12px; }
+  #sl-replay .msg { max-width:100%; font-size:13px; }
+  #sl-replay .msg.tool { max-width:100%; }
+  #sl-replay .msg.user { align-self:flex-end; }
+  #sl-replay .msg.agent { align-self:flex-start; }
+  #rail { width:250px; border-right:1px solid var(--gh-line); background:rgba(239,232,218,.5);
+    padding:12px; overflow-y:auto; display:flex; flex-direction:column; gap:4px; }
+  /* 文件资料栏(2026-09-06):会话栏与对话区之间的可折叠 IDE 式文件树 */
+  #frail { width:230px; flex:0 0 230px; border-right:1px solid var(--gh-line);
+    background:rgba(239,232,218,.35); display:flex; flex-direction:column; overflow:hidden; }
+  #frail-head { display:flex; align-items:center; gap:4px; padding:10px 12px 6px; }
+  #frail-head #frail-title { font-size:12px; color:var(--gh-ink-faint); text-transform:uppercase; letter-spacing:1px; }
+  #frail-head .spacer { flex:1; }
+  #frail-head button { border:none; background:none; color:var(--gh-ink-soft); cursor:pointer;
+    font-size:13px; padding:2px 5px; border-radius:5px; }
+  #frail-head button:hover { background:var(--gh-surface); color:var(--gh-green-deep); }
+  #frail-workdir { padding:0 12px 8px; font-size:11px; color:var(--gh-ink-faint);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; border-bottom:1px dashed var(--gh-line); }
+  #frail-tree { flex:1; overflow-y:auto; padding:6px 6px 12px; font-size:12.5px; }
+  .ft-dir, .ft-file { display:flex; align-items:center; gap:5px; padding:3px 6px; border-radius:6px;
+    color:var(--gh-ink-soft); cursor:pointer; white-space:nowrap; user-select:none; }
+  .ft-dir:hover, .ft-file:hover { background:var(--gh-surface); }
+  .ft-file:hover { color:var(--gh-ink); }
+  .ft-dir .tw { width:12px; flex:0 0 12px; text-align:center; color:var(--gh-ink-faint); font-size:10px; transition:transform .12s; }
+  .ft-dir.open .tw { transform:rotate(90deg); }
+  .ft-ico { flex:0 0 auto; font-size:12px; }
+  .ft-name { flex:1; overflow:hidden; text-overflow:ellipsis; }
+  .ft-kids { margin-left:14px; border-left:1px solid var(--gh-line); padding-left:4px; }
+  .ft-kids.hidden { display:none; }
+  .ft-empty, .ft-err { padding:14px 12px; font-size:12px; color:var(--gh-ink-faint); }
+  .ft-err { color:var(--gh-seal); }
+  .ft-op { flex:0 0 auto; font-size:12px; padding:0 3px; border-radius:4px; opacity:0; transition:opacity .12s; }
+  .ft-file:hover .ft-op { opacity:.75; }
+  .ft-op:hover { opacity:1 !important; background:var(--gh-paper-2); color:var(--gh-green-deep); }
+  .ft-preview { margin:2px 4px 6px 18px; padding:8px 10px; background:var(--gh-paper);
+    border:1px solid var(--gh-line); border-radius:6px; font-size:11.5px; font-family:monospace;
+    color:var(--gh-ink); white-space:pre-wrap; word-break:break-all; max-height:300px; overflow-y:auto; }
+  #files-btn.on { background:var(--gh-green-deep); color:#fbf6ec; border-color:var(--gh-green-deep); }
+  #rail h2 { font-size:12px; color:var(--gh-ink-faint); text-transform:uppercase; letter-spacing:1px; margin:4px 2px 8px; }
+  .sess { padding:8px 10px; border-radius:8px; font-size:13px; color:var(--gh-ink-soft);
+    cursor:pointer; border:1px solid transparent; display:flex; align-items:center; gap:6px; }
+  .sess:hover { background:var(--gh-surface); }
+  .sess.active { background:var(--gh-surface); border-color:var(--gh-line); color:var(--gh-ink); box-shadow:var(--gh-shadow); }
+  .sess .t { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .sess .pin { color:var(--gh-seal); font-size:12px; }
+
+  #conv { flex:1; display:flex; flex-direction:column; min-width:0; }
+  #conv-head { display:flex; align-items:center; gap:10px; padding:10px 28px; border-bottom:1px solid var(--gh-line); }
+  #ctx-usage { font-size:11px; color:var(--gh-ink-faint); padding:2px 8px; border-radius:8px;
+    background:rgba(0,0,0,.04); white-space:nowrap; cursor:default; }
+  #ctx-usage.warn { color:#a05a1e; background:rgba(180,120,30,.12); font-weight:600; }
+  #ctx-usage.masked { color:#7a4a9e; background:rgba(122,74,158,.10); }
+  #continue-btn { font-size:12px; padding:3px 10px; border-radius:8px; border:1px solid #c98a2e;
+    background:rgba(201,138,46,.14); color:#a05a1e; cursor:pointer; white-space:nowrap; font-weight:600; }
+  #continue-btn:hover { background:rgba(201,138,46,.24); }
+  #conv-title { font-size:15px; font-weight:600; flex:1; }
+  /* Perplexity ⋯ 菜单 */
+  #menu-wrap { position:relative; }
+  #menu-btn { width:30px; height:30px; border-radius:50%; border:1px solid var(--gh-line);
+    background:var(--gh-surface); cursor:pointer; font-size:16px; color:var(--gh-ink-soft); }
+  #menu { position:absolute; right:0; top:36px; background:var(--gh-surface); border:1px solid var(--gh-line);
+    border-radius:10px; box-shadow:0 8px 24px rgba(74,92,82,.18); min-width:190px; z-index:50; display:none; overflow:hidden; }
+  #menu.open { display:block; }
+  #menu .mi { padding:10px 14px; font-size:13px; cursor:pointer; display:flex; gap:10px; align-items:center; }
+  #menu .mi:hover { background:var(--gh-paper-2); }
+  #menu .mi.danger { color:var(--gh-seal); }
+  #menu .divider { height:1px; background:var(--gh-line); }
+
+  #messages { flex:1; overflow-y:auto; padding:24px 28px; display:flex; flex-direction:column; gap:14px; }
+  .msg { max-width:78%; padding:12px 16px; border-radius:var(--gh-radius-lg);
+    white-space:pre-wrap; word-break:break-word; line-height:1.6; font-size:14.5px; box-shadow:var(--gh-shadow); }
+  .msg.user { align-self:flex-end; background:var(--gh-user-bg); color:var(--gh-user-fg); border-bottom-right-radius:4px; }
+  .msg.agent { align-self:flex-start; background:var(--gh-agent-bg); border:1px solid var(--gh-line); border-bottom-left-radius:4px; }
+  .msg .meta { font-size:11px; color:var(--gh-ink-faint); margin-top:8px; }
+  .msg.user .meta { color:rgba(251,246,236,.75); }
+  /* 工具输出(折叠) */
+  .msg.tool { align-self:flex-start; max-width:78%; padding:6px 12px; border-radius:8px;
+    background:rgba(0,0,0,.03); border:1px dashed var(--gh-line); box-shadow:none;
+    font-size:12px; color:var(--gh-ink-faint); white-space:normal; }
+  .msg.tool summary { cursor:pointer; user-select:none; outline:none; }
+  .msg.tool .tool-body { margin:6px 0 0; max-height:300px; overflow:auto; white-space:pre-wrap;
+    word-break:break-word; font-size:12px; color:var(--gh-ink-soft); }
+
+  /* 壳三件套①:实时工具进度卡 */
+  .msg.tool.live { background:rgba(201,138,46,.08); border:1px solid rgba(201,138,46,.35);
+    color:var(--gh-ink); font-size:13px; white-space:normal; }
+  .msg.tool.live .lv-args { color:var(--gh-ink-faint); font-size:11.5px; word-break:break-all; }
+  .msg.tool.live .lv-ms { color:var(--gh-ink-faint); font-size:11.5px; margin-left:4px; }
+  .msg.tool.live .lv-ok { color:#2f8f4e; font-weight:700; }
+  .msg.tool.live .lv-err { color:var(--gh-seal); font-weight:700; }
+  .msg.tool.live .lv-prev { margin-top:4px; }
+  .msg.tool.live .lv-prev pre { margin:4px 0 0; max-height:180px; overflow:auto;
+    white-space:pre-wrap; word-break:break-word; font-size:11.5px; color:var(--gh-ink-soft); }
+  /* P3:子代理事件层级缩进 + 标记 */
+  .msg.tool.live[data-agent="sub"] { margin-left:26px; border-left:3px solid rgba(201,138,46,.55);
+    background:rgba(201,138,46,.05); }
+  .msg.tool.live .lv-sub { color:var(--gh-seal); font-weight:700; font-size:11px;
+    border:1px solid var(--gh-seal); border-radius:4px; padding:0 4px; margin-right:4px; }
+
+  /* 壳三件套②:assistant md 渲染容器(覆盖 white-space:pre-wrap,交由 md 排版) */
+  .msg.md { white-space:normal; }
+  .msg.md > :first-child { margin-top:0; } .msg.md > :last-child { margin-bottom:0; }
+  .msg.md h1,.msg.md h2,.msg.md h3,.msg.md h4 { margin:.7em 0 .35em; line-height:1.3;
+    color:var(--gh-ink); font-weight:700; }
+  .msg.md h1{font-size:19px} .msg.md h2{font-size:17px} .msg.md h3{font-size:15.5px} .msg.md h4{font-size:14.5px}
+  .msg.md p { margin:.45em 0; }
+  .msg.md ul,.msg.md ol { margin:.4em 0; padding-left:1.5em; }
+  .msg.md li { margin:.2em 0; }
+  .msg.md code { background:rgba(0,0,0,.06); padding:1px 5px; border-radius:5px;
+    font-family:Consolas,Menlo,monospace; font-size:13px; }
+  .msg.md pre { background:#2b2b28; color:#e8e4da; padding:10px 12px; border-radius:8px;
+    overflow:auto; white-space:pre; line-height:1.45; margin:.5em 0; }
+  .msg.md pre code { background:none; color:inherit; padding:0; }
+  .msg.md blockquote { border-left:3px solid var(--gh-line); margin:.5em 0; padding:.1em 0 .1em 12px;
+    color:var(--gh-ink-soft); }
+  .msg.md table { border-collapse:collapse; margin:.5em 0; font-size:13.5px; }
+  .msg.md th,.msg.md td { border:1px solid var(--gh-line); padding:6px 10px; text-align:left; }
+  .msg.md th { background:rgba(0,0,0,.04); font-weight:600; }
+  .msg.md img { max-width:100%; border-radius:8px; margin:.4em 0; box-shadow:var(--gh-shadow); }
+  .msg.md a { color:#a05a1e; text-decoration:underline; }
+  .msg.md hr { border:none; border-top:1px solid var(--gh-line); margin:.7em 0; }
+
+  /* 壳三件套④:mermaid 图(流程/时序/架构/状态) */
+  .msg.md .mermaid-diagram { margin:.5em 0; padding:12px; background:#fdfcf8;
+    border:1px solid var(--gh-line); border-radius:8px; overflow:auto; text-align:center; }
+  .msg.md .mermaid-diagram svg { max-width:100%; height:auto; }
+  .msg.md .mermaid-err { color:var(--gh-seal); font-size:12px; margin-bottom:6px; }
+  .msg.md .mermaid-src { background:#f6f3ea; color:var(--gh-ink-soft); padding:8px 10px;
+    border-radius:6px; font-size:12px; white-space:pre-wrap; text-align:left; }
+
+  /* 延续话题(Perplexity) */
+  .followups { align-self:flex-start; max-width:78%; display:flex; flex-direction:column; gap:6px; margin-top:-6px; }
+  .followups .fu-title { font-size:11px; color:var(--gh-ink-faint); margin-bottom:2px; }
+  .fu { padding:8px 12px; background:var(--gh-surface); border:1px solid var(--gh-line); border-radius:8px;
+    font-size:13px; cursor:pointer; transition:all .15s; }
+  .fu:hover { background:var(--gh-paper-2); border-color:var(--gh-focus); }
+
+  #composer { padding:16px 28px 20px; }
+  /* P2.5+9(task #40, 2026-09-20):chat input 工具栏下排一行,学 VS Code Chat
+     (Roo Code / Cline / Continue)。textarea 在上,工具栏在下一行;
+     工具栏内 flex row,左 [附件/思考/⌘K/🎤] 右 [停止/发送] 用 space-between 分开。 */
+  #composer .box { display:flex; flex-direction:column; gap:6px; background:var(--gh-surface);
+    border:1px solid var(--gh-line); border-radius:var(--gh-radius-lg); padding:10px 12px; box-shadow:var(--gh-shadow); }
+  #composer .box:focus-within { border-color:var(--gh-focus); }
+  /* M3.31.12(2026-09-16)+P2.5+9(2026-09-20):输入框自适应多行 — JS 监听 input 动态调 rows=2..12,
+     超过 12 行才出滚动条。min-height 保留 44px 给单行足够视觉。 */
+  #input { width:100%; border:none; outline:none; resize:none; background:transparent;
+    color:var(--gh-ink); font-size:14.5px; font-family:var(--gh-font); line-height:1.5;
+    min-height:44px; max-height:none; overflow-y:auto; box-sizing:border-box; }
+  #send { padding:9px 18px; border-radius:9px; border:none; background:var(--gh-green-deep);
+    color:#fbf6ec; font-size:14px; cursor:pointer; }
+  #send:hover { background:var(--gh-green); }
+  #send:disabled { background:var(--gh-paper-3); color:var(--gh-ink-faint); cursor:not-allowed; }
+  /* P2.5+9(2026-09-20):工具栏改水平一行,顶端分隔线区分输入区。 */
+  .composer-bar { display:flex; flex-direction:row; justify-content:space-between; align-items:center;
+    padding-top:8px; margin-top:2px; border-top:1px solid var(--gh-line); gap:8px; }
+  .composer-left { display:flex; gap:6px; align-items:center; flex-wrap:wrap; min-width:0; }
+  .composer-right { display:flex; gap:6px; align-items:center; flex:0 0 auto; }
+  #think-level { padding:6px 8px; border-radius:8px; border:1px solid var(--gh-line);
+    background:var(--gh-surface); color:var(--gh-ink); font-size:12px; cursor:pointer; }
+  #attach-btn, #cmd-k-btn, #voice-btn { padding:6px 10px; border-radius:8px; border:1px solid var(--gh-line);
+    background:var(--gh-surface); color:var(--gh-ink); font-size:14px; cursor:pointer; line-height:1; }
+  #attach-btn:hover, #cmd-k-btn:hover, #voice-btn:hover { border-color:var(--gh-green-deep); }
+  /* 窄屏(<600px)工具栏按钮 icon-only,文字隐藏 */
+  @media (max-width: 600px) {
+    #think-level { font-size:0; padding:6px 8px; }
+    #think-level option { font-size:12px; }
+  }
+  /* estop 停止按钮:运行中的「中断」信号。印章红描边 + 停止块呼吸脉动,
+     与发送键(墨绿实心)主次分明,又和 attach(中性描边)区分出危险语义。 */
+  #estop-btn { display:inline-flex; align-items:center; gap:6px; padding:6px 13px;
+    border-radius:999px; border:1.5px solid var(--gh-seal); background:var(--gh-surface);
+    color:var(--gh-seal); font-size:12.5px; font-weight:600; cursor:pointer;
+    letter-spacing:.5px; transition:background .15s,color .15s,box-shadow .15s; }
+  #estop-btn .stopdot { width:9px; height:9px; border-radius:2px; background:var(--gh-seal);
+    flex:0 0 auto; animation:estop-pulse 1.4s ease-in-out infinite; }
+  #estop-btn:hover { background:var(--gh-seal); color:#fbf6ec;
+    box-shadow:0 2px 10px rgba(178,58,48,.28); }
+  #estop-btn:hover .stopdot { background:#fbf6ec; animation-play-state:paused; }
+  #estop-btn:active { transform:translateY(1px); }
+  @keyframes estop-pulse { 0%,100% { opacity:1; } 50% { opacity:.3; } }
+  #attach-row { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+  .atchip { display:inline-flex; align-items:center; gap:6px; padding:4px 8px; font-size:12px;
+    background:var(--gh-paper-2); border:1px solid var(--gh-line); border-radius:999px; color:var(--gh-ink); }
+  .atchip button { border:none; background:none; color:var(--gh-seal); cursor:pointer; font-size:13px; padding:0; }
+  #status { padding:0 28px 8px; font-size:12px; color:var(--gh-ink-soft); min-height:18px; }
+  .spinner { display:inline-block; width:13px; height:13px; border:2px solid var(--gh-paper-3);
+    border-top-color:var(--gh-green-deep); border-radius:50%; animation:spin .8s linear infinite;
+    vertical-align:middle; margin-right:6px; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  @keyframes saveFlash { 0% { transform:scale(1); } 50% { transform:scale(1.05); background:#c8e6c9; } 100% { transform:scale(1); } }
+
+  /* key 配置弹层 */
+  #keymodal { position:fixed; inset:0; background:rgba(47,58,52,.4); display:none; z-index:100;
+    align-items:center; justify-content:center; }
+  #keymodal.open { display:flex; }
+  #keymodal .card { background:var(--gh-paper); border-radius:14px; padding:24px; width:520px; max-width:92vw;
+    max-height:86vh; overflow-y:auto; box-shadow:0 12px 40px rgba(0,0,0,.25); }
+  #keymodal h3 { font-size:16px; color:var(--gh-green-deep); margin-bottom:4px; }
+  #keymodal .sub { font-size:12px; color:var(--gh-ink-faint); margin-bottom:16px; }
+  .kf { margin-bottom:14px; }
+  .kf label { font-size:13px; font-weight:600; display:block; margin-bottom:4px; }
+  .kf .hint { font-size:11px; color:var(--gh-ink-faint); margin-bottom:6px; }
+  .kf input { width:100%; padding:9px 12px; border:1px solid var(--gh-line); border-radius:8px;
+    font-size:13px; font-family:monospace; background:var(--gh-surface); color:var(--gh-ink); }
+  .kf input:focus { outline:none; border-color:var(--gh-focus); }
+  #keymodal .row { display:flex; gap:10px; justify-content:flex-end; margin-top:18px; }
+  #keylist { margin-top:10px; font-size:12px; }
+  #keylist .k { padding:6px 8px; background:var(--gh-paper-2); border-radius:6px; margin-bottom:4px;
+    display:flex; justify-content:space-between; }
+  #keylist .k button { border:none; background:none; color:var(--gh-seal); cursor:pointer; }
+  /* task #12 纯规则离线首配引导: 全屏遮蔽 + 聚焦卡。只在「无任何已配置平台」时出现。 */
+  #firstsetup { position:fixed; inset:0; background:rgba(30,40,35,.62); display:none; z-index:200;
+    align-items:center; justify-content:center; backdrop-filter:blur(2px); }
+  #firstsetup.open { display:flex; }
+  #firstsetup .card { background:var(--gh-paper); border-radius:14px; padding:26px; width:540px; max-width:92vw;
+    max-height:86vh; overflow-y:auto; box-shadow:0 16px 48px rgba(0,0,0,.4); border:2px solid var(--gh-green-deep); }
+  #firstsetup h2 { font-size:18px; color:var(--gh-green-deep); margin:0 0 6px; }
+  #firstsetup .sub { font-size:12px; color:var(--gh-ink-faint); margin-bottom:14px; line-height:1.6; }
+  #firstsetup .fs-step { font-size:13px; font-weight:600; color:var(--gh-ink); margin:12px 0 6px; }
+  #firstsetup textarea { width:100%; padding:10px 12px; border:1px solid var(--gh-line); border-radius:8px;
+    font-size:13px; font-family:monospace; background:var(--gh-surface); color:var(--gh-ink);
+    min-height:64px; resize:vertical; }
+  #firstsetup textarea:focus { outline:none; border-color:var(--gh-focus); }
+  #fs-result { margin-top:10px; font-size:12px; padding:10px 12px; border-radius:8px; display:none; }
+  #fs-result.ok { display:block; background:#e8f5ec; border:1px solid var(--gh-green-deep); color:var(--gh-ink); }
+  #fs-result.err { display:block; background:#fbeaea; border:1px solid var(--gh-seal); color:var(--gh-ink); }
+  #fs-result .row2 { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+  #fs-result .tag { font-size:11px; padding:2px 8px; border-radius:10px; background:var(--gh-paper-2); }
+  #firstsetup .row { display:flex; gap:10px; justify-content:flex-end; margin-top:18px; }
+  #firstsetup .teach { margin-top:14px; font-size:11px; color:var(--gh-ink-faint); background:var(--gh-paper-2);
+    border-radius:8px; padding:10px 12px; line-height:1.6; }
+
+  /* 反馈问题弹层(目标 A.3) */
+  #fbmodal { position:fixed; inset:0; background:rgba(47,58,52,.4); display:none; z-index:110;
+    align-items:center; justify-content:center; }
+  #fbmodal.open { display:flex; }
+  #fbmodal .card { background:var(--gh-paper); border-radius:14px; padding:24px; width:560px; max-width:92vw;
+    max-height:88vh; overflow-y:auto; box-shadow:0 12px 40px rgba(0,0,0,.25); }
+  #fbmodal h3 { font-size:16px; color:var(--gh-green-deep); margin-bottom:4px; }
+  #fbmodal .sub { font-size:12px; color:var(--gh-ink-faint); margin-bottom:14px; }
+  #fbmodal .desc { width:100%; min-height:96px; padding:10px 12px; border:1px solid var(--gh-line);
+    border-radius:8px; font-size:13px; font-family:inherit; background:var(--gh-surface);
+    color:var(--gh-ink); resize:vertical; }
+  #fbmodal .desc:focus { outline:none; border-color:var(--gh-focus); }
+  #fbmodal .opts { margin-top:10px; font-size:12px; color:var(--gh-ink); }
+  #fbmodal .opts label { display:flex; align-items:flex-start; gap:8px; margin-bottom:6px; cursor:pointer; }
+  #fbmodal .opts input[type=checkbox] { margin-top:2px; }
+  #fbmodal .opt-hint { color:var(--gh-ink-faint); font-size:11px; margin-left:22px; }
+  #fbmodal .status { margin-top:12px; padding:10px 12px; background:var(--gh-paper-2);
+    border-radius:8px; font-size:12px; color:var(--gh-ink); }
+  #fbmodal .status code { font-family:monospace; color:var(--gh-green-deep); word-break:break-all; }
+  #fbmodal .row { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; flex-wrap:wrap; }
+
+  /* #102 补丁卡(复用 fbmodal 结构) */
+  #patchmodal { position:fixed; inset:0; background:rgba(47,58,52,.4); display:none; z-index:112;
+    align-items:center; justify-content:center; }
+  #patchmodal.open { display:flex; }
+  #patchmodal .card { background:var(--gh-paper); border-radius:14px; padding:24px; width:600px; max-width:92vw;
+    max-height:88vh; overflow-y:auto; box-shadow:0 12px 40px rgba(0,0,0,.25); }
+  #patchmodal h3 { font-size:16px; color:var(--gh-green-deep); margin-bottom:4px; }
+  #patchmodal .sub { font-size:12px; color:var(--gh-ink-faint); margin-bottom:14px; }
+  #patchmodal .status { margin-top:12px; padding:10px 12px; background:var(--gh-paper-2);
+    border-radius:8px; font-size:12px; color:var(--gh-ink); white-space:pre-wrap; word-break:break-all; }
+  #patchmodal .row { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; flex-wrap:wrap; }
+  #patchmodal table { width:100%; border-collapse:collapse; font-size:12px; margin-top:8px; }
+  #patchmodal th, #patchmodal td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--gh-line);
+    vertical-align:top; }
+  #patchmodal th { color:var(--gh-ink-faint); font-weight:600; }
+  #patchmodal .mini { font-size:11px; padding:2px 8px; }
+
+  /* M3.31:git 安装权限闸(未检测到 git 命令时启动弹一次)。
+     复用 fbmodal/patchmodal 的 fixed 居中遮罩 + 卡片风格,z-index 拉高避让 dlg。 */
+  #gitinstallgate { position:fixed; inset:0; background:rgba(47,58,52,.4); display:none; z-index:108;
+    align-items:center; justify-content:center; }
+  #gitinstallgate.open { display:flex; }
+  #gitinstallgate .card { background:var(--gh-paper); border-radius:14px; padding:24px; width:480px; max-width:92vw;
+    max-height:88vh; overflow-y:auto; box-shadow:0 12px 40px rgba(0,0,0,.25); }
+  #gitinstallgate h3 { font-size:16px; color:var(--gh-green-deep); margin-bottom:8px; }
+  #gitinstallgate .sub { font-size:12.5px; color:var(--gh-ink); margin-bottom:10px; line-height:1.55; }
+  #gitinstallgate ul { font-size:12.5px; color:var(--gh-ink); margin:0 0 8px 0; padding-left:22px; line-height:1.7; }
+  #gitinstallgate ul code { font-family:monospace; background:var(--gh-surface); padding:1px 5px; border-radius:3px;
+    font-size:12px; color:var(--gh-green-deep); }
+  #gitinstallgate .row { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; flex-wrap:wrap; }
+
+  /* M3.32 Phase 2(2026-09-16):Office 渲染器装机权限闸 */
+  #officeinstallgate { position:fixed; inset:0; background:rgba(47,58,52,.4); display:none; z-index:108;
+    align-items:center; justify-content:center; }
+  #officeinstallgate.open { display:flex; }
+  #officeinstallgate .card { background:var(--gh-paper); border-radius:14px; padding:24px; width:520px; max-width:92vw;
+    max-height:88vh; overflow-y:auto; box-shadow:0 12px 40px rgba(0,0,0,.25); }
+  #officeinstallgate h3 { font-size:16px; color:var(--gh-green-deep); margin-bottom:8px; }
+  #officeinstallgate .sub { font-size:12.5px; color:var(--gh-ink); margin-bottom:10px; line-height:1.55; }
+  #officeinstallgate .oig-status { font-size:12px; color:var(--gh-ink-soft); background:var(--gh-surface);
+    border:1px solid var(--gh-line); border-radius:6px; padding:6px 10px; margin:6px 0 10px;
+    font-family:monospace; line-height:1.55; }
+  #officeinstallgate .oig-status.ok { color:#1a6b1a; border-color:#b4d8b4; background:#f0f9f0; }
+  #officeinstallgate ul { font-size:12.5px; color:var(--gh-ink); margin:0 0 8px 0; padding-left:22px; line-height:1.7; }
+  #officeinstallgate ul code { font-family:monospace; background:var(--gh-surface); padding:1px 5px; border-radius:3px;
+    font-size:12px; color:var(--gh-green-deep); }
+  #officeinstallgate .row { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; flex-wrap:wrap; }
+
+  /* 通用内嵌对话框(Electron sandbox 禁用原生 prompt/confirm) */
+  #dlg { position:fixed; inset:0; background:rgba(47,58,52,.4); display:none; z-index:200;
+    align-items:center; justify-content:center; }
+  #dlg.open { display:flex; }
+  #dlg .card { background:var(--gh-paper); border-radius:14px; padding:22px; width:420px; max-width:92vw;
+    box-shadow:0 12px 40px rgba(0,0,0,.25); }
+  #dlg h3 { font-size:15px; color:var(--gh-green-deep); margin-bottom:4px; }
+  #dlg .sub { font-size:12px; color:var(--gh-ink-faint); margin-bottom:14px; }
+
+  @media (max-width:760px){ #rail{display:none} .msg{max-width:92%} }
+
+  /* v1.0 权限闸确认卡:按风险级换色 + 倒计时
+     - 写/执行/高危三档视觉区分,标题左缘色条 + OK 按钮底色从浅→深警示
+     - 不破坏国画纸底基调(.card 仍是 var(--gh-paper)) */
+  #dlg .card.perm-card { border-top:4px solid var(--gh-line); }
+  #dlg .card.perm-card.risk-write { border-top-color:#c9b274; }       /* 写入:浅褐 */
+  #dlg .card.perm-card.risk-exec { border-top-color:#b07a3f; }        /* 执行:赭石 */
+  #dlg .card.perm-card.risk-destructive { border-top-color:#a8332a; box-shadow:0 12px 40px rgba(168,51,42,.25); }  /* 高危删除:朱砂 */
+  /* OK 按钮按风险级:越危险越红 */
+  #dlg .card.perm-card #dlg-ok.risk-write { background:#e8d9b1; color:#5b4d2c; }
+  #dlg .card.perm-card #dlg-ok.risk-exec { background:#d6a86b; color:#4a2d12; }
+  #dlg .card.perm-card #dlg-ok.risk-destructive { background:#a8332a; color:#fff; }
+  /* 倒计时:超时后变红 */
+  #dlg-cd.cd-done { background:#fbe5e2 !important; color:#a8332a !important; border-color:#a8332a !important; }
+  /* diff 高亮(edit_file 工具结果):红删绿增,对齐 GitHub 风格 */
+  /* doc-panel 文件版本对比(2026-09-16 M3.27):GitHub 同款 */
+  .hljs-deletion { background:#ffeef0; color:#b31d28; display:inline-block; width:100%; padding:0 4px; }
+  .hljs-addition { background:#e6ffec; color:#22863a; display:inline-block; width:100%; padding:0 4px; }
+  .hljs-meta { color:#6e7781; }
+  #doc-diff-view { display:flex; flex-direction:column; flex:1; overflow:hidden; }
+  #doc-diff-head { display:flex; align-items:center; gap:6px; padding:9px 12px;
+    font-size:12px; color:var(--gh-ink-soft); border-bottom:1px solid var(--gh-line); }
+  #doc-diff-head .spacer { flex:1; }
+  #doc-diff-toolbar { display:flex; gap:6px; padding:8px 12px;
+    border-bottom:1px solid var(--gh-line); background:var(--gh-surface);
+    align-items:center; font-size:12px; }
+  #doc-diff-toolbar select { flex:1; min-width:0; padding:4px 6px; font-size:12px;
+    background:var(--gh-bg); color:var(--gh-ink); border:1px solid var(--gh-line); border-radius:5px; }
+  #doc-diff-toolbar button { background:var(--gh-green-deep); color:#fbf6ec; border:none;
+    border-radius:6px; padding:4px 12px; font-size:12px; cursor:pointer; }
+  #doc-diff-toolbar button:hover { background:var(--gh-green); }
+  #doc-diff-body { flex:1; overflow:auto; padding:10px 12px; font-family:monospace;
+    font-size:12.5px; line-height:1.55; background:var(--gh-bg); color:var(--gh-ink); }
+  #doc-diff-body .meta { font-size:11.5px; color:var(--gh-ink-soft); margin-bottom:8px; }
+  #doc-diff-body pre { margin:0; white-space:pre-wrap; word-break:break-all; }
+  .hljs-addition { background:#e6ffec; color:#1a7f37; display:block; }
+  /* M3.33 #65:skill 面板卡片样式(参考 doc-timeline 列表) */
+  #doc-skills-view { display:flex; flex-direction:column; flex:1; overflow:hidden; }
+  #doc-skills-head { display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid var(--gh-line); background:var(--gh-paper); font-size:12px; color:var(--gh-ink-soft); }
+  #doc-skills-head button { font-size:13px; padding:3px 10px; border-radius:5px; border:1px solid var(--gh-line); background:var(--gh-surface); color:var(--gh-ink); cursor:pointer; }
+  #doc-skills-head button:hover { background:var(--gh-green); color:#fff; }
+  #doc-skills-body { flex:1; overflow:auto; padding:10px 12px; background:var(--gh-bg); }
+  .skill-card { background:var(--gh-paper); border:1px solid var(--gh-line); border-radius:8px; padding:12px 14px; margin-bottom:10px; box-shadow:var(--gh-shadow); }
+  .skill-card-head { display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:4px; }
+  .skill-name { font-size:13.5px; font-weight:600; color:var(--gh-green-deep); font-family:monospace; }
+  .skill-lic { font-size:10.5px; color:var(--gh-ink-faint); }
+  .skill-desc { font-size:12.5px; color:var(--gh-ink); line-height:1.55; margin:4px 0; }
+  .skill-trig, .skill-req, .skill-dir { font-size:11.5px; color:var(--gh-ink-soft); margin:2px 0; }
+  .skill-actions { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  .skill-actions button { font-size:11.5px; padding:4px 10px; border-radius:5px; border:1px solid var(--gh-line); background:var(--gh-surface); color:var(--gh-ink); cursor:pointer; }
+  .skill-actions button:hover { background:var(--gh-green); color:#fff; }
+  .skill-uninstall { color:#c62828 !important; border-color:#e0b8b8 !important; }
+  .skill-uninstall:hover { background:#c62828 !important; color:#fff !important; }
+  #doc-skills-output { border-top:1px solid var(--gh-line); background:var(--gh-surface); }
+  #doc-skills-output-head { display:flex; align-items:center; padding:6px 12px; font-size:11.5px; color:var(--gh-ink-soft); border-bottom:1px solid var(--gh-line); }
+  #doc-skills-output-head button { font-size:11px; padding:1px 8px; border-radius:4px; border:1px solid var(--gh-line); background:var(--gh-paper); cursor:pointer; }
+  #doc-skills-output-pre { margin:0; padding:10px 14px; max-height:240px; overflow:auto; font-size:11.5px; font-family:monospace; white-space:pre-wrap; word-break:break-all; color:var(--gh-ink); background:#1c1f1a; color:#e0e0d8; border-radius:0; }
+  /* skillview / skillnew 模态(复用 dlg 风格) */
+  #skillview, #skillnew { position:fixed; inset:0; background:rgba(47,58,52,.4); display:none; z-index:108; align-items:center; justify-content:center; }
+  #skillview.open, #skillnew.open { display:flex; }
+  #skillview .card, #skillnew .card { background:var(--gh-paper); border-radius:14px; padding:20px 24px; box-shadow:0 12px 36px rgba(0,0,0,.18); }
+  #skillview .head, #skillnew .head { margin-bottom:10px; font-size:15px; color:var(--gh-green-deep); font-weight:600; }
+  #skillnew label { display:flex; flex-direction:column; gap:4px; color:var(--gh-ink); }
+  #skillnew input:focus, #skillnew textarea:focus, #skillnew select:focus { outline:none; border-color:var(--gh-green-deep); }
+  #skillnew .row button { font-size:12px; padding:6px 14px; border-radius:6px; border:1px solid var(--gh-line); background:var(--gh-surface); color:var(--gh-ink); cursor:pointer; }
+  #skillnew .row button:hover { background:var(--gh-green); color:#fff; }
+  #skillnew #skillnew-ok { background:var(--gh-green-deep); color:#fbf6ec; border-color:var(--gh-green-deep); }
+  .hljs-deletion { background:#ffebe9; color:#cf222e; display:block; }
+  .hljs-meta { color:#6e7781; }
+  /* 代码块内 highlight.js 配色微调,适配国风纸底 */
+  .msg pre code.hljs { background:transparent; padding:0; }
+  .msg pre { background:var(--gh-paper); border:1px solid var(--gh-line); border-radius:6px; padding:10px; overflow-x:auto; }
+  /* 教学 quiz 交互卡片(```quiz JSON 块渲染):国风纸底,选对绿选错红 */
+  .quiz-card { background:var(--gh-surface); border:1px solid var(--gh-line); border-radius:10px;
+    padding:14px 16px; margin:10px 0; box-shadow:var(--gh-shadow); }
+  .quiz-q { font-weight:600; color:var(--gh-ink); margin-bottom:10px; line-height:1.5; }
+  .quiz-opt { display:block; width:100%; text-align:left; padding:8px 12px; margin:6px 0;
+    border:1px solid var(--gh-line); border-radius:8px; background:var(--gh-paper);
+    color:var(--gh-ink); font-size:13.5px; cursor:pointer; transition:border-color .15s; }
+  .quiz-opt:hover:not(:disabled) { border-color:var(--gh-green-deep); }
+  .quiz-opt:disabled { cursor:default; opacity:.85; }
+  .quiz-opt.correct { background:#e6ffec; border-color:#1a7f37; color:#1a7f37; font-weight:600; }
+  .quiz-opt.wrong { background:#ffebe9; border-color:#cf222e; color:#cf222e; }
+  .quiz-explain { margin-top:10px; padding:8px 12px; border-left:3px solid var(--gh-green-deep);
+    background:var(--gh-paper-2); border-radius:0 6px 6px 0; font-size:13px; color:var(--gh-ink-soft);
+    display:none; line-height:1.6; }
+  .quiz-explain.show { display:block; }
+  .quiz-multi-hint { font-size:12px; color:var(--gh-ink-faint); margin-bottom:6px; }
+  /* P4 todo 进度卡 */
+  .todo-card { background:var(--gh-surface); border:1px solid var(--gh-line); border-radius:10px;
+    padding:12px 14px; margin:10px 0; box-shadow:var(--gh-shadow); font-size:13.5px; }
+  .todo-card .todo-title { font-weight:600; color:var(--gh-ink); margin-bottom:8px; }
+  .todo-card .todo-bar { height:6px; background:var(--gh-line); border-radius:3px; overflow:hidden; margin-bottom:10px; }
+  .todo-card .todo-bar > i { display:block; height:100%; background:var(--gh-green-deep); transition:width .3s; }
+  .todo-card .todo-item { display:flex; align-items:flex-start; gap:8px; padding:3px 0; color:var(--gh-ink-soft); }
+  .todo-card .todo-item .tk { flex:0 0 16px; text-align:center; }
+  .todo-card .todo-item.s-completed { color:var(--gh-ink-faint); text-decoration:line-through; }
+  .todo-card .todo-item.s-in_progress { color:var(--gh-ink); font-weight:600; }
+  .todo-card .todo-item.s-in_progress .tk { color:var(--gh-green-deep); }
+  /* P5 计划模式徽标:只读规划状态提示(暖黄,区别于进度卡) */
+  .plan-badge { background:linear-gradient(135deg, rgba(201,138,46,.14), rgba(201,138,46,.05));
+    border:1px solid rgba(201,138,46,.4); border-radius:10px; padding:8px 12px; margin:6px 0;
+    color:var(--gh-ink); font-size:13px; font-weight:600; }
+  /* 2026-09-14 会话回放面板(吸收 Manus replay):右侧滑出,时间轴逐步重放 tool_trace。
+     2026-09-16 M3.30+:top 74px 避开 topbar(实测高 73px),z-index 1200 > topbar 1100,不被挡 */
+  #replay-panel { position:fixed; top:74px; right:-420px; width:400px; max-width:92vw; height:calc(100vh - 74px);
+    background:var(--gh-bg); border-left:1px solid var(--gh-line); border-top:1px solid var(--gh-line);
+    box-shadow:-12px 0 32px rgba(0,0,0,.28);
+    z-index:1200; transition:right .28s ease; display:flex; flex-direction:column; }
+  #replay-panel.open { right:0; }
+  #replay-head { display:flex; align-items:center; gap:8px; padding:12px 14px;
+    border-bottom:1px solid var(--gh-line); font-weight:600; color:var(--gh-ink); }
+  #replay-head .spacer { flex:1; }
+  #replay-head button { background:none; border:1px solid var(--gh-line); border-radius:6px;
+    cursor:pointer; padding:3px 9px; font-size:13px; color:var(--gh-ink); }
+  #replay-progress { padding:8px 14px; border-bottom:1px solid var(--gh-line);
+    font-size:12.5px; color:var(--gh-ink-soft); }
+  #replay-progress input[type=range] { width:100%; margin-top:6px; accent-color:var(--gh-green-deep); }
+  #replay-body { flex:1; overflow-y:auto; padding:12px 14px; }
+  /* 文档右栏(2026-09-16 B 路线):与 replay-panel 同侧滑出,但右侧贴边。
+     2026-09-16 M3.30+:top 74px 避开 topbar(实测高 73px),z-index 1200 > topbar 1100,不被挡 */
+  /* M3.31 GUI 重排(2026-09-16):拉宽到 720px,3 tab 等权(参考 AI 陪聊产品右栏惯例) */
+  #doc-panel { position:fixed; top:74px; right:-720px; width:720px; max-width:80vw; height:calc(100vh - 74px);
+    background:var(--gh-bg); border-left:1px solid var(--gh-line); border-top:1px solid var(--gh-line);
+    box-shadow:-12px 0 32px rgba(0,0,0,.28);
+    z-index:1200; transition:right .28s ease; display:flex; flex-direction:column; }
+  #doc-panel.open { right:0; }
+  #doc-head { display:flex; align-items:center; gap:8px; padding:12px 14px;
+    border-bottom:1px solid var(--gh-line); font-weight:600; color:var(--gh-ink); }
+  #doc-head .spacer { flex:1; }
+  #doc-head button { background:none; border:1px solid var(--gh-line); border-radius:6px;
+    cursor:pointer; padding:3px 9px; font-size:13px; color:var(--gh-ink); }
+  #doc-tabs { display:flex; gap:0; border-bottom:1px solid var(--gh-line);
+    background:var(--gh-surface); }
+  .doc-tab { flex:1; border:none; background:none; padding:9px 8px;
+    color:var(--gh-ink-soft); cursor:pointer; font-size:12.5px; border-bottom:2px solid transparent; }
+  .doc-tab.active { color:var(--gh-green-deep); border-bottom-color:var(--gh-green-deep);
+    background:var(--gh-bg); font-weight:600; }
+  #doc-timeline-head { display:flex; align-items:center; gap:6px; padding:9px 12px;
+    font-size:12px; color:var(--gh-ink-soft); border-bottom:1px solid var(--gh-line); }
+  #doc-timeline-head .spacer { flex:1; }
+  #doc-timeline-head button { background:none; border:none; color:var(--gh-ink-soft);
+    cursor:pointer; font-size:14px; }
+  #doc-timeline-body { flex:1; overflow-y:auto; padding:8px 10px; }
+  .dt-item { border:1px solid var(--gh-line); border-radius:8px; padding:8px 10px;
+    margin:0 0 8px; background:var(--gh-surface); cursor:pointer; }
+  .dt-item:hover { border-color:var(--gh-green-deep); }
+  .dt-item.active { border-color:var(--gh-green-deep); background:var(--gh-bg); }
+  .dt-item .path { font-family:monospace; font-size:12.5px; color:var(--gh-ink);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .dt-item .meta { font-size:11.5px; color:var(--gh-ink-soft); margin-top:3px; }
+  .dt-item .op { display:inline-block; padding:1px 5px; border-radius:3px;
+    font-size:10.5px; margin-right:4px; font-family:monospace; }
+  .dt-item .op.write { background:#dde6dd; color:#2d5e2d; }
+  .dt-item .op.edit { background:#e6e0dd; color:#5e4f2d; }
+  .dt-item .op.rollback { background:#dde0e6; color:#2d3e5e; }
+  .dt-item .op.imported { background:#e0e8f0; color:#2d4e6e; }
+  /* M3.31 GUI 多媒体扩展(2026-09-16):flex 列布局让 pre 滚动条生效(原缺这行导致 flex:1 失效) */
+  #doc-preview-view { display:flex; flex-direction:column; flex:1; overflow:hidden; }
+  /* 多媒体节点居中 + 留 padding */
+  #doc-preview-body > img, #doc-preview-body > embed, #doc-preview-body > video {
+    display:block; margin:auto; max-width:100%; max-height:100%;
+  }
+  #doc-preview-body > audio { display:block; margin:14px auto; max-width:100%; }
+  #doc-preview-body > embed { width:100%; height:100%; }
+  #doc-preview-head { display:flex; align-items:center; gap:8px; padding:9px 12px;
+    border-bottom:1px solid var(--gh-line); font-size:12.5px; color:var(--gh-ink-soft); }
+  #doc-preview-head .spacer { flex:1; }
+  #doc-preview-head button { background:var(--gh-surface); border:1px solid var(--gh-line);
+    border-radius:6px; cursor:pointer; padding:3px 9px; font-size:12px; color:var(--gh-ink); }
+  #doc-dirty-badge { color:#a04040; font-weight:600; }
+  #doc-preview-toolbar { display:flex; gap:6px; padding:7px 12px;
+    border-bottom:1px solid var(--gh-line); background:var(--gh-surface); }
+  #doc-version-select { flex:1; padding:4px 8px; font-size:12px;
+    background:var(--gh-bg); color:var(--gh-ink); border:1px solid var(--gh-line); border-radius:5px; }
+  #doc-rollback { background:var(--gh-surface); border:1px solid var(--gh-line);
+    border-radius:6px; cursor:pointer; padding:4px 10px; font-size:12px; color:var(--gh-ink); }
+  #doc-rollback:hover { background:var(--gh-green-deep); color:white; border-color:var(--gh-green-deep); }
+  /* M3.31 GUI 重排(2026-09-16):textarea → pre,填满下半屏,等宽字体 + wrap */
+  #doc-preview-body { flex:1; overflow:auto; border:none; padding:14px 16px; font-family:monospace;
+    font-size:12.5px; background:var(--gh-bg); color:var(--gh-ink); line-height:1.55;
+    white-space:pre-wrap; word-break:break-all; tab-size:4; margin:0; }
+  #doc-preview-body::selection { background:var(--gh-green-deep); color:#fbf6ec; }
+  /* M3.31.12(2026-09-16):iframe 渲染时父级不撑滚动条,iframe 内部原生滚动;
+     iframe flex:1 自适应占据 body 剩余高度(扣掉底部 hint) */
+  #doc-preview-body.has-iframe { overflow:hidden; padding:0; display:flex; flex-direction:column; }
+  #doc-preview-body.has-iframe > iframe { flex:1; width:100%; border:none; display:block; background:#fff; }
+  #doc-preview-body.has-iframe > div { flex:none; }
+  /* 截断提示 */
+  .doc-trunc-hint { display:block; margin-top:14px; padding:10px 12px;
+    background:var(--gh-paper-2); border:1px dashed var(--gh-line); border-radius:8px;
+    color:var(--gh-ink-soft); font-size:12px; font-family:inherit; }
+  .rp-step { border-left:3px solid var(--gh-line); padding:6px 10px; margin:0 0 10px 6px;
+    position:relative; border-radius:0 8px 8px 0; background:var(--gh-surface);
+    font-size:13px; color:var(--gh-ink-soft); }
+  .rp-step.shown { border-left-color:var(--gh-green-deep); color:var(--gh-ink); }
+  .rp-step.bad.shown { border-left-color:#c0392b; }
+  .rp-step .rp-dot { position:absolute; left:-7px; top:10px; width:11px; height:11px;
+    border-radius:50%; background:var(--gh-line); border:2px solid var(--gh-bg); }
+  .rp-step.shown .rp-dot { background:var(--gh-green-deep); }
+  .rp-step.bad.shown .rp-dot { background:#c0392b; }
+  .rp-step .rp-name { font-weight:600; }
+  .rp-step .rp-ts { font-size:11px; color:var(--gh-ink-faint); margin-left:6px; }
+  .rp-step .rp-prev { margin-top:5px; font-size:12px; white-space:pre-wrap; word-break:break-word;
+    background:var(--gh-bg); border:1px solid var(--gh-line); border-radius:6px; padding:6px 8px;
+    max-height:120px; overflow-y:auto; display:none; }
+  .rp-step.shown .rp-prev { display:block; }
+  #replay-controls { display:flex; gap:6px; padding:10px 14px; border-top:1px solid var(--gh-line); }
+  #replay-controls button { flex:1; background:var(--gh-green-deep); color:#fff; border:none;
+    border-radius:6px; padding:7px 0; cursor:pointer; font-size:13px; }
+  #replay-controls button.ghost { background:var(--gh-surface); color:var(--gh-ink);
+    border:1px solid var(--gh-line); }
+  /* M3.27(2026-09-18):外部注入提示 — 浅蓝闪一下,1.5s 淡出(让用户注意到 #input 被填了内容) */
+  #input.inject-flash { animation: inject-flash-anim 1.5s ease-out; }
+  @keyframes inject-flash-anim {
+    0% { background: rgba(74, 143, 199, 0.30); }
+    100% { background: transparent; }
+  }
+  /* 一期② case 故事卡:文科概念的情境叙事块(区别于代码块的暖色叙事卡) */
+  .case-card { background:linear-gradient(135deg, rgba(201,138,46,.10), rgba(201,138,46,.04));
+    border:1px solid rgba(201,138,46,.40); border-left:4px solid rgba(201,138,46,.65);
+    border-radius:10px; padding:14px 16px; margin:12px 0; box-shadow:var(--gh-shadow); }
+  .case-card .case-tag { display:inline-block; font-size:11px; font-weight:700; letter-spacing:.5px;
+    color:#a05a12; background:rgba(201,138,46,.16); border:1px solid rgba(201,138,46,.45);
+    border-radius:4px; padding:1px 7px; margin-bottom:8px; }
+  .case-card .case-body { color:var(--gh-ink); font-size:14px; line-height:1.8; white-space:pre-wrap;
+    word-break:break-word; }
+</style>
+<!-- 壳三件套②③:md 标准渲染 + XSS 防护(版本钉死)。仅渲染 assistant 正文;user 保持纯文本。 -->
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+<!-- 代码高亮:highlight.js(支持 diff 语言,红绿高亮 edit_file 结果) -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github.min.css">
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/core.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/diff.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/python.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/javascript.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/typescript.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/rust.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/java.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/cpp.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/go.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/sql.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/bash.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/json.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/yaml.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/xml.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/css.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/languages/markdown.min.js"></script>
+<!-- ④图渲染:mermaid(流程图/时序图/架构图/状态图 → SVG 内联)。ESM 模块,见页面底部 init。 -->
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.esm.min.mjs';
+  // 安全:securityLevel 'strict' 禁 htmlLabels,防图内注入;国风主题基色。
+  mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'neutral' });
+  window.__mermaid = mermaid;
+  window.__mermaidReady = true;
+</script>
+</head>
+<body>
+<div id="topbar">
+  <div id="brand">
+    <img src="/prisiragent/assets/prisir-flame-48.png" alt="icon">
+    <span class="name">Prisir AI</span>
+  </div>
+  <div class="spacer"></div>
+  <span id="strategy-label"></span>
+  <button class="topbtn" id="replay-btn" onclick="toggleReplay()" data-i18n="replay_panel" data-i18n-title="replay_title">⏵ 回放</button>
+  <button class="topbtn" id="files-btn" onclick="toggleFiles()" data-i18n="files" data-i18n-title="files_title">📁 文件</button>
+  <button class="topbtn" id="doc-btn" onclick="toggleDocPanel()" data-i18n="doc_panel" data-i18n-title="doc_panel_title">📑 文档</button>
+  <button class="topbtn" onclick="openKeys()" data-i18n="model_key">🔑 模型 Key</button>
+  <button class="topbtn" onclick="openFeedback()" data-i18n-title="feedback_title"><span data-i18n="feedback">⚙ 反馈问题</span></button>
+  <button class="topbtn" id="topbtnCompanion" onclick="openCompanion()" data-i18n-title="companion_title" title="陪聊(语音/文字轻量对话,可派发到主面板)">📞 陪聊</button>
+  <button class="topbtn" onclick="newSession()" data-i18n="new_session">+ 新会话</button>
+</div>
+<div id="main">
+  <div id="rail">
+    <h2 data-i18n="sessions">会话</h2>
+    <div id="sess-list"></div>
+  </div>
+  <!-- 文件资料栏(2026-09-06 用户反馈:IDE 式左侧文件树,管理工作目录资料)。
+       默认收起,顶栏 📁 开关切换;查看/插入引用/文本编辑,编辑走权限闸。 -->
+  <div id="frail" style="display:none">
+    <div id="frail-head">
+      <span id="frail-title" data-i18n="files">文件</span>
+      <span class="spacer"></span>
+      <button id="frail-refresh" type="button" onclick="loadFileTree()" title="刷新">⟳</button>
+      <button id="frail-close" type="button" onclick="toggleFiles()" title="收起">✕</button>
+    </div>
+    <div id="frail-workdir" title="当前工作目录"></div>
+    <div id="frail-tree"></div>
+  </div>
+  <div id="split-wrap">
+    <div id="split-left">
+      <div id="sl-head">
+        <button class="sl-tab active" id="sl-tab-summary" type="button" data-i18n="summary">摘要</button>
+        <button class="sl-tab" id="sl-tab-replay" type="button" data-i18n="replay">原文</button>
+        <span id="sl-title"></span>
+        <button id="sl-merge" type="button" data-i18n="merge" data-i18n-title="merge_title">✕ 合并</button>
+      </div>
+      <div id="sl-body">
+        <div id="sl-summary-view">
+          <div id="sl-summary-src"></div>
+          <div id="sl-summary-text"></div>
+        </div>
+        <div id="sl-replay-view" style="display:none">
+          <div id="sl-replay"></div>
+        </div>
+      </div>
+    </div>
+    <div id="split-bar"></div>
+    <div id="conv">
+    <div id="conv-head">
+      <div id="conv-title" data-i18n="new_conv">新会话</div>
+      <button id="continue-btn" onclick="continueInNewWindow()" style="display:none"
+        data-i18n="open_new_win" data-i18n-title="ctx_new_win_title">🔀 开新窗接续</button>
+      <button id="split-btn" onclick="openSplitScreen()" style="display:none"
+        data-i18n="split_screen" data-i18n-title="ctx_split_title">🗔 分屏接续</button>
+      <span id="ctx-usage" title="上下文窗口用量(估算)"></span>
+      <div id="menu-wrap">
+        <button id="menu-btn" onclick="toggleMenu(event)">⋯</button>
+        <div id="menu">
+          <div class="mi" onclick="pinSession()">📌 <span id="pin-label" data-i18n="pin">固定的</span></div>
+          <div class="mi" onclick="renameSession()" data-i18n="rename">✏️ 重命名会话</div>
+          <div class="divider"></div>
+          <div class="mi" onclick="exportAs('pdf')" data-i18n="export_pdf">📄 导出为PDF</div>
+          <div class="mi" onclick="exportAs('md')" data-i18n="export_md">📝 衍生为Markdown</div>
+          <div class="mi" onclick="exportAs('docx')" data-i18n="export_docx">📃 导出为DOCX</div>
+          <div class="mi" onclick="saveExperience()" data-i18n="save_exp">💎 存为经验(Obsidian)</div>
+          <div class="mi" onclick="continueInNewWindow()" data-i18n="continue_new">🔀 开新窗接续(带交接)</div>
+          <div class="mi" onclick="openSplitScreen()" data-i18n="split">🗔 分屏接续(带交接)</div>
+          <div class="mi" onclick="window.open('/prisiragent/remote','_blank')" data-i18n="remote">📱 手机遥控</div>
+          <div class="divider"></div>
+          <div class="mi" onclick="openPatch()" data-i18n="patch" data-i18n-title="patch_title">🩹 补丁</div>
+          <div class="mi" onclick="window.open('/prisiragent/about','_blank')" data-i18n="about">ℹ️ 关于</div>
+          <div class="divider"></div>
+          <div class="mi danger" onclick="deleteSession()" data-i18n="del">🗑️ 删除</div>
+        </div>
+      </div>
+    </div>
+    <div id="messages"></div>
+    <div id="status"></div>
+    <div id="composer">
+      <div id="attach-row"></div>
+      <div class="box">
+        <textarea id="input" rows="2" data-i18n-ph="input_ph" placeholder="问点什么… (Enter 发送,Shift+Enter 换行)"></textarea>
+        <div class="composer-bar">
+          <div class="composer-left">
+            <button id="attach-btn" type="button" data-i18n-title="attach_title" title="添加附件">📎</button>
+            <input id="attach-input" type="file" multiple style="display:none">
+            <select id="think-level" data-i18n-title="think_title" title="思考深度">
+              <option value="" data-i18n="think_default">思考:默认</option>
+              <option value="off" data-i18n="think_off">思考:关闭</option>
+              <option value="low" data-i18n="think_low">思考:低</option>
+              <option value="medium" data-i18n="think_medium">思考:中</option>
+              <option value="high" data-i18n="think_high">思考:高</option>
+            </select>
+            <button id="cmd-k-btn" type="button" title="命令面板 (⌘K)" data-i18n-title="cmd_k_title" style="display:none">⌘K</button>
+            <button id="voice-btn" type="button" title="语音输入" data-i18n-title="voice_title" style="display:none">🎤</button>
+          </div>
+          <div class="composer-right">
+            <button id="estop-btn" type="button" data-i18n="stop" data-i18n-title="estop_title" style="display:none" onclick="estopNow()"><span class="stopdot"></span>停止</button>
+            <button id="send" onclick="sendMessage()" data-i18n="send">发送</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    </div>
+  </div>
+  <!-- 文档右栏(2026-09-16 B 路线):只读预览 + 改动时间线 + dirty 检测。
+       默认收起,顶栏 📑 按钮切换。文件改动是 chat 期间的副作用,用时间线统一溯源,
+       而不是依赖外置编辑器;读全文直接走 read_file。 -->
+  <div id="doc-panel" style="display:none">
+    <div id="doc-head">
+      <span data-i18n="doc_panel">📑 文档</span>
+      <span class="spacer"></span>
+      <button id="doc-close" type="button" onclick="toggleDocPanel()" title="收起">✕</button>
+    </div>
+    <div id="doc-tabs">
+      <button class="doc-tab active" id="doc-tab-timeline" type="button"
+        onclick="docSwitchTab('timeline')" data-i18n="doc_timeline">⏱ 改动时间线</button>
+      <button class="doc-tab" id="doc-tab-preview" type="button"
+        onclick="docSwitchTab('preview')" data-i18n="doc_preview">📄 只读预览</button>
+      <button class="doc-tab" id="doc-tab-diff" type="button"
+        onclick="docSwitchTab('diff')" data-i18n="doc_diff">📊 版本对比</button>
+      <button class="doc-tab" id="doc-tab-skills" type="button"
+        onclick="docSwitchTab('skills')" data-i18n="doc_skills">🔧 skills</button>
+    </div>
+    <div id="doc-timeline-view">
+      <div id="doc-timeline-head">
+        <span id="doc-timeline-count" data-i18n="doc_timeline_empty">本对话尚未改动任何文件</span>
+        <span class="spacer"></span>
+        <button type="button" onclick="docRefreshTimeline()" data-i18n-title="doc_refresh_title">⟳</button>
+      </div>
+      <div id="doc-timeline-body"></div>
+    </div>
+    <div id="doc-preview-view" style="display:none">
+      <div id="doc-preview-head">
+        <span id="doc-preview-path" data-i18n="doc_no_file">未选文件</span>
+        <span class="spacer"></span>
+        <span id="doc-dirty-badge" style="display:none"
+          data-i18n="doc_dirty">⚠ 外置有改动</span>
+        <button id="doc-reload" type="button" style="display:none"
+          onclick="docReload()" data-i18n="doc_reload">重新加载</button>
+      </div>
+      <div id="doc-preview-toolbar">
+        <select id="doc-version-select"
+          onchange="docSelectVersion(this.value)"><option value="current"
+          data-i18n="doc_current">当前版本</option></select>
+        <button type="button" id="doc-rollback" style="display:none"
+          onclick="docRollback()" data-i18n="doc_rollback">⤴ 回滚到此版本</button>
+      </div>
+      <pre id="doc-preview-body"></pre>
+    </div>
+    <div id="doc-diff-view" style="display:none">
+      <div id="doc-diff-head">
+        <span id="doc-diff-path" data-i18n="doc_no_file">未选文件</span>
+        <span class="spacer"></span>
+        <span id="doc-diff-stats" style="font-family:monospace"></span>
+      </div>
+      <div id="doc-diff-toolbar">
+        <span style="color:var(--gh-ink-soft)">A</span>
+        <select id="doc-diff-select-a"><option value="">—</option></select>
+        <span style="color:var(--gh-ink-soft)">B</span>
+        <select id="doc-diff-select-b"><option value="">—</option></select>
+        <button type="button" onclick="docLoadDiff()"
+          data-i18n="doc_diff_run">对比</button>
+      </div>
+      <div id="doc-diff-body"></div>
+    </div>
+    <div id="doc-skills-view" style="display:none">
+      <div id="doc-skills-head">
+        <span id="doc-skills-count" data-i18n="doc_skills_loading">加载中…</span>
+        <span class="spacer"></span>
+        <button type="button" onclick="skillRefresh()" title="刷新">⟳</button>
+        <button type="button" onclick="skillNew()" title="新建 skill">+</button>
+      </div>
+      <div id="doc-skills-body"></div>
+      <div id="doc-skills-output" style="display:none">
+        <div id="doc-skills-output-head">
+          <span id="doc-skills-output-title">output</span>
+          <span class="spacer"></span>
+          <button type="button" onclick="document.getElementById('doc-skills-output').style.display='none'">✕</button>
+        </div>
+        <pre id="doc-skills-output-pre"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 2026-09-14 会话回放面板:时间轴重放本会话工具调用轨迹(吸收 Manus replay)。 -->
+<div id="replay-panel">
+  <div id="replay-head">
+    <span data-i18n="replay_panel">⏵ 回放</span>
+    <span class="spacer"></span>
+    <span id="replay-count"></span>
+    <button type="button" onclick="toggleReplay()" data-i18n="close" title="关闭">✕</button>
+  </div>
+  <div id="replay-progress">
+    <span id="replay-pos"></span>
+    <input type="range" id="replay-slider" min="0" max="0" value="0" oninput="replaySeek(this.value)">
+  </div>
+  <div id="replay-body"></div>
+  <div id="replay-controls">
+    <button type="button" onclick="replayPlay()" id="replay-play-btn" data-i18n="play">▶ 播放</button>
+    <button type="button" class="ghost" onclick="replayStep(1)" data-i18n="step">+1 步</button>
+    <button type="button" class="ghost" onclick="replayShowAll()" data-i18n="show_all">全部</button>
+  </div>
+</div>
+
+<div id="keymodal">  <div class="card">
+    <h3 data-i18n="model_endpoints">模型端点</h3>
+    <div class="sub">无账号:key 只存本地。可登记多个平台,每个一行(平台名+协议+base_url+key+模型)。
+      子代/竞速按「平台名」选用模型。对话路由按任务类型挑平台:openai/anthropic 优先于自定义平台;
+      只填自定义平台时该平台即默认。同名保存=覆盖。</div>
+    <div class="kf">
+      <label data-i18n="custom_endpoint">模型端点</label>
+      <div class="hint">从列表选平台会自动填 base_url 和默认模型;选「⌨ 自定义」可手填完整字段。
+        平台名:小写字母/数字/-/_,如 openai、anthropic、kimi、qwen-coder、custom。
+        同名保存=覆盖。openai/anthropic 可空 base_url 用官方默认。<br>
+        协议:openai=OpenAI 兼容(/chat/completions);anthropic=Anthropic Messages(/v1/messages)。<br>
+        base_url 填到版本前缀,如 https://api.kimi.com/coding/v1、
+        http://127.0.0.1:11434/v1(本地 Ollama);Anthropic 协议端点填到 /v1 或其根。</div>
+      <select id="k-platform-pick" onchange="onPlatformPick()" style="width:100%;padding:9px 12px;border:1px solid var(--gh-line);border-radius:8px;font-size:13px;background:var(--gh-surface);color:var(--gh-ink);margin-bottom:6px">
+        <option value="">— 加载中… —</option>
+      </select>
+      <input id="k-platform" type="text" placeholder="平台名, e.g. kimi / qwen-coder / custom" style="width:100%;padding:9px 12px;border:1px solid var(--gh-line);border-radius:8px;font-size:13px;background:var(--gh-surface);color:var(--gh-ink);margin-bottom:6px">
+      <select id="k-custom-proto" style="width:100%;padding:9px 12px;border:1px solid var(--gh-line);border-radius:8px;font-size:13px;background:var(--gh-surface);color:var(--gh-ink);margin-bottom:6px">
+        <option value="openai">openai(OpenAI 兼容,多数平台)</option>
+        <option value="anthropic">anthropic(Anthropic Messages 协议端点)</option>
+      </select>
+      <input id="k-custom-url" type="text" placeholder="base_url, e.g. https://...">
+      <input id="k-custom-key" type="password" data-i18n-ph="key_ph" placeholder="key(本地可空)" style="margin-top:6px">
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <div style="flex:1;position:relative">
+          <input id="k-custom-model" type="text" data-i18n-ph="model_ph" placeholder="模型名(可手填或拉取)" style="width:100%" onfocus="showModelDropdown()" onblur="hideModelDropdownDelayed()">
+          <div id="k-model-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;max-height:200px;overflow-y:auto;background:var(--gh-surface);border:1px solid var(--gh-line);border-radius:0 0 8px 8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);z-index:1000"></div>
+        </div>
+        <button class="topbtn" type="button" onclick="pullModels()" data-i18n="pull" title="从端点拉取可选模型">拉取</button>
+      </div>
+      <div id="k-platform-note" style="font-size:11px;color:var(--gh-ink-faint);margin-top:6px"></div>
+      <div id="k-model-hint" style="font-size:11px;color:var(--gh-ink-faint);margin-top:4px"></div>
+    </div>
+    <div class="kf">
+      <label data-i18n="workdir">工作目录</label>
+      <div class="hint" data-i18n="workdir_hint">PrisirAI 读写文件/跑命令的基准目录(影响 read_file/run_shell 相对路径)</div>
+      <div style="display:flex;gap:6px">
+        <input id="k-workdir" type="text" data-i18n-ph="workdir_ph" placeholder="如 C:\path\to\project" style="flex:1">
+        <button class="topbtn" type="button" onclick="saveWorkdir()" data-i18n="apply">应用</button>
+      </div>
+      <div id="k-workdir-hint" style="font-size:11px;color:var(--gh-ink-faint);margin-top:4px"></div>
+    </div>
+    <div class="row">
+      <button class="topbtn" onclick="saveKeys()" data-i18n="save">保存</button>
+      <button class="topbtn" onclick="resetRouter()" data-i18n="reset_router" title="清除指定平台,恢复智能路由">恢复路由</button>
+      <button class="topbtn" onclick="closeKeys()" data-i18n="close">关闭</button>
+    </div>
+    <div id="keylist"></div>
+  </div>
+</div>
+
+<!-- task #12 纯规则离线首配引导: 仅当无任何已配置平台时启动弹出。粘 key/url → 规则识别 → 一键保存。 -->
+<div id="firstsetup">
+  <div class="card">
+    <h2 data-i18n="fs_title">👋 欢迎使用 PrisirAI</h2>
+    <div class="sub" data-i18n="fs_sub">先配一个模型平台就能开始对话。把你从模型平台复制的 <b>API key</b>(或直接粘平台提供的 base_url)粘贴到下面,系统自动识别平台并填好配置——<b>全程离线识别,不会上传</b>。</div>
+    <div class="fs-step" data-i18n="fs_step1">第 1 步 · 粘贴 key 或地址</div>
+    <textarea id="fs-input" data-i18n-ph="fs_input_ph" placeholder="例如: sk-ant-...  或  https://dashscope.aliyuncs.com/compatible-mode/v1"></textarea>
+    <div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end">
+      <button class="topbtn primary" onclick="fsIdentify()" data-i18n="fs_identify">识别</button>
+    </div>
+    <div id="fs-result"></div>
+    <div class="row">
+      <button class="topbtn" onclick="fsSkip()" data-i18n="fs_skip">稍后再配</button>
+      <button class="topbtn" onclick="fsOpenAdvanced()" data-i18n="fs_advanced">手动配置</button>
+    </div>
+    <div class="teach" data-i18n="fs_teach">💡 小提示:以后你也可以直接在<b>主对话里粘贴 key</b>对我说「帮我配置」,或点右上角「🔑 模型 Key」随时改。这个引导只在第一次没配置时出现。</div>
+  </div>
+</div>
+
+<!-- v2.0 反馈卡(目标 A.3):点击「⚙ 反馈问题」弹出。打 zip → 桌面 → 引导用户到论坛反馈 -->
+<div id="fbmodal">
+  <div class="card">
+    <h3 data-i18n="fb_title">⚙ 反馈问题</h3>
+    <div class="sub">日志已自动打包到桌面(zip 含运行日志 + 脱敏 settings + 系统信息 + 最近会话摘要)。<br>
+      反馈通过 <code>bbs.babelspan.com/forum</code> 论坛(<b>PrisirAI 对话</b> 板块),免注册、签名发帖。</div>
+    <label for="fb-desc" style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">简要描述(可空)</label>
+    <textarea id="fb-desc" class="desc" maxlength="4000"
+              placeholder="例:「启动后左下角出现 X」「对话中断,无报错」「想加 Y 功能」"></textarea>
+    <div class="opts">
+      <label><input type="checkbox" id="fb-mask-keys"> 包含 model key 脱敏信息(默认开)
+        <span class="opt-hint">勾掉 → zip 里 api_key 字段直接抠掉,只留 key 存在性布尔</span></label>
+    </div>
+    <div class="status" id="fb-status">尚未打包</div>
+    <div class="row">
+      <button class="topbtn" onclick="closeFeedback()" data-i18n="cancel">取消</button>
+      <button class="topbtn" onclick="feedbackPackOnly()" data-i18n="fb_pack" title="只打 zip 到桌面,你自己决定怎么发">仅打包到桌面</button>
+      <button class="topbtn primary" onclick="feedbackPackAndOpen()" data-i18n="fb_publish">发布到反馈论坛</button>
+    </div>
+  </div>
+</div>
+
+<!-- #102 补丁卡:一键应用/回滚增量补丁包(zip)。 -->
+<div id="patchmodal">
+  <div class="card">
+    <h3 data-i18n="patch_card_title">🩹 增量补丁</h3>
+    <div class="sub" data-i18n="patch_sub">只发改动文件,不重装整个程序。选补丁包(.zip)应用,重启后生效;可随时回滚。</div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+      <input type="file" id="patch-file" accept=".zip" style="font-size:12px;flex:1">
+      <button class="topbtn primary" onclick="patchApplyChosen()" data-i18n="patch_apply">应用</button>
+    </div>
+    <div class="status" id="patch-status">—</div>
+    <h3 style="margin-top:16px;font-size:13px" data-i18n="patch_applied">已应用的补丁</h3>
+    <div id="patch-list"><div class="sub">—</div></div>
+    <div class="row">
+      <button class="topbtn" onclick="closePatch()" data-i18n="close">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- M3.31:git 安装权限闸(未检测到 git 命令时启动弹一次,选「暂不启用」后不再弹) -->
+<div id="gitinstallgate">
+  <div class="card">
+    <h3>📦 检测到外部版本管理兼容功能需要 git</h3>
+    <!-- 2026-09-18 方案 D:NSIS 装包已含精简 git。Windows 装包用户不会再触发此闸
+         (后端 _detect_git 命中 NSIS 打入的 $INSTDIR\bin\git\mingw64\bin\git.exe);
+         仅源码开发模式 / macOS / Linux 用户可能看到。 -->
+    <div class="sub">本机未检测到 git 命令。启用该功能需要先安装:</div>
+    <ul>
+      <li>Windows: Git for Windows(<a href="https://git-scm.com/downloads" target="_blank" rel="noopener">git-scm.com/downloads</a>) — NSIS 装包默认已自带</li>
+      <li>macOS: <code>brew install git</code></li>
+      <li>Linux: 包管理器安装(apt / dnf / pacman 等)</li>
+    </ul>
+    <div class="row">
+      <button class="topbtn primary" id="gitinstallgate-open">打开下载页</button>
+      <button class="topbtn" id="gitinstallgate-skip">暂不启用</button>
+    </div>
+  </div>
+</div>
+
+<!-- M3.32 Phase 2(2026-09-16):Office(docx/xlsx/pptx)渲染器装机权限闸
+     触发条件:点击 docx/xlsx/pptx 文件预览时,后端 415 + lo_detected=false
+     范围收紧:只推 LibreOffice(纯本地可执行),officecli 因外网 CDN 依赖被排除 -->
+<div id="officeinstallgate">
+  <div class="card">
+    <h3>📄 Office 文件预览需要 LibreOffice</h3>
+    <div class="sub">本机未检测到 LibreOffice。预览 docx/xlsx/pptx 文件需先安装:</div>
+    <div class="oig-status" id="officeinstallgate-status">检测中...</div>
+    <ul>
+      <li>LibreOffice(完全本地、样式保真度高,纯离线):<a href="https://www.libreoffice.org/download" target="_blank" rel="noopener">libreoffice.org/download</a>(约 1GB,装完重启本服务即可)</li>
+    </ul>
+    <div class="sub" style="margin-top:8px;font-size:12px;color:var(--gh-ink-faint)">我们只调本地已装的 soffice.com,不会联网下载任何东西。</div>
+    <div class="row">
+      <button class="topbtn" id="officeinstallgate-recheck">重新检测</button>
+      <button class="topbtn primary" id="officeinstallgate-open">装 LibreOffice</button>
+      <button class="topbtn" id="officeinstallgate-skip">暂不启用</button>
+    </div>
+  </div>
+</div>
+
+<!-- 通用内嵌对话框:Electron sandbox 渲染进程里 window.prompt/confirm 被禁用,改用 DOM 模态 --><div id="dlg">
+  <div class="card">
+    <div class="head" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+      <h3 id="dlg-title" style="margin:0"></h3>
+      <span id="dlg-cd" style="display:none;font-size:12px;color:var(--gh-ink-faint);background:var(--gh-surface);border:1px solid var(--gh-line);border-radius:10px;padding:2px 8px;font-variant-numeric:tabular-nums"></span>
+    </div>
+    <div class="sub" id="dlg-sub"></div>
+    <input id="dlg-input" type="text" style="display:none;width:100%;padding:9px 12px;border:1px solid var(--gh-line);border-radius:8px;font-size:13px;background:var(--gh-surface);color:var(--gh-ink)">
+    <div class="row" style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
+      <button class="topbtn" id="dlg-ok" data-i18n="ok">确定</button>
+      <button class="topbtn" id="dlg-cancel" data-i18n="cancel">取消</button>
+    </div>
+  </div>
+</div>
+<!-- M3.33 #65 skill 面板:查看 SKILL.md body 模态,复用 dlg-input 不够(要 textarea),自己起一个 -->
+<div id="skillview" style="display:none">
+  <div class="card" style="width:720px;max-width:96vw;max-height:80vh;overflow:auto">
+    <div class="head" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+      <h3 id="skillview-title" style="margin:0">SKILL.md</h3>
+      <span class="spacer"></span>
+      <button class="topbtn" id="skillview-close">✕</button>
+    </div>
+    <div class="sub" id="skillview-meta" style="font-size:11px;color:var(--gh-ink-soft)"></div>
+    <pre id="skillview-body" style="white-space:pre-wrap;background:var(--gh-surface);padding:12px;border-radius:6px;max-height:50vh;overflow:auto;font-size:12px;font-family:monospace"></pre>
+  </div>
+</div>
+<div id="skillnew" style="display:none">
+  <div class="card" style="width:520px;max-width:92vw">
+    <div class="head" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+      <h3 style="margin:0">+ 新建 skill</h3>
+      <span class="spacer"></span>
+      <button class="topbtn" id="skillnew-close">✕</button>
+    </div>
+    <div class="sub" style="font-size:11.5px;color:var(--gh-ink-soft);line-height:1.55">对话式 skill-builder:填字段 → 落盘 SKILL.md + scripts/ + README。
+      项目级目录:<code id="skillnew-dst"></code></div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+      <label style="font-size:12px">name(小写+短横线,2-63 字符)<input id="skillnew-name" type="text" style="width:100%;padding:7px;border:1px solid var(--gh-line);border-radius:6px;font-size:12px"></label>
+      <label style="font-size:12px">description(1-1024 chars,含「Use when ...」)<textarea id="skillnew-desc" rows="3" style="width:100%;padding:7px;border:1px solid var(--gh-line);border-radius:6px;font-size:12px;resize:vertical"></textarea></label>
+      <label style="font-size:12px">triggers(中英文逗号分隔)<input id="skillnew-triggers" type="text" style="width:100%;padding:7px;border:1px solid var(--gh-line);border-radius:6px;font-size:12px" placeholder="抽卡,画一张,cyberpunk"></label>
+      <label style="font-size:12px">requirements(API key / GPU / 服务 URL)<input id="skillnew-req" type="text" style="width:100%;padding:7px;border:1px solid var(--gh-line);border-radius:6px;font-size:12px" placeholder="NVIDIA 12GB+"></label>
+      <label style="font-size:12px">template(image / audio / video / text)
+        <select id="skillnew-tpl" style="width:100%;padding:7px;border:1px solid var(--gh-line);border-radius:6px;font-size:12px">
+          <option value="image">image</option><option value="audio">audio</option>
+          <option value="video">video</option><option value="text">text</option>
+        </select></label>
+    </div>
+    <div class="row" style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
+      <button class="topbtn" id="skillnew-ok">落盘</button>
+      <button class="topbtn" id="skillnew-cancel">取消</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// 2026-08-25 多语言:i18n 字典 + 语言切换。zh 中文 / en 英文;其他语言一律 en 兜底。
+const I18N = {
+  zh: {
+    send:'发送', new_session:'+ 新会话', model_key:'🔑 模型 Key', feedback:'⚙ 反馈问题',
+    sessions:'会话', summary:'摘要', replay:'原文', merge:'✕ 合并',
+    pin:'固定的', rename:'✏️ 重命名会话', export_pdf:'📄 导出为PDF', export_md:'📝 衍生为Markdown',
+    export_docx:'📃 导出为DOCX', save_exp:'💎 存为经验(Obsidian)', continue_new:'🔀 开新窗接续(带交接)',
+    split:'🗔 分屏接续(带交接)', remote:'📱 手机遥控', del:'🗑️ 删除', stop:'停止',
+    input_ph:'问点什么… (Enter 发送,Shift+Enter 换行)',
+    think_default:'思考:默认', think_off:'思考:关闭', think_low:'思考:低', think_medium:'思考:中', think_high:'思考:高',
+    attach_title:'附加文件(文本内联/图片多模态)', estop_title:'中断当前操作(estop)',
+    files:'📁 文件', files_title:'显示/收起工作目录文件资料栏',
+    model_endpoints:'模型端点', custom_endpoint:'自定义端点', workdir:'工作目录',
+    workdir_hint:'PrisirAI 读写文件/跑命令的基准目录(影响 read_file/run_shell 相对路径)',
+    save:'保存', close:'关闭', cancel:'取消', ok:'确定', apply:'应用', pull:'拉取',
+    reset_router:'恢复路由', use:'使用',
+    fb_title:'⚙ 反馈问题', fb_cancel:'取消', fb_pack:'仅打包到桌面', fb_publish:'发布到反馈论坛',
+    continue_topic:'延续话题', replay_loading:'回放加载中…', new_conv:'新会话',
+    open_new_win:'🔀 开新窗接续', split_screen:'🗔 分屏接续', remove:'移除',
+    ctx_new_win_title:'上下文近满,一键开新窗并携带交接摘要接续任务',
+    ctx_split_title:'上下文近满,本窗内左右分屏:左栏看交接摘要/旧会话原文,右栏开新会话接续',
+    merge_title:'退出分屏,回到普通单窗', feedback_title:'打包诊断日志 + 打开论坛反馈页',
+    tool_output:'🔧 工具输出(折叠)', user:'用户', agent:'PrisirAI',
+    about:'ℹ️ 关于', privacy:'隐私说明', terms:'使用条款',
+    think_title:'思考档位:无档位的模型(如 K3)会自动忽略',
+    key_ph:'key(本地可空)', model_ph:'模型名(可手填或拉取)', workdir_ph:'如 C:\\path\\to\\project',
+    tool_expand:'(工具输出,点击展开)', unpin:'取消固定', ctx_usage_title:'上下文窗口用量(估算)',
+    mermaid_fail:'图渲染失败:', old_chat:'旧会话: ', replay_fail:'原文回放失败:', replay_err:'原文回放异常:',
+    need_session:'先开始一个会话', mermaid_src_title:'渲染失败,点击复制 mermaid 源码',
+    calling_tool:'调用 ', output_preview:'输出预览', handoff_llm:'LLM 提炼', handoff_rule:'规则整理',
+    routing:'路由: ', no_key:' · 未配key', timed_out:'已超时',
+    patch:'🩹 补丁', patch_title:'增量补丁:应用/回滚改动文件,无需重装', patch_card_title:'🩹 增量补丁',
+    patch_sub:'只发改动文件,不重装整个程序。选补丁包(.zip)应用,重启后生效;可随时回滚。',
+    patch_apply:'应用', patch_applied:'已应用的补丁', patch_applying:'应用中…', patch_applied_ok:'已应用,重启后生效:',
+    patch_none:'尚未应用任何补丁', patch_rollback:'回滚', patch_pick:'请先选择补丁包(.zip)',
+    replay_panel:'⏵ 回放', replay_title:'回放本会话的工具调用时间轴(逐步重放)',
+    play:'▶ 播放', step:'+1 步', show_all:'全部',
+    fs_title:'👋 欢迎使用 PrisirAI',
+    fs_sub:'先配一个模型平台就能开始对话。把你从模型平台复制的 <b>API key</b>(或直接粘平台提供的 base_url)粘贴到下面,系统自动识别平台并填好配置——<b>全程离线识别,不会上传</b>。',
+    fs_step1:'第 1 步 · 粘贴 key 或地址', fs_input_ph:'例如: sk-ant-...  或  https://dashscope.aliyuncs.com/compatible-mode/v1',
+    fs_identify:'识别', fs_skip:'稍后再配', fs_advanced:'手动配置',
+    fs_teach:'💡 小提示:以后你也可以直接在<b>主对话里粘贴 key</b>对我说「帮我配置」,或点右上角「🔑 模型 Key」随时改。这个引导只在第一次没配置时出现。',
+    doc_panel:'📑 文档', doc_panel_title:'显示/收起文档右栏(只读预览+改动时间线+外置 dirty 检测)',
+    doc_timeline:'⏱ 改动时间线', doc_timeline_empty:'本对话尚未改动任何文件',
+    doc_preview:'📄 只读预览', doc_no_file:'未选文件',
+    doc_dirty:'⚠ 外置有改动', doc_reload:'重新加载', doc_refresh_title:'刷新',
+    doc_current:'当前版本', doc_rollback:'⤴ 回滚到此版本',
+    doc_skills:'🔧 skills', doc_skills_loading:'加载中…', skill_refresh_title:'刷新 skill 列表',
+  },
+  en: {
+    send:'Send', new_session:'+ New chat', model_key:'🔑 Model Key', feedback:'⚙ Feedback',
+    sessions:'Chats', summary:'Summary', replay:'Original', merge:'✕ Merge',
+    pin:'Pinned', rename:'✏️ Rename chat', export_pdf:'📄 Export as PDF', export_md:'📝 Export as Markdown',
+    export_docx:'📃 Export as DOCX', save_exp:'💎 Save as note (Obsidian)', continue_new:'🔀 Continue in new window',
+    split:'🗔 Split-screen continue', remote:'📱 Phone Remote', del:'🗑️ Delete', stop:'■ Stop',
+    input_ph:'Ask anything… (Enter to send, Shift+Enter for newline)',
+    think_default:'Think: default', think_off:'Think: off', think_low:'Think: low', think_medium:'Think: medium', think_high:'Think: high',
+    attach_title:'Attach file (inline text / multimodal image)', estop_title:'Interrupt current operation (estop)',
+    files:'📁 Files', files_title:'Show/hide the working-directory file panel',
+    model_endpoints:'Model Endpoints', custom_endpoint:'Custom endpoint', workdir:'Working directory',
+    workdir_hint:'Base directory PrisirAI reads/writes files and runs commands in (affects read_file/run_shell relative paths)',
+    save:'Save', close:'Close', cancel:'Cancel', ok:'OK', apply:'Apply', pull:'Pull',
+    reset_router:'Reset Router', use:'Use',
+    fb_title:'⚙ Feedback', fb_cancel:'Cancel', fb_pack:'Pack to desktop only', fb_publish:'Publish to feedback forum',
+    continue_topic:'Continue topic', replay_loading:'Loading replay…', new_conv:'New chat',
+    open_new_win:'🔀 Continue in new window', split_screen:'🗔 Split-screen continue', remove:'Remove',
+    ctx_new_win_title:'Context nearly full — open a new window with a handoff summary to continue the task',
+    ctx_split_title:'Context nearly full — split this window: left shows handoff summary / original, right starts a new chat',
+    merge_title:'Exit split screen, back to single window', feedback_title:'Pack diagnostic logs + open feedback forum',
+    tool_output:'🔧 Tool output (collapsed)', user:'You', agent:'PrisirAI',
+    about:'ℹ️ About', privacy:'Privacy', terms:'Terms of Service',
+    think_title:'Thinking level: models without levels (e.g. K3) ignore this',
+    key_ph:'key (optional for local)', model_ph:'Model name (type or pull)', workdir_ph:'e.g. C:\\path\\to\\project',
+    tool_expand:'(tool output, click to expand)', unpin:'Unpin', ctx_usage_title:'Context window usage (estimate)',
+    mermaid_fail:'Diagram render failed: ', old_chat:'Previous chat: ', replay_fail:'Replay failed: ', replay_err:'Replay error: ',
+    need_session:'Start a chat first', mermaid_src_title:'Render failed, click to copy mermaid source',
+    calling_tool:'Calling ', output_preview:'Output preview', handoff_llm:'LLM distilled', handoff_rule:'rule-based',
+    routing:'Routing: ', no_key:' · no key', timed_out:'Timed out',
+    patch:'🩹 Patches', patch_title:'Incremental patches: apply/roll back changed files without reinstalling',
+    patch_card_title:'🩹 Incremental patches',
+    patch_sub:'Ships only changed files — no full reinstall. Pick a patch (.zip) and apply; takes effect after restart; roll back anytime.',
+    patch_apply:'Apply', patch_applied:'Applied patches', patch_applying:'Applying…', patch_applied_ok:'Applied, takes effect after restart:',
+    patch_none:'No patches applied yet', patch_rollback:'Roll back', patch_pick:'Pick a patch (.zip) first',
+    replay_panel:'⏵ Replay', replay_title:'Replay this session\'s tool-call timeline (step by step)',
+    play:'▶ Play', step:'+1 step', show_all:'All',
+    fs_title:'👋 Welcome to PrisirAI',
+    fs_sub:'Configure a model platform to start chatting. Paste the <b>API key</b> you copied from a model platform (or the base_url it provides) below — the system auto-identifies the platform and fills in the config, <b>fully offline, nothing is uploaded</b>.',
+    fs_step1:'Step 1 · Paste key or URL', fs_input_ph:'e.g. sk-ant-...  or  https://dashscope.aliyuncs.com/compatible-mode/v1',
+    fs_identify:'Identify', fs_skip:'Later', fs_advanced:'Manual',
+    fs_teach:'💡 Tip: you can also paste a key right in the <b>main chat</b> and say "help me configure", or click "🔑 Model Key" (top-right) anytime. This guide only appears when nothing is configured yet.',
+    doc_panel:'📑 Document', doc_panel_title:'Show/hide the document right panel (read-only preview + change timeline + external-edit dirty detection)',
+    doc_timeline:'⏱ Timeline', doc_timeline_empty:'No files changed in this session yet',
+    doc_preview:'📄 Preview', doc_no_file:'No file selected',
+    doc_dirty:'⚠ External change', doc_reload:'Reload', doc_refresh_title:'Refresh',
+    doc_current:'Current version', doc_rollback:'⤴ Roll back to this version',
+    doc_skills:'🔧 skills', doc_skills_loading:'Loading…', skill_refresh_title:'Refresh skill list',
+  }
+};
+let LANG = (function(){
+  var l=(navigator.language||navigator.userLanguage||'zh').toLowerCase();
+  return l.startsWith('zh') ? 'zh' : 'en';  // 其他语言一律 en 兜底
+})();
+function T(key){ return (I18N[LANG] && I18N[LANG][key]) || I18N.en[key] || key; }
+// 扫 data-i18n / data-i18n-title / data-i18n-ph 属性,批量替换文案(页面加载后调一次)
+function applyI18n(){
+  document.querySelectorAll('[data-i18n]').forEach(function(el){
+    var k=el.getAttribute('data-i18n'); if(!k) return;
+    // estop 等带子元素(图标 span)的按钮:只更新文本节点,保留图标;纯文本元素照旧整体替换
+    if (el.id==='estop-btn') {
+      var t=null;
+      for (var i=0;i<el.childNodes.length;i++){ var n=el.childNodes[i];
+        if (n.nodeType===3 && n.textContent.trim()){ t=n; break; } }
+      if (t) t.textContent=T(k); else el.appendChild(document.createTextNode(T(k)));
+    } else { el.textContent=T(k); }
+  });
+  document.querySelectorAll('[data-i18n-title]').forEach(function(el){
+    var k=el.getAttribute('data-i18n-title'); if(k) el.title=T(k);
+  });
+  document.querySelectorAll('[data-i18n-ph]').forEach(function(el){
+    var k=el.getAttribute('data-i18n-ph'); if(k) el.placeholder=T(k);
+  });
+  document.documentElement.setAttribute('lang', LANG==='zh'?'zh':'en');
+}
+
+let sessionId = null;
+let sessions = [];
+let polling = false;
+
+async function api(path, opts) {
+  const r = await fetch('/prisiragent/api' + path, opts);
+  const ct = r.headers.get('content-type') || '';
+  return ct.includes('json') ? r.json() : r;
+}
+
+/* ===== 文件资料栏(2026-09-06) ===== */
+let filesOpen = false;
+function toggleFiles() {
+  filesOpen = !filesOpen;
+  const fr = document.getElementById('frail');
+  fr.style.display = filesOpen ? 'flex' : 'none';
+  document.getElementById('files-btn').classList.toggle('on', filesOpen);
+  if (filesOpen) loadFileTree();
+}
+
+// 2026-09-14 会话回放(吸收 Manus replay):右侧滑出面板,按时间轴逐步重放本会话
+// 工具调用轨迹。数据源 /api/tool_trace(DB 持久,重启不丢)。播放=定时逐条点亮。
+let _rpSteps = [], _rpPos = 0, _rpTimer = null, _rpOpen = false;
+function toggleReplay() {
+  _rpOpen = !_rpOpen;
+  document.getElementById('replay-panel').classList.toggle('open', _rpOpen);
+  document.getElementById('replay-btn').classList.toggle('on', _rpOpen);
+  if (_rpOpen) loadReplay(); else replayStop();
+}
+async function loadReplay() {
+  const body = document.getElementById('replay-body');
+  body.innerHTML = '<div style="padding:12px;color:var(--gh-ink-faint)">' +
+    (LANG==='zh'?'回放加载中…':'Loading replay…') + '</div>';
+  replayStop();
+  let r;
+  try { r = await api('/tool_trace?session_id=' + encodeURIComponent(sessionId)); }
+  catch(e) { body.innerHTML = '<div style="padding:12px;color:#c0392b">' + esc(String(e)) + '</div>'; return; }
+  if (!r.ok) { body.innerHTML = '<div style="padding:12px;color:#c0392b">' + esc(r.error||'error') + '</div>'; return; }
+  _rpSteps = r.steps || [];
+  document.getElementById('replay-count').textContent =
+    (LANG==='zh'?'共 ':'') + _rpSteps.length + (LANG==='zh'?' 步':' steps');
+  const sl = document.getElementById('replay-slider');
+  sl.max = Math.max(0, _rpSteps.length); sl.value = 0;
+  _rpPos = 0;
+  renderReplayBody();
+  updateReplayPos();
+}
+function renderReplayBody() {
+  const body = document.getElementById('replay-body');
+  body.innerHTML = '';
+  if (!_rpSteps.length) {
+    body.innerHTML = '<div style="padding:12px;color:var(--gh-ink-faint)">' +
+      (LANG==='zh'?'本会话还没有工具调用记录':'No tool calls in this session yet') + '</div>';
+    return;
+  }
+  _rpSteps.forEach((s, i) => {
+    const d = document.createElement('div');
+    d.className = 'rp-step' + (s.ok ? '' : ' bad');
+    d.dataset.idx = i;
+    const ts = s.ts ? new Date(s.ts*1000).toLocaleTimeString() : '';
+    d.innerHTML = '<span class="rp-dot"></span>' +
+      '<span class="rp-name">' + (s.ok?'✓':'✗') + ' 🔧 ' + esc(s.name) + '</span>' +
+      '<span class="rp-ts">' + esc(ts) + '</span>' +
+      '<div class="rp-prev">' + esc(s.preview||'') + '</div>';
+    body.appendChild(d);
+  });
+}
+function updateReplayPos() {
+  document.querySelectorAll('#replay-body .rp-step').forEach((el, i) => {
+    el.classList.toggle('shown', i < _rpPos);
+  });
+  document.getElementById('replay-pos').textContent =
+    (LANG==='zh'?'已播放 ':'Played ') + _rpPos + ' / ' + _rpSteps.length;
+  document.getElementById('replay-slider').value = _rpPos;
+}
+function replaySeek(v) { replayStop(); _rpPos = parseInt(v)||0; updateReplayPos();
+  const shown = document.querySelectorAll('#replay-body .rp-step.shown');
+  if (shown.length) shown[shown.length-1].scrollIntoView({block:'nearest'}); }
+function replayStep(n) { replayStop(); _rpPos = Math.min(_rpSteps.length, Math.max(0, _rpPos + n));
+  updateReplayPos();
+  const shown = document.querySelectorAll('#replay-body .rp-step.shown');
+  if (shown.length) shown[shown.length-1].scrollIntoView({block:'nearest'}); }
+function replayShowAll() { replayStop(); _rpPos = _rpSteps.length; updateReplayPos(); }
+function replayPlay() {
+  if (_rpTimer) { replayStop(); return; }
+  if (_rpPos >= _rpSteps.length) _rpPos = 0;
+  document.getElementById('replay-play-btn').textContent = (LANG==='zh'?'⏸ 暂停':'⏸ Pause');
+  _rpTimer = setInterval(() => {
+    if (_rpPos >= _rpSteps.length) { replayStop(); return; }
+    _rpPos++; updateReplayPos();
+    const shown = document.querySelectorAll('#replay-body .rp-step.shown');
+    if (shown.length) shown[shown.length-1].scrollIntoView({block:'nearest'});
+  }, 550);
+}
+function replayStop() {
+  if (_rpTimer) { clearInterval(_rpTimer); _rpTimer = null; }
+  const b = document.getElementById('replay-play-btn');
+  if (b) b.textContent = (LANG==='zh'?'▶ 播放':'▶ Play');
+}
+
+async function loadFileTree() {
+  const tree = document.getElementById('frail-tree');
+  tree.innerHTML = '<div class="ft-empty">' + (LANG==='zh'?'加载中…':'Loading…') + '</div>';
+  const r = await api('/files?path=');
+  document.getElementById('frail-workdir').textContent = r.workdir || '';
+  document.getElementById('frail-workdir').title = r.workdir || '';
+  tree.innerHTML = '';
+  if (!r.ok) { tree.innerHTML = '<div class="ft-err">' + esc(r.error||'error') + '</div>'; return; }
+  renderTreeLevel(tree, r);
+}
+function renderTreeLevel(container, data) {
+  if (!data.dirs.length && !data.files.length) {
+    container.innerHTML = '<div class="ft-empty">' + (LANG==='zh'?'(空目录)':'(empty)') + '</div>'; return;
+  }
+  data.dirs.forEach(d => container.appendChild(dirNode(d)));
+  data.files.forEach(f => container.appendChild(fileNode(f)));
+}
+function fileIcon(name) {
+  const e = name.split('.').pop().toLowerCase();
+  const m = {md:'📝',markdown:'📝',txt:'📄',py:'🐍',js:'📜',ts:'📜',json:'🧾',html:'🌐',css:'🎨',
+    png:'🖼',jpg:'🖼',jpeg:'🖼',gif:'🖼',svg:'🖼',pdf:'📕',docx:'📘',xlsx:'📗',pptx:'📙',
+    zip:'📦',db:'🗄',log:'📋',bat:'⚙',ps1:'⚙',sh:'⚙'};
+  return m[e] || '📄';
+}
+function dirNode(d) {
+  const wrap = document.createElement('div');
+  const row = document.createElement('div');
+  row.className = 'ft-dir';
+  row.innerHTML = '<span class="tw">▶</span><span class="ft-ico">📁</span><span class="ft-name">' + esc(d.name) + '</span>';
+  const kids = document.createElement('div');
+  kids.className = 'ft-kids hidden';
+  let loaded = false;
+  row.onclick = async function() {
+    const open = kids.classList.toggle('hidden') === false;
+    row.classList.toggle('open', open);
+    if (open && !loaded) {
+      loaded = true;
+      kids.innerHTML = '<div class="ft-empty">…</div>';
+      const r = await api('/files?path=' + encodeURIComponent(d.path));
+      kids.innerHTML = '';
+      if (r.ok) renderTreeLevel(kids, r);
+      else kids.innerHTML = '<div class="ft-err">' + esc(r.error||'err') + '</div>';
+    }
+  };
+  wrap.appendChild(row); wrap.appendChild(kids);
+  return wrap;
+}
+function fileNode(f) {
+  const wrap = document.createElement('div');
+  const row = document.createElement('div');
+  row.className = 'ft-file';
+  row.title = f.path + ' (' + f.size + ' B)';
+  row.innerHTML = '<span class="ft-ico">' + fileIcon(f.name) + '</span><span class="ft-name">' + esc(f.name) + '</span>';
+  // M3.31 GUI 重排(2026-09-16):👁 查看内容 → 整体联动 doc-panel preview tab(去内联冗余)
+  const view = document.createElement('span');
+  view.className = 'ft-op'; view.textContent = '👁'; view.title = LANG==='zh'?'查看内容':'View';
+  view.onclick = function(e){ e.stopPropagation(); docOpenFromPath(f.path); };
+  const ref = document.createElement('span');
+  ref.className = 'ft-op'; ref.textContent = '⤵'; ref.title = LANG==='zh'?'引用到输入框':'Insert into input';
+  ref.onclick = function(e){ e.stopPropagation(); insertRef(f.path); };
+  row.appendChild(view); row.appendChild(ref);
+  // 文件名直接点击 → 引用到输入框(不再内联展开预览,避免与 doc-panel 冗余)
+  row.onclick = function() { insertRef(f.path); };
+  wrap.appendChild(row);
+  return wrap;
+}
+function insertRef(p) {
+  const inp = document.getElementById('input');
+  const cur = inp.value;
+  inp.value = (cur ? cur.replace(/\s+$/,'') + ' ' : '') + p;
+  inp.focus();
+}
+// M3.31 GUI 多媒体扩展(2026-09-16):按 mime 类型分派渲染策略
+//  - text/* → <pre> + 可选 hljs 代码高亮(CSV 自动转 <table>)
+//  - text/html → <iframe sandbox> 安全渲染(禁脚本)
+//  - image/* → <img>
+//  - application/pdf → <embed>(浏览器原生 PDF viewer)
+//  - audio/* → <audio controls>
+//  - video/* → <video controls>
+//  - 其它 → <pre>(二进制不可读,fallback)
+// 文本文件 2MB 软上限截断保留;helper 改名为 _docPreviewRender 表达分派意图。
+function _docPreviewRender(content, mime) {
+  const body = document.getElementById('doc-preview-body');
+  if (!body) return;
+  // 清掉旧媒体节点(若有)— 完整清空
+  while (body.firstChild) body.removeChild(body.firstChild);
+  body.removeAttribute('class'); body.removeAttribute('data-lang');
+  mime = (mime || '').toLowerCase();
+  if (mime.startsWith('image/')) {
+    const img = document.createElement('img');
+    img.src = '/prisiragent/api/file?path=' + encodeURIComponent(window.__docState.currentPath);
+    img.style.maxWidth = '100%';
+    img.style.maxHeight = '100%';
+    img.style.objectFit = 'contain';
+    img.style.background = '#fff';
+    img.alt = window.__docState.currentPath;
+    body.appendChild(img);
+    return;
+  }
+  if (mime === 'application/pdf') {
+    const em = document.createElement('embed');
+    em.src = '/prisiragent/api/file?path=' + encodeURIComponent(window.__docState.currentPath);
+    em.type = 'application/pdf';
+    em.style.width = '100%';
+    em.style.height = '100%';
+    body.appendChild(em);
+    return;
+  }
+  if (mime.startsWith('audio/')) {
+    const au = document.createElement('audio');
+    au.controls = true;
+    au.style.width = '100%';
+    au.src = '/prisiragent/api/file?path=' + encodeURIComponent(window.__docState.currentPath);
+    body.appendChild(au);
+    const hint = document.createElement('div');
+    hint.style.cssText = 'padding:12px;color:var(--gh-ink-soft);font-size:12px';
+    hint.textContent = window.__docState.currentPath;
+    body.appendChild(hint);
+    return;
+  }
+  if (mime.startsWith('video/')) {
+    const v = document.createElement('video');
+    v.controls = true;
+    v.style.width = '100%';
+    v.style.maxHeight = '100%';
+    v.style.background = '#000';
+    v.src = '/prisiragent/api/file?path=' + encodeURIComponent(window.__docState.currentPath);
+    body.appendChild(v);
+    return;
+  }
+  // M3.31.11(2026-09-16):HTML 安全渲染 — iframe sandbox(不给 allow-scripts,本地 file:// 同源加载)
+  if (mime === 'text/html' || mime === 'application/xhtml+xml') {
+    const iframe = document.createElement('iframe');
+    iframe.src = '/prisiragent/api/file?path=' + encodeURIComponent(window.__docState.currentPath);
+    // sandbox:不给 allow-scripts → 文档内 <script> 不会执行;allow-same-origin 让相对路径/CSS 解析
+    iframe.setAttribute('sandbox', 'allow-same-origin');
+    body.classList.add('has-iframe');  // 关闭父级滚动条,iframe 自己滚
+    body.appendChild(iframe);
+    const hint = document.createElement('div');
+    hint.style.cssText = 'padding:6px 12px;color:var(--gh-ink-soft);font-size:11px;background:var(--gh-bg);border-top:1px solid var(--gh-line);flex:none';
+    hint.textContent = (LANG === 'zh')
+      ? '🔒 HTML 安全预览(sandbox 沙箱,脚本已禁用):' + window.__docState.currentPath
+      : '🔒 HTML safe preview (sandbox, scripts disabled):' + window.__docState.currentPath;
+    body.appendChild(hint);
+    return;
+  }
+  // 文本 fallback
+  const MAX = 2 * 1024 * 1024;
+  let text = (typeof content === 'string') ? content : (content == null ? '' : String(content));
+  const path = (window.__docState.currentPath || '').toLowerCase();
+  // M3.31.11(2026-09-16):CSV 自动转 <table>(简单实现,逗号/制表符分隔,首行表头)
+  if (/\.csv$/.test(path) && text) {
+    try { _docPreviewRenderCsvTable(body, text); return; }
+    catch (e) { /* 解析失败 fallback 文本 */ }
+  }
+  if (text.length > MAX) {
+    const hint = (LANG === 'zh')
+      ? '\n\n… (已截断,显示前 2MB;完整内容请用文本编辑器打开 / 切到 doc_diff 对比完整两版)'
+      : '\n\n… (truncated to 2MB; open in editor or use doc_diff for full two-version comparison)';
+    text = text.slice(0, MAX) + hint;
+  }
+  body.textContent = text;
+  // M3.31 多媒体扩展(2026-09-16):代码高亮(hljs 已由页面 <script> 加载)
+  // 仅对常见代码/文本扩展触发;html/md 等不触发(避免误染色)
+  const ext = path.match(/\.([a-z0-9]+)$/);
+  const lang = ext ? _hljsLangFromExt(ext[1]) : null;
+  if (lang && window.hljs && typeof window.hljs.highlightElement === 'function') {
+    body.className = 'hljs ' + lang;
+    try { window.hljs.highlightElement(body); } catch (e) { /* 静默 */ }
+  }
+}
+// M3.31.11(2026-09-16):CSV → <table> 简易渲染(无依赖,~50 行 JS)
+//  - 自动识别分隔符:逗号 / 制表符 / 分号(出现频次最多者)
+//  - 首行作 <thead>
+//  - 转义 < > & " ' 防 XSS(全部来自 user 文件)
+//  - 单元格内 \n 转 <br>(常见于带换行的 csv)
+//  - 上限 5000 行防 OOM(超出截断 + 提示)
+function _docPreviewRenderCsvTable(body, text) {
+  const MAX_ROWS = 5000;
+  // 探测分隔符
+  const sample = text.split(/\r?\n/).slice(0, 5).join('\n');
+  const seps = [',', '\t', ';'];
+  let bestSep = ',', bestCount = -1;
+  for (const s of seps) {
+    const c = (sample.match(new RegExp('\\' + s, 'g')) || []).length;
+    if (c > bestCount) { bestCount = c; bestSep = s; }
+  }
+  const rows = text.split(/\r?\n/).filter(l => l.length > 0);
+  const truncated = rows.length > MAX_ROWS;
+  const useRows = truncated ? rows.slice(0, MAX_ROWS) : rows;
+  // 简易 RFC4180 解析:支持 "" 包裹 + "" 转义 "
+  function parseRow(line) {
+    const cells = [];
+    let cur = '', inQuote = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inQuote) {
+        if (ch === '"') {
+          if (line[i + 1] === '"') { cur += '"'; i++; }
+          else { inQuote = false; }
+        } else { cur += ch; }
+      } else {
+        if (ch === '"') inQuote = true;
+        else if (ch === bestSep) { cells.push(cur); cur = ''; }
+        else cur += ch;
+      }
+    }
+    cells.push(cur);
+    return cells;
+  }
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/\n/g, '<br>');
+  }
+  const table = document.createElement('table');
+  table.className = 'csv-table';
+  table.style.cssText = 'border-collapse:collapse;width:100%;font-size:12px;font-family:monospace;color:var(--gh-ink);background:var(--gh-bg)';
+  if (useRows.length) {
+    const thead = document.createElement('thead');
+    const trh = document.createElement('tr');
+    parseRow(useRows[0]).forEach(c => {
+      const th = document.createElement('th');
+      th.innerHTML = esc(c);
+      // M3.31.13(2026-09-16):sticky thead 加 box-shadow 让它跟下方数据视觉分隔
+      // (之前被用户报告「被 toolbar 遮挡」— 实际是 thead 飘起来后视觉上跟 toolbar 下边缘邻接像被切)
+      // z-index:5 + box-shadow + 背景不透明彻底解决
+      th.style.cssText = 'padding:6px 10px;background:var(--gh-surface);color:var(--gh-ink);border:1px solid var(--gh-line);text-align:left;position:sticky;top:0;z-index:5;box-shadow:0 2px 4px rgba(0,0,0,0.08)';
+      trh.appendChild(th);
+    });
+    thead.appendChild(trh);
+    table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    for (let i = 1; i < useRows.length; i++) {
+      const tr = document.createElement('tr');
+      parseRow(useRows[i]).forEach(c => {
+        const td = document.createElement('td');
+        td.innerHTML = esc(c);
+        td.style.cssText = 'padding:5px 10px;border:1px solid var(--gh-line);vertical-align:top';
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+  }
+  body.appendChild(table);
+  if (truncated) {
+    const hint = document.createElement('div');
+    hint.style.cssText = 'padding:12px;color:var(--gh-ink-soft);font-size:11px;text-align:center';
+    hint.textContent = (LANG === 'zh')
+      ? '… (已截断,显示前 ' + MAX_ROWS + ' 行;共 ' + rows.length + ' 行)'
+      : '… (truncated; showing first ' + MAX_ROWS + ' rows of ' + rows.length + ')';
+    body.appendChild(hint);
+  }
+}
+function _hljsLangFromExt(ext) {
+  const m = {
+    py:'python', js:'javascript', ts:'typescript', json:'json',
+    html:'xml', xml:'xml', md:'xml', sh:'bash', bash:'bash',
+    sql:'sql', yaml:'yaml', yml:'yaml', css:'xml',
+    java:'java', cpp:'cpp', c:'cpp', h:'cpp', go:'go',
+    rs:'rust', php:'xml', rb:'xml', kt:'xml',
+  };
+  return m[ext] || null;
+}
+// 兼容旧名字(本轮 18 处 body.value 调用)— 都改成 _docPreviewRender(content, mime)
+// 调用方需要先 fetch 时拿到 Content-Type header;这里提供单文本便捷版(向后兼容旧测试)
+function _docPreviewWriteText(content) {
+  _docPreviewRender(content, 'text/plain');
+}
+// M3.31 GUI 重排(2026-09-16):文件树 → 文档面板整体联动 helper。
+// frai 👁 按钮 → 自动打开 doc-panel + 切 preview tab + 全宽显示内容。
+async function docOpenFromPath(relPath) {
+  // 清掉 frai 任何残留行内预览(兼容性,即便 fileNode 已不创建)
+  document.querySelectorAll('.ft-preview').forEach(p => p.remove());
+  const p = document.getElementById('doc-panel');
+  if (window.__docState && !window.__docState.open) toggleDocPanel();
+  docSwitchTab('preview');
+  await docLoadPreview(relPath);
+}
+
+function esc(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+async function estopNow() {
+  // estop 紧急停止:中断当前会话的工具链(工具边界停,不打断单个执行中的工具)。
+  if (!sessionId) return;
+  try {
+    await api('/estop', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({session_id: sessionId})});
+    setStatus(LANG==='zh' ? '已请求停止…' : 'Stop requested…');
+  } catch (e) { /* 静默,轮询会自然收尾 */ }
+}
+
+/* 上下文窗口用量指示(档位1 预警 + 档位2 masking 透出)。 */
+function renderCtxUsage(cu) {
+  const el = document.getElementById('ctx-usage');
+  if (!el) return;
+  el.className = '';
+  if (!cu || !cu.window) { el.textContent = ''; el.title = T('ctx_usage_title');
+    const cb0 = document.getElementById('continue-btn'); if (cb0) cb0.style.display = 'none';
+    const sb0 = document.getElementById('split-btn'); if (sb0) sb0.style.display = 'none'; return; }
+  const pct = Math.round((cu.ratio || 0) * 100);
+  const usedK = (cu.used / 1000).toFixed(1), winK = Math.round(cu.window / 1000);
+  let txt = `📏 ${usedK}k/${winK}k (${pct}%)`;
+  let tip = `上下文用量估算: 约 ${cu.used}/${cu.window} tokens (${pct}%)`;
+  if (cu.masked || cu.will_mask) { txt += cu.masked ? ' · 已遮蔽旧工具输出' : ' · 旧工具输出将被遮蔽'; el.classList.add('masked');
+    tip += '\n超阈值自动遮蔽旧工具输出(observation masking)' +
+      (cu.masked_count ? `(本轮遮蔽 ${cu.masked_count} 条)` : '') + ',对话全文仍保留在本地。'; }
+  if (cu.compacted) { txt += ` · 已压缩早前 ${cu.compacted} 条`;
+    tip += `\n档位4 同窗口压缩:早前 ${cu.compacted} 条对话已提炼为摘要` +
+      (cu.compact_source === 'llm' ? '(LLM 提炼)' : '(规则整理)') +
+      ',发送给模型的历史=摘要+最近原文;对话全文仍保留在本地数据库。'; }
+  if (cu.near_full) { el.classList.add('warn'); txt += ' ⚠ 建议开新会话';
+    tip += '\n已用超 75%,建议开新会话避免上下文溢出。'; }
+  if (cu.advise) { tip += '\n' + cu.advise; }
+  el.textContent = txt;
+  el.title = tip;
+  // 近满即亮「开新窗接续」+「分屏接续」按钮(档位3)
+  const cb = document.getElementById('continue-btn');
+  if (cb && cu.near_full) cb.style.display = '';
+  const sb = document.getElementById('split-btn');
+  if (sb && cu.near_full) sb.style.display = '';
+}
+
+// 壳三件套②:md 标准渲染(仅 assistant 正文;DOMPurify 防 XSS)。
+// ③:相对路径的图片/链接重写指向 /prisiragent/api/file 端点,使设计稿/生成图/视频可内联。
+// ⑤:highlight.js 代码高亮(含 diff 语言红绿高亮)。
+function renderMd(text) {
+  if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
+    const d = document.createElement('div'); d.textContent = text; return d.innerHTML;
+  }
+  const rewrite = (href) => {
+    if (!href) return href;
+    if (/^(https?:)?\/\//i.test(href) || href.startsWith('data:') || href.startsWith('/')) return href;
+    return '/prisiragent/api/file?path=' + encodeURIComponent(href);
+  };
+  // marked 12.x:直接覆盖 renderer.image/link 不可靠,改用 walkTokens 改 token.href,
+  // 让默认 renderer 用重写后的地址输出(稳)。
+  const walkTokens = (token) => {
+    if (token.type === 'image' || token.type === 'link') token.href = rewrite(token.href);
+  };
+  const html = marked.parse(text || '', { breaks: true, walkTokens });
+  return DOMPurify.sanitize(html, { ADD_ATTR: ['target'], ADD_TAGS: ['svg','g','path','rect','line','text','tspan','ellipse','circle','polygon','marker','defs','foreignObject','style'] });
+}
+
+// 代码高亮:对容器内所有 pre code 块跑 highlight.js。
+// 在 addMsg append 后调用(元素已在 DOM 里,可量尺寸)。
+function _highlightCodeIn(el) {
+  if (!el || typeof hljs === 'undefined') return;
+  el.querySelectorAll('pre code').forEach(code => {
+    if (code.classList.contains('hljs')) return;  // 已高亮过
+    try { hljs.highlightElement(code); } catch(e) { /* 不支持的语言静默跳过 */ }
+  });
+}
+
+// 壳三件套④:mermaid 图渲染。把容器内 ```mermaid 代码块(pre code.language-mermaid)
+// 转 SVG 内联。renderMd 是同步字符串→字符串,无法等 mermaid 异步,故渲染分两步:
+// addMsg 先 innerHTML 上 md,再 _renderMermaidIn(el) 异步把 mermaid 块换成 SVG。
+async function _renderMermaidIn(el) {
+  if (!el) return;
+  const blocks = el.querySelectorAll('pre code.language-mermaid, pre code.lang-mermaid');
+  if (!blocks.length) return;
+  // 模块是 ESM 异步加载:若尚未就绪,轮询等待(最多 ~5s),避免加载窗口期内漏渲染。
+  for (let i = 0; i < 50 && !(window.__mermaidReady && window.__mermaid); i++) {
+    await new Promise(r => setTimeout(r, 100));
+  }
+  if (!window.__mermaid) return;
+  const mermaid = window.__mermaid;
+  for (const code of blocks) {
+    const pre = code.closest('pre');
+    if (!pre) continue;
+    const src = code.textContent;
+    const holder = document.createElement('div');
+    holder.className = 'mermaid-diagram';
+    try {
+      const { svg } = await mermaid.render('mmd-' + Math.random().toString(36).slice(2), src);
+      holder.innerHTML = svg;  // mermaid strict 模式产出可信 SVG
+    } catch (e) {
+      holder.innerHTML = '<div class="mermaid-err">' + T('mermaid_fail') + esc(String(e)) + '</div>' +
+        '<pre class="mermaid-src">' + esc(src) + '</pre>';
+    }
+    pre.replaceWith(holder);
+  }
+}
+
+// P1 教学 quiz:把 ```quiz JSON 块渲染成交互选择卡。
+// JSON 约定:{question, options:[..], answer: 0|[0,2], explain?} — answer 0-indexed。
+// 单选点击即判;多选(answer 数组)点选项切换、再点「确认」按钮判定。
+function _renderQuizIn(el) {
+  if (!el) return;
+  for (const pre of el.querySelectorAll('pre')) {
+    const code = pre.querySelector('code');
+    const raw = (code ? code.textContent : pre.textContent) || '';
+    const langCls = code ? (code.className || '') : '';
+    if (!/language-quiz|\bquiz\b/.test(langCls) && !raw.trimStart().startsWith('{')) continue;
+    let q;
+    try { q = JSON.parse(raw); } catch (e) { continue; }
+    if (!q || !Array.isArray(q.options) || q.answer === undefined) continue;
+    const multi = Array.isArray(q.answer);
+    const answers = new Set(multi ? q.answer : [q.answer]);
+    const card = document.createElement('div');
+    card.className = 'quiz-card';
+    const qEl = document.createElement('div');
+    qEl.className = 'quiz-q';
+    qEl.textContent = q.question || '';
+    card.appendChild(qEl);
+    if (multi) {
+      const hint = document.createElement('div');
+      hint.className = 'quiz-multi-hint';
+      hint.textContent = '多选题:勾选后点「确认」';
+      card.appendChild(hint);
+    }
+    const picked = new Set();
+    let done = false;
+    const optEls = [];
+    q.options.forEach((opt, idx) => {
+      const btn = document.createElement('button');
+      btn.className = 'quiz-opt';
+      btn.type = 'button';
+      btn.textContent = opt;
+      btn.addEventListener('click', () => {
+        if (done) return;
+        if (multi) {
+          if (picked.has(idx)) { picked.delete(idx); btn.style.borderColor = ''; }
+          else { picked.add(idx); btn.style.borderColor = 'var(--gh-green-deep)'; }
+        } else {
+          done = true;
+          judge(new Set([idx]));
+        }
+      });
+      optEls.push(btn);
+      card.appendChild(btn);
+    });
+    const explainEl = document.createElement('div');
+    explainEl.className = 'quiz-explain';
+    explainEl.textContent = q.explain || '';
+    function judge(sel) {
+      optEls.forEach((btn, idx) => {
+        btn.disabled = true;
+        if (answers.has(idx)) btn.classList.add('correct');
+        else if (sel.has(idx)) btn.classList.add('wrong');
+      });
+      if (q.explain) explainEl.classList.add('show');
+      // 学习进度上报:判完把作答结果落本地(对错+主题),供掌握度统计。
+      // 静默 fetch,失败不影响交互;全对=true,有任何漏选/错选=false。
+      try {
+        let allRight = sel.size === answers.size;
+        if (allRight) for (const i of sel) if (!answers.has(i)) { allRight = false; break; }
+        fetch('/prisiragent/api/quiz_result', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({topic: q.topic || '', question: (q.question || '').slice(0, 120), correct: allRight}),
+        }).catch(() => {});
+      } catch (e) { /* 上报失败静默 */ }
+    }
+    if (multi) {
+      const ok = document.createElement('button');
+      ok.className = 'topbtn';
+      ok.style.marginTop = '8px';
+      ok.textContent = '确认';
+      ok.addEventListener('click', () => {
+        if (done) return;
+        done = true;
+        ok.disabled = true;
+        judge(picked);
+      });
+      card.appendChild(ok);
+    }
+    card.appendChild(explainEl);
+    pre.replaceWith(card);
+  }
+}
+
+// 一期② case 故事卡:把 ```case 块换成暖色叙事卡。文科概念讲解专用,
+// 区别于代码块——叙事内容,不是可执行代码。放在 quiz 渲染之前执行
+// (case 块内若带 quiz 块,先换 case 卡再让 quiz 在里面渲染)。
+function _renderCaseIn(el) {
+  if (!el) return;
+  for (const pre of Array.from(el.querySelectorAll('pre'))) {
+    const code = pre.querySelector('code');
+    const langCls = code ? (code.className || '') : '';
+    if (!/language-case|\bcase\b/.test(langCls)) continue;
+    const raw = (code ? code.textContent : pre.textContent) || '';
+    const card = document.createElement('div');
+    card.className = 'case-card';
+    const tag = document.createElement('div');
+    tag.className = 'case-tag';
+    tag.textContent = (typeof LANG !== 'undefined' && LANG === 'zh') ? '📖 情境案例' : '📖 Case';
+    const body = document.createElement('div');
+    body.className = 'case-body';
+    body.textContent = raw.trim();
+    card.appendChild(tag);
+    card.appendChild(body);
+    pre.replaceWith(card);
+  }
+}
+
+function addMsg(role, text, followups) {
+  const box = document.getElementById('messages');
+  if (role === 'tool') {
+    // 工具输出折叠渲染:默认收起,不污染对话流;点击展开看全文
+    const det = document.createElement('details');
+    det.className = 'msg tool';
+    const sum = document.createElement('summary');
+    const firstNL = text.indexOf('\n');
+    const head = firstNL >= 0 ? text.slice(0, firstNL) : text.slice(0, 60);
+    sum.textContent = head + ' ' + T('tool_expand');
+    const body = firstNL >= 0 ? text.slice(firstNL + 1) : text;
+    // diff 块(edit_file 返回 ```diff ... ```)用 highlight.js 红绿高亮
+    if (body.includes('```diff') && typeof hljs !== 'undefined') {
+      const pre = document.createElement('pre');
+      pre.className = 'tool-body';
+      // 提取 diff 块内容高亮渲染,其余纯文本
+      let html = '';
+      const parts = body.split(/```diff\n?/);
+      for (let i = 0; i < parts.length; i++) {
+        if (i === 0) { html += esc(parts[i]); continue; }
+        const endIdx = parts[i].indexOf('```');
+        const diffCode = endIdx >= 0 ? parts[i].slice(0, endIdx) : parts[i];
+        const rest = endIdx >= 0 ? parts[i].slice(endIdx + 3) : '';
+        try {
+          html += hljs.highlight(diffCode, {language: 'diff'}).value;
+        } catch(e) { html += esc(diffCode); }
+        html += esc(rest);
+      }
+      pre.innerHTML = html;
+      det.appendChild(sum); det.appendChild(pre);
+    } else {
+      const pre = document.createElement('pre');
+      pre.className = 'tool-body';
+      pre.textContent = body;
+      det.appendChild(sum); det.appendChild(pre);
+    }
+    box.appendChild(det);
+    box.scrollTop = box.scrollHeight;
+    return;
+  }
+  const d = document.createElement('div');
+  d.className = 'msg ' + role;
+  if (role === 'assistant' || role === 'agent') {
+    // ②md 标准渲染:assistant/agent 正文按 md 解析(表格/代码块/图片),DOMPurify 防 XSS
+    d.innerHTML = renderMd(text);
+    d.classList.add('md');
+    box.appendChild(d);
+    _highlightCodeIn(d);  // ⑤代码高亮(含 diff)
+    _renderMermaidIn(d);  // ④mermaid 图 → SVG(异步,append 后才能量尺寸)
+    _renderCaseIn(d);     // 一期②文科 case 故事卡(```case → 暖色叙事卡)
+    _renderQuizIn(d);     // ⑥教学 quiz 卡(```quiz JSON → 交互选择题)
+  } else {
+    d.textContent = text;  // user 保持纯文本,不解析(防注入)
+    box.appendChild(d);
+  }
+  if (followups && followups.length) {
+    const fu = document.createElement('div');
+    fu.className = 'followups';
+    fu.innerHTML = '<div class="fu-title">' + T('continue_topic') + '</div>';
+    followups.forEach(f => {
+      const el = document.createElement('div');
+      el.className = 'fu';
+      el.textContent = f;
+      el.onclick = () => { document.getElementById('input').value = f; sendMessage(); };
+      fu.appendChild(el);
+    });
+    box.appendChild(fu);
+  }
+  box.scrollTop = box.scrollHeight;
+}
+
+function setStatus(html){ document.getElementById('status').innerHTML = html; }
+
+async function loadSessions() {
+  sessions = await api('/sessions');
+  const list = document.getElementById('sess-list');
+  list.innerHTML = '';
+  sessions.forEach(s => {
+    const el = document.createElement('div');
+    el.className = 'sess' + (s.id === sessionId ? ' active' : '');
+    el.innerHTML = (s.pinned ? '<span class="pin">📌</span>' : '') + '<span class="t">' + esc(s.title) + '</span>';
+    el.onclick = () => switchSession(s.id);
+    list.appendChild(el);
+  });
+}
+
+async function switchSession(id, opts) {
+  // 切换右栏会话时自动退出分屏;但 openSplitScreen 程序内切右栏传 {keepSplit:true} 跳过(否则刚设的 splitFrom 被清)。
+  if (splitFrom && id !== sessionId && !(opts && opts.keepSplit)) exitSplit();
+  sessionId = id;
+  const r = await api('/history?session_id=' + id);
+  document.getElementById('messages').innerHTML = '';
+  document.getElementById('conv-title').textContent = r.title || T('sessions');
+  document.getElementById('pin-label').textContent = r.pinned ? T('unpin') : T('pin');
+  r.messages.forEach(m => addMsg(m.role, m.content, m.followups));
+  loadSessions();
+  refreshCtxUsage();
+}
+
+async function refreshCtxUsage() {
+  if (!sessionId) { renderCtxUsage(null); return; }
+  try { const r = await api('/context_usage?session_id=' + sessionId);
+    if (r.context_usage) renderCtxUsage(r.context_usage); } catch (e) {}
+}
+
+async function newSession() {
+  exitSplit();   // 新会话时自动退出分屏
+  // 惰性新建:不在此落库,等 sendMessage 首发时才 POST /new,避免删除后残留空"新会话"行。
+  sessionId = null;
+  document.getElementById('messages').innerHTML = '';
+  document.getElementById('conv-title').textContent = T('new_conv');
+  setStatus('');
+  renderCtxUsage(null);
+  document.getElementById('send').disabled = false;
+  loadSessions();
+}
+
+function toggleMenu(e){ e.stopPropagation(); document.getElementById('menu').classList.toggle('open'); }
+document.addEventListener('click', () => document.getElementById('menu').classList.remove('open'));
+
+async function pinSession(){ if(!sessionId) return; await api('/pin', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId})});
+  const r = await api('/history?session_id='+sessionId); document.getElementById('pin-label').textContent = r.pinned?T('unpin'):T('pin'); loadSessions(); }
+/* ---- 通用内嵌对话框:Electron sandbox 渲染进程禁用 window.prompt/confirm ---- */
+function openDlg(opts){
+  return new Promise(resolve => {
+    const dlg = document.getElementById('dlg');
+    const card = dlg.querySelector('.card');
+    document.getElementById('dlg-title').textContent = opts.title || '';
+    document.getElementById('dlg-sub').textContent = opts.sub || '';
+    const inp = document.getElementById('dlg-input');
+    inp.style.display = opts.input ? 'block' : 'none';
+    inp.value = opts.value || '';
+    document.getElementById('dlg-ok').textContent = opts.okText || T('ok');
+    document.getElementById('dlg-cancel').textContent = opts.cancelText || T('cancel');
+    // extraClass 加到 .card + 同步拆出 risk-* className 给 OK 按钮上色
+    card.className = 'card' + (opts.extraClass ? ' ' + opts.extraClass : '');
+    const okBtn = document.getElementById('dlg-ok');
+    okBtn.className = 'topbtn' + (opts.extraClass ? ' ' + opts.extraClass : '');
+    // 倒计时:仅权限闸场景启用(countdownSec > 0),不阻塞用户操作,仅展示
+    let timer = null;
+    const cdEl = document.getElementById('dlg-cd');
+    if (opts.countdownSec && opts.countdownSec > 0) {
+      cdEl.textContent = opts.countdownSec + 's';
+      cdEl.style.display = 'inline-block';
+      let left = opts.countdownSec;
+      timer = setInterval(() => {
+        left -= 1;
+        if (left <= 0) {
+          cdEl.textContent = T('timed_out');
+          cdEl.classList.add('cd-done');
+          clearInterval(timer); timer = null;
+        } else {
+          cdEl.textContent = left + 's';
+        }
+      }, 1000);
+    } else {
+      cdEl.style.display = 'none';
+      cdEl.classList.remove('cd-done');
+      cdEl.textContent = '';
+    }
+    dlg.classList.add('open');
+    if (opts.input) setTimeout(() => inp.focus(), 30);
+    const done = (val) => {
+      dlg.classList.remove('open');
+      card.className = 'card';   // 清 extraClass,下次弹卡不留痕
+      okBtn.className = 'topbtn';
+      if (timer) { clearInterval(timer); timer = null; }
+      cdEl.style.display = 'none';
+      cdEl.classList.remove('cd-done');
+      document.getElementById('dlg-ok').onclick = null;
+      document.getElementById('dlg-cancel').onclick = null;
+      inp.onkeydown = null; resolve(val);
+    };
+    document.getElementById('dlg-ok').onclick = () => done(opts.input ? inp.value.trim() : true);
+    document.getElementById('dlg-cancel').onclick = () => done(opts.input ? null : false);
+    if (opts.input) inp.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); done(inp.value.trim()); } };
+  });
+}
+function dlgPrompt(title, value){ return openDlg({title:title, input:true, value:value, okText:T('save')}); }
+function dlgConfirm(title, sub){ return openDlg({title:title, sub:sub, okText:T('del')}); }
+
+// ---- #90 浏览器→壳任务移交确认卡(并行轮询,不阻塞对话) ----
+const _shellHandled = new Set();
+async function _pollShellPending(){
+  try{
+    const r = await fetch('/prisiragent/api/shell_pending').then(x=>x.json());
+    for(const it of (r.pending||[])){
+      if(_shellHandled.has(it.task_id)) continue;
+      _shellHandled.add(it.task_id);
+      const yes = await openDlg({title:(LANG==='zh'?'浏览器智能体移交本地任务':'Browser agent hands off local task'), sub:it.task, okText:(LANG==='zh'?'执行':'Run')});
+      await api('/shell_task_confirm', {method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({task_id:it.task_id, approve:!!yes})});
+      if(yes) toast(LANG==='zh'?'已移交本地执行,结果将回传浏览器':'Handed off to local; result will be sent back to browser', true);
+      loadSessions();
+    }
+  }catch(e){/* 静默,下轮重试 */}
+}
+setInterval(_pollShellPending, 2000);
+
+// ---- v1.0 权限闸确认卡(阻塞式:agent 在等用户点卡才续跑) ----
+const _permHandled = new Set();
+const _RISK_LABEL = LANG==='zh' ? {read:'读取', write:'写入', exec:'执行', destructive:'高危删除'}
+  : {read:'read', write:'write', exec:'execute', destructive:'destructive'};
+const _RISK_CLASS = {read:'', write:'risk-write', exec:'risk-exec', destructive:'risk-destructive'};
+const _PERM_TIMEOUT_S = 120;   // 与后端 _perm_on_confirm Event.wait 一致
+async function _pollPermPending(){
+  try{
+    const r = await fetch('/prisiragent/api/shell_pending').then(x=>x.json());
+    for(const it of (r.perm_pending||[])){
+      if(_permHandled.has(it.task_id)) continue;
+      _permHandled.add(it.task_id);
+      const riskTag = _RISK_LABEL[it.risk] || it.risk;
+      const riskCls = _RISK_CLASS[it.risk] || '';
+      const yes = await openDlg({
+        title:(LANG==='zh' ? '⚠️ 权限确认 · ' : '⚠️ Permission · ') + (it.tool||'') + '（' + riskTag + '）',
+        sub:(it.reason||'') + '\n\n' + (it.preview||''),
+        okText:(LANG==='zh' ? '允许执行' : 'Allow'),
+        cancelText:(LANG==='zh' ? '拒绝' : 'Deny'),
+        // 风险级视觉差异 + 倒计时(后端 _PERM_TIMEOUT_S 秒无响应 = 自动拒绝)
+        extraClass: 'perm-card ' + riskCls,
+        countdownSec: _PERM_TIMEOUT_S,
+      });
+      await api('/perm_confirm', {method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({task_id:it.task_id, approve:!!yes})});
+    }
+  }catch(e){/* 静默,下轮重试 */}
+}
+setInterval(_pollPermPending, 1000);
+
+async function renameSession(){ if(!sessionId) return;
+  const t = await dlgPrompt(LANG==='zh'?'重命名会话':'Rename chat', document.getElementById('conv-title').textContent);
+  if(!t) return;
+  await api('/rename', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId,title:t})});
+  document.getElementById('conv-title').textContent = t; loadSessions(); }
+async function deleteSession(){ if(!sessionId) return;
+  const yes = await dlgConfirm(LANG==='zh'?'删除此会话?':'Delete this chat?', LANG==='zh'?('「'+document.getElementById('conv-title').textContent+'」将不可恢复。'):('"' + document.getElementById('conv-title').textContent + '" cannot be recovered.'));
+  if(!yes) return;
+  await api('/delete', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId})}); newSession(); }
+
+function exportAs(fmt){
+  if(!sessionId){alert(T('need_session'));return;}
+  const url='/prisiragent/api/export?session_id='+sessionId+'&fmt='+fmt;
+  if(fmt==='pdf'){
+    // PDF 走打印友好页,需可见窗口供用户另存;新tab保留
+    window.open(url,'_blank'); return;
+  }
+  // md/docx 是 attachment 下载:用隐藏 <a download> 同源点击,
+  // 不开 _blank 新窗 → 修掉「下载后残留空白窗」的 bug。
+  const a=document.createElement('a');
+  a.href=url; a.download=''; document.body.appendChild(a);
+  a.click(); a.remove();
+}
+
+// ---- 经验提炼存 Obsidian(路线 B) ----
+function toast(msg, ok=true){
+  let t=document.getElementById('exp-toast');
+  if(!t){
+    t=document.createElement('div'); t.id='exp-toast';
+    t.style.cssText='position:fixed;bottom:28px;left:50%;transform:translateX(-50%);'
+      +'padding:10px 18px;border-radius:10px;font-size:13px;z-index:9999;max-width:70vw;'
+      +'box-shadow:0 4px 16px rgba(0,0,0,.18);transition:opacity .3s;word-break:break-all;';
+    document.body.appendChild(t);
+  }
+  t.style.background= ok ? '#2f3a34' : '#b23a30';
+  t.style.color='#fbf6ec';
+  t.textContent=msg; t.style.opacity='1';
+  clearTimeout(t._h);
+  t._h=setTimeout(()=>{ t.style.opacity='0'; }, 4200);
+}
+
+async function saveExperience(){
+  if(!sessionId){alert(T('need_session'));return;}
+  document.getElementById('menu').classList.remove('open');
+  toast('💎 正在提炼经验并存入 Obsidian …(用当前模型)');
+  try{
+    const r = await api('/experience', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({session_id: sessionId})
+    });
+    if(r && r.ok){
+      const note = r.distilled ? '' : '(提炼失败,已存原始对话)';
+      toast('✅ 已存 Obsidian: ' + (r.title||'') + ' ' + note);
+    } else {
+      toast('❌ 存经验失败: ' + ((r&&r.error)||'未知错误'), false);
+    }
+  }catch(e){
+    toast('❌ 存经验异常: ' + e.message, false);
+  }
+}
+
+async function continueInNewWindow(){
+  if(!sessionId){alert(T('need_session'));return;}
+  const menu = document.getElementById('menu'); if(menu) menu.classList.remove('open');
+  toast('🔀 正在生成交接摘要并开新窗 …');
+  try{
+    const r = await api('/continue', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({from_session_id: sessionId})
+    });
+    if(r && r.ok && r.session_id){
+      toast('✅ 已开新窗接续(' + (r.source==='llm'?'LLM 提炼':'规则整理') + ')');
+      await loadSessions();
+      switchSession(r.session_id);
+    } else {
+      toast('❌ 接续失败: ' + ((r&&r.error)||'未知错误'), false);
+    }
+  }catch(e){
+    toast('❌ 接续异常: ' + e.message, false);
+  }
+}
+
+// ---- 左右分屏接续(#39):左栏=交接摘要/旧会话原文(全只读),右栏=新会话 ----
+let splitFrom = null;      // 分屏左栏正显示的旧会话 sid;null=非分屏
+let splitHandoff = null;   // {handoff, source}
+
+function _slTab(which){
+  document.getElementById('sl-tab-summary').classList.toggle('active', which==='summary');
+  document.getElementById('sl-tab-replay').classList.toggle('active', which==='replay');
+  document.getElementById('sl-summary-view').style.display = which==='summary' ? '' : 'none';
+  document.getElementById('sl-replay-view').style.display = which==='replay' ? '' : 'none';
+}
+
+// 左栏只读渲染:复用 addMsg 同款结构(user/assistant 文本 + tool <details> 折叠),
+// 但不渲染 followups 按钮、无 onclick、无输入 → 全只读。
+function addMsgRO(role, text){
+  const box = document.getElementById('sl-replay');
+  if (role === 'tool') {
+    const det = document.createElement('details');
+    det.className = 'msg tool';
+    const sum = document.createElement('summary');
+    const firstNL = text.indexOf('\n');
+    const head = firstNL >= 0 ? text.slice(0, firstNL) : text.slice(0, 60);
+    sum.textContent = head + ' ' + T('tool_expand');
+    const pre = document.createElement('pre');
+    pre.className = 'tool-body';
+    pre.textContent = firstNL >= 0 ? text.slice(firstNL + 1) : text;
+    det.appendChild(sum); det.appendChild(pre);
+    box.appendChild(det);
+    return;
+  }
+  if (role !== 'user' && role !== 'assistant') return;
+  const d = document.createElement('div');
+  d.className = 'msg ' + (role === 'user' ? 'user' : 'agent');
+  if (role === 'assistant') { d.innerHTML = renderMd(text); d.classList.add('md'); }
+  else { d.textContent = text; }
+  box.appendChild(d);
+  if (role === 'assistant') _renderMermaidIn(d);  // ④分屏回放同样渲染 mermaid
+}
+
+async function loadSplitReplay(){
+  const box = document.getElementById('sl-replay');
+  if (box.dataset.loaded === '1') return;
+  box.innerHTML = '<div style="font-size:12px;color:var(--gh-ink-faint)">' + T('replay_loading') + '</div>';
+  try{
+    const r = await api('/replay?session_id=' + encodeURIComponent(splitFrom));
+    box.innerHTML = '';
+    if (r && r.ok && Array.isArray(r.messages)) {
+      if (r.title) document.getElementById('sl-title').textContent = T('old_chat') + r.title;
+      r.messages.forEach(m => addMsgRO(m.role, m.content));
+      box.dataset.loaded = '1';
+    } else {
+      box.innerHTML = '<div style="font-size:12px;color:var(--gh-seal)">' + T('replay_fail') +
+        esc((r && r.error) || (LANG==='zh'?'未知错误':'Unknown error')) + '</div>';
+    }
+  }catch(e){
+    box.innerHTML = '<div style="font-size:12px;color:var(--gh-seal)">' + T('replay_err') + esc(e.message) + '</div>';
+  }
+}
+
+function enterSplit(){
+  document.getElementById('split-wrap').classList.add('split');
+}
+function exitSplit(){
+  // 防御:不只在 splitFrom 非空时才收——状态异常(splitFrom 丢了但左栏还亮)也要能关掉左栏。
+  splitFrom = null; splitHandoff = null;
+  const w = document.getElementById('split-wrap');
+  if (w) w.classList.remove('split');
+}
+
+async function openSplitScreen(){
+  if(!sessionId){alert(T('need_session'));return;}
+  const menu = document.getElementById('menu'); if(menu) menu.classList.remove('open');
+  const from_sid = sessionId;   // 旧会话(进分屏前的当前会话)
+  toast('🗔 正在生成交接摘要并分屏 …');
+  try{
+    // 1) 摘要:GET /handoff(与 /continue 同源:LLM 优先+规则兜底,本期不在 UI 加两档)
+    const h = await api('/handoff?session_id=' + encodeURIComponent(from_sid));
+    if(!h || !h.ok){ toast('❌ 交接摘要失败: ' + ((h&&h.error)||'未知错误'), false); return; }
+    // 2) 先建右栏新会话(POST /continue,复用第1步已拿的摘要→避免二次 LLM 提炼,契约零增量红线;
+    //    交接块仍经 _wrap_handoff_as_data 防注入包装注入首条)——成功才进分屏
+    const r = await api('/continue', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({from_session_id: from_sid, handoff: h.handoff, source: h.source})
+    });
+    if(!(r && r.ok && r.session_id)){
+      toast('❌ 接续失败: ' + ((r&&r.error)||'未知错误'), false); return;   // 不进分屏
+    }
+    // 3) 左栏填摘要(标来源)+ 记 from_sid
+    splitFrom = from_sid; splitHandoff = h;
+    document.getElementById('sl-summary-text').textContent = h.handoff || '';
+    document.getElementById('sl-summary-src').textContent =
+      '交接摘要 · 来源: ' + (h.source==='llm' ? 'LLM 提炼' : '规则整理') + '(只读)';
+    document.getElementById('sl-title').textContent = '';
+    const rb = document.getElementById('sl-replay'); rb.innerHTML = ''; rb.dataset.loaded = '0';
+    _slTab('summary');
+    // 4) 右栏切到新会话(keepSplit:程序内切换,不触发 auto-exit 清掉 splitFrom)
+    await loadSessions();
+    await switchSession(r.session_id, { keepSplit: true });
+    // 5) 亮左栏(右栏新会话已就绪)
+    enterSplit();
+    toast('✅ 分屏接续(' + (r.source==='llm'?'LLM 提炼':'规则整理') + '):左摘要/原文,右新会话');
+  }catch(e){
+    toast('❌ 分屏异常: ' + e.message, false);
+  }
+}
+
+// 分隔条拖拽调宽(纯前端,不持久化)
+(function(){
+  const bar = document.getElementById('split-bar');
+  const left = document.getElementById('split-left');
+  if (!bar || !left) return;
+  let dragging = false;
+  bar.addEventListener('mousedown', (e) => { dragging = true; bar.classList.add('dragging'); e.preventDefault(); });
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const wrap = document.getElementById('split-wrap');
+    const rect = wrap.getBoundingClientRect();
+    let w = e.clientX - rect.left;
+    w = Math.max(260, Math.min(w, rect.width * 0.8));
+    left.style.flex = '0 0 ' + w + 'px';
+  });
+  document.addEventListener('mouseup', () => { if (dragging){ dragging = false; bar.classList.remove('dragging'); } });
+})();
+
+async function sendMessage() {
+  const input = document.getElementById('input');
+  const btn = document.getElementById('send');
+  const text = input.value.trim();
+  const atts = _attachments.slice();
+  if (!text && !atts.length) return;
+  if (!sessionId) { const r = await api('/new',{method:'POST'}); sessionId = r.session_id; }
+  input.value = '';
+  btn.disabled = true;
+  addMsg('user', text + (atts.length ? ' ' + atts.map(a=>'[附件:'+a.name+']').join(' ') : ''));
+  _attachments = []; renderAttach();
+  setStatus('<span class="spinner"></span>' + (LANG==='zh' ? '思考中…' : 'Thinking…'));
+  const thinkLevel = (document.getElementById('think-level')||{}).value || '';
+  await api('/chat', {method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({message:text, session_id:sessionId, think_level:thinkLevel, attachments:atts})});
+  if (!polling) pollResult();
+}
+
+// 壳三件套①:实时工具进度卡。进行中的工具调用以临时 DOM(标 data-live)插在消息流末尾,
+// 让用户看得见「在跑什么工具、跑到哪步」,不再只能盯 spinner。轮询结束 history 重渲时清掉。
+function clearLiveProgress(){
+  document.querySelectorAll('#messages [data-live]').forEach(el => el.remove());
+}
+function renderLiveToolEvent(ev){
+  const box = document.getElementById('messages');
+  if (!box) return;
+  // P3:子代理事件(ev.agent==='sub')缩进嵌套 + 「子」标记,与父级工具区分层级。
+  const isSub = ev.agent === 'sub';
+  const subTag = isSub ? '<span class="lv-sub">子</span>' : '';
+  const key = (isSub ? 'sub:' : '') + ev.name;
+  if (ev.type === 'tool_start') {
+    const d = document.createElement('div');
+    d.className = 'msg tool live';
+    d.dataset.live = '1';
+    d.dataset.tool = key;
+    if (isSub) d.dataset.agent = 'sub';
+    d.innerHTML = '<span class="spinner"></span> ' + subTag + '🔧 ' + T('calling_tool') + '<b>' + esc(ev.name) + '</b>' +
+      (ev.args_preview ? ' <span class="lv-args">' + esc(ev.args_preview) + '</span>' : '');
+    box.appendChild(d);
+  } else if (ev.type === 'tool_end') {
+    // 找同名进行中的卡,更新为完成态(✓/✗ + 耗时 + 输出预览折叠)
+    const card = box.querySelector('[data-live][data-tool="' + key + '"]');
+    const done = '<span class="' + (ev.ok ? 'lv-ok' : 'lv-err') + '">' + (ev.ok ? '✓' : '✗') + '</span>' +
+      ' ' + subTag + '🔧 <b>' + esc(ev.name) + '</b> <span class="lv-ms">' + ev.ms + 'ms</span>' +
+      (ev.output_preview ? '<details class="lv-prev"><summary>' + T('output_preview') + '</summary><pre>' +
+        esc(ev.output_preview) + '</pre></details>' : '');
+    if (card) { card.innerHTML = done; }
+    else { const d = document.createElement('div'); d.className='msg tool live';
+           d.dataset.live='1'; d.dataset.tool=key; if (isSub) d.dataset.agent='sub';
+           d.innerHTML=done; box.appendChild(d); }
+  }
+  box.scrollTop = box.scrollHeight;
+}
+
+// P4 todo 进度卡:固定在消息流末尾(独立于 tool 事件),status 轮询带 todos 即刷新。
+// 幂等更新(同一 #todo-card 容器),清单空则移除。
+function renderTodoCard(todos){
+  const box = document.getElementById('messages');
+  if (!box) return;
+  let card = document.getElementById('todo-card');
+  const live = (todos || []).filter(t => t && t.status !== 'deleted');
+  if (!live.length) { if (card) card.remove(); return; }
+  if (!card) {
+    card = document.createElement('div');
+    card.id = 'todo-card';
+    card.className = 'todo-card';
+    box.appendChild(card);
+  }
+  const done = live.filter(t => t.status === 'completed').length;
+  const pct = live.length ? Math.round(100 * done / live.length) : 0;
+  const mark = {pending:'☐', in_progress:'▶', completed:'✓', deleted:'✗'};
+  let html = '<div class="todo-title">📋 ' + (LANG==='zh'?'任务进度':'Tasks') +
+             ' <span style="color:var(--gh-ink-faint);font-weight:400">' + done + '/' + live.length + '</span></div>' +
+             '<div class="todo-bar"><i style="width:' + pct + '%"></i></div>';
+  for (const t of live) {
+    const label = (t.status === 'in_progress' && t.activeForm) ? t.activeForm : t.content;
+    html += '<div class="todo-item s-' + esc(t.status) + '"><span class="tk">' +
+            (mark[t.status] || '☐') + '</span><span>' + esc(label) + '</span></div>';
+  }
+  card.innerHTML = html;
+}
+
+// P5 计划模式徽标:状态接口带回 plan_mode 时,在消息区顶部亮/灭一个只读规划提示。
+function renderPlanBadge(on){
+  const box = document.getElementById('messages');
+  if (!box) return;
+  let b = document.getElementById('plan-badge');
+  if (!on) { if (b) b.remove(); return; }
+  if (!b) {
+    b = document.createElement('div');
+    b.id = 'plan-badge';
+    b.className = 'plan-badge';
+    box.appendChild(b);
+  }
+  b.textContent = (LANG==='zh'
+    ? '🗺️ 计划模式:只读规划中,方案确认后再执行'
+    : '🗺️ Plan mode: read-only planning until you approve');
+}
+
+async function pollResult() {
+  polling = true;
+  const eb = document.getElementById('estop-btn');
+  if (eb) eb.style.display = '';   // running 期间亮「停止」
+  while (sessionId) {
+    await new Promise(r => setTimeout(r, 900));
+    const r = await api('/status?session_id=' + sessionId);
+    if (r.events && r.events.length) r.events.forEach(renderLiveToolEvent);
+    if (r.todos) renderTodoCard(r.todos);
+    if (typeof r.plan_mode !== 'undefined') renderPlanBadge(r.plan_mode);
+    if (r.meta && r.meta.context_usage) renderCtxUsage(r.meta.context_usage);
+    // 档位3:近满时后台已预提炼交接摘要 → 亮「开新窗接续」按钮并提示
+    if (r.meta && r.meta.handoff_ready) {
+      const cb = document.getElementById('continue-btn');
+      if (cb) { cb.style.display = '';
+        cb.title = (LANG==='zh'
+          ? '上下文近满,交接摘要已备好(' + (r.meta.handoff_ready.source === 'llm' ? 'LLM 提炼' : '规则整理') + '),一键开新窗接续'
+          : 'Context nearly full — handoff summary ready (' + (r.meta.handoff_ready.source === 'llm' ? 'LLM distilled' : 'rule-based') + '), one click to continue in a new window'); }
+      const sb = document.getElementById('split-btn');
+      if (sb) { sb.style.display = '';
+        sb.title = (LANG==='zh' ? '上下文近满,交接摘要已备好,本窗内左右分屏接续'
+          : 'Context nearly full — handoff summary ready, split-screen continue in this window'); }
+    }
+    if (!r.running) {
+      const h = await api('/history?session_id=' + sessionId);
+      document.getElementById('messages').innerHTML = '';
+      document.getElementById('conv-title').textContent = h.title || T('sessions');
+      h.messages.forEach(m => addMsg(m.role, m.content, m.followups));
+      setStatus('');
+      document.getElementById('send').disabled = false;
+      if (eb) eb.style.display = 'none';   // 停了收起「停止」
+      loadSessions();
+      break;
+    }
+  }
+  polling = false;
+}
+
+function openKeys(){ document.getElementById('keymodal').classList.add('open'); renderKeys(); loadWorkdir(); loadPlatformList(); }
+
+// M3.22.2 — 下拉选厂商:auto填 base_url / 默认 model / kind(走 /llm/upsert)
+var _llmProviders = [];  // [{platform_id, display, kind, base_url, default_model, note, fields}]
+// M3.27.4(2026-09-18)ASR providers,platform_id 用 "asr:<name>" 前缀区分 LLM。
+var _asrProviders = [];
+
+async function loadPlatformList(){
+  try {
+    const r = await api('/llm/providers');
+    if(r && r.providers && r.providers.length){
+      _llmProviders = r.providers;
+    } else {
+      _llmProviders = [];
+    }
+    if(r && r.asr_providers && r.asr_providers.length){
+      _asrProviders = r.asr_providers;
+    } else {
+      _asrProviders = [];
+    }
+  } catch(e){
+    _llmProviders = [];
+    _asrProviders = [];
+  }
+  const sel = document.getElementById('k-platform-pick');
+  if(!sel) return;
+  const zh = (LANG === 'zh');
+  // 默认 3 项:留空 = 不选 / custom = 自定义输入
+  const opts = ['<option value="">— '+(zh?'选平台(可跳过选自定义)':'Pick platform (or skip & customize)')+' —</option>'];
+  // M3.22.3 分组显示:云端 / 本地 — 按 spec.local 字段(不是 kind)
+  const cloud = _llmProviders.filter(p => !p.local);
+  const local = _llmProviders.filter(p => p.local);
+  if(cloud.length){
+    opts.push('<optgroup label="'+(zh?'☁ 云端 LLM':'☁ Cloud LLM')+'">');
+    cloud.forEach(p => opts.push(`<option value="${esc(p.platform_id)}">${esc(p.display)} — ${esc(p.default_model||'')}</option>`));
+    opts.push('</optgroup>');
+  }
+  if(local.length){
+    opts.push('<optgroup label="'+(zh?'💻 本地 LLM(隐私优先)':'💻 Local LLM')+'">');
+    local.forEach(p => opts.push(`<option value="${esc(p.platform_id)}">${esc(p.display)} — ${esc(p.default_model||'')}</option>`));
+    opts.push('</optgroup>');
+  }
+  // M3.27.4:ASR 分类(本地/云端,按 spec.local 字段)
+  if(_asrProviders.length){
+    const asrCloud = _asrProviders.filter(p => !p.local);
+    const asrLocal = _asrProviders.filter(p => p.local);
+    if(asrCloud.length){
+      opts.push('<optgroup label="'+(zh?'🎤 云端 ASR':'🎤 Cloud ASR')+'">');
+      asrCloud.forEach(p => opts.push(`<option value="${esc(p.platform_id)}">${esc(p.display)} — ${esc(p.default_model||'')}</option>`));
+      opts.push('</optgroup>');
+    }
+    if(asrLocal.length){
+      opts.push('<optgroup label="'+(zh?'🎤 本地 ASR(隐私优先)':'🎤 Local ASR')+'">');
+      asrLocal.forEach(p => opts.push(`<option value="${esc(p.platform_id)}">${esc(p.display)} — ${esc(p.default_model||'')}</option>`));
+      opts.push('</optgroup>');
+    }
+  }
+  opts.push('<option value="__custom__">⌨ '+(zh?'自定义(手填全部字段)':'Custom (fill all fields manually)')+'</option>');
+  sel.innerHTML = opts.join('');
+}
+
+function onPlatformPick(){
+  const sel = document.getElementById('k-platform-pick');
+  const v = sel.value;
+  const note = document.getElementById('k-platform-note');
+  if(!v){
+    if(note) note.textContent = '';
+    return;
+  }
+  // M3.27.4:ASR 分支(platform_id 以 "asr:" 开头)
+  if(v && v.startsWith('asr:')){
+    const rawName = v.slice(4);
+    if(rawName === '__other__'){
+      // 兜底:其他厂商(暂未实现)
+      if(note) note.textContent = (LANG==='zh'?'⚠ 其他厂商暂未实现,请选已实现的 ASR 厂商':'⚠ Other vendors not yet implemented; please pick an existing one');
+      if(typeof toast === 'function') toast(LANG==='zh'?'⚠ 其他厂商暂未实现':'⚠ Other vendors not yet implemented', false);
+      return;
+    }
+    // 调主面板 /api/asr/active → 转发到 18850 切 active_provider
+    openAsrProvider(rawName);
+    if(note) note.textContent = (LANG==='zh'?('🎤 已切 ASR 到「'+rawName+'」 — 完整配置请到 📞 陪聊 → ⚙ 设置'):('🎤 ASR switched to "'+rawName+'" — full config via 📞 Companion → ⚙ Settings'));
+    return;
+  }
+  if(v === '__custom__'){
+    // 自定义模式:清空 url/model,聚焦到 k-platform 输入框
+    document.getElementById('k-platform').value = 'custom';
+    document.getElementById('k-custom-url').value = '';
+    document.getElementById('k-custom-model').value = '';
+    document.getElementById('k-custom-proto').value = 'openai';
+    if(note) note.textContent = (LANG==='zh'?'已切到自定义模式 — 在下方手填 platform / base_url / model / key':'Switched to custom — fill platform / base_url / model / key below');
+    return;
+  }
+  const p = _llmProviders.find(x => x.platform_id === v);
+  if(!p){
+    if(note) note.textContent = (LANG==='zh'?'平台未找到':'Platform not found');
+    return;
+  }
+  document.getElementById('k-platform').value = p.platform_id;
+  document.getElementById('k-custom-url').value = p.base_url || '';
+  document.getElementById('k-custom-model').value = p.default_model || '';
+  document.getElementById('k-custom-proto').value = (p.kind === 'anthropic') ? 'anthropic' : 'openai';
+  document.getElementById('k-custom-key').value = '';
+  document.getElementById('k-custom-key').placeholder =
+    (LANG==='zh'?'填 API key(留空=保留原 key;首次必须填)':'Enter API key (empty=keep existing; required for first save)');
+  if(note) note.textContent = (LANG==='zh'?('✓ 已预填「'+p.display+'」 — '+(p.note||'请填 key 后保存')):('✓ Prefilled "'+p.display+'" — '+(p.note||'enter key and save')));
+  _pulledModels = [];  // 切平台后清空旧列表,免误导
+}
+
+// M3.27.4:切 ASR provider(主面板 → /api/asr/active → 转发 18850 companion)
+async function openAsrProvider(rawName){
+  try {
+    const r = await fetch('/api/asr/active', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({active_provider: rawName}),
+    });
+    const d = await r.json().catch(() => ({ok: false, err: 'bad json'}));
+    if(d && d.ok){
+      if(typeof toast === 'function') toast((LANG==='zh'?'✓ ASR 已切换到: ':'✓ ASR switched to: ') + rawName, true);
+    } else {
+      if(typeof toast === 'function') toast((LANG==='zh'?'⚠ ASR 切换失败: ':'⚠ ASR switch failed: ') + (d && d.err || ('HTTP '+r.status)), false);
+    }
+  } catch(e){
+    if(typeof toast === 'function') toast((LANG==='zh'?'⚠ ASR 切换异常: ':'⚠ ASR switch error: ') + e, false);
+  }
+}
+function closeKeys(){ document.getElementById('keymodal').classList.remove('open'); }
+
+// ---- v2.0 反馈卡(目标 A.3) ----
+// 流程:点击「⚙ 反馈问题」→ openFeedback → 用户填描述 + 勾脱敏 →
+//   点「发布到论坛」:POST /prisiragent/api/feedback_zip 打 zip + 经主进程 IPC 打开论坛反馈页
+//   点「仅打包到桌面」:只 POST 端点,显示 zip 路径,让用户决定怎么发
+// 不在装包器内做论坛发帖(token 同步/防滥用/邮件验证不在装包器责任范围)
+const FB_FORUM_URL = "https://bbs.babelspan.com/forum.html#board=browser/shell&hint=prisirai";
+function openFeedback(){
+  document.getElementById('fb-desc').value = "";
+  // 默认勾选「包含 model key 脱敏信息」(脱敏是默认安全姿态)
+  const mask = document.getElementById('fb-mask-keys');
+  if (!mask.dataset.userSet) mask.checked = true;
+  document.getElementById('fb-status').textContent = (LANG==='zh' ? "尚未打包" : "Not packed yet");
+  document.getElementById('fbmodal').classList.add('open');
+}
+function closeFeedback(){ document.getElementById('fbmodal').classList.remove('open'); }
+
+/* ===== #102 增量补丁:一键应用/回滚 ===== */
+function openPatch(){ document.getElementById('patchmodal').classList.add('open'); patchRefreshList(); }
+function closePatch(){ document.getElementById('patchmodal').classList.remove('open'); }
+
+/* ===== M3.27.3 陪聊入口:探活 + 开窗 ===== */
+async function openCompanion(){
+  var port = 18850;
+  var url = "http://127.0.0.1:" + port + "/";
+  try {
+    // 探活(no-cors,只要 fetch 不抛异常就算 OK)
+    if(typeof fetch === 'function' && typeof AbortSignal !== 'undefined' && AbortSignal.timeout){
+      await fetch(url, {mode: "no-cors", signal: AbortSignal.timeout(2000)});
+    }
+    window.open(url, "_blank");
+  } catch(e) {
+    var msg = "⚠ 陪聊服务未启动(端口 " + port + ")。\n启动命令:python -B companion/prisiragent-companion-web.py --port " + port + "\n(或通过 Tauri 壳托盘「启动陪聊」)";
+    if(typeof toast === 'function'){
+      toast(msg, false);
+    } else if(typeof showToast === 'function'){
+      showToast(msg);
+    } else {
+      alert(msg);
+    }
+  }
+}
+function _patchStatus(msg, isErr){
+  const s = document.getElementById('patch-status');
+  s.textContent = msg;
+  s.style.color = isErr ? 'var(--gh-danger,#c0392b)' : '';
+}
+async function patchApplyChosen(){
+  const fi = document.getElementById('patch-file');
+  if (!fi.files || !fi.files[0]) { _patchStatus(T('patch_pick'), true); return; }
+  const f = fi.files[0];
+  _patchStatus(T('patch_applying'));
+  try {
+    // 1) 上传 zip 到服务器(_inbox),拿服务器侧路径
+    const up = await fetch('/prisiragent/api/patch/upload', {
+      method:'POST', headers:{'Content-Type':'application/octet-stream',
+        'Content-Disposition':'attachment; filename="' + encodeURIComponent(f.name) + '"'},
+      body: f,
+    }).then(r=>r.json());
+    if (!up.ok) { _patchStatus((up.error||'upload failed'), true); return; }
+    // 2) 用服务器侧路径应用
+    const r = await api('/patch/apply', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({patch_zip: up.path})});
+    if (!r.ok) { _patchStatus(r.error||'apply failed', true); return; }
+    _patchStatus(T('patch_applied_ok') + ' ' + (r.patch_id||'') + '  (' + (r.applied||[]).join(', ') + ')');
+    fi.value = '';
+    patchRefreshList();
+  } catch(e){ _patchStatus('apply error: ' + (e.message||e), true); }
+}
+async function patchRollback(pid){
+  _patchStatus('…');
+  try {
+    const r = await api('/patch/rollback', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({patch_id: pid})});
+    if (!r.ok) { _patchStatus(r.error||'rollback failed', true); return; }
+    _patchStatus((LANG==='zh'?'已回滚 ':'Rolled back ') + pid);
+    patchRefreshList();
+  } catch(e){ _patchStatus('rollback error: ' + (e.message||e), true); }
+}
+async function patchRefreshList(){
+  const box = document.getElementById('patch-list');
+  try {
+    const r = await api('/patch/list', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+    const ps = (r && r.patches) || [];
+    if (!ps.length) { box.innerHTML = '<div class="sub">' + T('patch_none') + '</div>'; return; }
+    let h = '<table><tr><th>patch_id</th><th>' + (LANG==='zh'?'文件':'files') + '</th><th></th></tr>';
+    ps.forEach(p=>{
+      h += '<tr><td><code>' + (p.patch_id||'') + '</code><div class="sub">' + (p.base_version||'') + '</div></td>' +
+           '<td>' + ((p.files||[]).join('<br>')) + '</td>' +
+           '<td><button class="topbtn mini" onclick="patchRollback(\'' + String(p.patch_id||'').replace(/'/g,"\\'") + '\')">' +
+           T('patch_rollback') + '</button></td></tr>';
+    });
+    box.innerHTML = h + '</table>';
+  } catch(e){ box.innerHTML = '<div class="sub">list error: ' + (e.message||e) + '</div>'; }
+}
+
+function fbGetMask(){
+  const cb = document.getElementById('fb-mask-keys');
+  cb.dataset.userSet = "1";   // 用户手动过即锁定默认值
+  return cb.checked;
+}
+async function feedbackBuildZip(){
+  const desc = document.getElementById('fb-desc').value || "";
+  const mask = fbGetMask();
+  const status = document.getElementById('fb-status');
+  const zh = (LANG === 'zh');
+  status.textContent = zh ? "打包中…" : "Packing…";
+  let r;
+  try {
+    r = await fetch('/prisiragent/api/feedback_zip', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({description: desc, include_model_keys: mask}),
+    });
+  } catch (e) {
+    status.innerHTML = (zh ? '打包失败:网络错误 ' : 'Pack failed: network error ') + (e.message || e);
+    return null;
+  }
+  let j;
+  try { j = await r.json(); } catch (e) {
+    status.innerHTML = (zh ? '打包失败:响应解析错误 ' : 'Pack failed: response parse error ') + (r.status || '');
+    return null;
+  }
+  if (!j || !j.ok) {
+    status.innerHTML = (zh ? '打包失败:' : 'Pack failed: ') + (j && j.error ? j.error : ('HTTP ' + r.status));
+    return null;
+  }
+  status.innerHTML = (zh ? '已生成 <code>' : 'Generated <code>') + (j.zip || '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])) + '</code>';
+  return j.zip;
+}
+async function feedbackPackOnly(){
+  await feedbackBuildZip();
+}
+async function feedbackPackAndOpen(){
+  const zpath = await feedbackBuildZip();
+  if (!zpath) return;
+  // 主进程 IPC 打开系统默认浏览器(Electron sandbox renderer 拿不到 window.open)
+  try {
+    if (window.oiShell && window.oiShell.openExternal) {
+      await window.oiShell.openExternal(FB_FORUM_URL);
+    } else {
+      // 退化路径:开发态浏览器直接打开新页(没有 preload 桥时)
+      window.open(FB_FORUM_URL, '_blank', 'noopener,noreferrer');
+    }
+  } catch (e) {
+    document.getElementById('fb-status').innerHTML += (LANG==='zh' ? '<br>论坛页打开失败,请手动访问 ' : '<br>Failed to open forum page, please visit manually ') + FB_FORUM_URL;
+  }
+  // 提示用户去论坛上传桌面 zip
+  document.getElementById('fb-status').innerHTML +=
+    (LANG==='zh' ? '<br>💡 论坛新帖页打开后,请上传桌面这个 zip 文件作为附件。' : '<br>💡 After the forum post page opens, please upload the zip on your desktop as an attachment.');
+}
+async function loadWorkdir(){
+  const r = await api('/info');
+  document.getElementById('k-workdir').value = r.workdir || '';
+}
+async function saveWorkdir(){
+  const hint = document.getElementById('k-workdir-hint');
+  const wd = document.getElementById('k-workdir').value.trim();
+  const zh = (LANG === 'zh');
+  if(!wd){ hint.textContent = zh ? '工作目录不能为空' : 'Working directory cannot be empty'; return; }
+  const r = await api('/workdir', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workdir:wd})});
+  if(r.ok){ hint.textContent = (zh ? '已应用:' : 'Applied: ') + r.workdir; }
+  else { hint.textContent = r.error || (zh ? '设置失败' : 'Failed'); }
+}
+
+/* ---- 附件:文本内联 / 图片多模态 ---- */
+let _attachments = [];
+const _IMG_EXT = ['.png','.jpg','.jpeg','.gif','.webp','.bmp'];
+document.getElementById('attach-btn').addEventListener('click', () => document.getElementById('attach-input').click());
+document.getElementById('attach-input').addEventListener('change', async (e) => {
+  const files = Array.from(e.target.files || []);
+  for (const f of files) {
+    const ext = ('.' + (f.name.split('.').pop() || '')).toLowerCase();
+    const isImg = _IMG_EXT.includes(ext) || (f.type || '').startsWith('image/');
+    const b64 = await new Promise((res) => {
+      const rd = new FileReader();
+      rd.onload = () => res(String(rd.result).split(',')[1] || '');
+      rd.readAsDataURL(f);
+    });
+    _attachments.push({ name: f.name, mime: f.type || (isImg ? 'image/png' : 'text/plain'), data_base64: b64 });
+  }
+  e.target.value = '';
+  renderAttach();
+});
+function renderAttach(){
+  const row = document.getElementById('attach-row');
+  row.innerHTML = '';
+  _attachments.forEach((a, i) => {
+    const chip = document.createElement('span'); chip.className = 'atchip';
+    chip.innerHTML = '📎 ' + esc(a.name) + ' <button type="button" title="' + T('remove') + '">×</button>';
+    chip.querySelector('button').onclick = () => { _attachments.splice(i, 1); renderAttach(); };
+    row.appendChild(chip);
+  });
+}
+// 存储拉取到的模型列表
+var _pulledModels = [];
+
+async function pullModels(){
+  const hint = document.getElementById('k-model-hint');
+  const url = document.getElementById('k-custom-url').value.trim();
+  const key = document.getElementById('k-custom-key').value.trim();
+  const platform = document.getElementById('k-platform').value.trim().toLowerCase();
+  const zh = (LANG === 'zh');
+  if(!url){ hint.textContent = zh ? '先填 base_url 再拉取' : 'Enter base_url first'; return; }
+  // M3.22.3 — 国内云端 + openai/anthropic/openrouter/groq/openai-compat 都要 key;本地(ollama/llama-server)不需要
+  const localKinds = ['ollama', 'llama-server'];
+  const localPlatforms = ['ollama', 'llama-server'];
+  if(!key && !localPlatforms.includes(platform)){
+    hint.textContent = zh ? '⚠ 大多数平台需先填 KEY(401 会拒绝);ollama/llama-server 本地服务可留空' : '⚠ Most platforms require a KEY (401 otherwise); ollama/llama-server may stay empty';
+    hint.style.color = '#c9463d';
+    return;
+  }
+  hint.textContent = zh ? '拉取中…' : 'Pulling…';
+  hint.style.color = 'var(--gh-ink-faint)';
+  try {
+    const r = await api('/models?base_url='+encodeURIComponent(url)+'&api_key='+encodeURIComponent(key));
+    const dropdown = document.getElementById('k-model-dropdown');
+    dropdown.innerHTML = '';
+    _pulledModels = [];
+    if(r.ok && r.models && r.models.length){
+      _pulledModels = r.models;
+      r.models.forEach(m => {
+        const item = document.createElement('div');
+        item.style.cssText = 'padding:10px 12px;cursor:pointer;border-bottom:1px solid var(--gh-line);font-size:13px';
+        item.textContent = m;
+        item.onmouseenter = () => item.style.background = 'var(--gh-paper)';
+        item.onmouseleave = () => item.style.background = 'transparent';
+        item.onmousedown = (e) => { e.preventDefault(); selectModel(m); };
+        dropdown.appendChild(item);
+      });
+      hint.textContent = zh ? ('✓ 拉到 '+r.models.length+' 个模型,点击输入框查看全部') : ('✓ Pulled '+r.models.length+' models — click input to see all');
+      hint.style.color = '#2d8a4e';  // 成功绿色
+      // 自动展开下拉显示所有模型
+      showModelDropdown();
+    } else {
+      hint.textContent = zh ? ('未拉到('+(r.error||'空')+'),可继续手填模型名') : ('Nothing pulled ('+(r.error||'empty')+') — you can still type the model name');
+      hint.style.color = '#c9463d';  // 错误红色
+    }
+  } catch(e){
+    hint.textContent = (zh ? '拉取失败:' : 'Pull failed: ') + e;
+    hint.style.color = '#c9463d';
+  }
+}
+
+function showModelDropdown(){
+  const dropdown = document.getElementById('k-model-dropdown');
+  if(_pulledModels.length > 0){
+    dropdown.style.display = 'block';
+  }
+}
+
+function hideModelDropdownDelayed(){
+  setTimeout(() => {
+    document.getElementById('k-model-dropdown').style.display = 'none';
+  }, 200);
+}
+
+function selectModel(m){
+  document.getElementById('k-custom-model').value = m;
+  document.getElementById('k-model-dropdown').style.display = 'none';
+  const hint = document.getElementById('k-model-hint');
+  const zh = (LANG === 'zh');
+  hint.textContent = zh ? ('已选择: '+m) : ('Selected: '+m);
+  hint.style.color = '#2d8a4e';
+}
+
+async function saveKeys(){
+  const hint = document.getElementById('k-model-hint');
+  const zh = (LANG === 'zh');
+  const platformPick = document.getElementById('k-platform-pick').value;
+  const platform = document.getElementById('k-platform').value.trim().toLowerCase();
+  const proto = document.getElementById('k-custom-proto').value;
+  const url = document.getElementById('k-custom-url').value.trim();
+  const key = document.getElementById('k-custom-key').value.trim();
+  const model = document.getElementById('k-custom-model').value.trim();
+  // M3.22.2 分流:从 dropdown 选了有效平台(非 __custom__ 非空)→ 走新 /llm/upsert
+  // 否则(自定义 / 未选 dropdown)→ 走老 /keys 全字段
+  if(platformPick && platformPick !== '__custom__' && _llmProviders.find(p => p.platform_id === platformPick)){
+    // 新路径:platform_id + api_key + model + endpoint(仅 ollama/llama-server)
+    const spec = _llmProviders.find(p => p.platform_id === platformPick);
+    const body = {
+      platform_id: platformPick,
+      api_key: key,  // 留空或以 *** 开头 → 后端保留旧 key
+      model: model,
+    };
+    if(spec.kind === 'ollama' || platformPick === 'llama-server'){
+      body.endpoint = url;
+    }
+    const r = await api('/llm/upsert', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(r && r.ok === false){
+      hint.textContent = (zh?'❌ 保存失败: ':'❌ Save failed: ') + (r.error||'');
+      hint.style.color = '#c9463d';
+      return;
+    }
+    hint.textContent = zh ? ('✓ 已保存「'+platformPick+'」! '+(r.platform&&r.platform.api_key_len?'(key 长度='+r.platform.api_key_len+')':''))
+                          : ('✓ Saved "'+platformPick+'"! '+(r.platform&&r.platform.api_key_len?'(key len='+r.platform.api_key_len+')':''));
+    hint.style.cssText = 'font-size:14px;font-weight:600;color:#2d8a4e;margin-top:6px;padding:8px;background:#e8f5e9;border-radius:6px;animation:saveFlash 0.5s ease';
+    document.getElementById('k-custom-key').value = '';
+    document.getElementById('k-platform-pick').value = '';  // 重置 dropdown 让用户能继续选
+    renderKeys();
+    setTimeout(() => { hint.style.cssText = 'font-size:11px;color:var(--gh-ink-faint);margin-top:4px'; }, 3000);
+    return;
+  }
+  // 老路径:全字段写 /keys(自定义模式)
+  const body = {
+    platform: platform,
+    custom_proto: proto,
+    custom_url: url,
+    custom_key: key,
+    custom_model: model,
+  };
+  const r = await api('/keys', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(r && r.ok === false){
+    hint.textContent = (zh?'❌ 保存失败: ':'❌ Save failed: ') + (r.error||'');
+    hint.style.color = '#c9463d';
+    return;
+  }
+  hint.textContent = zh ? ('✓ 已保存「'+body.platform+'」!') : ('✓ Saved "'+body.platform+'"!');
+  hint.style.cssText = 'font-size:14px;font-weight:600;color:#2d8a4e;margin-top:6px;padding:8px;background:#e8f5e9;border-radius:6px;animation:saveFlash 0.5s ease';
+  document.getElementById('k-custom-key').value = '';
+  renderKeys();
+  setTimeout(() => { hint.style.cssText = 'font-size:11px;color:var(--gh-ink-faint);margin-top:4px'; }, 3000);
+}
+
+async function resetRouter(){
+  const hint = document.getElementById('k-model-hint');
+  const zh = (LANG === 'zh');
+  try {
+    const r = await api('/keys/activate', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({platform:''})  // 空平台=清除指定
+    });
+    if(r && r.ok){
+      hint.textContent = zh ? '✓ 已恢复智能路由!' : '✓ Smart routing restored!';
+      hint.style.cssText = 'font-size:14px;font-weight:600;color:#2d8a4e;margin-top:6px;padding:8px;background:#e8f5e9;border-radius:6px;animation:saveFlash 0.5s ease';
+      renderKeys();
+      // 更新路由标签
+      const info = await api('/info');
+      let routeTxt = T('routing') + info.strategy + (info.platforms.length ? ' · ' + info.platforms.join('/') : T('no_key'));
+      if (info.current_model) routeTxt += ' · ' + String(info.current_model).split('/').pop();
+      document.getElementById('strategy-label').textContent = routeTxt;
+      setTimeout(() => {
+        hint.style.cssText = 'font-size:11px;color:var(--gh-ink-faint);margin-top:4px';
+      }, 3000);
+    }
+  } catch(e){
+    hint.textContent = (zh?'❌ 恢复失败: ':'❌ Reset failed: ') + e;
+    hint.style.color = '#c9463d';
+  }
+}
+
+async function renderKeys(){
+  const ks = await api('/keys');
+  const el = document.getElementById('keylist');
+  // 获取当前活跃平台
+  const info = await api('/info');
+  const activePlatform = info.active_platform || '';
+  el.innerHTML = ks.length ? '<div class="sub" style="margin:8px 0 4px">' + (LANG==='zh'?'已配置(点「使用」切换为当前模型):':'Configured (click "Use" to switch):') + '</div>' : '';
+  ks.forEach(k => {
+    const d = document.createElement('div'); d.className='k';
+    const proto = (k.meta && k.meta.proto) ? ' ['+k.meta.proto+']' : '';
+    const isActive = (k.platform === activePlatform);
+    const activeStyle = isActive ? 'background:#e8f5e9;border-left:3px solid #2d8a4e;' : '';
+    const activeBadge = isActive ? '<span style="color:#2d8a4e;font-weight:600;margin-right:6px">● 当前</span>' : '';
+    const label = esc(k.platform)+proto+' '+esc(k.base_url||'(默认)')+' 模型='+esc(k.model||'(未设)')+' '+esc(k.key_hint);
+    d.innerHTML = '<span style="flex:1;'+activeStyle+'padding:4px">'+activeBadge+label+'</span>'
+      + '<button class="'+(isActive?'':'primary')+'" onclick=\'useKey('+JSON.stringify(k)+')\'>' + (LANG==='zh'?'使用':'Use') + '</button>'
+      + '<button onclick="delKey(\''+k.platform+'\')">' + T('del') + '</button>';
+    el.appendChild(d);
+  });
+}
+
+async function useKey(k){
+  const zh = (LANG === 'zh');
+  const hint = document.getElementById('k-model-hint');
+  hint.textContent = zh ? '切换中…' : 'Switching…';
+  hint.style.color = 'var(--gh-ink-faint)';
+  try {
+    const r = await api('/keys/activate', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({platform:k.platform})
+    });
+    if(r && r.ok){
+      hint.textContent = zh ? ('✓ 已切换到「'+k.platform+'」!') : ('✓ Switched to "'+k.platform+'"!');
+      hint.style.cssText = 'font-size:14px;font-weight:600;color:#2d8a4e;margin-top:6px;padding:8px;background:#e8f5e9;border-radius:6px;animation:saveFlash 0.5s ease';
+      renderKeys();
+      // 更新路由标签
+      const info = await api('/info');
+      let routeTxt = T('routing') + info.strategy + (info.platforms.length ? ' · ' + info.platforms.join('/') : T('no_key'));
+      if (info.current_model) routeTxt += ' · ' + String(info.current_model).split('/').pop();
+      document.getElementById('strategy-label').textContent = routeTxt;
+      setTimeout(() => {
+        hint.style.cssText = 'font-size:11px;color:var(--gh-ink-faint);margin-top:4px';
+      }, 3000);
+    } else {
+      hint.textContent = (zh?'❌ 切换失败: ':'❌ Switch failed: ') + (r.error||'');
+      hint.style.color = '#c9463d';
+    }
+  } catch(e){
+    hint.textContent = (zh?'❌ 切换失败: ':'❌ Switch failed: ') + e;
+    hint.style.color = '#c9463d';
+  }
+}
+
+function loadKey(k){
+  document.getElementById('k-platform').value = k.platform || 'custom';
+  document.getElementById('k-custom-proto').value = (k.meta && k.meta.proto) || 'openai';
+  document.getElementById('k-custom-url').value = k.base_url || '';
+  document.getElementById('k-custom-model').value = k.model || '';
+  document.getElementById('k-custom-key').value = '';
+  document.getElementById('k-custom-key').placeholder = (LANG==='zh'?'留空=保留原 key;填新值=覆盖':'empty=keep key; fill=overwrite');
+}
+async function delKey(p){ await api('/keys/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({platform:p})}); renderKeys(); }
+
+document.getElementById('input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+// M3.31.12(2026-09-16)+P2.5+9(2026-09-20):输入框自适应多行 — 按内容行数动态 rows,
+// 起步 2 行(P2.5+9 用户拍板,跟 HTML rows=2 对齐),撑到 12 行上限才出滚动条
+// 原本 max-height:160px + rows=2 导致只能容 2 行,再多就压缩出滚动条,UX 糟
+function _autoResizeInput() {
+  const el = document.getElementById('input');
+  if (!el) return;
+  // 用 \n 数 + wrap(每行宽度估算):textarea scrollHeight 已经按 wrap 折算,
+  // 但因 min-height:44px 即使 1 行 scrollHeight=44,需按 value 实际行数算
+  const value = el.value || '';
+  // P2.5+9:列宽估算降到 70px 字符(更窄屏 + padding 12px*2 占用),更稳
+  const colsPerLine = 70;
+  const wrappedLines = value.split('\n').reduce((sum, line) => {
+    return sum + Math.max(1, Math.ceil(line.length / colsPerLine));
+  }, 0);
+  el.rows = Math.max(2, Math.min(12, wrappedLines));
+}
+document.getElementById('input').addEventListener('input', _autoResizeInput);
+// 初始化(防首次加载就有内容)
+setTimeout(_autoResizeInput, 0);
+
+// 左栏 tab 切换 + 合并(退出分屏)
+document.getElementById('sl-tab-summary').addEventListener('click', () => _slTab('summary'));
+document.getElementById('sl-tab-replay').addEventListener('click', () => { _slTab('replay'); loadSplitReplay(); });
+document.getElementById('sl-merge').addEventListener('click', () => exitSplit());
+
+(async () => {
+  applyI18n();   // 多语言:页面静态文案按浏览器语言替换(zh/en,其他→en)
+  const r = await api('/info');
+  // 路由标签:策略 · 平台/当前真实模型(2026-09-06:只显平台名看不到在用哪个型号,补 current_model)
+  let routeTxt = T('routing') + r.strategy + (r.platforms.length ? ' · ' + r.platforms.join('/') : T('no_key'));
+  if (r.current_model) routeTxt += ' · ' + String(r.current_model).split('/').pop();
+  document.getElementById('strategy-label').textContent = routeTxt;
+  await loadSessions();
+  if (sessions.length) switchSession(sessions[0].id);
+  // task #12 纯规则离线首配: 无任何已配置平台时,启动弹出一次性引导(遮蔽式)。
+  if (!r.platforms.length) fsShow();
+  // M3.31:git 检测闸 — 未装 git 且本会话未弹过才显示;不阻塞其他初始化。
+  gitGateInit();
+  // M3.32 Phase 2(2026-09-16):officecli/LO 检测闸 — 仅在用户点击 docx/xlsx/pptx 时按需弹
+  officeinstallgateInit();
+  // M3.33 #65:skill 面板事件绑定
+  skillInit();
+})();
+
+/* ===== M3.31 git 安装权限闸(只在用户主动 reload 时 fetch,不做 polling) ===== */
+let _gitGateShown = false;  // 前端本会话内存标记,防止重复 fetch
+async function gitGateInit() {
+  if (_gitGateShown) return;
+  try {
+    const r = await fetch("/prisiragent/api/git_detect");
+    const j = await r.json();
+    if (!j.ok) return;                // 后端失败不打扰
+    if (j.detected) return;           // 已装 git,不弹
+    if (j.gate_shown) return;         // 用户本会话已选「暂不启用」,不骚扰
+    const gate = document.getElementById("gitinstallgate");
+    if (!gate) return;
+    _gitGateShown = true;
+    gate.classList.add("open");
+    document.getElementById("gitinstallgate-open").onclick = async () => {
+      window.open("https://git-scm.com/downloads", "_blank", "noopener");
+      try { await fetch("/prisiragent/api/git_gate_ack", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ choice: "yes" }) }); } catch (e) {}
+      gate.classList.remove("open");
+    };
+    document.getElementById("gitinstallgate-skip").onclick = async () => {
+      try { await fetch("/prisiragent/api/git_gate_ack", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ choice: "no" }) }); } catch (e) {}
+      gate.classList.remove("open");
+    };
+  } catch (e) {
+    // 网络异常静默吞掉,不影响主流程
+  }
+}
+
+/* ===== M3.32 Phase 2(2026-09-16):Office 渲染器装机权限闸
+   与 git 闸不同:启动时不弹,只在用户点 docx/xlsx/pptx 且后端 415 时弹。
+   这样不打扰只用代码/笔记的用户。
+   expose:officeinstallgateShow() 让 docLoadPreview 415 时手动触发。*/
+let _officeinstallgateInited = false;
+let _officeinstallgateShown = false;
+function officeinstallgateInit() {
+  if (_officeinstallgateInited) return;
+  _officeinstallgateInited = true;
+  const gate = document.getElementById("officeinstallgate");
+  if (!gate) return;
+  document.getElementById("officeinstallgate-open").onclick = async () => {
+    window.open("https://www.libreoffice.org/download", "_blank", "noopener");
+    try { await fetch("/prisiragent/api/office_gate_ack", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ choice: "yes" }) }); } catch (e) {}
+    gate.classList.remove("open");
+    _officeinstallgateShown = false;
+  };
+  document.getElementById("officeinstallgate-skip").onclick = async () => {
+    try { await fetch("/prisiragent/api/office_gate_ack", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ choice: "no" }) }); } catch (e) {}
+    gate.classList.remove("open");
+    _officeinstallgateShown = true;
+  };
+  document.getElementById("officeinstallgate-recheck").onclick = async () => {
+    const st = document.getElementById("officeinstallgate-status");
+    if (st) { st.className = "oig-status"; st.textContent = "重新检测中..."; }
+    try {
+      const r = await fetch("/prisiragent/api/office_renderer_status?force=1");
+      const j = await r.json();
+      if (!j.ok) throw new Error(j.error || "detect failed");
+      officeinstallgateRenderStatus(j);
+      // 如果这次 LO 装了,关弹窗
+      if (j.lo.detected || j.officecli.detected) {
+        gate.classList.remove("open");
+        _officeinstallgateShown = false;
+        // 重新加载当前预览
+        const p = window.__docState && window.__docState.currentPath;
+        if (p && typeof docLoadPreview === "function") docLoadPreview(p);
+      }
+    } catch (e) {
+      if (st) { st.textContent = "重检失败: " + e.message; }
+    }
+  };
+}
+function officeinstallgateRenderStatus(j) {
+  const st = document.getElementById("officeinstallgate-status");
+  if (!st) return;
+  const loTxt = j.lo.detected
+    ? ("✓ LibreOffice 已装 — " + (j.lo.version || "?") + " — " + (j.lo.path || ""))
+    : ("✗ LibreOffice 未装 — " + (j.lo.err || ""));
+  const ocTxt = j.officecli.detected
+    ? ("✓ OfficeCLI 已装 — " + (j.officecli.version || "?") + " — " + (j.officecli.path || ""))
+    : ("✗ OfficeCLI 未装 — " + (j.officecli.err || ""));
+  st.className = "oig-status" + (j.lo.detected ? " ok" : "");
+  st.textContent = loTxt + "\n" + ocTxt;
+}
+async function officeinstallgateShow(hint) {
+  const gate = document.getElementById("officeinstallgate");
+  if (!gate) return;
+  // 拿最新探测状态(force 重扫一遍,确保用户刚装完软件也能识别)
+  let j = null;
+  try {
+    const r = await fetch("/prisiragent/api/office_renderer_status?force=1");
+    j = await r.json();
+  } catch (e) { /* 静默 */ }
+  if (!j || !j.ok) return;
+  if (j.lo.detected || j.officecli.detected) {
+    // 已经有渲染器了,不弹闸(可能用户刚装完)— 让 docLoadPreview 重试
+    return;
+  }
+  if (j.gate_shown || _officeinstallgateShown) return;  // 本会话已 ack,不再骚扰
+  _officeinstallgateShown = true;
+  officeinstallgateRenderStatus(j);
+  const hintEl = document.createElement("div");
+  hintEl.style.cssText = "font-size:12px;color:#a45a00;margin-bottom:8px";
+  hintEl.textContent = "⚠ " + (hint || "office 文件预览失败");
+  const card = gate.querySelector(".card");
+  if (card && !card.querySelector(".oig-hint")) {
+    hintEl.className = "oig-hint";
+    card.insertBefore(hintEl, card.children[2] || null);
+  }
+  gate.classList.add("open");
+}
+
+/* ===== task #12 首配引导(纯规则离线识别) ===== */
+let _fsIdentified = null;  // 最近一次识别结果(保存用)
+function fsShow(){ document.getElementById('firstsetup').classList.add('open');
+  setTimeout(()=>document.getElementById('fs-input').focus(), 100); }
+function fsHide(){ document.getElementById('firstsetup').classList.remove('open'); }
+function fsSkip(){ fsHide(); }  // 稍后再配:关掉即可,下次未配置仍会弹
+function fsOpenAdvanced(){ fsHide(); openKeys(); }  // 手动配置:转完整 keymodal
+
+async function fsIdentify(){
+  const text = document.getElementById('fs-input').value.trim();
+  const box = document.getElementById('fs-result');
+  const zh = (LANG === 'zh');
+  if(!text){ box.className='err'; box.textContent = zh?'请先粘贴 key 或地址':'Paste a key or URL first'; return; }
+  box.className=''; box.style.display='none'; _fsIdentified=null;
+  const r = await api('/identify_key', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});
+  if(!r || !r.ok){
+    box.className='err';
+    box.textContent = (zh?'⚠ 未识别。':'⚠ Not recognized. ') + (r && r.hint ? r.hint : (zh?'请补充平台名或 base_url':'add platform name or base_url'));
+    // 未识别也给出「仍要手动配置」出口
+    const btn = document.createElement('button');
+    btn.className='topbtn'; btn.style.marginTop='8px';
+    btn.textContent = zh?'手动配置':'Configure manually';
+    btn.onclick = fsOpenAdvanced;
+    box.appendChild(document.createElement('br')); box.appendChild(btn);
+    return;
+  }
+  _fsIdentified = r;
+  box.className='ok';
+  const byTxt = r.by==='url' ? (zh?'(按地址识别)':'(by URL)') : (zh?'(按 key 前缀识别)':'(by key prefix)');
+  box.innerHTML = (zh?'✓ 识别为平台 ':'✓ Identified platform ')
+    + '<b>'+r.platform+'</b> '+byTxt
+    + '<div class="row2">'
+    + '<span class="tag">proto: '+r.proto+'</span>'
+    + (r.base_url?'<span class="tag">url: '+r.base_url+'</span>':'')
+    + (r.model?'<span class="tag">model: '+r.model+'</span>':'')
+    + '</div>';
+  // 若只按前缀识别(openai 兜底),提醒可补 url 提准
+  if(r.by==='prefix' && r.platform==='openai'){
+    box.innerHTML += '<div style="margin-top:6px;font-size:11px;color:#8a6d1a">'
+      + (zh?'ℹ 仅按前缀判断为 openai 兼容;若实为 deepseek/kimi 等,请改粘该平台的 base_url 更准。':'ℹ Guessed openai by prefix; paste the platform base_url for accuracy.')+'</div>';
+  }
+  const saveBtn = document.createElement('button');
+  saveBtn.className='topbtn primary'; saveBtn.style.marginTop='10px';
+  saveBtn.textContent = zh?'✓ 确认并保存':'✓ Confirm & save';
+  saveBtn.onclick = fsSave;
+  box.appendChild(saveBtn);
+}
+
+async function fsSave(){
+  const box = document.getElementById('fs-result');
+  const zh = (LANG === 'zh');
+  if(!_fsIdentified){ box.className='err'; box.textContent = zh?'请先点「识别」':'Click Identify first'; return; }
+  const r = _fsIdentified;
+  // 提取用户粘贴里的原始 key(识别端点不回传 key,需从输入框取)。优先 sk- 开头;否则取长 token。
+  const raw = document.getElementById('fs-input').value.trim();
+  const skm = raw.match(/sk-[A-Za-z0-9_\-]+/);
+  const anym = raw.match(/[A-Za-z0-9_\-]{20,}/);
+  const key = skm ? skm[0] : (anym ? anym[0] : '');
+  const body = { platform:r.platform, custom_proto:r.proto, custom_url:r.base_url,
+                 custom_key:key, custom_model:r.model };
+  const res = await api('/keys', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(res && res.ok === false){
+    box.className='err'; box.textContent = (zh?'❌ 保存失败: ':'❌ Save failed: ')+(res.error||''); return;
+  }
+  box.className='ok';
+  box.innerHTML = (zh?'🎉 已配好「':'🎉 Configured "') + r.platform + (zh?'」,可以开始对话了!':'", ready to chat!');
+  // 更新路由标签
+  const info = await api('/info');
+  let routeTxt = T('routing') + info.strategy + (info.platforms.length ? ' · ' + info.platforms.join('/') : T('no_key'));
+  if (info.current_model) routeTxt += ' · ' + String(info.current_model).split('/').pop();
+  document.getElementById('strategy-label').textContent = routeTxt;
+  setTimeout(fsHide, 1400);
+}
+</script>
+
+<script>
+// 文档右栏(2026-09-16 B 路线):只读预览 + 时间线 + dirty 检测。
+// 时间线复用 chat 库;dirty 每 5s 轮询 /api/file_stat;关窗询问 dirty 未处理时拦。
+"use strict";
+window.__docState = {
+  open: false,
+  tab: "timeline",
+  currentPath: null,
+  currentStat: null,
+  currentDirty: false,
+  currentStatTimer: null,
+  timeline: [],
+  dirtyGlobal: false,
+  versions: [],          // M3.27 文件版本列表(供 diff 双下拉用)
+  diffA: "",             // M3.27 选中的 ts_a
+  diffB: "",             // M3.27 选中的 ts_b
+};
+function toggleDocPanel() {
+  const p = document.getElementById("doc-panel");
+  window.__docState.open = !window.__docState.open;
+  p.classList.toggle("open", window.__docState.open);
+  p.style.display = window.__docState.open ? "flex" : "none";
+  if (window.__docState.open) {
+    docSwitchTab(window.__docState.tab);
+    if (window.__docState.tab === "timeline") docRefreshTimeline();
+    else if (window.__docState.tab === "preview" && window.__docState.currentPath) docLoadPreview(window.__docState.currentPath);
+  }
+}
+function docSwitchTab(tab) {
+  window.__docState.tab = tab;
+  const tlv = document.getElementById("doc-timeline-view");
+  const prv = document.getElementById("doc-preview-view");
+  const drv = document.getElementById("doc-diff-view");
+  const skv = document.getElementById("doc-skills-view");
+  const tlb = document.getElementById("doc-tab-timeline");
+  const prb = document.getElementById("doc-tab-preview");
+  const drb = document.getElementById("doc-tab-diff");
+  const skb = document.getElementById("doc-tab-skills");
+  const show = (el, on) => { if (el) el.style.display = on ? "" : "none"; };
+  const act = (el, on) => { if (!el) return; el.classList.toggle("active", !!on); };
+  if (tab === "timeline") {
+    show(tlv, true); show(prv, false); show(drv, false); show(skv, false);
+    act(tlb, true); act(prb, false); act(drb, false); act(skb, false);
+    docRefreshTimeline();
+  } else if (tab === "preview") {
+    show(tlv, false); show(prv, true); show(drv, false); show(skv, false);
+    act(tlb, false); act(prb, true); act(drb, false); act(skb, false);
+    if (window.__docState.currentPath) docLoadPreview(window.__docState.currentPath);
+    else document.getElementById("doc-preview-path").textContent =
+      (window.i18n && window.i18n.doc_no_file) || "未选文件";
+  } else if (tab === "diff") {
+    show(tlv, false); show(prv, false); show(drv, true); show(skv, false);
+    act(tlb, false); act(prb, false); act(drb, true); act(skb, false);
+    if (window.__docState.currentPath) docLoadDiffVersions(window.__docState.currentPath);
+    else document.getElementById("doc-diff-path").textContent =
+      (window.i18n && window.i18n.doc_no_file) || "未选文件";
+  } else if (tab === "skills") {
+    // M3.33 #65:skill 面板
+    show(tlv, false); show(prv, false); show(drv, false); show(skv, true);
+    act(tlb, false); act(prb, false); act(drb, false); act(skb, true);
+    skillRefresh();
+  }
+}
+function docEscapeHtml(s) {
+  return (s || "").replace(/[&<>"']/g, c =>
+    ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c]);
+}
+async function docRefreshTimeline() {
+  const body = document.getElementById("doc-timeline-body");
+  const count = document.getElementById("doc-timeline-count");
+  if (!body || !count) return;
+  body.innerHTML = '<div style="padding:12px;color:var(--gh-ink-soft)">⏳ ...</div>';
+  try {
+    const r = await fetch("/prisiragent/api/file_changes");
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.err || "fetch failed");
+    const ops = j.ops || [];
+    window.__docState.timeline = ops;
+    count.textContent = ops.length
+      ? "共 " + ops.length + " 次文件改动"
+      : ((window.i18n && window.i18n.doc_timeline_empty) || "本对话尚未改动任何文件");
+    if (!ops.length) { body.innerHTML = ""; return; }
+    body.innerHTML = ops.map((o, i) => {
+      const when = o.ts ? new Date(o.ts * 1000).toLocaleString() : "?";
+      const opClass = o.op === "write" ? "write" : (o.op === "edit" ? "edit" : (o.op === "imported" ? "imported" : "rollback"));
+      const titlePrefix = o.op === "imported" ? "📥 imported from git — " : "";
+      return '<div class="dt-item" data-idx="' + i + '" onclick="docOpenFromTimeline(' + i + ')">' +
+        '<div class="path">' + docEscapeHtml(o.path) + '</div>' +
+        '<div class="meta"><span class="op ' + opClass + '">' + o.op + '</span>' +
+        docEscapeHtml(titlePrefix + (o.title || (o.sid || "").slice(0,8))) + ' · ' + when + '</div>' +
+      '</div>';
+    }).join("");
+  } catch (e) {
+    body.innerHTML = '<div style="padding:12px;color:#a04040">' + docEscapeHtml(String(e)) + '</div>';
+  }
+}
+function docOpenFromTimeline(i) {
+  const op = (window.__docState.timeline || [])[i];
+  if (!op) return;
+  document.querySelectorAll("#doc-timeline-body .dt-item").forEach(el => el.classList.remove("active"));
+  const el = document.querySelector("#doc-timeline-body .dt-item[data-idx=\"" + i + "\"]");
+  if (el) el.classList.add("active");
+  docSwitchTab("preview");
+  docLoadPreview(op.path);
+}
+async function docLoadPreview(relPath) {
+  const pathLbl = document.getElementById("doc-preview-path");
+  const body = document.getElementById("doc-preview-body");
+  const sel = document.getElementById("doc-version-select");
+  const rbk = document.getElementById("doc-rollback");
+  const dirty = document.getElementById("doc-dirty-badge");
+  const reload = document.getElementById("doc-reload");
+  if (!relPath) {
+    pathLbl.textContent = (window.i18n && window.i18n.doc_no_file) || "未选文件";
+    _docPreviewWriteText(""); sel.innerHTML = '<option value="current">当前版本</option>';
+    rbk.style.display = "none"; dirty.style.display = "none"; reload.style.display = "none";
+    return;
+  }
+  window.__docState.currentPath = relPath;
+  pathLbl.textContent = relPath;
+  _docPreviewWriteText("⏳ ..."); sel.innerHTML = ""; rbk.style.display = "none";
+  try {
+    const r = await fetch("/prisiragent/api/file_versions?path=" + encodeURIComponent(relPath));
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.err || "list failed");
+    sel.innerHTML = '<option value="current">当前版本</option>';
+    (j.versions || []).forEach(v => {
+      const when = new Date(v.ts * 1000).toLocaleString();
+      const sz = v.size || 0;
+      const tag = when + " (" + (v.tool || "?") + ", " + sz + "B)";
+      const op = document.createElement("option");
+      op.value = v.version_id; op.textContent = tag;
+      sel.appendChild(op);
+    });
+  } catch (e) {
+    _docPreviewWriteText("list versions err: " + e.message);
+  }
+  try {
+    const r = await fetch("/prisiragent/api/file?path=" + encodeURIComponent(relPath));
+    // M3.32 Phase 2(2026-09-16):415 = Office mime + LO 未装,弹装机闸
+    if (r.status === 415) {
+      let j415 = {};
+      try { j415 = await r.json(); } catch (e) {}
+      _docPreviewWriteText("📄 Office 文件需要 LibreOffice 渲染 — " + (j415.err || "") + "\n\n正在弹出装机指引…");
+      if (typeof officeinstallgateShow === "function") {
+        officeinstallgateShow(j415.hint || ("需要装 LibreOffice 才能预览 " + relPath.split('/').pop()));
+      }
+      return;
+    }
+    if (!r.ok) { _docPreviewWriteText("(file not in workdir or not found)"); return; }
+    // M3.31 GUI 多媒体扩展(2026-09-16):按 Content-Type 分派渲染(图片/PDF/音视频/HTML 跳过读全文)
+    // M3.31.11(2026-09-16):HTML 加 iframe sandbox,不需要拉全文(浏览器自己渲染)
+    const ctype = (r.headers.get("Content-Type") || "").toLowerCase();
+    const isMedia = /^(image|audio|video)\//.test(ctype) || ctype === 'application/pdf'
+      || ctype === 'text/html' || ctype === 'application/xhtml+xml';
+    if (isMedia) {
+      _docPreviewRender(null, ctype);
+    } else {
+      _docPreviewRender(await r.text(), ctype);
+    }
+  } catch (e) {
+    _docPreviewWriteText("load err: " + e.message);
+  }
+  try {
+    const r = await fetch("/prisiragent/api/file_stat?path=" + encodeURIComponent(relPath));
+    const j = await r.json();
+    if (j.ok) {
+      window.__docState.currentStat = { size: j.size || 0, mtime: j.mtime || 0, exists: j.exists };
+      window.__docState.currentDirty = false;
+      dirty.style.display = "none"; reload.style.display = "none";
+    }
+  } catch (e) {}
+  if (window.__docState.currentStatTimer) clearInterval(window.__docState.currentStatTimer);
+  window.__docState.currentStatTimer = setInterval(docPollStat, 5000);
+  window.__docState.dirtyGlobal = false;
+}
+// === M3.27 文件版本对比(diff tab)===
+// docLoadDiffVersions:复用 file_versions API,把版本下拉填到 #doc-diff-select-a/b。
+// 选最近两版自动预填 a=旧 b=新,用户可手动改。缓存到 __docState.versions。
+async function docLoadDiffVersions(relPath) {
+  const pathLbl = document.getElementById("doc-diff-path");
+  const selA = document.getElementById("doc-diff-select-a");
+  const selB = document.getElementById("doc-diff-select-b");
+  if (!selA || !selB) return;
+  if (!relPath) {
+    pathLbl.textContent = (window.i18n && window.i18n.doc_no_file) || "未选文件";
+    selA.innerHTML = '<option value="">—</option>';
+    selB.innerHTML = '<option value="">—</option>';
+    document.getElementById("doc-diff-body").innerHTML = "";
+    document.getElementById("doc-diff-stats").textContent = "";
+    return;
+  }
+  window.__docState.currentPath = relPath;
+  pathLbl.textContent = relPath;
+  selA.innerHTML = '<option value="">—</option>';
+  selB.innerHTML = '<option value="">—</option>';
+  try {
+    const r = await fetch("/prisiragent/api/file_versions?path=" + encodeURIComponent(relPath));
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.err || "list failed");
+    const vs = j.versions || [];
+    window.__docState.versions = vs;
+    // 默认 a=最旧、b=最新(list_versions 返新→旧,所以反一下)
+    vs.slice().reverse().forEach(v => {
+      const when = new Date(v.ts * 1000).toLocaleString();
+      const sz = v.size || 0;
+      const tag = when + " (" + (v.tool || "?") + ", " + sz + "B)";
+      [selA, selB].forEach(s => {
+        const op = document.createElement("option");
+        op.value = v.version_id; op.textContent = tag;
+        s.appendChild(op);
+      });
+    });
+    if (vs.length >= 2) {
+      // 默认 a=旧版(列表最后一个),b=最新版(列表第一个)
+      selA.value = vs[vs.length - 1].version_id;
+      selB.value = vs[0].version_id;
+      window.__docState.diffA = selA.value;
+      window.__docState.diffB = selB.value;
+    } else if (vs.length === 1) {
+      selA.value = vs[0].version_id;
+      selB.value = vs[0].version_id;
+      window.__docState.diffA = selA.value;
+      window.__docState.diffB = selB.value;
+    } else {
+      window.__docState.diffA = "";
+      window.__docState.diffB = "";
+    }
+    document.getElementById("doc-diff-body").innerHTML = "";
+    document.getElementById("doc-diff-stats").textContent = "";
+  } catch (e) {
+    document.getElementById("doc-diff-body").textContent = "list versions err: " + e.message;
+  }
+}
+// docLoadDiff:从 select-a/b 拿 ts,调 /file_diff → highlight.js 红绿高亮。
+async function docLoadDiff() {
+  const selA = document.getElementById("doc-diff-select-a");
+  const selB = document.getElementById("doc-diff-select-b");
+  const body = document.getElementById("doc-diff-body");
+  const stats = document.getElementById("doc-diff-stats");
+  const path = window.__docState.currentPath;
+  if (!path) { body.innerHTML = ""; return; }
+  const tsA = selA.value || ""; const tsB = selB.value || "";
+  window.__docState.diffA = tsA; window.__docState.diffB = tsB;
+  body.innerHTML = "⏳ ...";
+  stats.textContent = "";
+  if (!tsA || !tsB) { body.innerHTML = "请选 A、B 两个版本"; return; }
+  if (tsA === tsB) { body.innerHTML = "A、B 是同一版本,无差异"; stats.textContent = ""; return; }
+  try {
+    const url = "/prisiragent/api/file_diff?path=" + encodeURIComponent(path)
+              + "&ts_a=" + encodeURIComponent(tsA) + "&ts_b=" + encodeURIComponent(tsB);
+    const r = await fetch(url);
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.err || "diff failed");
+    const diffText = j.diff || "";
+    if (!diffText) {
+      body.innerHTML = "<div style='color:var(--gh-ink-soft)'>两个版本内容相同</div>";
+      stats.textContent = "+0 -0";
+      return;
+    }
+    // 自实现红绿 split(不依赖 hljs — cdn 可能异步或被代理挡)
+    const lines = diffText.split("\n");
+    const parts = lines.map(ln => {
+      const esc = docEscapeHtml(ln);
+      if (ln.startsWith("+++") || ln.startsWith("---") || ln.startsWith("@@")) {
+        return '<span class="hljs-meta">' + esc + '</span>';
+      }
+      if (ln.startsWith("+")) return '<span class="hljs-addition">' + esc + '</span>';
+      if (ln.startsWith("-")) return '<span class="hljs-deletion">' + esc + '</span>';
+      return esc;
+    });
+    body.innerHTML = '<pre><code class="language-diff">' + parts.join("\n") + '</code></pre>';
+    stats.textContent = "+" + (j.added || 0) + " -" + (j.removed || 0);
+  } catch (e) {
+    body.innerHTML = "diff err: " + docEscapeHtml(e.message);
+  }
+}
+async function docSelectVersion(vid) {
+  const body = document.getElementById("doc-preview-body");
+  const rbk = document.getElementById("doc-rollback");
+  const path = window.__docState.currentPath;
+  if (!path) return;
+  if (vid === "current") {
+    try {
+      const r = await fetch("/prisiragent/api/file?path=" + encodeURIComponent(path));
+      _docPreviewWriteText(r.ok ? await r.text() : "(not found)");
+    } catch (e) { _docPreviewWriteText("err: " + e.message); }
+    rbk.style.display = "none";
+    return;
+  }
+  _docPreviewWriteText("⏳ ..."); rbk.style.display = "";
+  try {
+    const r = await fetch("/prisiragent/api/file_preview?path=" + encodeURIComponent(path) + "&ts=" + encodeURIComponent(vid));
+    const j = await r.json();
+    if (!j.ok) { _docPreviewWriteText("preview err: " + j.err); return; }
+    _docPreviewWriteText(j.content || "");
+  } catch (e) {
+    _docPreviewWriteText("err: " + e.message);
+  }
+}
+async function docRollback() {
+  const sel = document.getElementById("doc-version-select");
+  const vid = sel.value;
+  const path = window.__docState.currentPath;
+  if (!vid || vid === "current") return;
+  if (!confirm("回滚 " + path + " 到选中版本?\n(回滚前会自动备份当前内容,可再次回滚找回)")) return;
+  try {
+    const r = await fetch("/prisiragent/api/file_restore", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ path: path, ts: vid }),
+    });
+    const j = await r.json();
+    if (!j.ok) { alert("回滚失败: " + (j.err || j.msg || "未知")); return; }
+    alert("已回滚: " + j.msg);
+    docLoadPreview(path);
+    docRefreshTimeline();
+  } catch (e) {
+    alert("err: " + e.message);
+  }
+}
+async function docPollStat() {
+  const path = window.__docState.currentPath;
+  const stat = window.__docState.currentStat;
+  if (!path || !stat) return;
+  const dirty = document.getElementById("doc-dirty-badge");
+  const reload = document.getElementById("doc-reload");
+  try {
+    const r = await fetch("/prisiragent/api/file_stat?path=" + encodeURIComponent(path));
+    const j = await r.json();
+    if (!j.ok) return;
+    const ns = j.size || 0, nm = j.mtime || 0;
+    if (ns !== stat.size || nm !== stat.mtime) {
+      if (!window.__docState.currentDirty) {
+        window.__docState.currentDirty = true;
+        window.__docState.dirtyGlobal = true;
+        dirty.style.display = "";
+        reload.style.display = "";
+        document.title = "⚠ " + document.title;
+      }
+    }
+  } catch (e) {}
+}
+async function docReload() {
+  const path = window.__docState.currentPath;
+  if (!path) return;
+  window.__docState.dirtyGlobal = false;
+  document.title = document.title.replace(/^⚠ /, "");
+  docLoadPreview(path);
+}
+window.addEventListener("beforeunload", function(e) {
+  if (window.__docState.dirtyGlobal) {
+    e.preventDefault(); e.returnValue = "";
+    return "";
+  }
+});
+</script>
+<script>
+// M3.27(2026-09-18):外部注入(companion 陪聊 → PrisirAI 主输入框)。
+// 设计:companion POST /prisiragent/api/external_inject → 后端 push 到 _INJECT_QUEUE + SSE 广播;
+// 前端主页面没有 SSE 端点(只有 --lan 的 /prisiragent/events 给手机用),走 polling 兜底:
+//   每 900ms GET /prisiragent/api/external_inject/peek,发现新 id 就处理 + ack。
+//   ack 后从队列移除,断网/重连都不会重复处理(seenIds 兜底)。
+// 不自动 send(人在回路):仅把 text 追加到 #input,加 .inject-flash 视觉反馈 + toast 提示。
+(function _setupExternalInjectPolling(){
+  if (window.__externalInjectStarted) return;
+  window.__externalInjectStarted = true;
+  var seenIds = new Set();
+  function _apply(item){
+    try {
+      var ta = document.getElementById("input");
+      if (!ta) return;
+      var prefix = (ta.value && ta.value.length > 0) ? "\n\n" : "";
+      ta.value = (ta.value || "") + prefix + (item.text || "");
+      ta.scrollTop = ta.scrollHeight;
+      ta.classList.add("inject-flash");
+      setTimeout(function(){ ta.classList.remove("inject-flash"); }, 1500);
+      if (typeof toast === "function") {
+        toast("📥 来自 " + (item.source || "外部") + " 的内容已填入输入框(可编辑,确认后手动发送)", true);
+      }
+      fetch("/prisiragent/api/external_inject/ack?id=" + encodeURIComponent(item.id || ""))
+        .catch(function(){});
+    } catch (err) { console.error("external_inject handler", err); }
+  }
+  setInterval(function(){
+    fetch("/prisiragent/api/external_inject/peek")
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        (d.items || []).forEach(function(item){
+          if (!item || !item.id || seenIds.has(item.id)) return;
+          seenIds.add(item.id);
+          _apply(item);
+        });
+      })
+      .catch(function(){});
+  }, 900);
+})();
+</script>
+</body>
+</html>
