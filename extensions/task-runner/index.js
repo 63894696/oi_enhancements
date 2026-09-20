@@ -120,8 +120,51 @@ function validateDag(dag) {
 
 // ─── DAG 执行引擎 ───────────────────────────────────────────────────
 /**
- * 拓扑分层并行执行。返回 { status: 'ok'|'failed', nodes: {id: {status, result|error}}, error? }
+ * P2.5+B-2(2026-09-21)重试/超时/backoff:
+ *   每个 node 可带 retry = { max_retries, backoff, timeout_sec }
+ *   缺省 = { max_retries: 0, backoff: 'exponential', timeout_sec: 30 }
+ *   backoff: constant 1s / linear attempt×1s / exponential 2^(attempt-1)×1s
+ *   timeout 用 Promise.race(handler, timeoutPromise);失败 → catch 重试(非 timeout 也重试)
+ * 返回 { status: 'ok'|'failed', nodes: {id: {status, result|error, attempts}}, error? }
  */
+function _sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function _backoffDelay(backoff, attempt) {
+  const b = String(backoff || 'exponential').toLowerCase();
+  if (b === 'constant') return 1000;
+  if (b === 'linear') return attempt * 1000;
+  // exponential: attempt = 1..5 → 1s, 2s, 4s, 8s, 16s
+  return Math.pow(2, attempt - 1) * 1000;
+}
+
+async function executeNodeWithRetry(nid, n, log) {
+  const retry = n.retry || {};
+  const maxRetries = Math.max(0, Math.min(5, Number(retry.max_retries) || 0));
+  const backoff = retry.backoff || 'exponential';
+  const timeoutSec = Math.max(1, Math.min(600, Number(retry.timeout_sec) || 30));
+  let attempts = 0;
+  let lastErr = null;
+  while (attempts <= maxRetries) {
+    attempts++;
+    const t0 = Date.now();
+    log('info', `node ${nid} → ${n.ext}.${n.method} (attempt ${attempts}/${maxRetries + 1})`);
+    try {
+      const result = await Promise.race([
+        ext.invokeExt(n.ext, n.method, n.params || {}, timeoutSec * 1000),
+        new Promise((_, rej) => setTimeout(
+          () => rej(new Error(`timeout: ${n.ext}.${n.method} after ${timeoutSec}s`)),
+          timeoutSec * 1000)),
+      ]);
+      return { nid, status: 'ok', result, ms: Date.now() - t0, attempts };
+    } catch (e) {
+      lastErr = e.message || String(e);
+      log('warn', `node ${nid} attempt ${attempts} failed: ${lastErr}`);
+      if (attempts > maxRetries) break;
+      await _sleep(_backoffDelay(backoff, attempts));
+    }
+  }
+  return { nid, status: 'failed', error: lastErr, ms: 0, attempts };
+}
+
 async function executeDag(dag, log) {
   const ids = Object.keys(dag);
   const indeg = new Map(ids.map(i => [i, 0]));
@@ -134,20 +177,11 @@ async function executeDag(dag, log) {
   // 分层:indeg==0 入 first wave,跑完一层把下游 indeg -1
   let wave = ids.filter(i => indeg.get(i) === 0);
   while (wave.length) {
-    const results = await Promise.allSettled(wave.map(async (nid) => {
-      const n = dag[nid];
-      log('info', `node ${nid} → ${n.ext}.${n.method}`);
-      const t0 = Date.now();
-      try {
-        const result = await ext.invokeExt(n.ext, n.method, n.params || {}, 30000);
-        return { nid, status: 'ok', result, ms: Date.now() - t0 };
-      } catch (e) {
-        return { nid, status: 'failed', error: e.message || String(e), ms: Date.now() - t0 };
-      }
-    }));
+    const results = await Promise.allSettled(wave.map(nid => executeNodeWithRetry(nid, dag[nid], log)));
     for (const r of results) {
       const v = r.value;
-      nodeResults[v.nid] = { status: v.status, result: v.result, error: v.error, ms: v.ms };
+      nodeResults[v.nid] = { status: v.status, result: v.result, error: v.error,
+                             ms: v.ms, attempts: v.attempts };
       if (v.status === 'failed' && !runFailed) {
         firstError = { node: v.nid, error: v.error };
         runFailed = true;
@@ -263,6 +297,37 @@ ext.registerCommand('task.run', async (args) => {
   // fire-and-forget
   runTaskOnce(args.id).catch((e) => ext.log('error', `run ${args.id} crashed: ${e.message}`));
   return { ok: true, queued: true, task_id: args.id };
+});
+
+// P2.5+B-2(2026-09-21)取消运行中的任务。stub:Phase B-3 任务队列升级时实现真取消
+// (要 node 主进程维护 activeRuns Map + AbortController);当前返 not_supported。
+ext.registerCommand('task.run.cancel', async (args) => {
+  if (!args.run_id) return { ok: false, error: 'run_id required' };
+  return { ok: false, error: 'not_supported_yet: Phase B-3 任务队列升级后会接通' };
+});
+
+// P2.5+B-2(2026-09-21)内置模板列表(避免前端散落写模板 JSON)。
+// 真套用在前端做:wfTemplates → wfApplyTpl → 直接拿来当 _wfCurrentTask.dag。
+ext.registerCommand('task.template.list', async () => {
+  return {
+    templates: [
+      { id: 'simple_echo', name: '简单回声(单节点)',
+        description: '调 todo.add 加一条带 demo tag 的任务,演示单节点工作流',
+        dag: { n1: { ext: 'todo', method: 'todo.add',
+                     params: { title: 'echo: {{input}}', tags: ['demo'] } } } },
+      { id: 'daily_summary', name: '每日摘要(每天 09:00)',
+        description: '调度器模板,每天 09:00 拉取 tag=summary 的 todo 列表',
+        dag: { n1: { ext: 'todo', method: 'todo.list', params: { limit: 20, tag: 'summary' } } },
+        trigger: 'schedule', schedule: 'daily 09:00' },
+      { id: 'three_step_demo', name: '三节点串行(演示依赖)',
+        description: 'n1 → n2 → n3,n2 依赖 n1,n3 依赖 n2。展示 needs 跨节点连线',
+        dag: {
+          n1: { ext: 'todo', method: 'todo.add', params: { title: 'step 1' } },
+          n2: { ext: 'todo', method: 'todo.add', params: { title: 'step 2' }, needs: ['n1'] },
+          n3: { ext: 'todo', method: 'todo.add', params: { title: 'step 3' }, needs: ['n2'] },
+        } },
+    ],
+  };
 });
 
 ext.registerCommand('task.runs', async (args) => {

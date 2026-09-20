@@ -18,6 +18,7 @@ import base64
 import html
 import json
 import os
+import random  # P2.5+B-2(2026-09-21)_ext_rpc_call 用 random.randrange 生成 req_id(B-0 漏)
 import re
 import secrets
 import sqlite3
@@ -559,6 +560,27 @@ def _ext_on_enabled(ext_id: str):
 
 def _ext_on_disabled(ext_id: str):
     _ext_kill(ext_id)
+
+
+# P2.5+B-2(2026-09-21)工作流编排 UI 模板兜底(task-runner 不可用时返这份)。
+_WF_FALLBACK_TEMPLATES = [
+    {"id": "simple_echo", "name": "简单回声(单节点)",
+     "description": "调 todo.add 加一条带 demo tag 的任务",
+     "dag": {"n1": {"ext": "todo", "method": "todo.add",
+                    "params": {"title": "echo: {{input}}", "tags": ["demo"]}}}},
+    {"id": "daily_summary", "name": "每日摘要(每天 09:00)",
+     "description": "调度器模板,每天 09:00 拉取 tag=summary 的 todo",
+     "dag": {"n1": {"ext": "todo", "method": "todo.list",
+                    "params": {"limit": 20, "tag": "summary"}}},
+     "trigger": "schedule", "schedule": "daily 09:00"},
+    {"id": "three_step_demo", "name": "三节点串行(演示依赖)",
+     "description": "n1 → n2 → n3,展示 needs 跨节点连线",
+     "dag": {
+         "n1": {"ext": "todo", "method": "todo.add", "params": {"title": "step 1"}},
+         "n2": {"ext": "todo", "method": "todo.add", "params": {"title": "step 2"}, "needs": ["n1"]},
+         "n3": {"ext": "todo", "method": "todo.add", "params": {"title": "step 3"}, "needs": ["n2"]},
+     }},
+]
 
 
 def _projects_save():
@@ -4780,6 +4802,108 @@ _PAGE = r"""<!DOCTYPE html>
     border-radius:6px; background:var(--gh-surface); color:var(--gh-ink); font-size:12px; }
   #projmodal .row { display:flex; gap:10px; justify-content:flex-end; margin-top:14px; }
 
+  /* P2.5+B-2(2026-09-21)工作流编排 modal:全屏布局 + DAG 画布 + SVG 连线 */
+  #wfmodal { position:fixed; inset:0; background:var(--gh-paper); display:none; z-index:113;
+    flex-direction:column; }
+  #wfmodal.open { display:flex; }
+  #wf-header { display:flex; align-items:center; justify-content:space-between;
+    padding:8px 14px; border-bottom:1px solid var(--gh-line); background:var(--gh-paper-2); }
+  #wf-header h2 { font-size:15px; color:var(--gh-green-deep); margin:0; display:flex; gap:10px; align-items:center; }
+  #wf-status { font-size:12px; color:var(--gh-ink-faint); font-weight:normal; }
+  #wf-status .wf-ok { color:var(--gh-green-deep); }
+  #wf-status .wf-failed { color:#c0392b; }
+  #wf-status .wf-running { color:var(--gh-amber); }
+  #wf-tools { display:flex; gap:6px; }
+  #wf-body { flex:1; display:flex; min-height:0; }
+  #wf-side { width:220px; flex-shrink:0; border-right:1px solid var(--gh-line);
+    overflow-y:auto; padding:8px 6px; background:var(--gh-paper-2); }
+  #wf-side h3 { font-size:13px; color:var(--gh-green-deep); margin:4px 8px 8px; }
+  #wf-task-list .wf-task { display:flex; align-items:center; gap:4px; padding:6px 8px;
+    border-radius:6px; font-size:12px; cursor:pointer; border:1px solid transparent; }
+  #wf-task-list .wf-task:hover { background:var(--gh-paper); border-color:var(--gh-line); }
+  #wf-task-list .wf-task-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #wf-task-list .wf-task-trigger { font-size:11px; color:var(--gh-ink-faint); }
+  #wf-task-list .wf-task-acts { display:flex; gap:2px; }
+  #wf-task-list .wf-task-acts button { font-size:11px; padding:1px 5px; cursor:pointer;
+    background:transparent; border:1px solid var(--gh-line); border-radius:4px; }
+  #wf-canvas-wrap { flex:1; display:flex; flex-direction:column; min-width:0; }
+  #wf-toolbox { display:flex; align-items:center; gap:10px; padding:6px 12px;
+    border-bottom:1px solid var(--gh-line); background:var(--gh-paper-2); }
+  .wf-node-template { padding:4px 12px; border:1px dashed var(--gh-green-deep);
+    border-radius:6px; cursor:grab; font-size:12px; color:var(--gh-green-deep);
+    background:var(--gh-paper); user-select:none; }
+  .wf-node-template:active { cursor:grabbing; }
+  .wf-meta { font-size:11px; color:var(--gh-ink-faint); }
+  #wf-canvas { flex:1; position:relative; overflow:auto;
+    background-image:radial-gradient(circle, var(--gh-line) 1px, transparent 1px);
+    background-size:18px 18px; background-position:0 0; }
+  #wf-svg { position:absolute; top:0; left:0; pointer-events:none; }
+  #wf-nodes { position:absolute; top:0; left:0; width:100%; height:100%; }
+  .wf-node { position:absolute; width:180px; padding:8px 10px; background:var(--gh-paper);
+    border:2px solid var(--gh-line); border-radius:8px; cursor:move; font-size:12px;
+    box-shadow:0 1px 3px rgba(0,0,0,.08); user-select:none; }
+  .wf-node.running { border-color:var(--gh-amber); box-shadow:0 0 0 2px rgba(255,193,7,.2); }
+  .wf-node.ok { border-color:var(--gh-green-deep); }
+  .wf-node.failed { border-color:#c0392b; box-shadow:0 0 0 2px rgba(192,57,43,.15); }
+  .wf-node-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; }
+  .wf-node-id { font-weight:600; color:var(--gh-green-deep); font-size:11px; }
+  .wf-node-acts button { font-size:10px; padding:0 4px; cursor:pointer;
+    background:transparent; border:1px solid var(--gh-line); border-radius:3px; margin-left:2px; }
+  .wf-node-body { color:var(--gh-ink); font-family:monospace; font-size:11px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .wf-node-foot { font-size:10px; color:var(--gh-ink-faint); margin-top:4px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #wf-runs { border-top:1px solid var(--gh-line); background:var(--gh-paper-2);
+    max-height:220px; display:flex; flex-direction:column; }
+  #wf-runs-head { padding:6px 14px; font-size:12px; font-weight:600; color:var(--gh-green-deep);
+    cursor:pointer; display:flex; align-items:center; justify-content:space-between;
+    border-bottom:1px solid var(--gh-line); user-select:none; }
+  #wf-runs-body { overflow-y:auto; padding:4px 8px; }
+  #wf-runs-body .wf-run { display:flex; gap:10px; padding:4px 8px; font-size:11px;
+    border-bottom:1px solid var(--gh-line); cursor:pointer; }
+  #wf-runs-body .wf-run:hover { background:var(--gh-paper); }
+  .wf-run-id { font-family:monospace; color:var(--gh-ink-faint); width:120px; overflow:hidden; text-overflow:ellipsis; }
+  .wf-run-task { font-family:monospace; color:var(--gh-ink); flex:1; overflow:hidden; text-overflow:ellipsis; }
+  .wf-run-status { font-weight:600; width:60px; }
+  .wf-run.wf-ok .wf-run-status { color:var(--gh-green-deep); }
+  .wf-run.wf-failed .wf-run-status { color:#c0392b; }
+  .wf-run.wf-running .wf-run-status { color:var(--gh-amber); }
+  .wf-run-time { color:var(--gh-ink-faint); width:130px; }
+  .wf-run-dur { color:var(--gh-ink-faint); width:50px; text-align:right; }
+  .wf-run-err { color:#c0392b; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #wf-sched-btn.on { background:var(--gh-green-deep); color:var(--gh-paper); border-color:var(--gh-green-deep); }
+  .wf-runs-err { color:#c0392b; font-size:12px; padding:8px; }
+
+  /* 节点配置弹层 / 模板选择弹层(在 wfmodal 内绝对定位) */
+  #wf-node-modal, #wf-tpl-modal { position:fixed; inset:0; background:rgba(47,58,52,.4);
+    display:none; align-items:center; justify-content:center; z-index:114; }
+  #wf-node-modal.open, #wf-tpl-modal.open { display:flex; }
+  .wf-nm-card { background:var(--gh-paper); border-radius:12px; padding:18px;
+    width:480px; max-width:92vw; max-height:90vh; overflow-y:auto;
+    box-shadow:0 8px 24px rgba(0,0,0,.18); }
+  .wf-nm-card h3 { font-size:15px; color:var(--gh-green-deep); margin:0 0 12px; }
+  .wf-nm-card label { display:block; font-size:11px; color:var(--gh-ink-faint);
+    margin:8px 0 3px; font-weight:600; }
+  .wf-nm-card input[type="text"], .wf-nm-card input[type="number"], .wf-nm-card select,
+  .wf-nm-card textarea { width:100%; padding:6px 10px; border:1px solid var(--gh-line);
+    border-radius:6px; background:var(--gh-surface); color:var(--gh-ink); font-size:12px;
+    font-family:inherit; box-sizing:border-box; }
+  .wf-nm-card textarea { font-family:monospace; resize:vertical; min-height:80px; }
+  .wf-nm-card input:focus, .wf-nm-card select:focus, .wf-nm-card textarea:focus {
+    outline:none; border-color:var(--gh-focus); }
+  .wf-nm-fs { border:1px solid var(--gh-line); border-radius:6px; padding:8px 12px;
+    margin-top:10px; }
+  .wf-nm-fs legend { font-size:11px; color:var(--gh-ink-faint); font-weight:600;
+    padding:0 6px; }
+  .wf-nm-fs label { display:inline-flex; align-items:center; gap:4px; margin-right:12px; }
+  .wf-nm-fs input[type="number"] { width:80px; }
+  .wf-nm-row { display:flex; gap:8px; justify-content:flex-end; margin-top:14px; }
+  .wf-tpl-row { display:flex; align-items:center; gap:8px; padding:8px 4px;
+    border-bottom:1px solid var(--gh-line); }
+  .wf-tpl-name { font-weight:600; font-size:13px; color:var(--gh-green-deep); width:140px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .wf-tpl-desc { flex:1; font-size:11px; color:var(--gh-ink-faint); }
+
   /* #102 补丁卡(复用 fbmodal 结构) */
   #patchmodal { position:fixed; inset:0; background:rgba(47,58,52,.4); display:none; z-index:112;
     align-items:center; justify-content:center; }
@@ -5138,6 +5262,7 @@ _PAGE = r"""<!DOCTYPE html>
   <button class="topbtn" onclick="openKeys()" data-i18n="model_key">🔑 模型 Key</button>
   <button class="topbtn" onclick="openFeedback()" data-i18n-title="feedback_title"><span data-i18n="feedback">⚙ 反馈问题</span></button>
   <button class="topbtn" id="topbtnCompanion" onclick="openCompanion()" data-i18n-title="companion_title" title="陪聊(语音/文字轻量对话,可派发到主面板)">📞 陪聊</button>
+  <button class="topbtn" id="topbtnWorkflow" onclick="openWorkflow()" data-i18n-title="workflow_title" title="工作流编排(拖拽 DAG + 重试 + 运行历史)">🔀 工作流</button>
   <button class="topbtn" onclick="newSession()" data-i18n="new_session">+ 新会话</button>
 </div>
 <div id="main">
@@ -5440,6 +5565,102 @@ _PAGE = r"""<!DOCTYPE html>
   </div>
 </div>
 
+<!-- P2.5+B-2(2026-09-21)工作流编排 modal:左侧任务列表 + 右侧 DAG 画布 + 底部运行历史 -->
+<div id="wfmodal">
+  <div id="wf-header">
+    <h2><span data-i18n="workflow">🔀 工作流</span>
+        <span id="wf-status" class="wf-status"></span></h2>
+    <div class="wf-tools">
+      <button class="topbtn" onclick="wfNew()" data-i18n="wf_new">+ 新建</button>
+      <button class="topbtn" onclick="wfTemplates()" data-i18n="wf_templates">📋 模板</button>
+      <button class="topbtn" onclick="wfValidate()" data-i18n="wf_validate">✓ 校验</button>
+      <button class="topbtn primary" onclick="wfSave()" data-i18n="save">💾 保存</button>
+      <button class="topbtn primary" onclick="wfRun()" data-i18n="wf_run">▶ 运行</button>
+      <button class="topbtn" onclick="wfToggleSchedule()" id="wf-sched-btn">⏰ 调度: 关</button>
+      <button class="topbtn" onclick="closeWorkflow()" data-i18n="close">关闭</button>
+    </div>
+  </div>
+  <div id="wf-body">
+    <div id="wf-side">
+      <h3 data-i18n="wf_tasks">任务列表</h3>
+      <div id="wf-task-list"></div>
+    </div>
+    <div id="wf-canvas-wrap">
+      <div id="wf-toolbox">
+        <span class="wf-node-template" id="wf-new-node-template" draggable="true"
+              data-i18n="wf_new_node">+ 节点</span>
+        <span class="wf-meta" data-i18n="wf_canvas_hint">拖到画布添加节点;双击节点编辑;拖动节点移动</span>
+      </div>
+      <div id="wf-canvas">
+        <svg id="wf-svg" width="100%" height="100%">
+          <defs>
+            <marker id="wf-arrow" viewBox="0 0 10 10" refX="9" refY="5"
+                    markerWidth="6" markerHeight="6" orient="auto">
+              <path d="M0,0 L10,5 L0,10 z" fill="var(--gh-ink-soft)"></path>
+            </marker>
+          </defs>
+          <g id="wf-edges"></g>
+        </svg>
+        <div id="wf-nodes"></div>
+      </div>
+    </div>
+  </div>
+  <div id="wf-runs">
+    <div id="wf-runs-head" onclick="wfToggleRuns()">
+      <span data-i18n="wf_runs">运行历史</span>
+      <span id="wf-runs-toggle">▾</span>
+    </div>
+    <div id="wf-runs-body"></div>
+  </div>
+</div>
+
+<!-- 节点配置弹层(在 wfmodal 内绝对定位) -->
+<div id="wf-node-modal" style="display:none">
+  <div class="wf-nm-card">
+    <h3 data-i18n="wf_node_title">节点配置</h3>
+    <label data-i18n="wf_node_id">ID</label>
+    <input id="wf-nm-id" type="text" placeholder="n1">
+    <label>Ext</label>
+    <input id="wf-nm-ext" type="text" placeholder="todo" list="wf-ext-list">
+    <datalist id="wf-ext-list">
+      <option value="todo"><option value="task-runner"><option value="system-watchdog">
+      <option value="process-scan"><option value="file-write"><option value="schedule-writer">
+    </datalist>
+    <label>Method</label>
+    <input id="wf-nm-method" type="text" placeholder="todo.add">
+    <label>Params (JSON)</label>
+    <textarea id="wf-nm-params" rows="5" placeholder='{"title": "..."}'></textarea>
+    <label data-i18n="wf_node_needs">Needs (逗号分隔)</label>
+    <input id="wf-nm-needs" type="text" placeholder="n1, n2">
+    <fieldset class="wf-nm-fs">
+      <legend data-i18n="wf_node_retry">重试</legend>
+      <label>max_retries
+        <input id="wf-nm-retries" type="number" min="0" max="5" value="0"></label>
+      <label>backoff
+        <select id="wf-nm-backoff">
+          <option>exponential</option><option>linear</option><option>constant</option>
+        </select></label>
+      <label>timeout_sec
+        <input id="wf-nm-timeout" type="number" min="1" max="600" value="30"></label>
+    </fieldset>
+    <div class="wf-nm-row">
+      <button class="topbtn" onclick="wfNodeCancel()" data-i18n="cancel">取消</button>
+      <button class="topbtn primary" onclick="wfNodeSave()" data-i18n="save">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 模板选择弹层 -->
+<div id="wf-tpl-modal" style="display:none">
+  <div class="wf-nm-card">
+    <h3 data-i18n="wf_templates_title">选个模板开搭</h3>
+    <div id="wf-tpl-list"></div>
+    <div class="wf-nm-row">
+      <button class="topbtn" onclick="wfTplCancel()" data-i18n="close">关闭</button>
+    </div>
+  </div>
+</div>
+
 <!-- #102 补丁卡:一键应用/回滚增量补丁包(zip)。 -->
 <div id="patchmodal">
   <div class="card">
@@ -5605,6 +5826,14 @@ const I18N = {
     project_name_ph:'项目别名(可空,默认用目录名)', project_pin:'📌 置顶', project_unpin:'取消置顶',
     project_remove:'🗑️ 移除', project_add:'添加', project_rename:'✏️ 改名',
     project_switch_fail:'切换失败', project_add_fail:'添加失败', project_remove_confirm:'从项目列表移除?不会删磁盘文件',
+    workflow:'🔀 工作流', workflow_title:'工作流编排(拖拽 DAG + 重试 + 运行历史)',
+    wf_new:'+ 新建', wf_templates:'📋 模板', wf_validate:'✓ 校验', wf_run:'▶ 运行',
+    wf_tasks:'任务列表', wf_runs:'运行历史', wf_canvas_hint:'拖到画布添加节点;双击节点编辑;拖动节点移动',
+    wf_new_node:'+ 节点', wf_templates_title:'选个模板开搭',
+    wf_node_title:'节点配置', wf_node_id:'ID', wf_node_needs:'Needs (逗号分隔)', wf_node_retry:'重试',
+    wf_load_fail:'加载任务失败', wf_save_fail:'保存失败', wf_run_fail:'运行失败',
+    wf_delete_confirm:'删除任务?不会清运行历史',
+    wf_node_save:'保存', wf_dag_cycle:'DAG 有环',
   },
   en: {
     send:'Send', new_session:'+ New chat', model_key:'🔑 Model Key', feedback:'⚙ Feedback',
@@ -5658,6 +5887,14 @@ const I18N = {
     project_name_ph:'Project alias (optional, defaults to folder name)', project_pin:'📌 Pin', project_unpin:'Unpin',
     project_remove:'🗑️ Remove', project_add:'Add', project_rename:'✏️ Rename',
     project_switch_fail:'Switch failed', project_add_fail:'Add failed', project_remove_confirm:'Remove from project list? Files on disk will not be deleted',
+    workflow:'🔀 Workflow', workflow_title:'Workflow editor (drag DAG + retry + run history)',
+    wf_new:'+ New', wf_templates:'📋 Templates', wf_validate:'✓ Validate', wf_run:'▶ Run',
+    wf_tasks:'Tasks', wf_runs:'Run history', wf_canvas_hint:'Drag to canvas to add node; double-click to edit; drag to move',
+    wf_new_node:'+ Node', wf_templates_title:'Pick a template to start',
+    wf_node_title:'Node config', wf_node_id:'ID', wf_node_needs:'Needs (comma-separated)', wf_node_retry:'Retry',
+    wf_load_fail:'Load task failed', wf_save_fail:'Save failed', wf_run_fail:'Run failed',
+    wf_delete_confirm:'Delete task? Run history will not be cleared',
+    wf_node_save:'Save', wf_dag_cycle:'DAG has cycle',
   }
 };
 let LANG = (function(){
@@ -7200,6 +7437,487 @@ function _dirname_(p) {
 function _setProjectButton(workdir) {
   const btn = document.getElementById('topbtnProjectName');
   if (btn) btn.textContent = '📂 ' + (_dirname_(workdir) || '…');
+}
+
+// === P2.5+B-2(2026-09-21)工作流编排:wfmodal 全屏 + DAG 画布 + SVG 连线 ===
+let _wfCurrentTask = null;     // {id, name, dag, trigger, schedule}
+let _wfNodes = {};            // nid -> {el?, x, y, ext, method, params, needs, retry}
+let _wfDraggingNode = null;
+let _wfDragOffset = {x:0, y:0};
+let _wfRunsCollapsed = false;
+let _wfNodeEditing = null;
+let _wfExtListCache = null;   // 节点编辑时动态 ext 下拉缓存
+
+async function openWorkflow() {
+  document.getElementById('wfmodal').classList.add('open');
+  await wfRenderTaskList();
+  await wfRefreshRuns();
+  await wfRefreshScheduleStatus();
+  // 节点模板拖拽初始化(避免重复绑定)
+  const tpl = document.getElementById('wf-new-node-template');
+  if (tpl && !tpl._dragInit) {
+    tpl._dragInit = true;
+    tpl.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/plain', '__wf_new__'));
+  }
+  // 画布 drop
+  const cv = document.getElementById('wf-canvas');
+  if (cv && !cv._dropInit) {
+    cv._dropInit = true;
+    cv.addEventListener('dragover', (e) => e.preventDefault());
+    cv.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const payload = e.dataTransfer.getData('text/plain');
+      if (payload !== '__wf_new__') return;
+      const cr = cv.getBoundingClientRect();
+      const x = e.clientX - cr.left + cv.scrollLeft - 90;
+      const y = e.clientY - cr.top + cv.scrollTop - 15;
+      const used = new Set(Object.keys(_wfNodes));
+      let i = 1; while (used.has('n' + i)) i++;
+      const nid = 'n' + i;
+      _wfNodes[nid] = {
+        ext: 'todo', method: 'todo.add', params: {}, needs: [],
+        retry: {max_retries: 0, backoff: 'exponential', timeout_sec: 30},
+        x: Math.max(0, x), y: Math.max(0, y),
+      };
+      wfRenderNodes();
+      wfRenderEdges();
+      wfEditNode(nid);
+    });
+  }
+}
+function closeWorkflow() {
+  document.getElementById('wfmodal').classList.remove('open');
+  document.getElementById('wf-node-modal').classList.remove('open');
+  document.getElementById('wf-tpl-modal').classList.remove('open');
+}
+
+async function wfRenderTaskList() {
+  const list = document.getElementById('wf-task-list');
+  list.innerHTML = '<div class="wf-meta">— ' + T('wf_tasks') + ' —</div>';
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method:'task.list', params:{limit:50}})});
+  if (!r.ok) { list.innerHTML = '<div class="wf-runs-err">' + esc(r.error||'load fail') + '</div>'; return; }
+  const tasks = ((r.result || {}).tasks) || [];
+  list.innerHTML = '';
+  if (!tasks.length) {
+    list.innerHTML = '<div class="wf-meta" style="padding:12px">' + T('wf_new') + ' / ' + T('wf_templates') + ' ✦</div>';
+    return;
+  }
+  for (const t of tasks) {
+    const row = document.createElement('div');
+    row.className = 'wf-task';
+    row.dataset.id = t.id;
+    row.innerHTML =
+      '<span class="wf-task-name">' + esc(t.name) + '</span>' +
+      '<span class="wf-task-trigger">' + (t.trigger === 'schedule' ? '⏰' : '▶') + '</span>' +
+      '<span class="wf-task-acts">' +
+        '<button title="load">📂</button>' +
+        '<button title="run">▶</button>' +
+        '<button title="delete">🗑</button>' +
+      '</span>';
+    row.querySelectorAll('button')[0].onclick = (e) => { e.stopPropagation(); wfLoadTask(t.id); };
+    row.querySelectorAll('button')[1].onclick = (e) => { e.stopPropagation(); wfRunById(t.id, true); };
+    row.querySelectorAll('button')[2].onclick = (e) => { e.stopPropagation(); wfDeleteTask(t.id); };
+    row.onclick = () => wfLoadTask(t.id);
+    list.appendChild(row);
+  }
+}
+
+async function wfLoadTask(taskId) {
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method:'task.get', params:{id:taskId}})});
+  if (!r.ok) { alert(T('wf_load_fail') + ': ' + (r.error||'')); return; }
+  const t = ((r.result || {}).task) || null;
+  if (!t) { alert(T('wf_load_fail')); return; }
+  _wfCurrentTask = {id: t.id, name: t.name, dag: t.dag||{}, trigger: t.trigger||'manual', schedule: t.schedule||''};
+  _wfNodes = {};
+  let y = 60;
+  for (const [nid, n] of Object.entries(_wfCurrentTask.dag)) {
+    _wfNodes[nid] = Object.assign({}, n, {
+      retry: n.retry || {max_retries: 0, backoff: 'exponential', timeout_sec: 30},
+      x: 60, y: y,
+    });
+    y += 90;
+  }
+  document.getElementById('wf-nodes').innerHTML = '';
+  document.getElementById('wf-edges').innerHTML = '';
+  wfRenderNodes();
+  wfRenderEdges();
+  document.getElementById('wf-status').textContent = '✓ loaded: ' + _wfCurrentTask.name + ' (' + Object.keys(_wfNodes).length + ' nodes)';
+}
+
+function wfNew() {
+  _wfCurrentTask = {id: '', name: '未命名任务', dag: {}, trigger: 'manual', schedule: ''};
+  _wfNodes = {};
+  document.getElementById('wf-nodes').innerHTML = '';
+  document.getElementById('wf-edges').innerHTML = '';
+  wfRenderNodes();
+  wfRenderEdges();
+  const name = prompt(T('wf_new') + ': task name', '未命名任务');
+  if (name) _wfCurrentTask.name = name;
+  document.getElementById('wf-status').textContent = '— ' + _wfCurrentTask.name + ' (unsaved)';
+}
+
+async function wfSave() {
+  if (!_wfCurrentTask) { alert(T('wf_new')); return; }
+  const dag = {};
+  for (const [nid, n] of Object.entries(_wfNodes)) {
+    dag[nid] = {
+      ext: n.ext, method: n.method,
+      params: n.params || {}, needs: n.needs || [],
+    };
+    if (n.retry) dag[nid].retry = n.retry;
+  }
+  const payload = {
+    name: _wfCurrentTask.name,
+    dag: dag,
+    trigger: _wfCurrentTask.trigger || 'manual',
+    schedule: _wfCurrentTask.schedule || '',
+  };
+  if (_wfCurrentTask.id) payload.id = _wfCurrentTask.id;
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method:'task.upsert', params: payload})});
+  if (!r.ok) { alert(T('wf_save_fail') + ': ' + (r.error||'')); return; }
+  _wfCurrentTask.id = ((r.result || {}).id) || _wfCurrentTask.id;
+  document.getElementById('wf-status').textContent = '✓ saved: ' + _wfCurrentTask.id;
+  await wfRenderTaskList();
+}
+
+async function wfRun() {
+  if (!_wfCurrentTask || !_wfCurrentTask.id) {
+    if (confirm(T('wf_save_fail') + '? save first')) { await wfSave(); if (!_wfCurrentTask.id) return; }
+    else return;
+  }
+  await wfRunById(_wfCurrentTask.id, true);
+}
+
+async function wfRunById(taskId, wait) {
+  document.getElementById('wf-status').innerHTML = '<span class="wf-running">⏳ running…</span>';
+  // 节点全标 running
+  for (const nid of Object.keys(_wfNodes)) {
+    const el = document.querySelector('#wf-nodes .wf-node[data-id="' + nid + '"]');
+    if (el) { el.classList.remove('ok','failed'); el.classList.add('running'); }
+  }
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method:'task.run', params:{id:taskId, wait:!!wait}, timeout: 60})});
+  if (!r.ok) { alert(T('wf_run_fail') + ': ' + (r.error||'')); document.getElementById('wf-status').textContent = '✗ ' + (r.error||'fail'); return; }
+  const run = r.result || {};
+  document.getElementById('wf-status').innerHTML =
+    '<span class="wf-' + esc(run.status||'?') + '">' + esc(run.status||'?') + '</span> ' + esc(run.run_id||'');
+  if (run.nodes) {
+    for (const [nid, ns] of Object.entries(run.nodes)) {
+      const el = document.querySelector('#wf-nodes .wf-node[data-id="' + nid + '"]');
+      if (el) {
+        el.classList.remove('running');
+        el.classList.add(ns.status || 'failed');
+        el.dataset.attempts = ns.attempts || 1;
+        el.dataset.ms = ns.ms || 0;
+        el.title = (ns.status||'') + ' · ' + (ns.attempts||1) + ' attempts · ' + (ns.ms||0) + 'ms\n' +
+                   (ns.error ? 'error: ' + ns.error : '');
+      }
+    }
+  }
+  await wfRefreshRuns();
+}
+
+function wfRenderNodes() {
+  const wrap = document.getElementById('wf-nodes');
+  wrap.innerHTML = '';
+  for (const [nid, n] of Object.entries(_wfNodes)) {
+    const el = document.createElement('div');
+    el.className = 'wf-node';
+    el.dataset.id = nid;
+    el.style.left = n.x + 'px';
+    el.style.top = n.y + 'px';
+    const needs = (n.needs || []);
+    const rt = (n.retry || {}).max_retries || 0;
+    el.innerHTML =
+      '<div class="wf-node-head">' +
+        '<span class="wf-node-id">' + esc(nid) + (rt ? ' ↻'+rt : '') + '</span>' +
+        '<span class="wf-node-acts">' +
+          '<button data-act="edit" title="edit">✎</button>' +
+          '<button data-act="del" title="del">✕</button>' +
+        '</span>' +
+      '</div>' +
+      '<div class="wf-node-body">' + esc(n.ext) + '.' + esc(n.method) + '</div>' +
+      '<div class="wf-node-foot">' + (needs.length ? '← ' + esc(needs.join(', ')) : (esc(n.method) ? '· root' : '')) + '</div>';
+    el.addEventListener('mousedown', (e) => wfStartDrag(e, nid));
+    el.addEventListener('dblclick', () => wfEditNode(nid));
+    el.querySelector('[data-act="edit"]').onclick = (e) => { e.stopPropagation(); wfEditNode(nid); };
+    el.querySelector('[data-act="del"]').onclick = (e) => { e.stopPropagation(); wfDeleteNode(nid); };
+    wrap.appendChild(el);
+  }
+}
+
+function wfRenderEdges() {
+  const svg = document.getElementById('wf-edges');
+  if (!svg) return;
+  // 只清 g 内的 path(不动 defs/marker)
+  while (svg.firstChild && svg.firstChild.tagName !== 'defs') svg.removeChild(svg.firstChild);
+  for (const [nid, n] of Object.entries(_wfNodes)) {
+    const fromEl = document.querySelector('#wf-nodes .wf-node[data-id="' + nid + '"]');
+    if (!fromEl) continue;
+    const fx = parseFloat(fromEl.style.left) + 90;
+    const fy = parseFloat(fromEl.style.top) + 30;
+    for (const dep of (n.needs || [])) {
+      const toEl = document.querySelector('#wf-nodes .wf-node[data-id="' + dep + '"]');
+      if (!toEl) continue;
+      const tx = parseFloat(toEl.style.left) + 90;
+      const ty = parseFloat(toEl.style.top) + 60;
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      const cx = (fx + tx) / 2;
+      path.setAttribute('d', 'M' + fx + ',' + fy + ' C' + cx + ',' + fy + ' ' + cx + ',' + ty + ' ' + tx + ',' + ty);
+      path.setAttribute('stroke', 'var(--gh-ink-soft)');
+      path.setAttribute('stroke-width', '1.5');
+      path.setAttribute('fill', 'none');
+      path.setAttribute('marker-end', 'url(#wf-arrow)');
+      svg.appendChild(path);
+    }
+  }
+}
+
+function wfStartDrag(e, nid) {
+  if (e.button !== 0) return;
+  if (e.target.tagName === 'BUTTON') return;  // 不要拦按钮
+  e.preventDefault();
+  _wfDraggingNode = nid;
+  const el = e.currentTarget;
+  const rect = el.getBoundingClientRect();
+  _wfDragOffset = {x: e.clientX - rect.left, y: e.clientY - rect.top};
+  document.addEventListener('mousemove', wfOnDragMove);
+  document.addEventListener('mouseup', wfOnDragEnd);
+}
+function wfOnDragMove(e) {
+  if (!_wfDraggingNode) return;
+  const canvas = document.getElementById('wf-canvas');
+  const cr = canvas.getBoundingClientRect();
+  const el = document.querySelector('#wf-nodes .wf-node[data-id="' + _wfDraggingNode + '"]');
+  if (!el) return;
+  const x = Math.max(0, e.clientX - cr.left - _wfDragOffset.x + canvas.scrollLeft);
+  const y = Math.max(0, e.clientY - cr.top - _wfDragOffset.y + canvas.scrollTop);
+  el.style.left = x + 'px';
+  el.style.top = y + 'px';
+  if (_wfNodes[_wfDraggingNode]) {
+    _wfNodes[_wfDraggingNode].x = x;
+    _wfNodes[_wfDraggingNode].y = y;
+  }
+  wfRenderEdges();
+}
+function wfOnDragEnd() {
+  _wfDraggingNode = null;
+  document.removeEventListener('mousemove', wfOnDragMove);
+  document.removeEventListener('mouseup', wfOnDragEnd);
+}
+
+function wfEditNode(nid) {
+  _wfNodeEditing = nid;
+  const n = _wfNodes[nid];
+  if (!n) return;
+  document.getElementById('wf-nm-id').value = nid;
+  document.getElementById('wf-nm-ext').value = n.ext || 'todo';
+  document.getElementById('wf-nm-method').value = n.method || '';
+  document.getElementById('wf-nm-params').value = JSON.stringify(n.params || {}, null, 2);
+  document.getElementById('wf-nm-needs').value = (n.needs || []).join(', ');
+  const rt = n.retry || {};
+  document.getElementById('wf-nm-retries').value = rt.max_retries != null ? rt.max_retries : 0;
+  document.getElementById('wf-nm-backoff').value = rt.backoff || 'exponential';
+  document.getElementById('wf-nm-timeout').value = rt.timeout_sec != null ? rt.timeout_sec : 30;
+  document.getElementById('wf-node-modal').classList.add('open');
+}
+function wfNodeCancel() {
+  document.getElementById('wf-node-modal').classList.remove('open');
+  _wfNodeEditing = null;
+}
+function wfNodeSave() {
+  const oldId = _wfNodeEditing;
+  if (!oldId) return;
+  const newId = (document.getElementById('wf-nm-id').value || oldId).trim();
+  let params = {};
+  try {
+    params = JSON.parse(document.getElementById('wf-nm-params').value || '{}');
+  } catch (e) {
+    alert('Params 不是合法 JSON: ' + e.message); return;
+  }
+  const needs = document.getElementById('wf-nm-needs').value.split(',').map(s => s.trim()).filter(Boolean);
+  const node = {
+    ext: document.getElementById('wf-nm-ext').value.trim() || 'todo',
+    method: document.getElementById('wf-nm-method').value.trim(),
+    params: params,
+    needs: needs,
+    retry: {
+      max_retries: Math.max(0, Math.min(5, parseInt(document.getElementById('wf-nm-retries').value) || 0)),
+      backoff: document.getElementById('wf-nm-backoff').value,
+      timeout_sec: Math.max(1, Math.min(600, parseInt(document.getElementById('wf-nm-timeout').value) || 30)),
+    },
+  };
+  // ID 改名:删旧 + 改所有依赖
+  if (newId !== oldId) {
+    delete _wfNodes[oldId];
+    for (const n of Object.values(_wfNodes)) {
+      n.needs = (n.needs || []).map(d => d === oldId ? newId : d);
+    }
+  }
+  const prev = _wfNodes[oldId] || {};
+  _wfNodes[newId] = Object.assign({}, node, {x: prev.x != null ? prev.x : 60, y: prev.y != null ? prev.y : 60});
+  document.getElementById('wf-node-modal').classList.remove('open');
+  _wfNodeEditing = null;
+  wfRenderNodes();
+  wfRenderEdges();
+}
+
+function wfDeleteNode(nid) {
+  if (!confirm(T('wf_delete_confirm') + ' (' + nid + ')')) return;
+  delete _wfNodes[nid];
+  for (const n of Object.values(_wfNodes)) {
+    n.needs = (n.needs || []).filter(d => d !== nid);
+  }
+  wfRenderNodes();
+  wfRenderEdges();
+}
+
+async function wfValidate() {
+  const ids = Object.keys(_wfNodes);
+  const idset = new Set(ids);
+  const errors = [];
+  for (const [nid, n] of Object.entries(_wfNodes)) {
+    if (!n.ext) errors.push(nid + ': ext empty');
+    if (!n.method) errors.push(nid + ': method empty');
+    for (const dep of (n.needs || [])) {
+      if (!idset.has(dep)) errors.push(nid + ': needs missing ' + dep);
+    }
+  }
+  // 环检(Kahn)
+  const indeg = new Map(ids.map(i => [i, 0]));
+  for (const [nid, n] of Object.entries(_wfNodes)) {
+    for (const dep of (n.needs || [])) indeg.set(nid, indeg.get(nid) + 1);
+  }
+  const q = ids.filter(i => indeg.get(i) === 0);
+  let cnt = 0;
+  while (q.length) {
+    const nid = q.shift(); cnt++;
+    for (const [nid2, n] of Object.entries(_wfNodes)) {
+      if ((n.needs || []).includes(nid)) {
+        indeg.set(nid2, indeg.get(nid2) - 1);
+        if (indeg.get(nid2) === 0) q.push(nid2);
+      }
+    }
+  }
+  if (cnt !== ids.length) errors.push(T('wf_dag_cycle'));
+  if (errors.length) { alert('✗ ' + errors.join('\n')); return false; }
+  document.getElementById('wf-status').textContent = '✓ validated (' + ids.length + ' nodes)';
+  return true;
+}
+
+async function wfDeleteTask(taskId) {
+  if (!confirm(T('wf_delete_confirm') + ' (' + taskId + ')')) return;
+  await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method:'task.delete', params:{id:taskId}})});
+  if (_wfCurrentTask && _wfCurrentTask.id === taskId) {
+    _wfCurrentTask = null; _wfNodes = {};
+    document.getElementById('wf-nodes').innerHTML = '';
+    document.getElementById('wf-edges').innerHTML = '';
+  }
+  await wfRenderTaskList();
+}
+
+async function wfRefreshRuns() {
+  const body = document.getElementById('wf-runs-body');
+  if (!body) return;
+  body.innerHTML = '<div class="wf-meta">—</div>';
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method:'task.runs', params:{limit:30}})});
+  if (!r.ok) { body.innerHTML = '<div class="wf-runs-err">' + esc(r.error||'fail') + '</div>'; return; }
+  const runs = ((r.result || {}).runs) || [];
+  body.innerHTML = '';
+  if (!runs.length) {
+    body.innerHTML = '<div class="wf-meta" style="padding:10px">no runs yet · ▶ 一下跑一个看看</div>';
+    return;
+  }
+  for (const run of runs) {
+    const row = document.createElement('div');
+    row.className = 'wf-run wf-' + (run.status||'');
+    const dur = run.ms ? Math.round(run.ms/1000) + 's' : '?';
+    row.innerHTML =
+      '<span class="wf-run-id">' + esc(run.id) + '</span>' +
+      '<span class="wf-run-task">' + esc(run.task_id) + '</span>' +
+      '<span class="wf-run-status">' + esc(run.status||'?') + '</span>' +
+      '<span class="wf-run-time">' + new Date(run.started_at).toLocaleString() + '</span>' +
+      '<span class="wf-run-dur">' + dur + '</span>' +
+      '<span class="wf-run-err">' + esc(run.error||'') + '</span>';
+    row.title = 'click for node tree';
+    row.onclick = () => alert(JSON.stringify(run, null, 2));
+    body.appendChild(row);
+  }
+}
+
+function wfToggleRuns() {
+  _wfRunsCollapsed = !_wfRunsCollapsed;
+  const body = document.getElementById('wf-runs-body');
+  body.style.display = _wfRunsCollapsed ? 'none' : '';
+  document.getElementById('wf-runs-toggle').textContent = _wfRunsCollapsed ? '▸' : '▾';
+}
+
+async function wfRefreshScheduleStatus() {
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method:'task.schedule.status', params:{}})});
+  const btn = document.getElementById('wf-sched-btn');
+  if (r.ok && r.result && r.result.running) {
+    btn.textContent = '⏰ 调度: 开 (' + (r.result.interval_sec||30) + 's)';
+    btn.classList.add('on');
+  } else {
+    btn.textContent = '⏰ 调度: 关';
+    btn.classList.remove('on');
+  }
+}
+
+async function wfToggleSchedule() {
+  const btn = document.getElementById('wf-sched-btn');
+  const isOn = btn.classList.contains('on');
+  const method = isOn ? 'task.schedule.stop' : 'task.schedule.start';
+  await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method, params: isOn ? {} : {interval_sec: 30}})});
+  await wfRefreshScheduleStatus();
+}
+
+async function wfTemplates() {
+  const r = await api('/workflow/templates', {method:'GET'});
+  if (!r.ok) { alert('templates fail'); return; }
+  const list = document.getElementById('wf-tpl-list');
+  list.innerHTML = '';
+  for (const t of (r.templates || [])) {
+    const row = document.createElement('div');
+    row.className = 'wf-tpl-row';
+    row.innerHTML =
+      '<span class="wf-tpl-name">' + esc(t.name) + '</span>' +
+      '<span class="wf-tpl-desc">' + esc(t.description || '') + '</span>' +
+      '<button class="topbtn primary">▶ use</button>';
+    row.querySelector('button').onclick = () => wfApplyTpl(t);
+    list.appendChild(row);
+  }
+  document.getElementById('wf-tpl-modal').classList.add('open');
+}
+
+function wfTplCancel() {
+  document.getElementById('wf-tpl-modal').classList.remove('open');
+}
+
+function wfApplyTpl(tpl) {
+  wfTplCancel();
+  _wfCurrentTask = {id: '', name: tpl.name, dag: tpl.dag||{}, trigger: tpl.trigger||'manual', schedule: tpl.schedule||''};
+  _wfNodes = {};
+  let y = 60;
+  for (const [nid, n] of Object.entries(_wfCurrentTask.dag)) {
+    _wfNodes[nid] = Object.assign({}, n, {
+      retry: n.retry || {max_retries: 0, backoff: 'exponential', timeout_sec: 30},
+      x: 60, y: y,
+    });
+    y += 90;
+  }
+  document.getElementById('wf-nodes').innerHTML = '';
+  document.getElementById('wf-edges').innerHTML = '';
+  wfRenderNodes();
+  wfRenderEdges();
+  document.getElementById('wf-status').textContent = '— template: ' + _wfCurrentTask.name + ' (unsaved)';
 }
 
 async function openProject() {
@@ -11591,6 +12309,24 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._json({"ok": True, "result": r.get("result"), "ext_id": ext_id,
                         "method": method})
+        elif path == "/prisiragent/api/workflow/templates":
+            # P2.5+B-2(2026-09-21)工作流编排 UI 模板 wrapper。
+            #   直接走 ext RPC 调 task-runner 的 task.template.list 命令;若 ext 未启
+            #   → 自动 spawn;若 task-runner 不在 → 返内置兜底模板,前端不卡死。
+            try:
+                with _EXT_BRIDGE_LOCK:
+                    st = _EXT_PROCS.get("task-runner")
+                    if not st or not st.get("proc") or st["proc"].poll() is not None:
+                        _ext_spawn("task-runner")
+                r = _ext_rpc_call("task-runner", "task.template.list", {}, timeout=5)
+                if r.get("error"):
+                    self._json({"ok": True, "templates": _WF_FALLBACK_TEMPLATES,
+                                "warn": f"task-runner 不可用,返内置兜底: {r['error']}"})
+                    return
+                self._json({"ok": True, "templates": (r.get("result") or {}).get("templates") or _WF_FALLBACK_TEMPLATES})
+            except Exception as e:  # noqa: BLE001
+                self._json({"ok": True, "templates": _WF_FALLBACK_TEMPLATES,
+                            "warn": f"templates 异常: {e}"})
         elif path == "/prisiragent/api/git_detect":
             # 探测本机是否有 git;force=true 跳过缓存重跑。
             force = str(body.get("force") or "").lower() in ("1", "true", "yes")

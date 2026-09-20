@@ -1,0 +1,41 @@
+feat(p2.5+b-2): 工作流编排 UI + 后端闭环 + 修 B-0 random NameError
+
+B-0 修桥后第一个真用上的特性。前端从零搭:
+- 顶栏 🔀 工作流 按钮(顶栏项目按钮与陪聊之间)
+- wfmodal 全屏 modal:左侧任务列表 + 右侧 DAG 画布 + 底部运行历史
+- 拖拽节点 + SVG 连线(SVG marker arrow + 贝塞尔曲线 + needs 依赖箭头)
+- 节点配置面板(双击/拖入新节点触发):ID/ext/method/params/needs/重试
+- 任务 CRUD 走 /api/ext/rpc → task-runner 子进程
+- 重试策略(per-node max_retries/backoff/timeout_sec)
+- 运行历史查看(底部折叠,点击看节点树)
+- 调度器开关(轮询 30s)
+- 内置模板列表(/api/workflow/templates,ext 不可用时返兜底)
+- 客户端 DAG 环检(Kahn) + 节点完整性校验
+
+task-runner ext 改动(extensions/task-runner/index.js):
+- _sleep / _backoffDelay / executeNodeWithRetry helpers
+- executeDag 用 executeNodeWithRetry 包裹每节点,Promise.allSettled + timeout
+- backoff 公式:constant=1s / linear=attempt×1s / exponential=2^(attempt-1)×1s
+- 新增 task.run.cancel 命令(stub:返 not_supported_yet,Phase B-3 接 AbortController)
+- 新增 task.template.list 命令(简单回声/每日摘要/三节点串行)
+
+后端 endpoint:
+- /api/workflow/templates:优先走 ext RPC,失败兜底内置 _WF_FALLBACK_TEMPLATES
+- 修 B-0 漏的 _ext_rpc_call NameError: random 没 import → 加 import random
+  (B-2 烟雾测试真触发才发现;B-0 静态测试只验符号不验运行时;教训:ship 前至少一次端到端)
+
+前端 i18n(zh+en):workflow/wf_new/wf_templates/wf_validate/wf_run/wf_tasks/wf_runs/
+wf_canvas_hint/wf_new_node/wf_templates_title/wf_node_title/wf_node_id/wf_node_needs/
+wf_node_retry/wf_load_fail/wf_save_fail/wf_run_fail/wf_delete_confirm/wf_dag_cycle
+
+测试:
+- tests/_test_p2b2_workflow.py 92/92 静态扫绿
+- 回归:B-0 (52/52) / M3.35 (49/49) / p259a (30/30) / p259c (17/17) 全绿
+- 烟雾测试:POST /api/workflow/templates 返 3 模板 + 无 warn 字段(修完 NameError 后)
+- POST /api/ext/rpc task.template.list 在无 installed.json 时返 unknown method(预期,ext 未启)
+
+约束遵守:不打安装包 / 不动 DLL/EXE/SPEC / 不删文件 / 拖拽画布纯 DOM+JS 无第三方库
+
+解锁:
+- B-3:Python 后端任务队列升级(独立,可并行;能接通 task.run.cancel stub)
+- B-4:AI agent 任务执行派单(走 workflow 编排 → 任务级调度)
