@@ -286,3 +286,17 @@ pub fn is_running(app: &AppHandle) -> bool {
     }
     false
 }
+
+/// 拿当前 calendar 端口(供 lib.rs 拼 URL 用)。
+///
+/// 优先级:CalendarPort state → CALENDAR_PORT_DEFAULT。
+pub fn current_port(app: &AppHandle) -> u16 {
+    app.try_state::<CalendarPort>()
+        .map(|p| p.0)
+        .unwrap_or(CALENDAR_PORT_DEFAULT)
+}
+
+/// 拼完整 calendar URL(给前端/托盘用)。
+pub fn current_url(app: &AppHandle) -> String {
+    format!("http://127.0.0.1:{}/prisiragent/calendar", current_port(app))
+}

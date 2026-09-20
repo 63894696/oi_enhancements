@@ -35,8 +35,9 @@ mod port_config;
 // 子进程 stdout sentinel `PRISIR_WEB_READY port=<n>` 拿到真端口后,
 // 会进一步覆盖 _real_web_port(应对冲突 fallback / OS 自动分配场景)。
 // (默认常量由 port_config 模块导出,本文件不重复 import)
-// M3.30 task #19: 日历页入口 — 等 task #21 接管 calendar 子进程启动
-const CALENDAR_URL: &str = "http://localhost:18880/prisiragent/calendar";
+// M3.30 task #19 / P2.5+12: 日历页入口 — calendar 子进程由 calendar.rs 看护
+// URL 不再写死 18880;改为调 calendar::current_url(app) 动态拿实际端口。
+// (默认端口由 calendar.rs::CALENDAR_PORT_DEFAULT = 18803 提供)
 const HOTKEY: &str = "ctrl+shift+o";
 const AI_TOGGLE_EVENT: &str = "PrisirLingXi_AiToggle_Event";
 const BRAND_UPDATES_URL: &str = "https://www.babelspan.com/updates.json";
@@ -319,6 +320,66 @@ fn kill_backend(state: &Arc<AppState>) {
         let _ = child.kill();
         log::info!("[killBackend] killed pid={}", child.id());
     }
+    // P2.5+12: 兜底扫孤儿 python 后端进程
+    // (子进程派生的孙子进程 / 上一轮没 kill 干净的残留 / 用户手动启的 dev server)
+    kill_orphan_backends("prisiragent_web.py");
+}
+
+/// 兜底扫 + 杀孤儿 python 后端进程(参考 Electron main.js:552-567 同款 PowerShell CIM 扫描)
+#[cfg(target_os = "windows")]
+fn kill_orphan_backends(script_basename: &str) {
+    // 用 PowerShell 调 CIM 拿所有 python.exe 的命令行,过滤含目标脚本的进程
+    // (避免误杀无关 python:Process Lasso / AnyTXT / 用户的 jupyter 等)
+    let ps_cmd = format!(
+        "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" \
+         | Where-Object {{ $_.CommandLine -like '*{}*' }} \
+         | Select-Object -ExpandProperty ProcessId",
+        script_basename
+    );
+    match Command::new("powershell")
+        .args(["-NoProfile", "-Command", &ps_cmd])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+    {
+        Ok(out) => {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            let mut killed = 0;
+            for line in stdout.lines() {
+                let pid: u32 = match line.trim().parse() {
+                    Ok(n) => n,
+                    Err(_) => continue,
+                };
+                // taskkill /F /T 杀进程树(覆盖 python 派生的子进程)
+                let _ = Command::new("taskkill")
+                    .args(["/F", "/T", "/PID", &pid.to_string()])
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .output();
+                killed += 1;
+                log::warn!("[killOrphan] killed orphan {} pid={}", script_basename, pid);
+            }
+            if killed == 0 {
+                log::info!(
+                    "[killOrphan] no orphan {} found",
+                    script_basename
+                );
+            }
+        }
+        Err(e) => {
+            log::warn!(
+                "[killOrphan] powershell scan err for {}: {}",
+                script_basename,
+                e
+            );
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn kill_orphan_backends(_script_basename: &str) {
+    // 非 Windows 跳过(参考 Electron main.js 的 Windows-only 实现)
+    log::info!("[killOrphan] non-Windows: skip orphan scan");
 }
 
 /// 探测 companion 是否已在监听(从 port_config 读,默认 18850)
@@ -456,6 +517,9 @@ fn kill_companion(state: &Arc<AppState>) {
         let _ = child.wait();
         log::info!("[killCompanion] killed");
     }
+    // P2.5+12: 兜底扫孤儿 companion / music 子进程
+    kill_orphan_backends("prisiragent-companion-web.py");
+    kill_orphan_backends("prisiragent-music-web.py");
 }
 
 /// 输入法 AI 按钮唤起监听 (Windows 命名事件)
@@ -706,11 +770,47 @@ fn music_status_cmd() -> serde_json::Value {
     music::music_status()
 }
 
+// ===== P2.5+12 calendar Tauri command =====
+
+/// 代启 calendar 子进程(顶栏「📅 日历」按钮 / 托盘「📅 打开日历」调用)
+#[tauri::command]
+async fn start_calendar_cmd(app: tauri::AppHandle) -> serde_json::Value {
+    match calendar::start(&app).await {
+        Ok(port) => serde_json::json!({
+            "ok": true,
+            "port": port,
+            "url": format!("http://127.0.0.1:{}/prisiragent/calendar", port),
+        }),
+        Err(e) => serde_json::json!({"ok": false, "error": e.to_string()}),
+    }
+}
+
+/// calendar 状态查询
+#[tauri::command]
+fn calendar_status_cmd(app: tauri::AppHandle) -> serde_json::Value {
+    let url = calendar::current_url(&app);
+    serde_json::json!({
+        "running": calendar::is_running(&app),
+        "port": calendar::current_port(&app),
+        "url": url,
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let state = Arc::new(AppState::new());
 
     tauri::Builder::default()
+        // P2.5+12: single-instance — 第二个进程启动时拦下,焦点放回已有窗口
+        // (双开场景在 Windows 上会撞 18802 端口 + 跑两个托盘,体验差)
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            log::warn!("[singleInstance] second instance blocked, focusing main window");
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.show();
+                let _ = win.unminimize();
+                let _ = win.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_log::Builder::default()
             .level(log::LevelFilter::Info)
             .build())
@@ -720,7 +820,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_shell::init())
         .manage(state.clone())
-        .invoke_handler(tauri::generate_handler![shell_info, shell_toggle, shell_open_external, start_companion_cmd, start_music_cmd, open_lyrics_cmd, close_lyrics_cmd, music_status_cmd])
+        .invoke_handler(tauri::generate_handler![shell_info, shell_toggle, shell_open_external, start_companion_cmd, start_music_cmd, open_lyrics_cmd, close_lyrics_cmd, music_status_cmd, start_calendar_cmd, calendar_status_cmd])
         .setup(move |app| {
             let app_handle = app.handle().clone();
             let state_clone = Arc::clone(&state);
@@ -814,13 +914,36 @@ pub fn run() {
                             }
                         }
                         "open_calendar" => {
-                            // M3.30 task #19: 打开日历页 — 子进程启动由 task #21 接管
-                            // 当前实现: 仅打日志 + 用系统默认浏览器打开 URL
-                            log::info!("[calendar] opening {}", CALENDAR_URL);
-                            println!("[calendar] opening {}", CALENDAR_URL);
-                            if let Err(e) = open::that(CALENDAR_URL) {
-                                log::error!("[calendar] open err: {}", e);
-                            }
+                            // P2.5+12: 托盘「📅 打开日历」— 代启 calendar 子进程 + 打开浏览器
+                            let app_clone = app.clone();
+                            std::thread::spawn(move || {
+                                // 1) spawn calendar 子进程(若未起),等就绪后拿真端口
+                                let port = match tauri::async_runtime::block_on(async {
+                                    calendar::start(&app_clone).await
+                                }) {
+                                    Ok(p) => p,
+                                    Err(e) => {
+                                        log::error!("[calendar] start err: {}", e);
+                                        return;
+                                    }
+                                };
+                                // 2) 等健康检查通过(calendar::start 内已轮询,这里再保险兜底)
+                                if !calendar::is_running(&app_clone) {
+                                    log::warn!("[calendar] not running yet, skip open");
+                                    return;
+                                }
+                                // 3) 在主窗口里打开 calendar 页(走应用内 WebView 而非外部浏览器)
+                                let url = format!(
+                                    "http://127.0.0.1:{}/prisiragent/calendar",
+                                    port
+                                );
+                                log::info!("[calendar] opening in-app {}", url);
+                                if let Some(win) = app_clone.get_webview_window("main") {
+                                    let _ = win.show();
+                                    let _ = win.set_focus();
+                                    let _ = win.eval(&format!("window.location.href = '{}';", url));
+                                }
+                            });
                         }
                         "quit" => {
                             app.exit(0);
@@ -942,6 +1065,11 @@ pub fn run() {
                     kill_backend(&state);
                     kill_companion(&state);   // M3.27.3
                     music::kill_music(&state); // M3.29
+                    // P2.5+12: 优雅 kill calendar 子进程(若有)
+                    let app_for_cal = app_handle.clone();
+                    tauri::async_runtime::block_on(async move {
+                        calendar::stop(&app_for_cal).await;
+                    });
                 }
                 _ => {}
             }
