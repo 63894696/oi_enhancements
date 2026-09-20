@@ -1,0 +1,18 @@
+{
+  "name": "timestamp",
+  "displayName": "时间戳互转",
+  "version": "0.1.0",
+  "description": "Unix 时间戳 ↔ ISO 8601 ↔ 中文日期 ↔ RFC2822 ↔ 相对时间(几分钟前)",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:ts.convert",
+    "ai.invoke.command:ts.now",
+    "ai.invoke.command:ts.rel"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}

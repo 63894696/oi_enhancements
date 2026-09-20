@@ -1,0 +1,588 @@
+{
+  "version": 5,
+  "updated_at": "2026-09-20",
+  "source": "local-file://",
+  "store_root": "C:/Users/Administrator/.prisir/store",
+  "items": [
+    {
+      "id": "mermaid",
+      "name": "设计稿渲染",
+      "desc": "在 AI 对话里检测 mermaid fenced block → 渲染成 editorial-grade SVG 卡片。复用 diagram-design-prisir 品牌令牌(paper #fdfcf8 / 朱砂 / 苹方 / 思源宋体 / WCAG AA)。",
+      "long_desc": "M3.36 Phase 1 ship 的示例扩展。支持 flowchart / sequence / er / state 4 种类型的极简 SVG 渲染器,其他类型降级显示源码。Phase 2 接 mermaid CLI / Puppeteer 做完整 40 种。\n\n**触发**:onSessionMessage 检测 ```mermaid ... ``` fenced block,自动渲染为卡片注入主对话。",
+      "version": "0.1.0",
+      "author": "PrisirAI 官方",
+      "tarball_url": "file:///C:/Users/Administrator/.prisir/store/mermaid-0.1.0.tgz",
+      "sha256": "ecb19f474c5d0168b0778342a124bf223c61cb3aaf02897aa37d63bfa2ba6363",
+      "size_kb": 6,
+      "permissions": [
+        "ai.invoke.command:render.mermaid",
+        "ui.inject.card"
+      ],
+      "tags": [
+        "diagram",
+        "svg",
+        "editorial",
+        "official"
+      ],
+      "stars": 12,
+      "downloads": 240,
+      "updated": "2026-09-20"
+    },
+    {
+      "id": "json-format",
+      "name": "JSON 格式化",
+      "desc": "JSON 缩进/排序键/校验/JSONPath 查询,onSessionMessage 检测 ```json 块自动美化。",
+      "long_desc": "本地 JSON 工具,零网络依赖。\n\n**命令**:\n- `format.json` — 缩进 + sort_keys\n- `json.validate` — schema(简易 required + types)\n- `jsonpath` — 简化 `$.a.b[0]` 语法",
+      "version": "0.1.0",
+      "author": "PrisirAI 官方",
+      "tarball_url": "file:///C:/Users/Administrator/.prisir/store/ext-json-format-0.1.0.tgz",
+      "sha256": "423eedd53394c2bf34f484a27bfe8540843d60e0922f8b98f6d5c99516c2037a",
+      "size_kb": 2,
+      "permissions": [
+        "ai.invoke.command:format.json",
+        "ai.invoke.command:json.validate",
+        "ai.invoke.command:jsonpath",
+        "ui.inject.card"
+      ],
+      "tags": [
+        "tool",
+        "json",
+        "official"
+      ],
+      "stars": 14,
+      "downloads": 312,
+      "updated": "2026-09-20"
+    },
+    {
+      "id": "base64-codec",
+      "name": "Base64 编解码",
+      "desc": "标准 / URL-safe / 十六进制 多种 Base64 编解码,自动识别输入。",
+      "long_desc": "纯函数,无副作用。\n\n**命令**:\n- `b64.encode { text, mode? }` — text|url_safe|hex\n- `b64.decode { text }` — 自动探测模式",
+      "version": "0.1.0",
+      "author": "PrisirAI 官方",
+      "tarball_url": "file:///C:/Users/Administrator/.prisir/store/ext-base64-codec-0.1.0.tgz",
+      "sha256": "6d49c0e3be1e49d24ee15de543526e51d6890f2c7ee4488588cfd4222bef443d",
+      "size_kb": 1,
+      "permissions": [
+        "ai.invoke.command:b64.encode",
+        "ai.invoke.command:b64.decode"
+      ],
+      "tags": [
+        "tool",
+        "codec",
+        "official"
+      ],
+      "stars": 9,
+      "downloads": 178,
+      "updated": "2026-09-20"
+    },
+    {
+      "id": "timestamp",
+      "name": "时间戳工具",
+      "desc": "Unix / ISO / 中文相对时间(刚刚 / 5 分钟前)转换。",
+      "long_desc": "JS Date 封装,本地函数。\n\n**命令**:\n- `ts.now` — 当前 unix 秒/毫秒 + ISO\n- `ts.convert { value, from?, to? }` — 任意 → 任意\n- `ts.rel { ts }` — 相对人类语言",
+      "version": "0.1.0",
+      "author": "PrisirAI 官方",
+      "tarball_url": "file:///C:/Users/Administrator/.prisir/store/ext-timestamp-0.1.0.tgz",
+      "sha256": "8f9e0782e326668ef2c84c9b8aed51dee0c14424847551c76ebc036b75fb8ea1",
+      "size_kb": 2,
+      "permissions": [
+        "ai.invoke.command:ts.now",
+        "ai.invoke.command:ts.convert",
+        "ai.invoke.command:ts.rel"
+      ],
+      "tags": [
+        "tool",
+        "time",
+        "official"
+      ],
+      "stars": 11,
+      "downloads": 205,
+      "updated": "2026-09-20"
+    },
+    {
+      "id": "regex-tester",
+      "name": "正则测试",
+      "desc": "在线测正则 + 常用库(email/手机号/IPv4/URL/hex_color 等)。",
+      "long_desc": "无副作用,纯内存执行。\n\n**命令**:\n- `regex.test { pattern, text, flags? }`\n- `regex.replace { pattern, text, replacement, flags? }`\n- `regex.library { name }` — 内置正则集",
+      "version": "0.1.0",
+      "author": "PrisirAI 官方",
+      "tarball_url": "file:///C:/Users/Administrator/.prisir/store/ext-regex-tester-0.1.0.tgz",
+      "sha256": "6205db64da52643ad56c5fa1abc869ae130b629f4c747df6b0ea35342856da8c",
+      "size_kb": 2,
+      "permissions": [
+        "ai.invoke.command:regex.test",
+        "ai.invoke.command:regex.replace",
+        "ai.invoke.command:regex.library"
+      ],
+      "tags": [
+        "tool",
+        "regex",
+        "dev",
+        "official"
+      ],
+      "stars": 16,
+      "downloads": 287,
+      "updated": "2026-09-20"
+    },
+    {
+      "id": "code-snippets",
+      "name": "代码片段库",
+      "desc": "23 条内置片段 + 自定义(可导入导出 JSON),多语言。",
+      "long_desc": "Python/JS/Shell/SQL/Go/Rust/HTML/CSS。\n\n**命令**:\n- `snippet.search { q, lang? }`\n- `snippet.get { id }`\n- `snippet.add { title, code, lang, tags? }`\n\n**存储**:`custom_snippets.json`,持久化在 PRISIR_EXT_HOME。",
+      "version": "0.1.0",
+      "author": "PrisirAI 官方",
+      "tarball_url": "file:///C:/Users/Administrator/.prisir/store/ext-code-snippets-0.1.0.tgz",
+      "sha256": "9973a660646e2379201c7d6612250a7ffa6320cf111de2f59136f1273e94879a",
+      "size_kb": 4,
+      "permissions": [
+        "ai.invoke.command:snippet.search",
+        "ai.invoke.command:snippet.get",
+        "ai.invoke.command:snippet.add"
+      ],
+      "tags": [
+        "dev",
+        "snippet",
+        "official"
+      ],
+      "stars": 22,
+      "downloads": 410,
+      "updated": "2026-09-20"
+    },
+    {
+      "id": "git-stats",
+      "name": "Git 统计",
+      "desc": "git shortlog / numstat / 文件改动排行,executor 调 git 子进程。",
+      "long_desc": "读当前 workdir(由主进程注入)。\n\n**命令**:\n- `git.shortlog { since?, until?, n? }`\n- `git.numstat { range? }`\n- `git.filemv { range? }` — 单文件变更排行",
+      "version": "0.1.0",
+      "author": "PrisirAI 官方",
+      "tarball_url": "file:///C:/Users/Administrator/.prisir/store/ext-git-stats-0.1.0.tgz",
+      "sha256": "748997348e4de4cbf6fd845a5dfcb528b20a2756f666b4eeacf86ae44857a345",
+      "size_kb": 2,
+      "permissions": [
+        "ai.invoke.command:git.shortlog",
+        "ai.invoke.command:git.numstat",
+        "ai.invoke.command:git.filemv",
+        "shell.exec"
+      ],
+      "tags": [
+        "dev",
+        "git",
+        "official"
+      ],
+      "stars": 13,
+      "downloads": 189,
+      "updated": "2026-09-20"
+    },
+    {
+      "id": "pr-review",
+      "name": "PR 预审",
+      "desc": "自动审 diff:debug log / TODO / 大文件 / 测试覆盖率,出清单。",
+      "long_desc": "不依赖 GitHub,纯本地 `git diff` 分析。\n\n**命令**:\n- `pr.diff { base? }` — diff 全文\n- `pr.hunks { base? }` — 结构化 hunks\n- `pr.checklist { base? }` — 检查清单\n\n**检测项**:debug log、TODO/FIXME、> 400 行文件、test 覆盖率比例。",
+      "version": "0.1.0",
+      "author": "PrisirAI 官方",
+      "tarball_url": "file:///C:/Users/Administrator/.prisir/store/ext-pr-review-0.1.0.tgz",
+      "sha256": "1e509095a8c18fa4d3935e04a2d98cb6ae4e260a862c1c0ef60d239a8146ae16",
+      "size_kb": 2,
+      "permissions": [
+        "ai.invoke.command:pr.diff",
+        "ai.invoke.command:pr.hunks",
+        "ai.invoke.command:pr.checklist",
+        "shell.exec"
+      ],
+      "tags": [
+        "dev",
+        "review",
+        "git",
+        "official"
+      ],
+      "stars": 25,
+      "downloads": 367,
+      "updated": "2026-09-20"
+    },
+    {
+      "id": "quick-note",
+      "name": "快速笔记",
+      "desc": "本地 JSON 笔记 / 标签 / 搜索。AI 说「记一下」自动提示。",
+      "long_desc": "零依赖,本地持久化。\n\n**命令**:\n- `note.add` / `list` / `get` / `search` / `delete`\n\n**触发**:AI 输出含「记一下/记一笔/note it」自动推卡片。",
+      "version": "0.1.0",
+      "author": "PrisirAI 官方",
+      "tarball_url": "file:///C:/Users/Administrator/.prisir/store/ext-quick-note-0.1.0.tgz",
+      "sha256": "0aa246b845d4b6b8730a1fbaf9f8d78a232e72723216839783e04df1ffd7a371",
+      "size_kb": 2,
+      "permissions": [
+        "ai.invoke.command:note.add",
+        "ai.invoke.command:note.list",
+        "ai.invoke.command:note.get",
+        "ai.invoke.command:note.search",
+        "ai.invoke.command:note.delete",
+        "ui.inject.card"
+      ],
+      "tags": [
+        "productivity",
+        "note",
+        "official"
+      ],
+      "stars": 18,
+      "downloads": 295,
+      "updated": "2026-09-20"
+    },
+    {
+      "id": "clipboard",
+      "name": "剪贴板历史",
+      "desc": "本机剪贴板读写(Windows PowerShell Get/Set-Clipboard)+ 最近 50 条历史。",
+      "long_desc": "**Windows only**(用 PowerShell)。\n\n**命令**:\n- `clip.read` / `clip.write { text }` / `clip.history { limit? }`\n\n**存储**:`history.json`,持久化最近 50 条。",
+      "version": "0.1.0",
+      "author": "PrisirAI 官方",
+      "tarball_url": "file:///C:/Users/Administrator/.prisir/store/ext-clipboard-0.1.0.tgz",
+      "sha256": "a9449cc3e29a677514cdf08289bd29a55e39a80f9c1505b3c91d890be8901036",
+      "size_kb": 2,
+      "permissions": [
+        "ai.invoke.command:clip.read",
+        "ai.invoke.command:clip.write",
+        "ai.invoke.command:clip.history",
+        "shell.exec"
+      ],
+      "tags": [
+        "productivity",
+        "clipboard",
+        "windows",
+        "official"
+      ],
+      "stars": 14,
+      "downloads": 198,
+      "updated": "2026-09-20"
+    },
+    {
+      "id": "pomodoro",
+      "name": "番茄钟",
+      "desc": "25/5 番茄钟,后台计时 + 状态查询 + 今日累计(持久化)。",
+      "long_desc": "setInterval 后台跑,完成自动切 break,持久化今日完成数。\n\n**命令**:\n- `pomo.start { work?, break? }`\n- `pomo.stop` / `pomo.status` / `pomo.stats`",
+      "version": "0.1.0",
+      "author": "PrisirAI 官方",
+      "tarball_url": "file:///C:/Users/Administrator/.prisir/store/ext-pomodoro-0.1.0.tgz",
+      "sha256": "0d4c04b17afeb246f74634a4de737f5b01a8ebe4aa8bdf9fcc3ad7e96b7f31a0",
+      "size_kb": 2,
+      "permissions": [
+        "ai.invoke.command:pomo.start",
+        "ai.invoke.command:pomo.stop",
+        "ai.invoke.command:pomo.status",
+        "ai.invoke.command:pomo.stats",
+        "ui.inject.card"
+      ],
+      "tags": [
+        "productivity",
+        "pomodoro",
+        "timer",
+        "official"
+      ],
+      "stars": 20,
+      "downloads": 342,
+      "updated": "2026-09-20"
+    },
+    {
+      "id": "ascii-tree",
+      "name": "ASCII 树",
+      "desc": "目录树 / JSON 对象 → 树形字符可视化,三种风格 unicode/ascii/box。",
+      "long_desc": "无副作用,纯渲染。\n\n**命令**:\n- `tree.frompaths { paths }`\n- `tree.fromjson { data, root? }`\n- `tree.render { lines, style? }` — 已有缩进文本加树形字符",
+      "version": "0.1.0",
+      "author": "PrisirAI 官方",
+      "tarball_url": "file:///C:/Users/Administrator/.prisir/store/ext-ascii-tree-0.1.0.tgz",
+      "sha256": "b20a2fdda506fcfdd9253b0ab8f358b76d254756a6bd8fccc607f88344ce20e0",
+      "size_kb": 2,
+      "permissions": [
+        "ai.invoke.command:tree.frompaths",
+        "ai.invoke.command:tree.fromjson",
+        "ai.invoke.command:tree.render"
+      ],
+      "tags": [
+        "viz",
+        "tree",
+        "ascii",
+        "official"
+      ],
+      "stars": 7,
+      "downloads": 124,
+      "updated": "2026-09-20"
+    },
+    {
+      "id": "sequence-builder",
+      "name": "时序图构建",
+      "desc": "脚本/结构化步骤 → Mermaid sequenceDiagram + ASCII 简版,可喂给 ext-mermaid 渲染。",
+      "long_desc": "解析脚本格式 `A ->> B: msg` / `A -->> B: reply`。\n\n**命令**:\n- `seq.fromscript { lines }` — 多行\n- `seq.fromsteps { steps }` — 结构化\n- `seq.parse { text }` — 自动识别",
+      "version": "0.1.0",
+      "author": "PrisirAI 官方",
+      "tarball_url": "file:///C:/Users/Administrator/.prisir/store/ext-sequence-builder-0.1.0.tgz",
+      "sha256": "5e5aad6226dcf57c9f9d7469d8171f546540a2e5cde4f0fe7fb379a81d543828",
+      "size_kb": 2,
+      "permissions": [
+        "ai.invoke.command:seq.fromscript",
+        "ai.invoke.command:seq.fromsteps",
+        "ai.invoke.command:seq.parse"
+      ],
+      "tags": [
+        "viz",
+        "sequence",
+        "mermaid",
+        "official"
+      ],
+      "stars": 10,
+      "downloads": 167,
+      "updated": "2026-09-20"
+    },
+    {
+      "id": "todo",
+      "name": "待办事项",
+      "desc": "本地 JSON 待办(优先级/截止/标签),纯离线无外部依赖。",
+      "long_desc": "**纯本地 JSON**,离线可用,不需要任何外部软件。\n\n**命令**:\n- `todo.add { title, due?, priority?, tags? }`\n- `todo.list` / `todo.done` / `todo.remove` / `todo.update`\n\n**优先级**:high/mid/low;**状态**:open/done/canceled。",
+      "version": "0.1.0",
+      "author": "PrisirAI 官方",
+      "tarball_url": "file:///C:/Users/Administrator/.prisir/store/ext-todo-0.1.0.tgz",
+      "sha256": "f82dd71804b2c1d97f79140eeb4617ca66c33d93ae702483bba862f799e01ea5",
+      "size_kb": 2,
+      "permissions": [
+        "ai.invoke.command:todo.add",
+        "ai.invoke.command:todo.list",
+        "ai.invoke.command:todo.done",
+        "ai.invoke.command:todo.remove",
+        "ai.invoke.command:todo.update",
+        "ui.inject.card"
+      ],
+      "tags": [
+        "productivity",
+        "todo",
+        "official"
+      ],
+      "stars": 19,
+      "downloads": 318,
+      "updated": "2026-09-20"
+    },
+    {
+      "id": "window-list",
+      "name": "窗口列表",
+      "version": "0.1.0",
+      "author": "PrisirAI 官方",
+      "desc": "枚举可见窗口(标题/PID/坐标),按标题或 PID 关闭/最小化/置顶",
+      "long_desc": "**Windows only**(UIAutomation + user32)。\n\n**命令**:\n-  /  /  /  / ",
+      "tarball_url": "file:///C:/Users/Administrator/.prisir/store/ext-window-list-0.1.0.tgz",
+      "sha256": "1249971fcc1029e8fcd0913942a787df977e4548a3bf3fcbf1967df7d68fee66",
+      "size_kb": 3,
+      "permissions": [
+        "ai.invoke.command:win.list",
+        "ai.invoke.command:win.find",
+        "ai.invoke.command:win.close",
+        "ai.invoke.command:win.minimize",
+        "ai.invoke.command:win.topmost",
+        "shell.exec"
+      ],
+      "tags": [
+        "automation",
+        "window",
+        "windows",
+        "official"
+      ],
+      "stars": 9,
+      "downloads": 142,
+      "updated": "2026-09-20"
+    },
+    {
+      "id": "process-scan",
+      "name": "进程扫描",
+      "version": "0.1.0",
+      "author": "PrisirAI 官方",
+      "desc": "枚举进程(名/PID/CPU/内存/窗口)+ 按 PID/名 kill(高权限)",
+      "long_desc": "**Windows only**(Get-Process + Stop-Process)。\n\n**命令**:\n- \n- \n-  — 单 PID 默认优雅,force=true 强杀",
+      "tarball_url": "file:///C:/Users/Administrator/.prisir/store/ext-process-scan-0.1.0.tgz",
+      "sha256": "e25fe5f696b22ff8b15e346ab01a0278f9e77ed32736da23bc9c737f683a25f7",
+      "size_kb": 2,
+      "permissions": [
+        "ai.invoke.command:ps.list",
+        "ai.invoke.command:ps.find",
+        "ai.invoke.command:ps.kill",
+        "shell.exec"
+      ],
+      "tags": [
+        "automation",
+        "process",
+        "windows",
+        "official"
+      ],
+      "stars": 12,
+      "downloads": 198,
+      "updated": "2026-09-20"
+    },
+    {
+      "id": "app-launcher",
+      "name": "应用启动器",
+      "version": "0.1.0",
+      "author": "PrisirAI 官方",
+      "desc": "启动 exe(传 args/工作目录/窗口模式)+ 打开 URL + explorer 文件路径",
+      "long_desc": "**Windows only**(Start-Process)。白名单:内置 14 个常用 exe(notepad/calc/chrome 等)。\n\n**命令**:\n- \n-  (限 http/https/file/mailto)\n- \n- ",
+      "tarball_url": "file:///C:/Users/Administrator/.prisir/store/ext-app-launcher-0.1.0.tgz",
+      "sha256": "852b768cf019a69fe5e56bac72ad3c96aedb3ad3a0b19c7573fb54680d96d7bf",
+      "size_kb": 3,
+      "permissions": [
+        "ai.invoke.command:app.run",
+        "ai.invoke.command:app.open_url",
+        "ai.invoke.command:app.open_path",
+        "ai.invoke.command:app.recent",
+        "shell.exec"
+      ],
+      "tags": [
+        "automation",
+        "launcher",
+        "windows",
+        "official"
+      ],
+      "stars": 17,
+      "downloads": 243,
+      "updated": "2026-09-20",
+      "auto_enable": true
+    },
+    {
+      "id": "keystroke-emit",
+      "name": "按键模拟",
+      "version": "0.1.0",
+      "author": "PrisirAI 官方",
+      "desc": "SendInput 模拟键盘(文本/组合键)+ 鼠标点击(x,y)。⚠ 高权限",
+      "long_desc": "**Windows only**(keybd_event / mouse_event)。\n\n**命令**:\n- \n-  — 例如 \"Ctrl+C\" / \"Alt+Tab\"\n- \n- \n\n⚠ 可能被 UIPI/焦点限制拒;每次调用都打日志便于审计。",
+      "tarball_url": "file:///C:/Users/Administrator/.prisir/store/ext-keystroke-emit-0.1.0.tgz",
+      "sha256": "27073e683c1ed0c5bb945c7423f95e4eae63715a6ef725eb11b577eaaaaae4fc",
+      "size_kb": 3,
+      "permissions": [
+        "ai.invoke.command:key.type",
+        "ai.invoke.command:key.hotkey",
+        "ai.invoke.command:key.click",
+        "ai.invoke.command:key.press",
+        "shell.exec"
+      ],
+      "tags": [
+        "automation",
+        "input",
+        "windows",
+        "high-risk",
+        "official"
+      ],
+      "stars": 11,
+      "downloads": 167,
+      "updated": "2026-09-20"
+    },
+    {
+      "id": "scheduled-task",
+      "name": "计划任务",
+      "version": "0.1.0",
+      "author": "PrisirAI 官方",
+      "desc": "schtasks 包装:创建/查询/删除/启停计划任务(系统自带,无需第三方软件)",
+      "long_desc": "**Windows only**(系统自带 schtasks.exe,免装任何第三方)。\n\n**命令**:\n- \n- \n- \n- \n- ",
+      "tarball_url": "file:///C:/Users/Administrator/.prisir/store/ext-scheduled-task-0.1.0.tgz",
+      "sha256": "41306f7a60275718e7d84e04b3b404492fbdf8d390727fcf2ea62d2f8f3f19a8",
+      "size_kb": 2,
+      "permissions": [
+        "ai.invoke.command:sched.list",
+        "ai.invoke.command:sched.create",
+        "ai.invoke.command:sched.delete",
+        "ai.invoke.command:sched.run",
+        "ai.invoke.command:sched.get",
+        "shell.exec"
+      ],
+      "tags": [
+        "automation",
+        "scheduler",
+        "windows",
+        "official"
+      ],
+      "stars": 15,
+      "downloads": 221,
+      "updated": "2026-09-20"
+    },
+    {
+      "id": "http-request",
+      "name": "HTTP 请求",
+      "version": "0.1.0",
+      "author": "PrisirAI 官方",
+      "desc": "REST 调用(GET/POST/PUT/DELETE/PATCH)+ JSON + 超时 + 域名白名单 + SSRF 防身",
+      "long_desc": "**安全**:默认拒绝(域名必须显式 add 进白名单);自动拒 localhost/127.x/10.x/192.168.x/172.16-31.x。\n\n**命令**:\n- \n- ",
+      "tarball_url": "file:///C:/Users/Administrator/.prisir/store/ext-http-request-0.1.0.tgz",
+      "sha256": "35a3f595e1306ce0122c1cc8df54ce6282caa64ef1cf6e687c1e723ee94b3d5c",
+      "size_kb": 2,
+      "permissions": [
+        "ai.invoke.command:http.fetch",
+        "ai.invoke.command:http.whitelist",
+        "network.https"
+      ],
+      "tags": [
+        "automation",
+        "network",
+        "rest",
+        "official"
+      ],
+      "stars": 13,
+      "downloads": 185,
+      "updated": "2026-09-20"
+    },
+    {
+      "id": "system-watchdog",
+      "name": "系统调度守护",
+      "version": "0.1.0",
+      "author": "PrisirAI 官方",
+      "desc": "ProBalance/Disallowed/LowMem 后台巡检,后台守护 PrisirAI 运行期稳定",
+      "long_desc": "**守护 PrisirAI 启动即生效** — 纯 Windows PowerShell + Win32 API,免装任何第三方软件。\n\n**核心规则**(可在 watch.set_rules 调整):\n- **ProBalance**:后台进程 CPU 持续 > 阈值 → 自动 BelowNormal 优先级\n- **Disallowed**:黑名单进程出现 → 立即 Stop-Process -Force\n- **LowMem**:总内存 ≥ 95% → 按 WorkingSet 降序 kill 非系统、非前台进程\n- **IdleSaver**:空闲 N 分钟 → 切电源节能;恢复输入 → 切平衡\n\n**命令**:\n- watch.start { interval_sec?, rules? }\n- watch.stop\n- watch.status\n- watch.run_once\n- watch.set_rules { disallowed?, low_mem_mb?, idle_min?, foreground_throttle?, cpu_threshold? }\n- watch.tail_log { limit? }",
+      "tarball_url": "file:///C:/Users/Administrator/.prisir/store/ext-system-watchdog-0.1.0.tgz",
+      "sha256": "e0e844a0c794bab3d2e6287f89a5ed9d99a391bf6dba93d7a24edfe3812a715b",
+      "size_kb": 5,
+      "permissions": [
+        "ai.invoke.command:watch.start",
+        "ai.invoke.command:watch.stop",
+        "ai.invoke.command:watch.status",
+        "ai.invoke.command:watch.run_once",
+        "ai.invoke.command:watch.set_rules",
+        "ai.invoke.command:watch.tail_log",
+        "shell.exec"
+      ],
+      "tags": [
+        "automation",
+        "system",
+        "scheduler",
+        "process",
+        "windows",
+        "official"
+      ],
+      "stars": 0,
+      "downloads": 0,
+      "updated": "2026-09-20",
+      "auto_enable": true
+    },
+    {
+      "id": "task-runner",
+      "name": "任务调度",
+      "desc": "DAG 任务编排 + 手动/定时触发 — 串起其他扩展(Node node:sqlite 零外部依赖)",
+      "long_desc": "把多个扩展的 registerCommand 串成 DAG 任务链。\n\n**核心能力**:\n- DAG 拓扑排序,无依赖节点并发执行\n- 失败策略:默认 fail-fast(节点失败立即停)\n- 触发:手动 `task.run` + 定时 `task.schedule.start`\n- 跨扩展调用:SDK `invokeExt(extId, method, params)` 主进程转发\n- 执行历史:`runs` 表,`task.runs` 查最近执行\n\n**调度**:\n- `every N m` — 每 N 分钟\n- `daily HH:MM` — 每天指定时间\n- `onstart` — 启动时\n\n**命令**:\n- `task.upsert { name, dag, trigger?, schedule? }`\n- `task.run { id, wait? }`\n- `task.runs { task_id?, limit? }`\n- `task.schedule.start { interval_sec? }`\n- `task.schedule.stop`\n\n**DAG 示例**(启动开发环境):\n```json\n{\n  \"A\": {\"ext\":\"system-watchdog\",\"method\":\"watch.start\",\"params\":{\"rules\":{}}},\n  \"B\": {\"ext\":\"app-launcher\",\"method\":\"app.run\",\"params\":{\"exe\":\"code.exe\"},\"needs\":[\"A\"]},\n  \"C\": {\"ext\":\"app-launcher\",\"method\":\"app.run\",\"params\":{\"exe\":\"chrome.exe\"},\"needs\":[\"B\"]}\n}\n```\n\n**存储**:`~/.prisir/extensions/task-runner/state.db` (SQLite,独立)。",
+      "version": "0.1.0",
+      "author": "PrisirAI 官方",
+      "tarball_url": "file:///C:/Users/Administrator/.prisir/store/ext-task-runner-0.1.0.tgz",
+      "sha256": "1de2fcc1d0f7b0c42ecdbfbd104f15ff03bbfdcf3212323611f0c63a1da75df7",
+      "size_kb": 5,
+      "permissions": [
+        "ai.invoke.command:task.upsert",
+        "ai.invoke.command:task.list",
+        "ai.invoke.command:task.get",
+        "ai.invoke.command:task.delete",
+        "ai.invoke.command:task.run",
+        "ai.invoke.command:task.runs",
+        "ai.invoke.command:task.schedule.start",
+        "ai.invoke.command:task.schedule.stop",
+        "ai.invoke.command:task.schedule.status"
+      ],
+      "tags": [
+        "task",
+        "scheduler",
+        "dag",
+        "official"
+      ],
+      "stars": 0,
+      "downloads": 0,
+      "updated": "2026-09-20",
+      "auto_enable": true
+    }
+  ]
+}

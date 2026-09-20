@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prisir · 语伴 | 语音陪伴</title>
+<link rel="stylesheet" href="/static/guohua-theme.css">
+<style>
+  :root{
+    --bg:#f6f1e7;--panel:#fbf8f1;--line:#d8cfbc;--txt:#2f3a34;--dim:#8a968e;
+    --acc:#4a5c52;--ok:#3fb27f;--warn:#e0a34a;--bad:#b23a30;--gold:#d6b26c;
+    --me:#b23a30;--them:#fbf8f1;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    background:var(--bg) url('/static/assets/guohua_bg_panel.png') center bottom/cover fixed no-repeat;
+    color:var(--txt);font:15px/1.5 -apple-system,"Segoe UI",Roboto,"Microsoft YaHei",sans-serif;
+    display:flex;flex-direction:column;overflow:hidden;
+  }
+  /* ============ Header(头像 + 计时 + 控制) ============ */
+  header{
+    padding:14px 18px;border-bottom:1px solid var(--line);
+    display:flex;align-items:center;gap:14px;
+    background:rgba(251,248,241,.85);backdrop-filter:blur(6px);
+  }
+  .avatar{
+    width:42px;height:42px;border-radius:50%;
+    background:linear-gradient(135deg,var(--acc),var(--gold));
+    display:flex;align-items:center;justify-content:center;
+    color:var(--panel);font-size:20px;font-weight:600;
+    box-shadow:0 1px 4px rgba(74,92,82,.3);
+    flex-shrink:0;
+  }
+  .header-info{flex:1;min-width:0}
+  .header-info .name{font-size:16px;font-weight:600;color:var(--acc)}
+  .header-info .status{font-size:12px;color:var(--dim);display:flex;gap:8px;align-items:center}
+  .status-dot{width:8px;height:8px;border-radius:50%;background:var(--ok);display:inline-block}
+  .status-dot.thinking{background:var(--warn);animation:pulse 1s infinite}
+  .status-dot.speaking{background:var(--me);animation:pulse .4s infinite}
+  .status-dot.disconnected{background:var(--bad)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  .timer{font:600 14px monospace;color:var(--acc);padding:4px 9px;
+    background:var(--panel);border:1px solid var(--line);border-radius:7px}
+  .waveform{
+    display:inline-flex;gap:2px;align-items:center;height:18px;
+    margin:0 8px;
+  }
+  .waveform span{
+    display:inline-block;width:3px;background:var(--acc);border-radius:2px;
+    height:30%;transition:height .12s ease;
+  }
+  .waveform.speaking span{animation:wave .9s ease-in-out infinite}
+  .waveform.speaking span:nth-child(2){animation-delay:.1s}
+  .waveform.speaking span:nth-child(3){animation-delay:.2s}
+  .waveform.speaking span:nth-child(4){animation-delay:.3s}
+  .waveform.speaking span:nth-child(5){animation-delay:.4s}
+  @keyframes wave{0%,100%{height:30%}50%{height:100%}}
+  .hdr-btn{
+    background:var(--panel);border:1px solid var(--line);color:var(--txt);
+    padding:7px 11px;border-radius:8px;cursor:pointer;font-size:13px;
+  }
+  .hdr-btn:hover{border-color:var(--acc);color:var(--acc)}
+  .hdr-btn.danger{border-color:var(--bad);color:var(--bad)}
+  .hdr-btn.danger:hover{background:var(--bad);color:var(--panel)}
+
+  /* ============ Continue Card(续接) ============ */
+  #continueCard{
+    margin:12px 18px 0;padding:12px 16px;
+    background:rgba(74,92,82,.06);border:1px dashed var(--line);
+    border-radius:10px;font-size:13px;color:var(--dim);
+  }
+  #continueCard .ctitle{font-weight:600;color:var(--acc);margin-bottom:6px}
+  #continueCard .cprev{padding:3px 0}
+  #continueCard .cprev .r{font-size:11px;padding:1px 6px;border-radius:6px;margin-right:5px}
+  #continueCard .cprev .r.user{background:var(--me);color:#fbf6ec}
+  #continueCard .cprev .r.assist{background:var(--acc);color:#fbf6ec}
+  #continueCard .cdelta{display:inline-block;margin-left:6px;font-size:11px;color:var(--dim)}
+  #continueCard .cactions{margin-top:8px;display:flex;gap:6px}
+  #continueCard .cactions button{padding:5px 10px;font-size:12px;border-radius:7px;cursor:pointer}
+  #continueCard .cactions .yes{background:var(--acc);color:#fbf6ec;border:none}
+  #continueCard .cactions .no{background:var(--panel);border:1px solid var(--line);color:var(--txt)}
+
+  /* ============ 字幕流(msgs) ============ */
+  #msgs{
+    flex:1;overflow-y:auto;padding:18px;
+    display:flex;flex-direction:column;gap:8px;
+    scroll-behavior:smooth;
+  }
+  .msg{max-width:78%;padding:10px 14px;font-size:15px;line-height:1.5;
+    white-space:pre-wrap;word-break:break-word;box-shadow:0 1px 3px rgba(74,92,82,.15)}
+  /* 我:右侧,印章红 */
+  .msg.me{align-self:flex-end;background:linear-gradient(135deg,#b23a30,#9c3229);
+    color:#fbf6ec;border-radius:18px 18px 4px 18px}
+  /* AI:左侧,宣纸 + 墨绿左边框 */
+  .msg.them{align-self:flex-start;background:var(--them);color:#2f3a34;
+    border:1px solid var(--line);border-left:3px solid var(--acc);
+    border-radius:18px 18px 18px 4px}
+  .msg.them.partial{opacity:.7;font-style:italic}
+  .msg .src{font-size:10px;color:var(--dim);margin-top:3px;opacity:.7}
+  .msg.me .src{color:rgba(251,246,236,.6)}
+  .sys{align-self:center;font-size:12px;color:var(--dim);
+    padding:4px 10px;background:rgba(74,92,82,.06);border-radius:11px}
+
+  /* ============ Composer(底部输入) ============ */
+  #composer{display:flex;gap:9px;padding:13px 18px;border-top:1px solid var(--line);
+    background:rgba(251,248,241,.85);align-items:flex-end}
+  #in{flex:1;background:var(--panel);border:1px solid var(--line);color:var(--txt);
+    border-radius:9px;padding:10px 12px;outline:none;resize:none;
+    font:15px/1.4 inherit;max-height:120px;min-height:40px}
+  #in:focus{border-color:var(--acc)}
+  .send, .mic{
+    background:var(--acc);border:none;color:#fbf6ec;
+    padding:0 16px;border-radius:9px;cursor:pointer;font-weight:600;
+    display:flex;align-items:center;gap:6px;height:40px;
+  }
+  .send:hover{background:#3a4a42}
+  .mic{background:var(--gold);font-size:13px;padding:0 12px}
+  .mic.recording{background:var(--bad);animation:mic-pulse 1.2s infinite}
+  @keyframes mic-pulse{0%,100%{box-shadow:0 0 0 0 rgba(178,58,48,.5)}50%{box-shadow:0 0 0 6px rgba(178,58,48,0)}}
+  .mic:disabled{opacity:.5;cursor:not-allowed}
+
+  /* ============ Sessions panel(侧滑历史) ============ */
+  #sessionsPanel{position:fixed;top:0;right:-360px;width:340px;height:100vh;
+    background:var(--panel);border-left:1px solid var(--line);
+    transition:right .28s ease;padding:18px;overflow-y:auto;z-index:50;
+    box-shadow:-2px 0 8px rgba(74,92,82,.15)}
+  #sessionsPanel.open{right:0}
+  #sessionsPanel h2{font-size:16px;margin:0 0 12px;color:var(--acc)}
+  #sessionsPanel .sessitem{
+    padding:10px 12px;border:1px solid var(--line);border-radius:8px;
+    margin-bottom:8px;cursor:pointer;background:#fbf6ec;
+  }
+  #sessionsPanel .sessitem:hover{border-color:var(--acc)}
+  #sessionsPanel .sessitem .title{font-weight:600;font-size:13px}
+  #sessionsPanel .sessitem .preview{font-size:11px;color:var(--dim);
+    margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #sessionsPanel .sessitem .meta{font-size:10px;color:var(--dim);margin-top:3px}
+
+  /* ============ Settings 面板(M3.10) ============ */
+  #settingsPanel{position:fixed;top:0;right:-460px;width:440px;height:100vh;
+    background:var(--panel);border-left:1px solid var(--line);
+    transition:right .28s ease;padding:18px;overflow-y:auto;z-index:60;
+    box-shadow:-2px 0 8px rgba(74,92,82,.15)}
+  #settingsPanel.open{right:0}
+  #settingsPanel h2{font-size:16px;margin:0 0 10px;color:var(--acc);
+    display:flex;align-items:center;justify-content:space-between}
+  #settingsPanel .grp{margin-bottom:14px;padding-bottom:10px;
+    border-bottom:1px dashed var(--line)}
+  #settingsPanel label{display:block;font-size:12px;color:var(--dim);
+    margin-top:8px;margin-bottom:2px}
+  #settingsPanel input,#settingsPanel select{
+    width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid var(--line);
+    border-radius:6px;background:var(--bg);color:var(--txt);font-size:13px;
+    font-family:inherit}
+  #settingsPanel input:focus,#settingsPanel select:focus{
+    border-color:var(--acc);outline:none}
+  #settingsPanel .row{display:flex;gap:6px;margin-top:12px}
+  #settingsPanel .row button{flex:1;padding:8px 10px;border-radius:7px;
+    border:1px solid var(--line);background:var(--bg);color:var(--txt);
+    cursor:pointer;font-size:13px}
+  #settingsPanel .row .primary{background:var(--acc);color:#fbf6ec;border-color:var(--acc)}
+  #settingsPanel .row .primary:hover{background:#3a4a42}
+  #settingsPanel .test-out{margin-top:10px;font-size:12px;color:var(--dim);
+    white-space:pre-wrap;word-break:break-all}
+  #settingsPanel .test-out.ok{color:var(--ok)}
+  #settingsPanel .test-out.bad{color:var(--bad)}
+  #settingsPanel .close-x{background:none;border:none;font-size:18px;
+    color:var(--dim);cursor:pointer;padding:0 4px}
+  #settingsPanel .close-x:hover{color:var(--acc)}
+  #emojiPanel{
+    position:absolute;bottom:60px;right:18px;
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:8px;display:none;width:300px;height:220px;
+    box-shadow:0 4px 12px rgba(74,92,82,.2);
+    flex-direction:column;
+  }
+  #emojiPanel.open{display:flex}
+  #emojiTabs{display:flex;gap:4px;margin-bottom:6px;border-bottom:1px solid var(--line)}
+  #emojiTabs button{background:none;border:none;padding:5px 9px;cursor:pointer;
+    font-size:13px;border-radius:6px 6px 0 0;color:var(--dim)}
+  #emojiTabs button.active{background:var(--acc);color:#fbf6ec}
+  #emojiList{flex:1;overflow-y:auto;font-size:18px;line-height:1.7;
+    word-break:break-all;cursor:pointer}
+  #emojiList span{display:inline-block;padding:2px 4px;border-radius:5px}
+  #emojiList span:hover{background:var(--bg)}
+
+  /* ============ 空状态 ============ */
+  #empty{flex:1;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;color:var(--dim);gap:14px;text-align:center}
+  #empty .big{font-size:18px;color:var(--acc);font-weight:600}
+
+  /* ============ 音乐 UI 已与语伴完全解耦(M3.29.8) ============
+     此处不再有 #musicLaunchToast / #music-bar 的样式。
+     音乐入口在 PrisirAI Tauri 托盘菜单。
+============================================================ */
+</style>
+</head>
+<body>
+<header>
+  <div class="avatar" id="avatar">语</div>
+  <div class="header-info">
+    <div class="name">Prisir 语伴 <span class="timer" id="timer">00:00</span></div>
+    <div class="status">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusTxt">未启动</span>
+      <span class="waveform" id="waveform">
+        <span></span><span></span><span></span><span></span><span></span>
+      </span>
+    </div>
+  </div>
+  <button class="hdr-btn primary" id="btnStart" title="启动语伴会话">▶ 启动</button>
+  <button class="hdr-btn" id="btnHistory" title="历史对话">📂 历史</button>
+  <button class="hdr-btn" id="btnTts" title="切换语音朗读">🔊</button>
+  <button class="hdr-btn" id="btnSettings" title="设置(ASR 厂商)">⚙ 设置</button>
+  <button class="hdr-btn btn-dispatch" id="btnDispatch" title="派发对话上下文到 PrisirAI">📤 派发</button>
+  <span class="dispatch-badge" id="dispatchBadge" style="display:none">0</span>
+  <button class="hdr-btn" id="btnEmoji" title="emoji 面板">😀</button>
+</header>
+
+<div id="continueCard" style="display:none"></div>
+
+<div id="msgs">
+  <div id="empty">
+    <div class="big">先点「▶ 启动」开始会话 ☎️</div>
+    <div>计时仅在会话期间累加,未启动不计费。</div>
+  </div>
+</div>
+
+<div id="composer" style="position:relative">
+  <textarea id="in" placeholder="说点什么…(Enter 发送,Shift+Enter 换行)" rows="1"></textarea>
+  <button class="mic" id="btnMic" title="单击开说,再单击停(M3.3 接 ASR)">🎤 语音</button>
+  <button class="send" id="btnSend">发送</button>
+
+  <div id="emojiPanel">
+    <div id="emojiTabs">
+      <button data-grp="0" class="active">😀</button>
+      <button data-grp="1">👋</button>
+      <button data-grp="2">📦</button>
+      <button data-grp="3">❤</button>
+    </div>
+    <div id="emojiList"></div>
+  </div>
+</div>
+
+<div id="sessionsPanel">
+  <h2>📂 最近对话</h2>
+  <div id="sessionsList"></div>
+</div>
+
+<div id="settingsPanel">
+  <h2>
+    <span>⚙ 设置</span>
+    <button class="close-x" id="btnSettingsClose">✕</button>
+  </h2>
+
+  <!-- M3.29.9 — 段 1:ASR 厂商(默认展开) -->
+  <details open class="grp">
+    <summary style="font-size:13px;color:var(--acc);font-weight:600;cursor:pointer">
+      🎙 ASR 厂商(语音转写)
+    </summary>
+    <div style="padding-top:8px">
+      <label>当前 ASR Provider</label>
+      <select id="selProvider"></select>
+      <div id="providerFields"></div>
+      <div class="row">
+        <button id="btnTest">测试连接</button>
+        <button class="primary" id="btnSave">保存</button>
+      </div>
+      <div class="test-out" id="testOut"></div>
+    </div>
+  </details>
+
+  <!-- M3.29.9 — 段 2:上下文注入(默认收起)— 原 m323 -->
+  <details class="grp m323-section">
+    <summary style="font-size:13px;color:var(--acc);font-weight:600;cursor:pointer">
+      🧠 上下文注入(屏 + 知识库)
+    </summary>
+    <div style="padding-top:8px">
+      <div style="font-size:11px;color:var(--dim);margin-bottom:8px">
+        你说话时,语伴可在回答前抓取「当前屏幕 UI 树」或「本地知识库」作为事实背景。<br>
+        <b style="color:var(--bad)">⚠ 开启会读取你机器上的内容</b>,仅当你主动开启才会生效,默认全关。
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+        <input type="checkbox" id="m323ScreenToggle"> 读屏(Windows UI Automation Tree)
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:4px">
+        <input type="checkbox" id="m323KnowledgeToggle"> 本地知识库(FTS5 索引,top-3)
+      </label>
+      <label style="margin-top:8px">知识库根目录</label>
+      <input type="text" id="m323FcontentRoot" placeholder="例如 C:/Users/Administrator/Documents/ObsidianVault">
+      <div class="row">
+        <button id="btnM323Save">保存上下文设置</button>
+        <button id="btnM323Rebuild">重建索引</button>
+      </div>
+      <div class="test-out" id="m323Status"></div>
+    </div>
+  </details>
+
+  <!-- M3.29.9 — 段 3:派发联动(默认收起)— 原 m327,移除「派发全部」按钮 -->
+  <details class="grp m327-section">
+    <summary style="font-size:13px;color:var(--acc);font-weight:600;cursor:pointer">
+      📤 派发联动 PrisirAI
+    </summary>
+    <div style="padding-top:8px">
+      <div style="font-size:11px;color:var(--dim);margin-bottom:8px">
+        把对话上下文发到 PrisirAI 主面板,等你看完编辑后再手动发送。<br>
+        <b style="color:var(--bad)">⚠</b> 默认开启;关闭后顶部📤按钮失效、触发词不响应。
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+        <input type="checkbox" id="m327EnableToggle"> 允许派发到 PrisirAI
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-top:4px">
+        <input type="checkbox" id="m327IncludeKnowledgeToggle"> 派发时附带知识库命中(snippet 500 字)
+      </label>
+      <div style="font-size:11px;color:var(--dim);margin-top:6px">
+        触发词:交给 PrisirAI / 派过去 / 派给 PrisirAI / 让 PrisirAI 做
+      </div>
+      <div class="row">
+        <button id="btnM327Save">保存派发设置</button>
+        <button id="btnM327Test">🔌 测试 PrisirAI 连接</button>
+      </div>
+      <div class="test-out" id="m327Status"></div>
+    </div>
+  </details>
+
+  <!-- M3.29.9 — 段 4:高级(默认收起)— PrisirAI URL 改这里 -->
+  <details class="grp m327-advanced-section">
+    <summary style="font-size:13px;color:var(--acc);font-weight:600;cursor:pointer">
+      ⚙ 高级(端口冲突时改)
+    </summary>
+    <div style="padding-top:8px">
+      <div style="font-size:11px;color:var(--dim);margin-bottom:8px">
+        通常不需要改。PrisirAI 默认在 18802 端口。若该端口被其他软件占用,在下面输入新端点。空 = 走 env PRISIRAGENT_URL 或默认值。
+      </div>
+      <label>PrisirAI 端点(完整 URL)</label>
+      <input type="text" id="m327PrisiraiUrl" placeholder="http://127.0.0.1:18802/prisiragent/api/external_inject">
+      <div class="row">
+        <button id="btnM327UrlSave">保存端点</button>
+        <button id="btnM327UrlReset">恢复默认</button>
+      </div>
+      <div class="test-out" id="m327UrlStatus"></div>
+    </div>
+  </details>
+</div>
+
+<!-- M3.24 — permission gate 弹卡(开启屏/知识库时弹,首次必须 confirm) -->
+<div id="m323Confirm" class="m323-confirm" style="display:none">
+  <div class="m323-confirm-mask"></div>
+  <div class="m323-confirm-box">
+    <div class="m323-confirm-title" id="m323ConfirmTitle">⚠ 开启需要授权</div>
+    <div class="m323-confirm-body" id="m323ConfirmBody"></div>
+    <div class="row">
+      <button id="m323ConfirmCancel">取消</button>
+      <button class="primary" id="m323ConfirmOk">我同意,继续开启</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 音乐 UI 已与语伴完全解耦(M3.29.8) ============
+     入口:PrisirAI Tauri 托盘菜单「启动音乐播放器」
+     桌面歌词:Tauri 透明 BrowserWindow
+     此页面不再显示任何音乐 UI。
+============================================================ -->
+
+<script src="/static/app.js"></script>
+</body>
+</html>

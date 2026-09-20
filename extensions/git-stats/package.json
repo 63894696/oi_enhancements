@@ -1,0 +1,19 @@
+{
+  "name": "git-stats",
+  "displayName": "本地 Git 统计",
+  "version": "0.1.0",
+  "description": "git log --numstat / shortlog / 文件变更排行,无需联网,纯 stdlib 子进程调用",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:git.shortlog",
+    "ai.invoke.command:git.numstat",
+    "ai.invoke.command:git.filemv",
+    "shell.exec"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}

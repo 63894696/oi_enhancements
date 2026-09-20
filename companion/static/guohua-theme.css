@@ -1,0 +1,165 @@
+/* guohua-theme.css — shared light ink-painting design tokens.
+   Source palette: 采薇/蒹葭 references (D:\AI生成素材库\视频生成测试).
+   Used by prisiragent_web, SecureDM panel, SecureDM web for a unified light guohua theme. */
+:root {
+  /* base */
+  --gh-paper: #f6f1e7;        /* 宣纸底 */
+  --gh-paper-2: #efe8da;      /* 次底/卡片 */
+  --gh-paper-3: #e7dfce;      /* 边界/分隔 */
+  --gh-surface: #fbf8f1;      /* 浮起表面(消息泡/输入框) */
+
+  /* ink */
+  --gh-ink: #2f3a34;          /* 主文字(浓墨) */
+  --gh-ink-soft: #5b6a61;     /* 次文字 */
+  --gh-ink-faint: #8a968e;    /* 弱化/元信息 */
+  --gh-line: #d8cfbc;         /* 描边 */
+
+  /* accents */
+  --gh-green: #6c7c72;        /* 水墨灰绿(主) */
+  --gh-green-deep: #4a5c52;   /* 深绿(主按钮/强调) */
+  --gh-gold: #d6b26c;         /* 暖金点缀 */
+  --gh-seal: #b23a30;         /* 印章赭红(用户气泡/标记) */
+  --gh-seal-deep: #9c3229;
+
+  /* functional */
+  --gh-user-bg: #b23a30;      /* 用户气泡(印章红) */
+  --gh-user-fg: #fbf6ec;
+  --gh-agent-bg: #fbf8f1;     /* agent 气泡 */
+  --gh-focus: #4a5c52;
+
+  --gh-radius: 10px;
+  --gh-radius-lg: 14px;
+  --gh-shadow: 0 1px 3px rgba(74, 92, 82, 0.12);
+  --gh-font: 'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif;
+}
+
+/* Optional guohua backdrop; element opts in via .gh-backdrop. */
+.gh-backdrop {
+  background-color: var(--gh-paper);
+  background-image: var(--gh-bg-image, none);
+  background-size: cover;
+  background-position: center bottom;
+  background-attachment: fixed;
+}
+
+/* M3.24 — permission gate 弹卡 */
+.m323-confirm {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.m323-confirm-mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+}
+.m323-confirm-box {
+  position: relative;
+  background: var(--gh-paper, #fbf6ec);
+  border-radius: 10px;
+  padding: 20px 22px;
+  width: 380px;
+  max-width: 90vw;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--acc, #4d6b5b);
+}
+.m323-confirm-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--bad, #b65c5c);
+  margin-bottom: 10px;
+}
+.m323-confirm-body {
+  font-size: 13px;
+  color: var(--dim, #6b6b6b);
+  line-height: 1.6;
+  margin-bottom: 14px;
+}
+.m323-confirm-body b {
+  color: var(--bad, #b65c5c);
+}
+.m323-section input[type="checkbox"] {
+  width: auto;
+  margin-right: 4px;
+}
+
+/* M3.25 — 知识库引用徽标(「📎 来源 N」+ 展开 hit 列表)*/
+.kb-hits {
+  margin-top: 4px;
+  text-align: left;
+}
+.kb-badge {
+  font-size: 11px;
+  color: var(--acc, #6b8aab);
+  background: transparent;
+  border: 1px solid var(--acc, #6b8aab);
+  border-radius: 10px;
+  padding: 1px 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.kb-badge:hover {
+  background: rgba(107, 138, 171, 0.1);
+}
+.kb-list {
+  list-style: none;
+  padding: 0;
+  margin: 4px 0 0 0;
+  border-left: 2px solid var(--acc, #6b8aab);
+}
+.kb-hit {
+  padding: 4px 8px;
+  margin: 2px 0;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+.kb-hit:hover {
+  background: rgba(107, 138, 171, 0.15);
+}
+.kb-hit-title {
+  font-size: 12px;
+  color: var(--acc, #6b8aab);
+  font-weight: 600;
+  word-break: break-all;
+}
+.kb-hit-snip {
+  font-size: 11px;
+  color: var(--dim, #6b6b6b);
+  margin-top: 2px;
+  line-height: 1.4;
+  max-height: 3.2em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ============ M3.27 派发 ============ */
+.btn-dispatch {
+  background: var(--acc, #4a5c52);
+  color: #fbf6ec;
+  border: none;
+}
+.btn-dispatch:hover {
+  background: #3a4a42;
+}
+.dispatch-badge {
+  display: inline-block;
+  background: var(--bad, #b23a30);
+  color: #fbf6ec;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 9px;
+  margin-left: -4px;
+}
+.dispatch-badge.flash {
+  animation: badge-flash 1.2s ease-out;
+}
+@keyframes badge-flash {
+  0% { transform: scale(1.4); }
+  100% { transform: scale(1); }
+}

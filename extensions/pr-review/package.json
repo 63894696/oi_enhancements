@@ -1,0 +1,19 @@
+{
+  "name": "pr-review",
+  "displayName": "PR Diff 评论辅助",
+  "version": "0.1.0",
+  "description": "把 git diff 切成 hunks + 套用审查模板(可配置)+ 给出建议清单(纯本地,无网络)",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:pr.diff",
+    "ai.invoke.command:pr.hunks",
+    "ai.invoke.command:pr.checklist",
+    "shell.exec"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}

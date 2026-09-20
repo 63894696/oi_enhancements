@@ -1,0 +1,22 @@
+{
+  "name": "system-watchdog",
+  "displayName": "系统调度守护",
+  "version": "0.1.0",
+  "description": "ProBalance/Disallowed/LowMem/IdleSaver 后台巡检 — 替代 Process Lasso 核心能力",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:watch.start",
+    "ai.invoke.command:watch.stop",
+    "ai.invoke.command:watch.status",
+    "ai.invoke.command:watch.run_once",
+    "ai.invoke.command:watch.set_rules",
+    "ai.invoke.command:watch.tail_log",
+    "shell.exec"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}

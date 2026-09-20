@@ -1,0 +1,20 @@
+{
+  "name": "scheduled-task",
+  "displayName": "计划任务",
+  "version": "0.1.0",
+  "description": "Windows schtasks 包装:创建/查询/删除/启停计划任务(等效 zTasker 定时)",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:sched.list",
+    "ai.invoke.command:sched.create",
+    "ai.invoke.command:sched.delete",
+    "ai.invoke.command:sched.run",
+    "ai.invoke.command:sched.get"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}

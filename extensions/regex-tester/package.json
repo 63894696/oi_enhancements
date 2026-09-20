@@ -1,0 +1,18 @@
+{
+  "name": "regex-tester",
+  "displayName": "正则测试器",
+  "version": "0.1.0",
+  "description": "实时正则测试 + match groups + named groups + replace 预览 + 常用正则库(邮箱/手机号/URL/IPv4 等)",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:regex.test",
+    "ai.invoke.command:regex.replace",
+    "ai.invoke.command:regex.library"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}

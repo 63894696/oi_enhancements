@@ -1,0 +1,20 @@
+{
+  "name": "todo",
+  "displayName": "待办事项",
+  "version": "0.1.0",
+  "description": "本地 JSON 待办(优先级 / 截止 / 标签)+ 提醒(简易)",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:todo.add",
+    "ai.invoke.command:todo.list",
+    "ai.invoke.command:todo.done",
+    "ai.invoke.command:todo.remove",
+    "ai.invoke.command:todo.update"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}

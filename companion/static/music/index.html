@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PrisirAI 音乐</title>
+  <link rel="stylesheet" href="/music-static/app.css">
+</head>
+<body>
+  <!-- 顶部状态条 -->
+  <header id="topbar">
+    <div class="brand">🎵 PrisirAI 音乐</div>
+    <div class="search-wrap">
+      <input id="search-input" type="text" placeholder="搜索本地曲库(留空可让 agent 搜)">
+      <button id="search-btn">搜索</button>
+    </div>
+    <div class="health" id="health-tag" title="LX Desktop 状态">
+      <span class="dot" id="lx-dot">⚪</span> <span id="lx-text">探测中</span>
+    </div>
+  </header>
+
+  <!-- 主区:左队列 + 中控制条 + 右歌词折叠 -->
+  <main id="main">
+    <!-- 左:队列 -->
+    <aside id="queue-pane">
+      <h3>队列</h3>
+      <ul id="queue-list"></ul>
+      <div class="hint">agent 调用 /api/agent/intent 即可控制(无设置 UI)</div>
+    </aside>
+
+    <!-- 中:当前曲目 + 控制 -->
+    <section id="now-pane">
+      <div id="cover-wrap">
+        <div class="cover">🎶</div>
+        <div class="title" id="cur-title">未播放</div>
+        <div class="artist" id="cur-artist">—</div>
+      </div>
+      <div class="progress-row">
+        <span id="progress-time">0:00</span>
+        <progress id="progress" value="0" max="100"></progress>
+        <span id="progress-duration">0:00</span>
+      </div>
+      <div class="ctrl-row">
+        <button id="prev-btn" title="上一首">⏮</button>
+        <button id="play-btn" title="播放/暂停">▶</button>
+        <button id="next-btn" title="下一首">⏭</button>
+        <button id="stop-btn" title="停止">⏹</button>
+      </div>
+      <audio id="audio" preload="auto"></audio>
+    </section>
+
+    <!-- 右:折叠歌词区(默认折叠) -->
+    <aside id="lyric-pane" data-collapsed="true">
+      <div class="lyric-head" id="lyric-toggle">
+        <span id="lyric-title">歌词</span>
+        <span id="lyric-mode-tag"></span>
+        <span id="lyric-toggle-icon">▸</span>
+      </div>
+      <div class="lyric-body" id="lyric-body"></div>
+    </aside>
+  </main>
+
+  <script src="/music-static/app.js"></script>
+</body>
+</html>

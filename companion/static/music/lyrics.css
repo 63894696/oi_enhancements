@@ -1,0 +1,113 @@
+/* M3.29.3 桌面歌词 — 透明 + 可拖动 + 永远最上 + 国画主题
+ *
+ * 配色变量由 ws lyric_cfg 推送覆盖
+ * Tauri 透明窗 + decorations:false → 整窗 HTML5 drag
+ * 字号/颜色/时延 全走 CSS var
+ */
+:root {
+  --lyrics-color: #f6f1e7;
+  --lyrics-font-size: 32px;
+  --lyrics-opacity: 0.85;
+  --lyrics-stroke: rgba(31, 27, 22, 0.55);
+  --lyrics-active-gradient: linear-gradient(90deg, transparent, #c14d3a, transparent);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0; padding: 0;
+  width: 100vw;
+  height: 100vh;
+  background: transparent !important;
+  font-family: "Noto Serif CJK SC", "Microsoft YaHei", serif;
+  color: var(--lyrics-color);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* 顶部 6px 拖动条 — Tauri 透明窗可在此条按下拖动整窗 */
+#drag-bar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 6px;
+  background: transparent;
+  -webkit-app-region: drag;
+  cursor: move;
+  z-index: 10;
+}
+
+/* 主歌词区 */
+#lyrics {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  text-align: center;
+  padding: 16px 24px;
+  opacity: var(--lyrics-opacity);
+  -webkit-app-region: no-drag;
+  /* 拖动条仍可拖 */
+}
+
+#lyrics .line {
+  opacity: 0.32;
+  font-size: var(--lyrics-font-size);
+  font-weight: 400;
+  line-height: 1.6;
+  padding: 4px 0;
+  color: var(--lyrics-color);
+  -webkit-text-stroke: 0.5px var(--lyrics-stroke);
+  transition: opacity 280ms, transform 280ms;
+}
+
+#lyrics .line.active {
+  opacity: 1.0;
+  font-weight: 700;
+  transform: scale(1.06);
+  background: var(--lyrics-active-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: 0;
+}
+
+#lyrics .line.prev, #lyrics .line.next {
+  opacity: 0.55;
+}
+
+#lyrics .empty {
+  font-size: 18px;
+  font-style: italic;
+  opacity: 0.45;
+}
+
+/* 底部元数据条 — 默认隐藏,鼠标移入显示(避免遮挡桌面) */
+#meta {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  height: 22px;
+  padding: 0 12px;
+  display: flex; align-items: center; gap: 12px;
+  font-size: 11px;
+  opacity: 0;
+  background: linear-gradient(0deg, rgba(31,27,22,0.5), transparent);
+  color: #f6f1e7;
+  transition: opacity 280ms;
+  pointer-events: none;
+}
+
+body:hover #meta { opacity: 0.85; }
+
+/* 进度条(底部 1px 横条,可被 lyric_cfg 控制) */
+#lyrics::after {
+  content: "";
+  position: absolute;
+  bottom: 0; left: 0;
+  height: 2px;
+  width: var(--progress, 0%);
+  background: linear-gradient(90deg, #c14d3a, #b08856);
+  transition: width 240ms linear;
+  pointer-events: none;
+}

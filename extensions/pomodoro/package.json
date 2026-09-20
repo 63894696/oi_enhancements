@@ -1,0 +1,19 @@
+{
+  "name": "pomodoro",
+  "displayName": "番茄钟",
+  "version": "0.1.0",
+  "description": "25/5 番茄钟,后台 setInterval 计时 + 状态查询 + 今日完成计数(持久化)",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:pomo.start",
+    "ai.invoke.command:pomo.stop",
+    "ai.invoke.command:pomo.status",
+    "ai.invoke.command:pomo.stats"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "ext-mermaid",
+  "displayName": "设计稿渲染",
+  "version": "0.1.0",
+  "description": "在 AI 对话里检测 mermaid fenced block → 渲染成 editorial-grade SVG 卡片(PrisirAI 品牌令牌)",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:render.mermaid",
+    "ui.inject.card"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}

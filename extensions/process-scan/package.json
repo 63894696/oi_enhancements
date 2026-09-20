@@ -1,0 +1,19 @@
+{
+  "name": "process-scan",
+  "displayName": "进程扫描",
+  "version": "0.1.0",
+  "description": "枚举进程(名/PID/内存/CPU/窗口)+ 按 PID/名 kill(高权限)",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:ps.list",
+    "ai.invoke.command:ps.find",
+    "ai.invoke.command:ps.kill",
+    "shell.exec"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}

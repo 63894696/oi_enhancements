@@ -1,0 +1,14 @@
+{
+  "name": "prisir-lx-runtime",
+  "version": "M3.28-poc-1.0",
+  "description": "M3.28 Phase 1 PoC: jsdom shim for LX Music source protocol (single juhe source)",
+  "private": true,
+  "main": "lx_runtime.js",
+  "scripts": {
+    "start": "node lx_runtime.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.7",
+    "jsdom": "^25.0.1"
+  }
+}

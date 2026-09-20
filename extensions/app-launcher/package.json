@@ -1,0 +1,20 @@
+{
+  "name": "app-launcher",
+  "displayName": "应用启动器",
+  "version": "0.1.0",
+  "description": "启动 exe(传 args / 工作目录 / 窗口模式)+ 打开 URL + explorer 文件路径",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:app.run",
+    "ai.invoke.command:app.open_url",
+    "ai.invoke.command:app.open_path",
+    "ai.invoke.command:app.recent",
+    "shell.exec"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}

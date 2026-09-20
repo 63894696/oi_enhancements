@@ -1,0 +1,17 @@
+{
+  "name": "http-request",
+  "displayName": "HTTP 请求",
+  "version": "0.1.0",
+  "description": "REST 调用(GET/POST/PUT/DELETE/PATCH)+ JSON 头 + 超时 + 域名白名单",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:http.fetch",
+    "ai.invoke.command:http.whitelist"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}

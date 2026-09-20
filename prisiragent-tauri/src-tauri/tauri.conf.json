@@ -1,0 +1,56 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "PrisirAI",
+  "version": "2.7.6",
+  "identifier": "com.prisir.prisirai",
+  "build": {
+    "frontendDist": "./frontend",
+    "devUrl": "http://localhost:18802"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Prisir(湃睿思) AI",
+        "width": 1040,
+        "height": 760,
+        "minWidth": 720,
+        "minHeight": 520,
+        "resizable": true,
+        "fullscreen": false,
+        "visible": false,
+        "backgroundColor": "#f6f1e7"
+      },
+      {
+        "label": "lyrics-window",
+        "title": "PrisirAI 歌词",
+        "width": 720,
+        "height": 180,
+        "minWidth": 320,
+        "minHeight": 120,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": true,
+        "fullscreen": false,
+        "visible": false,
+        "backgroundColor": "#00000000",
+        "url": "http://127.0.0.1:0/lyrics"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "nsis",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

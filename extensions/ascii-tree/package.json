@@ -1,0 +1,19 @@
+{
+  "name": "ascii-tree",
+  "displayName": "ASCII 树",
+  "version": "0.1.0",
+  "description": "目录树 / JSON / 缩进文本 → 树形字符可视化",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:tree.fromdir",
+    "ai.invoke.command:tree.fromjson",
+    "ai.invoke.command:tree.frompaths",
+    "ai.invoke.command:tree.render"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}

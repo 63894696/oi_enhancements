@@ -1,0 +1,19 @@
+{
+  "name": "keystroke-emit",
+  "displayName": "按键模拟",
+  "version": "0.1.0",
+  "description": "SendInput 模拟键盘输入 + 组合键(Ctrl/Cmd/Alt/Shift)+ 鼠标点击",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:key.type",
+    "ai.invoke.command:key.hotkey",
+    "ai.invoke.command:key.click",
+    "ai.invoke.command:key.press"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}

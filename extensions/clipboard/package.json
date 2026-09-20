@@ -1,0 +1,19 @@
+{
+  "name": "clipboard",
+  "displayName": "剪贴板历史",
+  "version": "0.1.0",
+  "description": "本机剪贴板读写(Windows PowerShell Get-Clipboard / Set-Clipboard)+ 最近 50 条历史",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:clip.read",
+    "ai.invoke.command:clip.write",
+    "ai.invoke.command:clip.history",
+    "shell.exec"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<!--
+  M3.29.3 桌面歌词独立页(Tauri 透明窗加载)
+
+  关键设计:
+  - html/body 背景透明:Tauri BrowserWindow 设 transparent: true + decorations: false 时透出桌面
+  - Tauri 2.x 在 decorations:false 下,可整窗拖动通过 start_dragging API;也可纯 HTML5 drag(本方案用 -webkit-app-region: drag)
+  - 字号/颜色/时延/逐字-逐行全部走 ws /ws/lyrics 推 lyric_cfg,UI 不暴露任何设置入口
+  - 永远最上:Tauri alwaysOnTop: true + 收到 ws lyric_cfg 时 ensure_topmost()
+-->
+<head>
+  <meta charset="utf-8">
+  <title>PrisirAI 歌词</title>
+  <link rel="stylesheet" href="/music-static/lyrics.css">
+</head>
+<body>
+  <div id="drag-bar"></div>
+  <main id="lyrics">
+    <div class="empty">(等待播放...)</div>
+  </main>
+  <footer id="meta">
+    <span id="track-title">—</span>
+    <span id="track-artist">—</span>
+    <span id="conn-tag">⌛</span>
+  </footer>
+  <script src="/music-static/lyrics.js"></script>
+</body>
+</html>

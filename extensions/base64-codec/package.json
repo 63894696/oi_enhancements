@@ -1,0 +1,17 @@
+{
+  "name": "base64-codec",
+  "displayName": "Base64 编解码",
+  "version": "0.1.0",
+  "description": "Base64 / URL-safe Base64 / Hex 编解码,支持 UTF-8 中文 + 检测输入格式自动选模式",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:b64.encode",
+    "ai.invoke.command:b64.decode"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}

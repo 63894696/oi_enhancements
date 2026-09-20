@@ -1,0 +1,8 @@
+{
+  "name": "@prisir/extension-sdk",
+  "version": "0.1.0",
+  "description": "PrisirAI 扩展 SDK — stdio NDJSON JSON-RPC 客户端封装",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT"
+}

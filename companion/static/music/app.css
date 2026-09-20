@@ -1,0 +1,225 @@
+/* PrisirAI 音乐 web 前端 — 国画主题
+ * 色板:
+ *   --gh-paper     米黄纸 #f6f1e7
+ *   --gh-ink       深墨 #1f1b16
+ *   --gh-rim       边框 #d7cdb8
+ *   --gh-red       朱砂 #c14d3a
+ *   --gh-gold      赭金 #b08856
+ *   --gh-green     竹青 #6f8a5d
+ *   --gh-mute      灰 #a89e8c
+ */
+:root {
+  --gh-paper:  #f6f1e7;
+  --gh-paper2: #ece3cf;
+  --gh-ink:    #1f1b16;
+  --gh-rim:    #d7cdb8;
+  --gh-red:    #c14d3a;
+  --gh-gold:   #b08856;
+  --gh-green:  #6f8a5d;
+  --gh-mute:   #a89e8c;
+  --lyrics-color: #f6f1e7;
+  --lyrics-font-size: 28px;
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0; height: 100%;
+  font-family: "Noto Serif CJK SC", "Microsoft YaHei", serif;
+  background: var(--gh-paper);
+  color: var(--gh-ink);
+  overflow: hidden;
+}
+
+/* ============================================================
+ * 顶部
+ * ============================================================ */
+#topbar {
+  height: 56px;
+  display: flex; align-items: center; gap: 16px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--gh-rim);
+  background: var(--gh-paper2);
+}
+.brand { font-size: 18px; font-weight: 600; color: var(--gh-ink); }
+.search-wrap { flex: 1; display: flex; gap: 8px; }
+.search-wrap input {
+  flex: 1; padding: 6px 10px;
+  border: 1px solid var(--gh-rim);
+  background: var(--gh-paper);
+  color: var(--gh-ink);
+  border-radius: 3px;
+  font: inherit;
+}
+.search-wrap button {
+  padding: 6px 14px;
+  background: var(--gh-gold);
+  color: var(--gh-paper);
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font: inherit;
+}
+.search-wrap button:hover { background: #8e6e44; }
+.health {
+  font-size: 13px;
+  color: var(--gh-mute);
+  display: flex; align-items: center; gap: 6px;
+}
+.health .dot { font-size: 16px; }
+
+/* ============================================================
+ * 主区 grid
+ * ============================================================ */
+#main {
+  display: grid;
+  grid-template-columns: 280px 1fr 320px;
+  height: calc(100vh - 56px);
+}
+
+/* 左队列 */
+#queue-pane {
+  border-right: 1px solid var(--gh-rim);
+  padding: 14px;
+  overflow-y: auto;
+}
+#queue-pane h3 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  color: var(--gh-mute);
+  letter-spacing: 1px;
+}
+#queue-list { list-style: none; margin: 0; padding: 0; }
+#queue-list li {
+  padding: 8px 10px;
+  border-bottom: 1px dashed var(--gh-rim);
+  cursor: pointer;
+  font-size: 14px;
+}
+#queue-list li:hover { background: var(--gh-paper2); }
+#queue-list li.cursor {
+  background: linear-gradient(90deg, var(--gh-red), transparent);
+  color: var(--gh-paper);
+  font-weight: 600;
+}
+#queue-list li .t { font-weight: 600; }
+#queue-list li .a { color: var(--gh-mute); font-size: 12px; margin-left: 6px; }
+#queue-list li.cursor .a { color: rgba(255,255,255,0.7); }
+.hint {
+  margin-top: 12px;
+  font-size: 11px;
+  color: var(--gh-mute);
+  font-style: italic;
+}
+
+/* 中当前曲 */
+#now-pane {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 24px;
+  gap: 16px;
+}
+.cover {
+  width: 220px; height: 220px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 100px;
+  background: linear-gradient(135deg, var(--gh-paper2), var(--gh-rim));
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(31,27,22,0.12);
+}
+.title { font-size: 22px; font-weight: 700; margin-top: 8px; }
+.artist { font-size: 14px; color: var(--gh-mute); }
+.progress-row {
+  width: 90%;
+  display: flex; align-items: center; gap: 10px;
+}
+.progress-row progress {
+  flex: 1; height: 6px;
+  -webkit-appearance: none; appearance: none;
+  background: var(--gh-rim);
+}
+.progress-row progress::-webkit-progress-bar {
+  background: var(--gh-rim);
+}
+.progress-row progress::-webkit-progress-value {
+  background: var(--gh-green);
+}
+.progress-row span { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--gh-mute); min-width: 40px; text-align: center; }
+.ctrl-row {
+  display: flex; gap: 14px;
+}
+.ctrl-row button {
+  width: 56px; height: 56px;
+  font-size: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--gh-rim);
+  background: var(--gh-paper);
+  color: var(--gh-ink);
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+.ctrl-row button:hover {
+  background: var(--gh-paper2);
+  transform: scale(1.06);
+}
+#play-btn {
+  background: var(--gh-red);
+  color: var(--gh-paper);
+  border-color: var(--gh-red);
+}
+#play-btn:hover { background: #a23f30; }
+
+/* 右歌词(折叠) */
+#lyric-pane {
+  border-left: 1px solid var(--gh-rim);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  transition: width 0.3s;
+}
+#lyric-pane[data-collapsed="true"] {
+  width: 44px;
+}
+#lyric-pane[data-collapsed="false"] {
+  width: 320px;
+}
+.lyric-head {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--gh-rim);
+  display: flex; align-items: center; justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+  font-size: 14px;
+}
+#lyric-pane[data-collapsed="true"] .lyric-head span:not(#lyric-toggle-icon) {
+  display: none;
+}
+.lyric-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+  font-family: "Noto Serif CJK SC", serif;
+  font-size: var(--lyrics-font-size, 28px);
+  line-height: 1.8;
+  text-align: center;
+  color: var(--lyrics-color, var(--gh-ink));
+}
+#lyric-pane[data-collapsed="true"] .lyric-body { display: none; }
+.lyric-body .line {
+  opacity: 0.35;
+  transition: opacity 250ms, transform 250ms;
+  padding: 6px 0;
+}
+.lyric-body .line.active {
+  opacity: 1.0;
+  font-weight: 600;
+  background: linear-gradient(90deg, transparent, var(--gh-red), transparent);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  transform: scale(1.05);
+}
+.lyric-body .empty {
+  margin-top: 40%;
+  font-size: 14px;
+  color: var(--gh-mute);
+  font-style: italic;
+}

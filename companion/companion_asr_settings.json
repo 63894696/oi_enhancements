@@ -1,0 +1,8 @@
+{
+  "asr_screen_capture": false,
+  "asr_knowledge_lookup": false,
+  "fcontent_root": "",
+  "screen_max_depth": 4,
+  "knowledge_top_k": 3,
+  "context_timeout_sec": 1.5
+}

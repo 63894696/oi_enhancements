@@ -1,0 +1,20 @@
+{
+  "name": "quick-note",
+  "displayName": "快速笔记",
+  "version": "0.1.0",
+  "description": "轻量 Markdown 笔记:add/list/get/search/delete + AI 提到「记一下/笔记」时自动建议创建",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:note.add",
+    "ai.invoke.command:note.list",
+    "ai.invoke.command:note.get",
+    "ai.invoke.command:note.search",
+    "ai.invoke.command:note.delete"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}

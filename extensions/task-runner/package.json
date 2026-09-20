@@ -1,0 +1,24 @@
+{
+  "name": "task-runner",
+  "displayName": "任务调度",
+  "version": "0.1.0",
+  "description": "DAG 任务编排 + 手动/定时触发 + 执行历史(Node node:sqlite 零外部依赖)",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:task.upsert",
+    "ai.invoke.command:task.list",
+    "ai.invoke.command:task.get",
+    "ai.invoke.command:task.delete",
+    "ai.invoke.command:task.run",
+    "ai.invoke.command:task.runs",
+    "ai.invoke.command:task.schedule.start",
+    "ai.invoke.command:task.schedule.stop",
+    "ai.invoke.command:task.schedule.status"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}

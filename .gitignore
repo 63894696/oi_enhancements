@@ -238,3 +238,61 @@ installer/stage/voice/sensevoice-small/tokens.json
 .tmp_extract/oiagent-shell/
 installer/_staging/oiagent-shell/
 installer/_staging/oiagent-shell-clean/
+
+# P2.5+10 (2026-09-20) git add 前置 ignore 规则
+# 大模型权重 / 运行时数据 / 调试残留不进仓
+companion/asr_models/
+companion/_prisir_registry/
+companion/.test_m324/
+companion/test_tts.pcm
+companion/static/*.bak-*
+companion/*.bak-*
+extensions/_store/*.tgz
+prisIr_calendar_data/
+prisIr_calendar/tests/
+docs/_test_media/
+generated/
+skills/audio-card-bark-local/generated/
+.prisir_snapshots/
+.backup/
+@AutomationLog.txt
+window-list/
+prisIragent_calendar/
+test_ignore_dir/
+
+# 调试残留的 m17/m22/m32*/m33*/m329* 阶段测试探针
+# (顶部根规则 /_*.py 已覆盖同名但 *号 形式不同;这里列具体文件名)
+tests/_test_m17_*
+tests/_test_m22_*
+tests/_test_m323_*
+tests/_test_m324_*
+tests/_test_m325_*
+tests/_test_m327_*
+tests/_test_m328_*
+tests/_test_m32_*
+tests/_test_m33_*
+tests/_test_m329_*
+tests/_verify_*
+tests/_check_*
+tests/_page.html
+tests/_composer_*
+tests/screenshots/
+
+# 备份 / 编译规格 / 调试主后端
+*.bak
+*.bak65
+*.bak-*
+prisIr-music-web.spec
+prisiragent_web.py.bak*
+prisIragent_web.py.bak*
+@AutomationLog.txt
+.pitfalls_learner*
+pitfalls_learner.py
+
+# 第三方 LX Music 音源脚本(微信公众号"洛雪科技"署名)
+# 来自 jsdom shim 的源数据,不入仓(版权 + 混淆代码)
+companion/lx_runtime/lx.js
+companion/lx_runtime/lx_main.js
+companion/lx_runtime/juhe.js
+companion/lx_runtime/ikun.js
+
