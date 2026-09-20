@@ -4550,6 +4550,33 @@ _PAGE = r"""<!DOCTYPE html>
   #doc-diff-body .meta { font-size:11.5px; color:var(--gh-ink-soft); margin-bottom:8px; }
   #doc-diff-body pre { margin:0; white-space:pre-wrap; word-break:break-all; }
   .hljs-addition { background:#e6ffec; color:#1a7f37; display:block; }
+  /* P2.5+9:doc-panel diff 左右分栏(A 版本 | B 版本,Monaco 风格降级) */
+  .diff-split { display:grid; grid-template-columns:1fr 12px 1fr; gap:0;
+    border:1px solid var(--gh-line); border-radius:6px; overflow:hidden; min-height:0; }
+  .diff-pane { display:flex; flex-direction:column; min-height:0; background:var(--gh-paper); }
+  .diff-pane-head { padding:4px 10px; font-size:11px; font-weight:600; color:var(--gh-ink-soft);
+    background:var(--gh-surface); border-bottom:1px solid var(--gh-line);
+    font-family:monospace; letter-spacing:.5px; }
+  .diff-pane-left .diff-pane-head { color:#b31d28; }
+  .diff-pane-right .diff-pane-head { color:#1a7f37; }
+  .diff-pane-body { flex:1; overflow:auto; font-family:monospace; font-size:12px; line-height:1.55; }
+  .diff-row { display:flex; align-items:flex-start; gap:6px; padding:0 8px;
+    white-space:pre; min-height:1.55em; }
+  .diff-row .diff-marker { flex:0 0 14px; text-align:center; color:var(--gh-ink-faint);
+    user-select:none; font-weight:600; }
+  .diff-row .diff-text { flex:1; }
+  .diff-row.diff-add { background:#e6ffec; }
+  .diff-row.diff-add .diff-marker { color:#22863a; }
+  .diff-row.diff-del { background:#ffeef0; }
+  .diff-row.diff-del .diff-marker { color:#b31d28; }
+  .diff-row.diff-meta { background:var(--gh-surface); color:var(--gh-ink-soft);
+    font-size:11px; padding:2px 8px; }
+  .diff-row.diff-meta .diff-marker { color:var(--gh-ink-faint); }
+  /* 大 diff 自动折叠(.diff-collapse details/summary) */
+  .diff-collapse { margin:6px 0; }
+  .diff-collapse > summary { cursor:pointer; font-size:12px;
+    color:var(--gh-ink-faint); padding:2px 0; user-select:none; }
+  .diff-collapse > summary:hover { color:var(--gh-ink-soft); }
   /* M3.33 #65:skill 面板卡片样式(参考 doc-timeline 列表) */
   #doc-skills-view { display:flex; flex-direction:column; flex:1; overflow:hidden; }
   #doc-skills-head { display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid var(--gh-line); background:var(--gh-paper); font-size:12px; color:var(--gh-ink-soft); }
@@ -5790,6 +5817,29 @@ function _highlightCodeIn(el) {
   });
 }
 
+// P2.5+9:大 diff 自动折叠(>30 行装进 <details>,避免污染视线)
+const _DIFF_COLLAPSE_THRESHOLD = 30;
+function _wrapLargeDiffIn(el) {
+  if (!el) return;
+  el.querySelectorAll('pre code.language-diff').forEach(code => {
+    const pre = code.parentElement;
+    if (!pre || (pre.parentElement && pre.parentElement.tagName === 'DETAILS')) return;
+    const lineCount = (code.textContent || '').split('\n').length;
+    if (lineCount <= _DIFF_COLLAPSE_THRESHOLD) return;
+    const det = document.createElement('details');
+    det.className = 'diff-collapse';
+    det.style.margin = '6px 0';
+    const sum = document.createElement('summary');
+    sum.style.cursor = 'pointer';
+    sum.style.fontSize = '12px';
+    sum.style.color = 'var(--gh-ink-faint)';
+    sum.textContent = (LANG === 'zh' ? '展开 diff(' : 'Expand diff (') + lineCount + (LANG === 'zh' ? ' 行)' : ' lines)');
+    det.appendChild(sum);
+    pre.parentNode.insertBefore(det, pre);
+    det.appendChild(pre);
+  });
+}
+
 // 壳三件套④:mermaid 图渲染。把容器内 ```mermaid 代码块(pre code.language-mermaid)
 // 转 SVG 内联。renderMd 是同步字符串→字符串,无法等 mermaid 异步,故渲染分两步:
 // addMsg 先 innerHTML 上 md,再 _renderMermaidIn(el) 异步把 mermaid 块换成 SVG。
@@ -5979,6 +6029,7 @@ function addMsg(role, text, followups) {
     d.classList.add('md');
     box.appendChild(d);
     _highlightCodeIn(d);  // ⑤代码高亮(含 diff)
+    _wrapLargeDiffIn(d);  // P2.5+9:大 diff 自动折叠(>30 行装进 <details>)
     _renderMermaidIn(d);  // ④mermaid 图 → SVG(异步,append 后才能量尺寸)
     _renderCaseIn(d);     // 一期②文科 case 故事卡(```case → 暖色叙事卡)
     _renderQuizIn(d);     // ⑥教学 quiz 卡(```quiz JSON → 交互选择题)
@@ -7715,18 +7766,40 @@ async function docLoadDiff() {
       stats.textContent = "+0 -0";
       return;
     }
-    // 自实现红绿 split(不依赖 hljs — cdn 可能异步或被代理挡)
+    // P2.5+9:左右分栏 diff 视图(Monaco-style 降级 — 走 CSS Grid + 同步滚动,不引 CDN)
+    //   左栏 = A 版本(- 行上下文),右栏 = B 版本(+ 行上下文)
     const lines = diffText.split("\n");
-    const parts = lines.map(ln => {
-      const esc = docEscapeHtml(ln);
-      if (ln.startsWith("+++") || ln.startsWith("---") || ln.startsWith("@@")) {
-        return '<span class="hljs-meta">' + esc + '</span>';
-      }
-      if (ln.startsWith("+")) return '<span class="hljs-addition">' + esc + '</span>';
-      if (ln.startsWith("-")) return '<span class="hljs-deletion">' + esc + '</span>';
-      return esc;
-    });
-    body.innerHTML = '<pre><code class="language-diff">' + parts.join("\n") + '</code></pre>';
+    const ctxRows = [];
+    for (const ln of lines) {
+      if (ln.startsWith("+++") || ln.startsWith("---")) continue;
+      if (ln.startsWith("@@")) { ctxRows.push({type:'meta', text: ln}); continue; }
+      if (ln.startsWith("+")) { ctxRows.push({type:'add', text: ln.slice(1)}); continue; }
+      if (ln.startsWith("-")) { ctxRows.push({type:'del', text: ln.slice(1)}); continue; }
+      ctxRows.push({type:'ctx', text: ln});
+    }
+    const esc = docEscapeHtml;
+    const left = ctxRows.filter(r => r.type !== 'add').map(r =>
+      '<div class="diff-row diff-' + r.type + '"><span class="diff-marker">' +
+      (r.type === 'del' ? '-' : r.type === 'meta' ? '@' : ' ') + '</span><span class="diff-text">' +
+      esc(r.text || ' ') + '</span></div>').join('');
+    const right = ctxRows.filter(r => r.type !== 'del').map(r =>
+      '<div class="diff-row diff-' + r.type + '"><span class="diff-marker">' +
+      (r.type === 'add' ? '+' : r.type === 'meta' ? '@' : ' ') + '</span><span class="diff-text">' +
+      esc(r.text || ' ') + '</span></div>').join('');
+    body.innerHTML =
+      '<div class="diff-split">' +
+        '<div class="diff-pane diff-pane-left"><div class="diff-pane-head">A</div>' +
+          '<div class="diff-pane-body">' + left + '</div></div>' +
+        '<div class="diff-pane diff-pane-right"><div class="diff-pane-head">B</div>' +
+          '<div class="diff-pane-body">' + right + '</div></div>' +
+      '</div>';
+    // 同步滚动:任一栏滚,另一栏跟着
+    const lp = body.querySelector('.diff-pane-left .diff-pane-body');
+    const rp = body.querySelector('.diff-pane-right .diff-pane-body');
+    if (lp && rp) {
+      lp.addEventListener('scroll', () => { rp.scrollTop = lp.scrollTop; });
+      rp.addEventListener('scroll', () => { lp.scrollTop = rp.scrollTop; });
+    }
     stats.textContent = "+" + (j.added || 0) + " -" + (j.removed || 0);
   } catch (e) {
     body.innerHTML = "diff err: " + docEscapeHtml(e.message);
