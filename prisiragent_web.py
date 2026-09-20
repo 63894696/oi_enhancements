@@ -6079,6 +6079,22 @@ async function loadSessions(opts) {
 async function switchSession(id, opts) {
   // 切换右栏会话时自动退出分屏;但 openSplitScreen 程序内切右栏传 {keepSplit:true} 跳过(否则刚设的 splitFrom 被清)。
   if (splitFrom && id !== sessionId && !(opts && opts.keepSplit)) exitSplit();
+  // P2.5+9-C:CancellationToken 接入 — 切会话前先把当前会话 worker 收尾,避免残留 _run_chat_thread
+  // 继续推事件到已切走的 sessionId(消息错位)。短轮询等 running=false,超时 3s 强切。
+  if (sessionId && id !== sessionId && !(opts && opts.skipEstop)) {
+    try {
+      const s = await api('/status?session_id=' + sessionId);
+      if (s.running) {
+        await api('/estop', {method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({session_id: sessionId})});
+        for (let i = 0; i < 30; i++) {
+          await new Promise(r => setTimeout(r, 100));
+          const c = await api('/status?session_id=' + sessionId);
+          if (!c.running) break;
+        }
+      }
+    } catch (e) { /* estop 失败静默,继续流程 */ }
+  }
   sessionId = id;
   const r = await api('/history?session_id=' + id);
   document.getElementById('messages').innerHTML = '';
@@ -6525,9 +6541,10 @@ function renderPlanBadge(on){
 
 async function pollResult() {
   polling = true;
+  const pollSid = sessionId;   // P2.5+9-C:本轮轮询绑死 sid;sessionId 被 switchSession 改了立刻跳出
   const eb = document.getElementById('estop-btn');
   if (eb) eb.style.display = '';   // running 期间亮「停止」
-  while (sessionId) {
+  while (pollSid === sessionId) {
     await new Promise(r => setTimeout(r, 900));
     const r = await api('/status?session_id=' + sessionId);
     if (r.events && r.events.length) r.events.forEach(renderLiveToolEvent);
@@ -6547,16 +6564,20 @@ async function pollResult() {
           : 'Context nearly full — handoff summary ready, split-screen continue in this window'); }
     }
     if (!r.running) {
-      const h = await api('/history?session_id=' + sessionId);
+      const h = await api('/history?session_id=' + pollSid);
       document.getElementById('messages').innerHTML = '';
       document.getElementById('conv-title').textContent = h.title || T('sessions');
       h.messages.forEach(m => addMsg(m.role, m.content, m.followups));
       setStatus('');
-      document.getElementById('send').disabled = false;
-      if (eb) eb.style.display = 'none';   // 停了收起「停止」
+      // send / estop 按钮状态统一在 while 跳出后根据 pollSid 匹配处理
       loadSessions();
       break;
     }
+  }
+  // P2.5+9-C:跳出后只在本 sid 还匹配时重置 UI(切走的话交给 switchSession 处理)
+  if (pollSid === sessionId) {
+    document.getElementById('send').disabled = false;
+    if (eb) eb.style.display = 'none';
   }
   polling = false;
 }
