@@ -198,6 +198,115 @@ DEFAULT_MODEL = os.environ.get("PRISIRAGENT_MODEL", os.environ.get("OIAGENT_MODE
 DEFAULT_WORKDIR = os.environ.get("PRISIRAGENT_WORKDIR", os.environ.get("OIAGENT_WORKDIR", os.getcwd()))
 DEFAULT_STRATEGY = os.environ.get("PRISIR_STRATEGY", "smart")
 
+# ============================================================
+# M3.35(2026-09-20)项目切换器状态层
+#   持久化到 ~/.prisir/projects.json;启动 cwd 自动作默认项目。
+#   _PROJECTS_LOCK 用 RLock 允许同线程重入(upsert 内部调 save 不死锁)。
+# ============================================================
+import threading as _threading  # noqa: E402  # 紧跟 stdlib 段
+_PROJECTS_FILE = os.path.join(os.path.expanduser("~"), ".prisir", "projects.json")
+_PROJECTS_LOCK = _threading.RLock()
+_PROJECTS = {
+    "active": DEFAULT_WORKDIR,
+    "items": [
+        {"path": DEFAULT_WORKDIR,
+         "name": os.path.basename(DEFAULT_WORKDIR) or "(default)",
+         "pinned": True, "added_at": int(time.time())},
+    ],
+}
+
+
+def _projects_load():
+    """启动时从 JSON 读一次覆盖默认值;文件缺失/坏 → 默认值兜底(后续 _projects_save 写盘)。"""
+    global _PROJECTS
+    try:
+        with open(_PROJECTS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict) or "items" not in data:
+            return
+        with _PROJECTS_LOCK:
+            items = list(data.get("items") or [])
+            # 兜底:启动 cwd 必须在 items
+            if not any(it.get("path") == DEFAULT_WORKDIR for it in items):
+                items.insert(0, {
+                    "path": DEFAULT_WORKDIR,
+                    "name": os.path.basename(DEFAULT_WORKDIR) or "(default)",
+                    "pinned": True, "added_at": int(time.time()),
+                })
+            active = data.get("active") or DEFAULT_WORKDIR
+            # 兜底:active 必须在 items
+            if active not in [it.get("path") for it in items]:
+                active = DEFAULT_WORKDIR
+            _PROJECTS = {"active": active, "items": items}
+    except (OSError, ValueError):
+        pass
+
+
+def _projects_save():
+    """原子写盘:tmp + os.replace 防止半截 JSON。"""
+    os.makedirs(os.path.dirname(_PROJECTS_FILE), exist_ok=True)
+    tmp = _PROJECTS_FILE + ".tmp"
+    with _PROJECTS_LOCK:
+        payload = json.dumps(_PROJECTS, ensure_ascii=False, indent=2)
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(payload)
+    os.replace(tmp, _PROJECTS_FILE)
+
+
+def _projects_upsert(path: str, name: str | None = None, pinned: bool | None = None) -> None:
+    """path 已存在 → 更新 name/pinned;不存在 → 追加。"""
+    path = os.path.abspath(path)
+    with _PROJECTS_LOCK:
+        for it in _PROJECTS["items"]:
+            if it.get("path") == path:
+                if name is not None and name != "":
+                    it["name"] = name
+                if pinned is not None:
+                    it["pinned"] = bool(pinned)
+                return
+        _PROJECTS["items"].append({
+            "path": path,
+            "name": (name or os.path.basename(path) or path),
+            "pinned": bool(pinned) if pinned is not None else False,
+            "added_at": int(time.time()),
+        })
+
+
+def _projects_remove(path: str) -> None:
+    """从列表删;若 active == path → active 改 DEFAULT_WORKDIR;
+       删完若 active 不在 items → 自动加 active 那条兜底。"""
+    path = os.path.abspath(path)
+    with _PROJECTS_LOCK:
+        _PROJECTS["items"] = [it for it in _PROJECTS["items"] if it.get("path") != path]
+        if _PROJECTS["active"] == path:
+            _PROJECTS["active"] = DEFAULT_WORKDIR
+        if _PROJECTS["active"] not in [it.get("path") for it in _PROJECTS["items"]]:
+            _PROJECTS["items"].insert(0, {
+                "path": _PROJECTS["active"],
+                "name": os.path.basename(_PROJECTS["active"]) or "(default)",
+                "pinned": True, "added_at": int(time.time()),
+            })
+
+
+def _projects_activate(path: str) -> bool:
+    """切 active + 真改 _WORKDIR + rebind perm_gate;不在列表自动加一条。"""
+    if not path or not os.path.isdir(path):
+        return False
+    p = os.path.abspath(path)
+    with _PROJECTS_LOCK:
+        if p not in [it.get("path") for it in _PROJECTS["items"]]:
+            _PROJECTS["items"].append({
+                "path": p, "name": os.path.basename(p) or p,
+                "pinned": False, "added_at": int(time.time()),
+            })
+        _PROJECTS["active"] = p
+    _WORKDIR["path"] = p
+    try:
+        perm_gate.rebind_workdir(p)  # 模块名空间访问,运行时才解析
+    except Exception:
+        pass
+    return True
+
 # 2026-08-25 版本号(About 页用)。单点真源在 installer/prisirai.nsi !define APP_VERSION,
 # 此处保持同值即可(About 显示);不由此驱动装包。
 APP_VERSION = "2.7.7"
@@ -1989,8 +2098,240 @@ def _save_settings():
         pass
 
 
+def _user_settings_get(key: str, default=None):
+    """从 settings.json 读单个键(供 P2.5+8 schedule consent 等持久化用)。"""
+    try:
+        if not _USER_SETTINGS_PATH.exists():
+            return default
+        raw = json.loads(_USER_SETTINGS_PATH.read_text(encoding="utf-8"))
+        if isinstance(raw, dict) and key in raw:
+            return raw[key]
+    except Exception:  # noqa: BLE001
+        pass
+    return default
+
+
+def _user_settings_set(key: str, value) -> bool:
+    """往 settings.json 写单个键(供 P2.5+8 schedule consent 等持久化用)。
+    保留其他键不动。返 True=成功。"""
+    try:
+        _USER_SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        existing = {}
+        if _USER_SETTINGS_PATH.exists():
+            try:
+                existing = json.loads(_USER_SETTINGS_PATH.read_text(encoding="utf-8"))
+                if not isinstance(existing, dict):
+                    existing = {}
+            except Exception:
+                existing = {}
+        existing[key] = value
+        _USER_SETTINGS_PATH.write_text(json.dumps(existing, ensure_ascii=False, indent=2), encoding="utf-8")
+        return True
+    except Exception as e:  # noqa: BLE001
+        try:
+            _LOGGER.warning("[user_settings] set %s failed: %s", key, e)
+        except Exception:
+            pass
+        return False
+
+
 # 启动时加载设置
 _load_settings()
+
+
+# ─── P2.5+8(2026-09-20):日历+todo+番茄钟 AI 主动编排 ──────────────
+# 设计:对话提到时间+事件 → LLM 提炼 → 后台线程自动建日历事件/todo/番茄钟建议。
+# 权限:首次启用走 _schedule_extractor_consent_card 弹卡明细(同扩展启权闸),
+# 用户批准后所有写入自动跑(默认批,首次明细)。console 记 _SCHEDULE_TRIGGERS_HISTORY 可随时清除。
+# 全静默:失败仅 log.warning,不阻塞对话。
+
+_SCHEDULE_AUTO_ENABLED = False     # 用户首次明细批准后才置 True
+_SCHEDULE_CONSENT_FLAG = "_schedule_extractor_consented"  # settings.json 持久化键
+_SCHEDULE_TRIGGERS_HISTORY: list[dict] = []   # 最近 200 条写入(供 console 查看)
+_SCHEDULE_HISTORY_MAX = 200
+
+
+def get_calendar_store():
+    """P2.5+8(2026-09-20):schedule_extractor 后台线程调日历写入,无 self 上下文。
+    复用 Handler._get_calendar_store 单例,作 module 入口。"""
+    return Handler._get_calendar_store()
+
+
+def schedule_extractor_enabled() -> bool:
+    """已批准才返 True(供钩子直接判断是否跑写入)。"""
+    return _SCHEDULE_AUTO_ENABLED
+
+
+def schedule_extractor_consent_required() -> bool:
+    """首次启用要弹卡明细。"""
+    return not _SCHEDULE_AUTO_ENABLED
+
+
+def schedule_extractor_consent_grant() -> None:
+    """用户批准后置 True,持久化 user_settings。"""
+    global _SCHEDULE_AUTO_ENABLED
+    _SCHEDULE_AUTO_ENABLED = True
+    try:
+        _user_settings_set(_SCHEDULE_CONSENT_FLAG, True)
+    except Exception as e:  # noqa: BLE001
+        try:
+            _LOGGER.warning("[schedule] persist consent failed: %s", e)
+        except Exception:
+            pass
+
+
+def schedule_extractor_consent_revoke() -> None:
+    """重置(供一键清除后回退 + 重新要权限闸)。"""
+    global _SCHEDULE_AUTO_ENABLED
+    _SCHEDULE_AUTO_ENABLED = False
+    try:
+        _user_settings_set(_SCHEDULE_CONSENT_FLAG, False)
+    except Exception:
+        pass
+
+
+def _schedule_extractor_load_consent() -> None:
+    """启动时从 user_settings 加载 _SCHEDULE_AUTO_ENABLED(持久化状态)。
+    复用 _user_settings_get,在 _load_settings() 后立即跑。"""
+    global _SCHEDULE_AUTO_ENABLED
+    try:
+        v = _user_settings_get(_SCHEDULE_CONSENT_FLAG, False)
+        _SCHEDULE_AUTO_ENABLED = bool(v)
+    except Exception:
+        _SCHEDULE_AUTO_ENABLED = False
+
+
+_schedule_extractor_load_consent()
+
+
+def schedule_extractor_history(limit: int = 50) -> list[dict]:
+    """返最近 N 条历史(append only)。"""
+    if limit <= 0 or limit > _SCHEDULE_HISTORY_MAX:
+        limit = 50
+    return list(_SCHEDULE_TRIGGERS_HISTORY[-limit:])
+
+
+def _schedule_extractor_record(entries: list[dict]) -> None:
+    """内部:追加 history + 限长裁剪(供 schedule_writer 调)。"""
+    if not entries:
+        return
+    import time as _t
+    for e in entries:
+        e2 = dict(e)
+        e2.setdefault("ts", _t.time())
+        _SCHEDULE_TRIGGERS_HISTORY.append(e2)
+    if len(_SCHEDULE_TRIGGERS_HISTORY) > _SCHEDULE_HISTORY_MAX:
+        del _SCHEDULE_TRIGGERS_HISTORY[:-_SCHEDULE_HISTORY_MAX]
+
+
+def _schedule_extractor_clear_all() -> dict:
+    """一键清空:历史 + source='ai_extracted' 的 events + ai 建的 todos。
+    重置权限开关(下轮对话再次走首次弹卡)。
+    """
+    stats = {"events_dismissed": 0, "todos_removed": 0, "history_cleared": 0}
+    # 1) 清历史
+    stats["history_cleared"] = len(_SCHEDULE_TRIGGERS_HISTORY)
+    _SCHEDULE_TRIGGERS_HISTORY.clear()
+    # 2) dismiss ai 建的事件
+    try:
+        store = get_calendar_store()
+        if store is not None:
+            from datetime import datetime, timezone, timedelta
+            now = datetime.now(timezone.utc)
+            end = now + timedelta(days=365)
+            evs = store.list_events(now.isoformat(), end.isoformat()) or []
+            for ev in evs:
+                try:
+                    if getattr(ev, "source", None) == "ai_extracted":
+                        store.dismiss_event(ev.event_id, reason="user cleared ai history")
+                        stats["events_dismissed"] += 1
+                except Exception:
+                    pass
+    except Exception as e:  # noqa: BLE001
+        try:
+            _LOGGER.warning("[schedule] clear events err: %s", e)
+        except Exception:
+            pass
+    # 3) 删 ai 建的 todos(tag 含 ai_extracted)
+    try:
+        lst = _ext_rpc_call("todo", "todo.list", {"limit": 100}, timeout=5)
+        if lst and isinstance(lst.get("items"), list):
+            for it in lst["items"]:
+                tags = it.get("tags") or []
+                if "ai_extracted" in tags:
+                    _ext_rpc_call("todo", "todo.remove", {"id": it.get("id")}, timeout=3)
+                    stats["todos_removed"] += 1
+    except Exception as e:  # noqa: BLE001
+        try:
+            _LOGGER.warning("[schedule] clear todos err: %s", e)
+        except Exception:
+            pass
+    # 4) 重置权限
+    schedule_extractor_consent_revoke()
+    return stats
+
+
+def _schedule_extractor_run(user_text: str, answer: str) -> None:
+    """后台 daemon thread 跑提炼 + 写日历/todo/pomo。
+    不阻塞对话线程,不抛异常。"""
+    try:
+        from schedule_extractor import should_trigger, distill_schedule_sync
+        from schedule_writer import write_all, record_history
+        if not should_trigger(user_text):
+            return
+        router = globals().get("_router")
+        if router is None:
+            return
+        extracted = distill_schedule_sync(router, user_text, answer)
+        if not extracted:
+            return
+        import asyncio as _aio
+        result = _aio.run(write_all(extracted))
+        # 写 history
+        hist = []
+        if result.get("events"):
+            hist.append({"kind": "events", "count": result["events"]})
+        if result.get("todos"):
+            hist.append({"kind": "todos", "count": result["todos"]})
+        if result.get("pomo_suggest"):
+            hist.append({"kind": "pomo_suggest", "count": result["pomo_suggest"]})
+        if hist:
+            record_history(hist)
+            try:
+                _LOGGER.info("[schedule] wrote %s", result)
+            except Exception:
+                pass
+    except Exception as e:  # noqa: BLE001
+        try:
+            _LOGGER.warning("[schedule] run err: %s", e)
+        except Exception:
+            pass
+
+
+def _schedule_extractor_push_consent_card() -> None:
+    """首次启用:通过 SSE 推「需弹卡明细」事件给前端,前端弹卡 + 用户批准后
+    调 /api/schedule/consent grant。后台运行,不阻塞对话。"""
+    try:
+        _sse_broadcast({
+            "type": "schedule_consent_required",
+            "title": "AI 日程主动编排",
+            "summary": "本对话可能提到时间/事件/任务,PrisirAI 将自动建日历事件、todo 任务,"
+                       "并建议番茄钟时段。",
+            "details": [
+                "可写入:本地 SQLite 日历事件(可导出 ICS)",
+                "可写入:todo 扩展 JSON 文件(可在 todo 抽屉查看/删除)",
+                "可记录:番茄钟建议时段(只控制台记录,不主动开始计时)",
+                "不会:发送任何数据到云端",
+                "不会:删除/修改你已存在的事件或任务",
+                "随时可在设置页取消或一键清除 AI 编排记录",
+            ],
+        })
+    except Exception as e:  # noqa: BLE001
+        try:
+            _LOGGER.warning("[schedule] push consent card err: %s", e)
+        except Exception:
+            pass
+
 
 # M3.31:启动 git import 后台 worker(daemon 线程,进程退出自动结束)
 _start_git_import_worker_once()
@@ -2307,7 +2648,11 @@ def _db():
     c.execute("""CREATE TABLE IF NOT EXISTS sessions(
         id TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT '新会话',
         pinned INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL DEFAULT 0,
-        updated INTEGER NOT NULL DEFAULT 0)""")
+        updated INTEGER NOT NULL DEFAULT 0, workdir TEXT NOT NULL DEFAULT '')""")
+    # 兼容旧库:没 workdir 列就加(2026-09-20 M3.35)
+    cols = [r[1] for r in c.execute("PRAGMA table_info(sessions)").fetchall()]
+    if 'workdir' not in cols:
+        c.execute("ALTER TABLE sessions ADD COLUMN workdir TEXT NOT NULL DEFAULT ''")
     c.execute("""CREATE TABLE IF NOT EXISTS messages(
         id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL,
         role TEXT NOT NULL, content TEXT NOT NULL, followups TEXT NOT NULL DEFAULT '[]',
@@ -2322,22 +2667,41 @@ def _now() -> int:
 
 def create_session(title: str = "新会话") -> str:
     sid = uuid.uuid4().hex[:12]
+    wd = _WORKDIR.get("path", "") if isinstance(_WORKDIR, dict) else (_WORKDIR or "")
     with _db() as c:
-        c.execute("INSERT INTO sessions(id,title,pinned,created,updated) VALUES(?,?,?,?,?)",
-                  (sid, title, 0, _now(), _now()))
+        c.execute("INSERT INTO sessions(id,title,pinned,created,updated,workdir) VALUES(?,?,?,?,?,?)",
+                  (sid, title, 0, _now(), _now(), wd))
     return sid
 
 
 def get_session(sid: str):
     with _db() as c:
-        return c.execute("SELECT id,title,pinned,created,updated FROM sessions WHERE id=?", (sid,)).fetchone()
+        return c.execute("SELECT id,title,pinned,created,updated,workdir FROM sessions WHERE id=?", (sid,)).fetchone()
 
 
-def list_sessions():
+def list_sessions(scope: str = "current"):
+    """M3.35:scope='current'(本项目会话 + 历史默认项目会话)、'all'、'orphans'(其他项目的)。
+       空 workdir 的会话算「默认项目的」,切到非默认项目时也算 orphans 可见。"""
+    cur_wd = _WORKDIR.get("path", "") if isinstance(_WORKDIR, dict) else (_WORKDIR or "")
     with _db() as c:
-        rows = c.execute(
-            "SELECT id,title,pinned,created,updated FROM sessions ORDER BY pinned DESC, updated DESC").fetchall()
-    return [{"id": r[0], "title": r[1], "pinned": bool(r[2]), "created": r[3], "updated": r[4]} for r in rows]
+        if scope == "all":
+            rows = c.execute(
+                "SELECT id,title,pinned,created,updated,workdir FROM sessions "
+                "ORDER BY pinned DESC, updated DESC").fetchall()
+        elif scope == "orphans":
+            rows = c.execute(
+                "SELECT id,title,pinned,created,updated,workdir FROM sessions "
+                "WHERE workdir!='' AND workdir!=? "
+                "ORDER BY pinned DESC, updated DESC",
+                (cur_wd,)).fetchall()
+        else:  # current(默认):本项目 + 历史默认项目(空 workdir)
+            rows = c.execute(
+                "SELECT id,title,pinned,created,updated,workdir FROM sessions "
+                "WHERE workdir=? OR workdir='' "
+                "ORDER BY pinned DESC, updated DESC",
+                (cur_wd,)).fetchall()
+    return [{"id": r[0], "title": r[1], "pinned": bool(r[2]),
+             "created": r[3], "updated": r[4], "workdir": r[5]} for r in rows]
 
 
 def add_message(sid: str, role: str, content: str, followups=None) -> None:
@@ -2587,6 +2951,20 @@ def _run_chat_thread(sid: str, user_text: str, strategy: str, model: str, workdi
                 if _sig["failed"]:
                     threading.Thread(target=pitfalls_learner.learn_pitfall_sync,
                                      args=(_router, user_text, answer, _sig), daemon=True).start()
+            except Exception:  # noqa: BLE001
+                pass
+        # P2.5+8(2026-09-20):日历+todo+番茄钟 AI 主动编排。
+        # 设计:首次走权限闸 → 批准后自动跑;触发关键词过滤后调 LLM 提炼 → 后台写日历/todo/pomo。
+        # 与 user_profile / solutions_learner / pitfalls_learner 同模式:daemon thread,不阻塞对话。
+        if use_router and answer:
+            try:
+                if schedule_extractor_consent_required():
+                    # 首次推权限闸明细卡(SSE 推前端,前端弹卡 + 用户批准后调 /api/schedule/consent grant)
+                    _schedule_extractor_push_consent_card()
+                else:
+                    # 已批准,直接跑提炼 + 写入(daemon)
+                    threading.Thread(target=_schedule_extractor_run,
+                                     args=(user_text, answer), daemon=True).start()
             except Exception:  # noqa: BLE001
                 pass
         # 改后检测暂存(2026-08-24):本轮 write_file 真改了哪些文件 → 落盘校验(exists)
@@ -3654,6 +4032,91 @@ _PAGE = r"""<!DOCTYPE html>
   }catch(e){}
 })();
 </script>
+<script>
+// P2.5+8(2026-09-20):日历+todo+番茄钟 AI 主动编排 — 首次明细弹卡 + 控制台入口。
+// 设计:首次启动(或 revoke 后)→ 弹顶部持久 banner,用户点「同意」调 grant → 后台跑提炼写入。
+// 已批准 → banner 隐藏,console 「🧹 清空 AI 编排记录」按钮可用(调 history clear)。
+// 与端口 toast 不同的样式:持续显示直到用户批准(不自动 8s 消失)。
+(function(){
+  if (window.__scheduleConsentStarted) return;
+  window.__scheduleConsentStarted = true;
+  var KEY = "prisir_schedule_consent_banner_shown";
+  function _hasShown(){
+    try { return sessionStorage.getItem(KEY)==="1"; }catch(e){ return false; }
+  }
+  function _markShown(){
+    try { sessionStorage.setItem(KEY, "1"); }catch(e){}
+  }
+  function _showBanner(title, summary, details){
+    if (document.getElementById("schedule-consent-banner")) return;
+    var d = document.createElement("div");
+    d.id = "schedule-consent-banner";
+    d.style.cssText = "position:fixed;top:14px;right:14px;z-index:99998;width:340px;max-width:calc(100vw - 28px);"
+      + "background:var(--gh-paper-3,#efe8da);color:var(--gh-ink,#2f3a34);"
+      + "border:1px solid var(--gh-line,#d8cfbc);border-radius:10px;"
+      + "box-shadow:0 4px 14px rgba(0,0,0,.16);padding:14px 16px;"
+      + "font:13px/1.5 var(--gh-font,system-ui,sans-serif);";
+    var html = "<div style='font-size:14px;font-weight:600;margin-bottom:6px;color:var(--gh-green-deep,#4a5c52);'>"
+      + (title||"AI 日程主动编排") + "</div>";
+    html += "<div style='margin-bottom:8px;color:var(--gh-ink-soft,#5b6a61);'>"
+      + (summary||"") + "</div>";
+    if (details && details.length){
+      html += "<ul style='margin:0 0 10px 18px;color:var(--gh-ink-faint,#8a968e);font-size:12px;'>";
+      for (var i=0;i<details.length;i++){
+        html += "<li>" + details[i] + "</li>";
+      }
+      html += "</ul>";
+    }
+    html += "<div style='display:flex;gap:8px;justify-content:flex-end;'>"
+      + "<button id='sc-deny' style='padding:5px 12px;border-radius:6px;border:1px solid var(--gh-line,#d8cfbc);"
+      + "background:var(--gh-surface,#fbf8f1);color:var(--gh-ink-soft,#5b6a61);font-size:12px;cursor:pointer;'>稍后</button>"
+      + "<button id='sc-grant' style='padding:5px 14px;border-radius:6px;border:1px solid var(--gh-green-deep,#4a5c52);"
+      + "background:var(--gh-green-deep,#4a5c52);color:#fbf8f1;font-size:12px;cursor:pointer;font-weight:600;'>同意启用</button>"
+      + "</div>";
+    d.innerHTML = html;
+    document.body.appendChild(d);
+    document.getElementById("sc-grant").onclick = function(){
+      fetch("/prisiragent/api/schedule/consent", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({action: "grant"})
+      }).then(function(r){return r.json();}).then(function(){
+        d.remove();
+        _markShown();
+      }).catch(function(){ d.remove(); });
+    };
+    document.getElementById("sc-deny").onclick = function(){
+      fetch("/prisiragent/api/schedule/consent", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({action: "revoke"})
+      }).then(function(){ d.remove(); _markShown(); }).catch(function(){ d.remove(); });
+    };
+  }
+  function _check(){
+    fetch("/prisiragent/api/schedule/consent").then(function(r){return r.json();}).then(function(d){
+      if (!d) return;
+      if (d.consent_required && !_hasShown()){
+        _markShown();
+        _showBanner(
+          "AI 日程主动编排",
+          "本对话提到时间/事件/任务时,PrisirAI 会自动建日历事件与 todo 任务,并建议番茄钟时段。",
+          [
+            "可写入:本地 SQLite 日历事件(可在 📅 日历入口查看)",
+            "可写入:todo 扩展 JSON 文件(可在 todo 抽屉查看/删除)",
+            "可记录:番茄钟建议(只控制台记录,不主动开始计时)",
+            "不会:发送任何数据到云端",
+            "不会:删除或修改你已存在的事件/任务",
+            "随时可在 console 「🧹 清空 AI 编排记录」一键清除并重新弹卡"
+          ]
+        );
+      }
+    }).catch(function(){});
+  }
+  // 启动后稍延迟检查(等其它 toast 弹完)
+  setTimeout(_check, 1500);
+})();
+</script>
 <style>
   :root {
     --gh-paper:#f6f1e7; --gh-paper-2:#efe8da; --gh-paper-3:#e7dfce; --gh-surface:#fbf8f1;
@@ -3844,25 +4307,36 @@ _PAGE = r"""<!DOCTYPE html>
   .fu:hover { background:var(--gh-paper-2); border-color:var(--gh-focus); }
 
   #composer { padding:16px 28px 20px; }
-  #composer .box { display:flex; gap:10px; align-items:flex-start; background:var(--gh-surface);
+  /* P2.5+9(task #40, 2026-09-20):chat input 工具栏下排一行,学 VS Code Chat
+     (Roo Code / Cline / Continue)。textarea 在上,工具栏在下一行;
+     工具栏内 flex row,左 [附件/思考/⌘K/🎤] 右 [停止/发送] 用 space-between 分开。 */
+  #composer .box { display:flex; flex-direction:column; gap:6px; background:var(--gh-surface);
     border:1px solid var(--gh-line); border-radius:var(--gh-radius-lg); padding:10px 12px; box-shadow:var(--gh-shadow); }
   #composer .box:focus-within { border-color:var(--gh-focus); }
-  /* M3.31.12(2026-09-16):输入框自适应多行 — max-height 由 JS 计算 viewport 控制,
-     默认 textarea 行为超 max-height 就滚动是糟糕 UX,改成 JS 监听 input 动态调 rows=1..8,
-     超过 8 行才出滚动条。min-height 保留 44px 给单行足够视觉。 */
-  #input { flex:1; border:none; outline:none; resize:none; background:transparent;
+  /* M3.31.12(2026-09-16)+P2.5+9(2026-09-20):输入框自适应多行 — JS 监听 input 动态调 rows=2..12,
+     超过 12 行才出滚动条。min-height 保留 44px 给单行足够视觉。 */
+  #input { width:100%; border:none; outline:none; resize:none; background:transparent;
     color:var(--gh-ink); font-size:14.5px; font-family:var(--gh-font); line-height:1.5;
-    min-height:44px; max-height:none; overflow-y:auto; }
+    min-height:44px; max-height:none; overflow-y:auto; box-sizing:border-box; }
   #send { padding:9px 18px; border-radius:9px; border:none; background:var(--gh-green-deep);
     color:#fbf6ec; font-size:14px; cursor:pointer; }
   #send:hover { background:var(--gh-green); }
   #send:disabled { background:var(--gh-paper-3); color:var(--gh-ink-faint); cursor:not-allowed; }
-  .composer-bar { display:flex; flex-direction:column; gap:6px; align-items:stretch; padding-top:2px; }
+  /* P2.5+9(2026-09-20):工具栏改水平一行,顶端分隔线区分输入区。 */
+  .composer-bar { display:flex; flex-direction:row; justify-content:space-between; align-items:center;
+    padding-top:8px; margin-top:2px; border-top:1px solid var(--gh-line); gap:8px; }
+  .composer-left { display:flex; gap:6px; align-items:center; flex-wrap:wrap; min-width:0; }
+  .composer-right { display:flex; gap:6px; align-items:center; flex:0 0 auto; }
   #think-level { padding:6px 8px; border-radius:8px; border:1px solid var(--gh-line);
     background:var(--gh-surface); color:var(--gh-ink); font-size:12px; cursor:pointer; }
-  #attach-btn { padding:6px 10px; border-radius:8px; border:1px solid var(--gh-line);
-    background:var(--gh-surface); color:var(--gh-ink); font-size:14px; cursor:pointer; }
-  #attach-btn:hover { border-color:var(--gh-green-deep); }
+  #attach-btn, #cmd-k-btn, #voice-btn { padding:6px 10px; border-radius:8px; border:1px solid var(--gh-line);
+    background:var(--gh-surface); color:var(--gh-ink); font-size:14px; cursor:pointer; line-height:1; }
+  #attach-btn:hover, #cmd-k-btn:hover, #voice-btn:hover { border-color:var(--gh-green-deep); }
+  /* 窄屏(<600px)工具栏按钮 icon-only,文字隐藏 */
+  @media (max-width: 600px) {
+    #think-level { font-size:0; padding:6px 8px; }
+    #think-level option { font-size:12px; }
+  }
   /* estop 停止按钮:运行中的「中断」信号。印章红描边 + 停止块呼吸脉动,
      与发送键(墨绿实心)主次分明,又和 attach(中性描边)区分出危险语义。 */
   #estop-btn { display:inline-flex; align-items:center; gap:6px; padding:6px 13px;
@@ -3948,6 +4422,39 @@ _PAGE = r"""<!DOCTYPE html>
     border-radius:8px; font-size:12px; color:var(--gh-ink); }
   #fbmodal .status code { font-family:monospace; color:var(--gh-green-deep); word-break:break-all; }
   #fbmodal .row { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; flex-wrap:wrap; }
+
+  /* M3.35 项目切换弹层 */
+  #projmodal { position:fixed; inset:0; background:rgba(47,58,52,.4); display:none; z-index:111;
+    align-items:center; justify-content:center; }
+  #projmodal.open { display:flex; }
+  #projmodal .card { background:var(--gh-paper); border-radius:14px; padding:22px; width:560px; max-width:92vw;
+    max-height:88vh; overflow-y:auto; box-shadow:0 12px 40px rgba(0,0,0,.25); }
+  #projmodal h3 { font-size:16px; color:var(--gh-green-deep); margin-bottom:4px; }
+  #projmodal .sub { font-size:12px; color:var(--gh-ink-faint); margin-bottom:14px; line-height:1.6; }
+  #projmodal #proj-list { border:1px solid var(--gh-line); border-radius:8px;
+    max-height:300px; overflow-y:auto; margin-bottom:12px; background:var(--gh-surface); }
+  #projmodal .proj-item { display:flex; align-items:center; gap:8px; padding:8px 10px;
+    border-bottom:1px solid var(--gh-line); cursor:pointer; transition:background .12s; }
+  #projmodal .proj-item:last-child { border-bottom:none; }
+  #projmodal .proj-item:hover { background:var(--gh-paper-2); }
+  #projmodal .proj-item.active { background:var(--gh-paper-2); border-left:3px solid var(--gh-green-deep); }
+  #projmodal .proj-item .pin { color:var(--gh-amber); font-size:13px; width:14px; text-align:center; }
+  #projmodal .proj-item .nopin { width:14px; display:inline-block; }
+  #projmodal .proj-item .name { flex:0 0 auto; font-weight:600; font-size:13px; min-width:60px; max-width:140px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #projmodal .proj-item .path { flex:1; font-size:11px; color:var(--gh-ink-faint);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #projmodal .proj-item .acts { display:flex; gap:3px; }
+  #projmodal .proj-item .acts button { font-size:11px; padding:2px 7px; cursor:pointer; }
+  #projmodal .proj-add { display:flex; gap:6px; margin-top:10px; }
+  #projmodal .proj-add input { flex:1; padding:6px 10px; border:1px solid var(--gh-line);
+    border-radius:6px; background:var(--gh-surface); color:var(--gh-ink); font-size:12px;
+    font-family:monospace; }
+  #projmodal .proj-add input:focus { outline:none; border-color:var(--gh-focus); }
+  #projmodal .proj-rename-row { display:flex; gap:6px; margin-top:8px; }
+  #projmodal .proj-rename-row input { flex:1; padding:6px 10px; border:1px solid var(--gh-line);
+    border-radius:6px; background:var(--gh-surface); color:var(--gh-ink); font-size:12px; }
+  #projmodal .row { display:flex; gap:10px; justify-content:flex-end; margin-top:14px; }
 
   /* #102 补丁卡(复用 fbmodal 结构) */
   #patchmodal { position:fixed; inset:0; background:rgba(47,58,52,.4); display:none; z-index:112;
@@ -4274,6 +4781,7 @@ _PAGE = r"""<!DOCTYPE html>
   <div class="spacer"></div>
   <span id="strategy-label"></span>
   <button class="topbtn" id="replay-btn" onclick="toggleReplay()" data-i18n="replay_panel" data-i18n-title="replay_title">⏵ 回放</button>
+  <button class="topbtn" id="topbtnProject" onclick="openProject()" data-i18n-title="project_title" title="切换项目"><span id="topbtnProjectName">📂 …</span></button>
   <button class="topbtn" id="files-btn" onclick="toggleFiles()" data-i18n="files" data-i18n-title="files_title">📁 文件</button>
   <button class="topbtn" id="doc-btn" onclick="toggleDocPanel()" data-i18n="doc_panel" data-i18n-title="doc_panel_title">📑 文档</button>
   <button class="topbtn" onclick="openKeys()" data-i18n="model_key">🔑 模型 Key</button>
@@ -4353,17 +4861,23 @@ _PAGE = r"""<!DOCTYPE html>
       <div class="box">
         <textarea id="input" rows="2" data-i18n-ph="input_ph" placeholder="问点什么… (Enter 发送,Shift+Enter 换行)"></textarea>
         <div class="composer-bar">
-          <select id="think-level" data-i18n-title="think_title">
-            <option value="" data-i18n="think_default">思考:默认</option>
-            <option value="off" data-i18n="think_off">思考:关闭</option>
-            <option value="low" data-i18n="think_low">思考:低</option>
-            <option value="medium" data-i18n="think_medium">思考:中</option>
-            <option value="high" data-i18n="think_high">思考:高</option>
-          </select>
-          <button id="attach-btn" type="button" data-i18n-title="attach_title">📎</button>
-          <input id="attach-input" type="file" multiple style="display:none">
-          <button id="estop-btn" type="button" data-i18n="stop" data-i18n-title="estop_title" style="display:none" onclick="estopNow()"><span class="stopdot"></span>停止</button>
-          <button id="send" onclick="sendMessage()" data-i18n="send">发送</button>
+          <div class="composer-left">
+            <button id="attach-btn" type="button" data-i18n-title="attach_title" title="添加附件">📎</button>
+            <input id="attach-input" type="file" multiple style="display:none">
+            <select id="think-level" data-i18n-title="think_title" title="思考深度">
+              <option value="" data-i18n="think_default">思考:默认</option>
+              <option value="off" data-i18n="think_off">思考:关闭</option>
+              <option value="low" data-i18n="think_low">思考:低</option>
+              <option value="medium" data-i18n="think_medium">思考:中</option>
+              <option value="high" data-i18n="think_high">思考:高</option>
+            </select>
+            <button id="cmd-k-btn" type="button" title="命令面板 (⌘K)" data-i18n-title="cmd_k_title" style="display:none">⌘K</button>
+            <button id="voice-btn" type="button" title="语音输入" data-i18n-title="voice_title" style="display:none">🎤</button>
+          </div>
+          <div class="composer-right">
+            <button id="estop-btn" type="button" data-i18n="stop" data-i18n-title="estop_title" style="display:none" onclick="estopNow()"><span class="stopdot"></span>停止</button>
+            <button id="send" onclick="sendMessage()" data-i18n="send">发送</button>
+          </div>
         </div>
       </div>
     </div>
@@ -4503,15 +5017,7 @@ _PAGE = r"""<!DOCTYPE html>
       <div id="k-platform-note" style="font-size:11px;color:var(--gh-ink-faint);margin-top:6px"></div>
       <div id="k-model-hint" style="font-size:11px;color:var(--gh-ink-faint);margin-top:4px"></div>
     </div>
-    <div class="kf">
-      <label data-i18n="workdir">工作目录</label>
-      <div class="hint" data-i18n="workdir_hint">PrisirAI 读写文件/跑命令的基准目录(影响 read_file/run_shell 相对路径)</div>
-      <div style="display:flex;gap:6px">
-        <input id="k-workdir" type="text" data-i18n-ph="workdir_ph" placeholder="如 C:\path\to\project" style="flex:1">
-        <button class="topbtn" type="button" onclick="saveWorkdir()" data-i18n="apply">应用</button>
-      </div>
-      <div id="k-workdir-hint" style="font-size:11px;color:var(--gh-ink-faint);margin-top:4px"></div>
-    </div>
+    <!-- M3.35:工作目录已迁到顶栏 📂 项目切换器管理,keymodal 不再单独入口 -->
     <div class="row">
       <button class="topbtn" onclick="saveKeys()" data-i18n="save">保存</button>
       <button class="topbtn" onclick="resetRouter()" data-i18n="reset_router" title="清除指定平台,恢复智能路由">恢复路由</button>
@@ -4558,6 +5064,27 @@ _PAGE = r"""<!DOCTYPE html>
       <button class="topbtn" onclick="closeFeedback()" data-i18n="cancel">取消</button>
       <button class="topbtn" onclick="feedbackPackOnly()" data-i18n="fb_pack" title="只打 zip 到桌面,你自己决定怎么发">仅打包到桌面</button>
       <button class="topbtn primary" onclick="feedbackPackAndOpen()" data-i18n="fb_publish">发布到反馈论坛</button>
+    </div>
+  </div>
+</div>
+
+<!-- M3.35:项目切换器弹层。点击顶栏 📂 按钮打开;列项目 + 添加/重命名/置顶/移除。 -->
+<div id="projmodal">
+  <div class="card">
+    <h3 data-i18n="project_title">📂 项目</h3>
+    <div class="sub" data-i18n="project_sub">切换当前工作目录;每个项目独立的文件树、文档栏和会话分组</div>
+    <div id="proj-list"></div>
+    <div class="proj-add">
+      <input id="proj-path" type="text" data-i18n-ph="project_path_ph" placeholder="C:\path\to\project 或 /home/user/proj" style="flex:1">
+      <button class="topbtn" type="button" onclick="projectBrowse()" data-i18n="project_browse">📂 浏览</button>
+      <button class="topbtn primary" type="button" onclick="projectAddFromInput()" data-i18n="project_add">添加</button>
+    </div>
+    <div class="proj-rename-row" id="proj-rename-row" style="display:none">
+      <input id="proj-rename-input" type="text" data-i18n-ph="project_name_ph" placeholder="项目别名(可空,默认用目录名)" style="flex:1">
+      <button class="topbtn" type="button" onclick="projectRenameSave()" data-i18n="save">保存</button>
+    </div>
+    <div class="row">
+      <button class="topbtn" onclick="closeProject()" data-i18n="close">关闭</button>
     </div>
   </div>
 </div>
@@ -4722,6 +5249,11 @@ const I18N = {
     doc_dirty:'⚠ 外置有改动', doc_reload:'重新加载', doc_refresh_title:'刷新',
     doc_current:'当前版本', doc_rollback:'⤴ 回滚到此版本',
     doc_skills:'🔧 skills', doc_skills_loading:'加载中…', skill_refresh_title:'刷新 skill 列表',
+    project_title:'📂 项目', project_sub:'切换当前工作目录;每个项目独立的文件树、文档栏和会话分组',
+    project_browse:'📂 浏览', project_path_ph:'C:\\path\\to\\project 或 /home/user/proj',
+    project_name_ph:'项目别名(可空,默认用目录名)', project_pin:'📌 置顶', project_unpin:'取消置顶',
+    project_remove:'🗑️ 移除', project_add:'添加', project_rename:'✏️ 改名',
+    project_switch_fail:'切换失败', project_add_fail:'添加失败', project_remove_confirm:'从项目列表移除?不会删磁盘文件',
   },
   en: {
     send:'Send', new_session:'+ New chat', model_key:'🔑 Model Key', feedback:'⚙ Feedback',
@@ -4770,6 +5302,11 @@ const I18N = {
     doc_dirty:'⚠ External change', doc_reload:'Reload', doc_refresh_title:'Refresh',
     doc_current:'Current version', doc_rollback:'⤴ Roll back to this version',
     doc_skills:'🔧 skills', doc_skills_loading:'Loading…', skill_refresh_title:'Refresh skill list',
+    project_title:'📂 Projects', project_sub:'Switch working directory; each project keeps its own file tree, doc panel, and chat grouping',
+    project_browse:'📂 Browse', project_path_ph:'C:\\path\\to\\project or /home/user/proj',
+    project_name_ph:'Project alias (optional, defaults to folder name)', project_pin:'📌 Pin', project_unpin:'Unpin',
+    project_remove:'🗑️ Remove', project_add:'Add', project_rename:'✏️ Rename',
+    project_switch_fail:'Switch failed', project_add_fail:'Add failed', project_remove_confirm:'Remove from project list? Files on disk will not be deleted',
   }
 };
 let LANG = (function(){
@@ -5467,14 +6004,22 @@ function addMsg(role, text, followups) {
 
 function setStatus(html){ document.getElementById('status').innerHTML = html; }
 
-async function loadSessions() {
-  sessions = await api('/sessions');
+async function loadSessions(opts) {
+  // M3.35:支持 scope=current|all|orphans,默认 current(只显示本项目会话)
+  const scope = (opts && opts.scope) || 'current';
+  sessions = await fetch(window.location.origin + '/prisiragent/api/sessions?scope=' + encodeURIComponent(scope))
+    .then(r => r.json()).catch(() => []);
   const list = document.getElementById('sess-list');
   list.innerHTML = '';
   sessions.forEach(s => {
     const el = document.createElement('div');
     el.className = 'sess' + (s.id === sessionId ? ' active' : '');
-    el.innerHTML = (s.pinned ? '<span class="pin">📌</span>' : '') + '<span class="t">' + esc(s.title) + '</span>';
+    // 孤儿会话(workdir 跟当前项目不同)显示 [dirname] 灰字标签
+    const isOrphan = s.workdir && s.workdir !== _currentWorkdir;
+    const wdTag = isOrphan
+      ? ' <span style="font-size:10px;color:var(--gh-ink-faint)">[' + esc(_dirname_(s.workdir)) + ']</span>'
+      : '';
+    el.innerHTML = (s.pinned ? '<span class="pin">📌</span>' : '') + '<span class="t">' + esc(s.title) + '</span>' + wdTag;
     el.onclick = () => switchSession(s.id);
     list.appendChild(el);
   });
@@ -5965,7 +6510,7 @@ async function pollResult() {
   polling = false;
 }
 
-function openKeys(){ document.getElementById('keymodal').classList.add('open'); renderKeys(); loadWorkdir(); loadPlatformList(); }
+function openKeys(){ document.getElementById('keymodal').classList.add('open'); renderKeys(); loadPlatformList(); }
 
 // M3.22.2 — 下拉选厂商:auto填 base_url / 默认 model / kind(走 /llm/upsert)
 var _llmProviders = [];  // [{platform_id, display, kind, base_url, default_model, note, fields}]
@@ -6242,19 +6787,181 @@ async function feedbackPackAndOpen(){
   document.getElementById('fb-status').innerHTML +=
     (LANG==='zh' ? '<br>💡 论坛新帖页打开后,请上传桌面这个 zip 文件作为附件。' : '<br>💡 After the forum post page opens, please upload the zip on your desktop as an attachment.');
 }
-async function loadWorkdir(){
-  const r = await api('/info');
-  document.getElementById('k-workdir').value = r.workdir || '';
+/* M3.35:工作目录已迁到顶栏 📂 项目切换器管理,keymodal 工作目录 JS 已删。 */
+
+/* ====== M3.35 项目切换器 ======
+   顶栏按钮 → openProject() → 渲染列表 → 点行 / add / pin / rename / remove
+   切项目后:_applyProjectChange() 刷新顶栏按钮 / 文件树 / 会话列表 / 文档栏。 */
+let _PROJECT_RENAMING = null;
+let _currentWorkdir = '';
+
+function _dirname_(p) {
+  if (!p) return '';
+  const parts = String(p).split(/[\\\/]/).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : p;
 }
-async function saveWorkdir(){
-  const hint = document.getElementById('k-workdir-hint');
-  const wd = document.getElementById('k-workdir').value.trim();
-  const zh = (LANG === 'zh');
-  if(!wd){ hint.textContent = zh ? '工作目录不能为空' : 'Working directory cannot be empty'; return; }
-  const r = await api('/workdir', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workdir:wd})});
-  if(r.ok){ hint.textContent = (zh ? '已应用:' : 'Applied: ') + r.workdir; }
-  else { hint.textContent = r.error || (zh ? '设置失败' : 'Failed'); }
+
+function _setProjectButton(workdir) {
+  const btn = document.getElementById('topbtnProjectName');
+  if (btn) btn.textContent = '📂 ' + (_dirname_(workdir) || '…');
 }
+
+async function openProject() {
+  document.getElementById('projmodal').classList.add('open');
+  await projectRenderList();
+}
+
+function closeProject() {
+  document.getElementById('projmodal').classList.remove('open');
+  _PROJECT_RENAMING = null;
+  const rr = document.getElementById('proj-rename-row');
+  if (rr) rr.style.display = 'none';
+}
+
+async function projectRenderList() {
+  const r = await api('/projects', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({op:'list'})});
+  if (r && r.active) _currentWorkdir = r.current_workdir || r.active;
+  const list = document.getElementById('proj-list');
+  if (!list) return;
+  list.innerHTML = '';
+  const items = (r.items || []).slice().sort((a, b) => {
+    if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+    return (b.added_at || 0) - (a.added_at || 0);
+  });
+  if (!items.length) {
+    list.innerHTML = '<div style="padding:14px;font-size:12px;color:var(--gh-ink-faint);text-align:center">' +
+      (LANG === 'zh' ? '暂无项目,在下方输入路径添加' : 'No projects yet — paste a path below to add one') + '</div>';
+    return;
+  }
+  for (const it of items) {
+    const row = document.createElement('div');
+    row.className = 'proj-item' + (it.path === r.active ? ' active' : '');
+    const pin = it.pinned
+      ? '<span class="pin" title="' + (LANG==='zh'?'取消置顶':'Unpin') + '">📌</span>'
+      : '<span class="nopin"></span>';
+    const pinLabel = it.pinned ? T('project_unpin') : T('project_pin');
+    row.innerHTML = pin
+      + '<span class="name" title="' + esc(it.name) + '">' + esc(it.name) + '</span>'
+      + '<span class="path" title="' + esc(it.path) + '">' + esc(it.path) + '</span>'
+      + '<span class="acts">'
+      +   '<button onclick="event.stopPropagation();projectRename(\'' + esc(it.path).replace(/'/g, "\\'") + '\')" title="' + T('project_rename') + '">✏️</button>'
+      +   '<button onclick="event.stopPropagation();projectPin(\'' + esc(it.path).replace(/'/g, "\\'") + '\')" title="' + pinLabel + '">' + (it.pinned ? '📌' : '☆') + '</button>'
+      +   '<button onclick="event.stopPropagation();projectRemove(\'' + esc(it.path).replace(/'/g, "\\'") + '\')" title="' + T('project_remove') + '">🗑️</button>'
+      + '</span>';
+    row.onclick = () => projectSwitch(it.path);
+    list.appendChild(row);
+  }
+}
+
+async function projectSwitch(path) {
+  const r = await api('/projects', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({op:'switch', path: path})});
+  if (r && r.ok) {
+    _currentWorkdir = r.active || path;
+    closeProject();
+    await _applyProjectChange();
+  } else {
+    alert((r && r.error) || T('project_switch_fail'));
+  }
+}
+
+async function projectAddFromInput() {
+  const inp = document.getElementById('proj-path');
+  const p = (inp.value || '').trim();
+  if (!p) return;
+  const r = await api('/projects', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({op:'add', path: p})});
+  if (r && r.ok) {
+    inp.value = '';
+    await projectRenderList();
+  } else {
+    alert((r && r.error) || T('project_add_fail'));
+  }
+}
+
+function projectBrowse() {
+  // Electron 沙箱无原生 dialog;若主进程暴露 electronAPI.openDir 则用,否则让用户粘贴。
+  const inp = document.getElementById('proj-path');
+  if (inp) inp.focus();
+  if (window.electronAPI && typeof window.electronAPI.openDir === 'function') {
+    window.electronAPI.openDir().then(p => { if (p) inp.value = p; });
+    return;
+  }
+  alert(LANG === 'zh'
+    ? '请直接粘贴项目目录的绝对路径(例如 C:\\path\\to\\project)'
+    : 'Please paste the absolute path of the project directory (e.g. C:\\path\\to\\project)');
+}
+
+function projectRename(path) {
+  _PROJECT_RENAMING = path;
+  const row = document.getElementById('proj-rename-row');
+  const inp = document.getElementById('proj-rename-input');
+  if (!row || !inp) return;
+  inp.value = '';
+  row.style.display = 'flex';
+  inp.focus();
+}
+
+async function projectRenameSave() {
+  if (!_PROJECT_RENAMING) return;
+  const name = (document.getElementById('proj-rename-input').value || '').trim();
+  if (!name) { alert(LANG==='zh' ? '别名不能为空' : 'Name cannot be empty'); return; }
+  const r = await api('/projects', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({op:'rename', path: _PROJECT_RENAMING, name: name})});
+  if (r && r.ok) {
+    _PROJECT_RENAMING = null;
+    document.getElementById('proj-rename-row').style.display = 'none';
+    await projectRenderList();
+  } else {
+    alert((r && r.error) || T('project_add_fail'));
+  }
+}
+
+async function projectPin(path) {
+  await api('/projects', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({op:'pin', path: path})});
+  await projectRenderList();
+}
+
+async function projectRemove(path) {
+  if (!confirm(T('project_remove_confirm'))) return;
+  const r = await api('/projects', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({op:'remove', path: path})});
+  if (r && r.active) _currentWorkdir = r.active;
+  await projectRenderList();
+}
+
+async function _applyProjectChange() {
+  // 切项目后刷新所有依赖 workdir 的 UI
+  let info = null;
+  try { info = await api('/info'); } catch (_) {}
+  if (info && info.workdir) _currentWorkdir = info.workdir;
+  _setProjectButton(info && info.workdir);
+  // 文件树(若 frail 在用)
+  if (typeof loadFileTree === 'function') { try { await loadFileTree(); } catch (_) {} }
+  // 会话列表(默认 scope=current)
+  if (typeof loadSessions === 'function') {
+    try { await loadSessions({scope: 'current'}); } catch (_) {}
+  }
+  // 文档栏(若开着,清空 + 刷新)
+  const dp = document.getElementById('doc-panel');
+  if (dp && dp.style.display !== 'none' && typeof docRefreshTimeline === 'function') {
+    try { docRefreshTimeline(); } catch (_) {}
+  }
+}
+
+// 启动时拉一次 projects 把顶栏按钮设上
+(async function initTopbarProject() {
+  try {
+    const r = await api('/projects', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({op:'list'})});
+    if (r) {
+      _currentWorkdir = r.current_workdir || r.active || '';
+      _setProjectButton(_currentWorkdir);
+    }
+  } catch (_) {}
+})();
 
 /* ---- 附件:文本内联 / 图片多模态 ---- */
 let _attachments = [];
@@ -6510,7 +7217,8 @@ async function delKey(p){ await api('/keys/delete',{method:'POST',headers:{'Cont
 document.getElementById('input').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 });
-// M3.31.12(2026-09-16):输入框自适应多行 — 按内容行数动态 rows,直到 8 行才出滚动条
+// M3.31.12(2026-09-16)+P2.5+9(2026-09-20):输入框自适应多行 — 按内容行数动态 rows,
+// 起步 2 行(P2.5+9 用户拍板,跟 HTML rows=2 对齐),撑到 12 行上限才出滚动条
 // 原本 max-height:160px + rows=2 导致只能容 2 行,再多就压缩出滚动条,UX 糟
 function _autoResizeInput() {
   const el = document.getElementById('input');
@@ -6518,12 +7226,12 @@ function _autoResizeInput() {
   // 用 \n 数 + wrap(每行宽度估算):textarea scrollHeight 已经按 wrap 折算,
   // 但因 min-height:44px 即使 1 行 scrollHeight=44,需按 value 实际行数算
   const value = el.value || '';
+  // P2.5+9:列宽估算降到 70px 字符(更窄屏 + padding 12px*2 占用),更稳
+  const colsPerLine = 70;
   const wrappedLines = value.split('\n').reduce((sum, line) => {
-    // 估算每行字符宽:14.5px font * 0.6 ≈ 8.7px 字符,box width ~700px → ~80 字符/行
-    const colsPerLine = 80;
     return sum + Math.max(1, Math.ceil(line.length / colsPerLine));
   }, 0);
-  el.rows = Math.max(1, Math.min(8, wrappedLines));
+  el.rows = Math.max(2, Math.min(12, wrappedLines));
 }
 document.getElementById('input').addEventListener('input', _autoResizeInput);
 // 初始化(防首次加载就有内容)
@@ -9112,6 +9820,22 @@ class Handler(BaseHTTPRequestHandler):
                     "reason": reason,
                 },
             })
+        elif path == "/prisiragent/api/schedule/history":
+            # P2.5+8(2026-09-20):GET 仅返 history + 状态(POST 在 do_POST 处理 clear)
+            self._json({
+                "ok": True,
+                "history": schedule_extractor_history(50),
+                "enabled": schedule_extractor_enabled(),
+                "consent_required": schedule_extractor_consent_required(),
+                "history_count": len(_SCHEDULE_TRIGGERS_HISTORY),
+            })
+        elif path == "/prisiragent/api/schedule/consent":
+            # P2.5+8(2026-09-20):GET 返 status(POST 在 do_POST 处理 grant/revoke)
+            self._json({
+                "ok": True,
+                "enabled": schedule_extractor_enabled(),
+                "consent_required": schedule_extractor_consent_required(),
+            })
         elif path == "/prisiragent/api/pair/offer":
             # P1 配对:生成一次性配对令牌。本机(回环)+ 局域网(私网/链路本地,如真手机/MuMu NAT)
             # 都可调——配对码出示在 PC 屏上由人抄进手机,私网 fetch 不放大风险;仅公网来源拦。
@@ -9122,7 +9846,11 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self._json(lp.new_offer())
         elif path == "/prisiragent/api/sessions":
-            self._json(list_sessions())
+            # M3.35:支持 scope=current|all|orphans,默认 current
+            scope = (qs.get("scope") or ["current"])[0]
+            if scope not in ("current", "all", "orphans"):
+                scope = "current"
+            self._json(list_sessions(scope))
         elif path == "/prisiragent/api/files":
             # 文件资料栏(2026-09-06):列出 workdir 文件树。只读,realpath 锁在 workdir 内防穿越。
             rel = (qs.get("path") or [""])[0]
@@ -10233,6 +10961,29 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:  # noqa: BLE001
                 pass
             self._json({"ok": bool(ok)})
+        elif path == "/prisiragent/api/schedule/consent":
+            # P2.5+8(2026-09-20):首次明细弹卡后,前端调此接口 grant/revoke
+            # body: {"action": "grant" | "revoke" | "status"}
+            action = (body.get("action") or "status").strip().lower()
+            if action == "grant":
+                schedule_extractor_consent_grant()
+                self._json({"ok": True, "enabled": True, "consent_required": False})
+            elif action == "revoke":
+                schedule_extractor_consent_revoke()
+                self._json({"ok": True, "enabled": False, "consent_required": True})
+            else:
+                self._json({
+                    "ok": True,
+                    "enabled": schedule_extractor_enabled(),
+                    "consent_required": schedule_extractor_consent_required(),
+                })
+        elif path == "/prisiragent/api/schedule/history":
+            # P2.5+8(2026-09-20):POST 仅处理 clear(GET 在 do_GET 处理)
+            if body.get("clear"):
+                stats = _schedule_extractor_clear_all()
+                self._json({"ok": True, "cleared": stats})
+            else:
+                self._json({"ok": False, "err": "no clear flag"}, 400)
         elif path == "/prisiragent/api/rename":
             rename_session(body.get("session_id", ""), body.get("title", "")[:60])
             self._json({"ok": True})
@@ -10321,6 +11072,84 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:  # noqa: BLE001
                 pass
             self._json({"ok": True, "workdir": p})
+        elif path == "/prisiragent/api/projects":
+            # M3.35(2026-09-20)项目切换器端点。op=list|switch|add|rename|pin|remove。
+            op = (body.get("op") or "list").strip()
+            try:
+                if op == "list":
+                    self._json({
+                        "ok": True,
+                        "active": _PROJECTS["active"],
+                        "items": list(_PROJECTS["items"]),
+                        "current_workdir": _WORKDIR.get("path", ""),
+                    })
+                elif op == "switch":
+                    p = (body.get("path") or "").strip()
+                    if _projects_activate(p):
+                        try:
+                            _projects_save()
+                        except OSError as se:
+                            self._json({"ok": True, "active": _PROJECTS["active"],
+                                        "warn": f"save failed: {se}"})
+                            return
+                        self._json({"ok": True, "active": _PROJECTS["active"],
+                                    "event": "project_changed"})
+                    else:
+                        self._json({"ok": False, "error": f"目录不存在: {p}"}, 400)
+                elif op == "add":
+                    p = (body.get("path") or "").strip()
+                    if not p:
+                        self._json({"ok": False, "error": "path 必填"}, 400); return
+                    p = os.path.abspath(os.path.expanduser(p))
+                    if not os.path.isdir(p):
+                        self._json({"ok": False, "error": f"目录不存在: {p}"}, 400); return
+                    name = (body.get("name") or "").strip() or None
+                    _projects_upsert(p, name=name, pinned=False)
+                    try:
+                        _projects_save()
+                    except OSError as se:
+                        self._json({"ok": False, "error": f"save failed: {se}"}, 500); return
+                    self._json({"ok": True})
+                elif op == "rename":
+                    p = (body.get("path") or "").strip()
+                    name = (body.get("name") or "").strip()
+                    if not name or len(name) > 32:
+                        self._json({"ok": False, "error": "name 1-32 字"}, 400); return
+                    _projects_upsert(p, name=name)
+                    try:
+                        _projects_save()
+                    except OSError as se:
+                        self._json({"ok": False, "error": f"save failed: {se}"}, 500); return
+                    self._json({"ok": True})
+                elif op == "pin":
+                    p = (body.get("path") or "").strip()
+                    p = os.path.abspath(p)
+                    found = False
+                    with _PROJECTS_LOCK:
+                        for it in _PROJECTS["items"]:
+                            if it.get("path") == p:
+                                it["pinned"] = not bool(it.get("pinned"))
+                                found = True
+                                break
+                    if not found:
+                        self._json({"ok": False, "error": "项目不在列表"}, 400); return
+                    try:
+                        _projects_save()
+                    except OSError as se:
+                        self._json({"ok": False, "error": f"save failed: {se}"}, 500); return
+                    self._json({"ok": True})
+                elif op == "remove":
+                    p = (body.get("path") or "").strip()
+                    _projects_remove(p)
+                    try:
+                        _projects_save()  # 红线:remove 必须 save(M3.35 bug 历史教训)
+                    except OSError as se:
+                        self._json({"ok": False, "error": f"save failed: {se}"}, 500); return
+                    self._json({"ok": True, "active": _PROJECTS["active"]})
+                else:
+                    self._json({"ok": False, "error": f"未知 op: {op}"}, 400)
+            except Exception as e:  # noqa: BLE001
+                self._json({"ok": False, "error": f"projects 异常: {e}"}, 500)
         # === M3.31 外部版本管理兼容(2026-09-16)===
         elif path == "/prisiragent/api/git_detect":
             # 探测本机是否有 git;force=true 跳过缓存重跑。
@@ -11042,6 +11871,18 @@ def main():
         lp = lan_pair.init(str(_DB_DIR), args.port)
         lp.start_broadcast()
         _LOGGER.info("LAN mode: listening 0.0.0.0:%d, token gate ON, mDNS broadcast ON", args.port)
+
+    # M3.35:启动时从 ~/.prisir/projects.json 读上次激活的项目
+    # (若文件不存在 / 损坏,仍用 DEFAULT_WORKDIR 默认值)
+    try:
+        _projects_load()
+        if _PROJECTS["active"] and os.path.isdir(_PROJECTS["active"]):
+            DEFAULT_WORKDIR = _PROJECTS["active"]
+            _WORKDIR["path"] = DEFAULT_WORKDIR
+            _LOGGER.info("projects.json loaded: active=%s items=%d",
+                         DEFAULT_WORKDIR, len(_PROJECTS["items"]))
+    except Exception as e:  # noqa: BLE001
+        _LOGGER.warning("projects.json load failed (use default): %s", e)
 
     # v1.0 权限闸:初始化 coworker 引擎(path sandbox 根=workdir,审计落 logs/audit)。
     try:
