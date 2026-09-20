@@ -61,7 +61,10 @@ async def write_to_calendar(events: list[dict]) -> list[str]:
 
 
 def write_to_todo(todos: list[dict]) -> int:
-    """todos → _ext_rpc_call todo.add。返写入成功的条数。"""
+    """todos → _ext_rpc_call todo.add。返写入成功的条数。
+       P2.5+B-0(2026-09-21):_ext_rpc_call 新契约返 {result: dict} | {error: str},
+       旧版 if r.get("ok") or r.get("item") 全失效,改成 if not error.
+    """
     if not todos:
         return 0
     try:
@@ -85,11 +88,17 @@ def write_to_todo(todos: list[dict]) -> int:
                 "priority": priority,
                 "tags": [str(x)[:32] for x in tags][:8],
             }, timeout=5)
-            if r and (r.get("ok") or r.get("item")):
-                n += 1
-            elif r is None:
-                log.warning("write_to_todo: todo ext not running, skip")
-                break  # 整个 ext 不在,不再试
+            if not isinstance(r, dict):
+                log.warning("write_to_todo: bad rpc return %r", r)
+                continue
+            if r.get("error"):
+                err = r["error"]
+                log.warning("write_to_todo rpc err: %s", err)
+                if "ext_not_running" in str(err):
+                    break  # 整个 ext 不在,不再试
+                continue
+            # r["result"] 形如 {ok: True, item: {...}} / {ok: True, id: ...} 由 todo ext 决定
+            n += 1
         except Exception as ex:
             log.warning("write_to_todo fail: %s", ex)
     return n

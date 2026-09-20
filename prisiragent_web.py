@@ -242,6 +242,325 @@ def _projects_load():
         pass
 
 
+# ============================================================
+# P2.5+B-0(2026-09-21)ext RPC bridge — Python ↔ Node 子进程 NDJSON 双向
+#   Phase B-1 commit msg 说「主进程转发层 ship」实际只 ship 了 SDK + 扩展注册表,
+#   Python 主进程与 Node 子进程的桥全部缺失。本次 ship:
+#     - _EXT_BRIDGE_LOCK + _EXT_PROCS 全局
+#     - _ext_spawn / _ext_kill / _ext_reader_loop 进程生命周期
+#     - _ext_rpc_call 同步 RPC(NDJSON over stdin/stdout)
+#     - _ext_proxy_dispatch 跨扩展转发(SDK invokeExt 协议)
+#     - 启用钩子(ext 启用时 spawn,禁用时 kill)
+#     - 现有 3 处调用点包 try/except + error 码兜底
+#   进程模型:一进程一 ext(隔离 HOME = ~/.prisir/ext/<ext_id>/);崩了指数退避自动 restart。
+# ============================================================
+_EXT_BRIDGE_LOCK = _threading.RLock()
+_EXT_PROCS = {}            # ext_id -> {"proc": Popen, "home": str, "pending": {req_id: (event, box)}, "last_alive_at": float, "crash_count": int, "reader_thread": Thread, "enabled": bool}
+_EXT_LOG_HOOKS = {}        # ext_id -> list[callable](主进程日志钩子,留接口)
+_EXT_INJECT_QUEUE = []     # ui.inject notification 缓冲(主进程同步消费)
+
+
+def _ext_home(ext_id: str) -> str:
+    """每个 ext 一个隔离 HOME,放 state.db / log / tmp。
+       Node 端 extensions/task-runner/index.js:48 已读 process.env.PRISIR_EXT_HOME。"""
+    p = os.path.join(os.path.expanduser("~"), ".prisir", "ext", ext_id)
+    os.makedirs(p, exist_ok=True)
+    return p
+
+
+def _ext_node_exec() -> str:
+    """node 可执行解析:env 注入 → sys.executable sibling → shutil.which → 'node' 兜底。"""
+    for cand in (
+        os.environ.get("PRISIR_NODE_EXEC"),
+        os.path.join(os.path.dirname(sys.executable), "node.exe" if os.name == "nt" else "node"),
+        shutil.which("node") if shutil else None,
+        "node",
+    ):
+        if not cand:
+            continue
+        if os.path.isabs(cand) and os.path.exists(cand):
+            return cand
+        if not os.path.isabs(cand):
+            try:
+                resolved = shutil.which(cand) if shutil else None
+                if resolved:
+                    return resolved
+            except Exception:
+                pass
+    return "node"
+
+
+def _ext_entry(ext_id: str) -> str:
+    """解析 ext 入口 index.js。cwd 优先,失败回退绝对路径。"""
+    candidates = [
+        os.path.join("extensions", ext_id, "index.js"),
+        os.path.abspath(os.path.join("extensions", ext_id, "index.js")),
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+    return candidates[-1]  # 兜底返绝对路径(让 Popen 报错更清晰)
+
+
+def _ext_spawn(ext_id: str):
+    """enable 时 spawn。已 running → 跳过。崩了由 reader_thread 重启,这里只处理主动启用。"""
+    with _EXT_BRIDGE_LOCK:
+        st = _EXT_PROCS.get(ext_id)
+        if st and st.get("proc") and st["proc"].poll() is None:
+            return  # 已在跑
+        entry = _ext_entry(ext_id)
+        home = _ext_home(ext_id)
+        env = {**os.environ, "PRISIR_EXT_HOME": home}
+        try:
+            proc = subprocess.Popen(
+                [_ext_node_exec(), entry],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                env=env, bufsize=0,
+            )
+        except (OSError, FileNotFoundError) as e:
+            try:
+                _LOGGER.warning("[ext-bridge] spawn %s failed: %s", ext_id, e)
+            except Exception:
+                pass
+            return
+        st_new = {
+            "proc": proc, "home": home, "pending": {},
+            "last_alive_at": time.time(), "crash_count": 0,
+            "reader_thread": None, "enabled": True,
+        }
+        _EXT_PROCS[ext_id] = st_new
+        t = _threading.Thread(target=_ext_reader_loop, args=(ext_id,), daemon=True,
+                              name=f"ext-reader-{ext_id}")
+        t.start()
+        st_new["reader_thread"] = t
+        try:
+            _LOGGER.info("[ext-bridge] spawn %s pid=%s entry=%s", ext_id, proc.pid, entry)
+        except Exception:
+            pass
+
+
+def _ext_kill(ext_id: str, grace_sec: float = 5.0):
+    """禁用时 graceful kill。SIGTERM → grace_sec → SIGKILL。"""
+    with _EXT_BRIDGE_LOCK:
+        st = _EXT_PROCS.pop(ext_id, None)
+    if not st:
+        return
+    proc = st.get("proc")
+    if not proc or proc.poll() is not None:
+        return
+    try:
+        proc.terminate()
+    except Exception:
+        pass
+    deadline = time.time() + grace_sec
+    while proc.poll() is None and time.time() < deadline:
+        time.sleep(0.05)
+    if proc.poll() is None:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+    # 残留 pending 全部 reject(防调用方永久 wait)
+    for rid, pend in list(st.get("pending", {}).items()):
+        ev, box = pend
+        box["error"] = "ext killed"
+        ev.set()
+
+
+def _ext_reader_loop(ext_id: str):
+    """daemon 线程,逐行读 stdout 的 NDJSON,路由到 pending 或 invoke 转发通道。
+       EOF → 标记崩溃 → 失败 pending reject → 指数退避自动 respawn(上限 3 次)。"""
+    st = _EXT_PROCS.get(ext_id)
+    if not st:
+        return
+    proc = st["proc"]
+    try:
+        for line in iter(proc.stdout.readline, b""):
+            try:
+                msg = json.loads(line.decode("utf-8", errors="replace"))
+            except Exception:
+                continue
+            st["last_alive_at"] = time.time()
+            # 路由:id=reply(result/error),method=notification
+            if "id" in msg and ("result" in msg or "error" in msg):
+                with _EXT_BRIDGE_LOCK:
+                    pend = st["pending"].pop(msg["id"], None)
+                if pend:
+                    ev, box = pend
+                    if "error" in msg:
+                        err = msg["error"]
+                        box["error"] = err.get("message") if isinstance(err, dict) else str(err)
+                    else:
+                        box["result"] = msg.get("result")
+                    ev.set()
+            elif msg.get("method") == "extension.invoke_request":
+                _ext_proxy_dispatch(ext_id, msg.get("params") or {})
+            elif msg.get("method") == "log":
+                params = msg.get("params") or {}
+                _ext_log(ext_id, params.get("level", "info"), params.get("msg", ""))
+            elif msg.get("method") == "ui.inject":
+                _ext_inject_card(ext_id, msg.get("params") or {})
+            # 其他 notification 静默忽略
+    except Exception as e:
+        try:
+            _LOGGER.warning("[ext-bridge] reader %s err: %s", ext_id, e)
+        except Exception:
+            pass
+    # EOF:进程退出 → 收尾
+    with _EXT_BRIDGE_LOCK:
+        st2 = _EXT_PROCS.get(ext_id)
+        if not st2 or st2.get("proc") is not proc:
+            return  # 已被外部 _ext_kill 清理
+        st2["crash_count"] += 1
+        for rid, pend in list(st2["pending"].items()):
+            ev, box = pend
+            box["error"] = "ext exited"
+            ev.set()
+            st2["pending"].pop(rid, None)
+        if st2["crash_count"] <= 3 and st2.get("enabled", True):
+            delay = min(2 ** st2["crash_count"], 30)
+            _threading.Timer(delay, _ext_spawn, args=[ext_id]).start()
+            try:
+                _LOGGER.info("[ext-bridge] %s exited, auto-respawn in %ss", ext_id, delay)
+            except Exception:
+                pass
+
+
+def _ext_rpc_call(ext_id: str, method: str, params=None, timeout: float = 5.0) -> dict:
+    """Python → Node ext 同步 RPC。返 dict(键 'result' 或 'error')。超时/未跑 = 显式 error。"""
+    params = params if params is not None else {}
+    box: dict = {}
+    with _EXT_BRIDGE_LOCK:
+        st = _EXT_PROCS.get(ext_id)
+        if not st or not st.get("proc") or st["proc"].poll() is not None:
+            return {"error": f"ext_not_running: {ext_id}"}
+        req_id = f"py_{int(time.time() * 1000)}_{random.randrange(1 << 16):04x}"
+        ev = _threading.Event()
+        st["pending"][req_id] = (ev, box)
+        try:
+            payload = (json.dumps({"jsonrpc": "2.0", "id": req_id,
+                                   "method": f"command.{method}",
+                                   "params": params}, ensure_ascii=False) + "\n").encode("utf-8")
+            st["proc"].stdin.write(payload)
+            st["proc"].stdin.flush()
+        except (BrokenPipeError, OSError) as e:
+            st["pending"].pop(req_id, None)
+            return {"error": f"ext_stdin_broken: {ext_id}: {e}"}
+    if not ev.wait(timeout=timeout + 1.0):
+        with _EXT_BRIDGE_LOCK:
+            st2 = _EXT_PROCS.get(ext_id)
+            if st2:
+                st2["pending"].pop(req_id, None)
+        return {"error": f"timeout: {ext_id}.{method} after {timeout}s"}
+    return box
+
+
+def _ext_proxy_dispatch(source_ext_id: str, params: dict):
+    """SDK extension.invoke_request 路由:Python 转发到目标 ext,结果以
+       extension.invoke_response notification 推回 source。"""
+    req_id = params.get("req_id")
+    target = params.get("target_ext_id")
+    method = params.get("method")
+    inner_params = params.get("params") or {}
+    if not (req_id and target and method):
+        return
+    sub = _ext_rpc_call(target, method, inner_params, timeout=4.0)
+    src_st = _EXT_PROCS.get(source_ext_id)
+    if not src_st or not src_st.get("proc") or src_st["proc"].poll() is not None:
+        return
+    response = {"jsonrpc": "2.0", "method": "extension.invoke_response",
+                "params": {"req_id": req_id}}
+    if "error" in sub:
+        response["params"]["error"] = sub["error"]
+    else:
+        response["params"]["result"] = sub.get("result")
+    try:
+        src_st["proc"].stdin.write((json.dumps(response, ensure_ascii=False) + "\n").encode("utf-8"))
+        src_st["proc"].stdin.flush()
+    except (BrokenPipeError, OSError):
+        pass
+
+
+def _ext_log(ext_id: str, level: str, msg: str) -> None:
+    """主进程收集 ext 日志。_EXT_LOG_HOOKS 留给后续 UI 日志面板订阅。"""
+    try:
+        lvl_map = {"error": _LOGGER.error, "warn": _LOGGER.warning,
+                   "info": _LOGGER.info, "debug": _LOGGER.debug}
+        fn = lvl_map.get(str(level).lower(), _LOGGER.info)
+        fn("[ext:%s] %s", ext_id, msg)
+    except Exception:
+        pass
+
+
+def _ext_inject_card(ext_id: str, params: dict) -> None:
+    """ui.inject notification:ext 想往当前 session 塞卡片(主进程后续任务接 SSE)。"""
+    _EXT_INJECT_QUEUE.append({"ext_id": ext_id, "params": params,
+                              "ts": time.time()})
+    if len(_EXT_INJECT_QUEUE) > 100:
+        del _EXT_INJECT_QUEUE[:len(_EXT_INJECT_QUEUE) - 100]
+
+
+# installed.json 路径(扩展注册表持久化文件,任务 #17 ship 的目标文件)
+_EXT_INSTALLED_FILE = os.path.join(os.path.expanduser("~"), ".prisir", "installed.json")
+
+
+def _ext_autostart_from_installed() -> None:
+    """启动时读 ~/.prisir/installed.json,把 enabled=true 的 ext spawn 起来。
+       文件不存在/坏/为空 → 静默跳过,等价于「用户没装任何 ext」。
+       installed.json schema(任务 #17 ship 时承诺的格式):
+         {
+           "extensions": [
+             {"id": "task-runner", "enabled": true, "version": "0.1.0", ...},
+             ...
+           ]
+         }
+       本任务不强 schema 校验,只挑 enabled=true 那些 spawn。
+    """
+    if not os.path.exists(_EXT_INSTALLED_FILE):
+        return
+    try:
+        with open(_EXT_INSTALLED_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return
+    exts = data.get("extensions") if isinstance(data, dict) else None
+    if not isinstance(exts, list):
+        return
+    started = 0
+    for it in exts:
+        if not isinstance(it, dict):
+            continue
+        ext_id = str(it.get("id") or "").strip()
+        enabled = bool(it.get("enabled"))
+        if not ext_id or not enabled:
+            continue
+        # 入口必须存在(spawn 失败也 graceful 跳过,不影响其他 ext)
+        entry = _ext_entry(ext_id)
+        if not os.path.exists(entry):
+            try:
+                _LOGGER.info("[ext-bridge] autostart skip %s: entry not found (%s)",
+                             ext_id, entry)
+            except Exception:
+                pass
+            continue
+        _ext_spawn(ext_id)
+        started += 1
+    if started:
+        try:
+            _LOGGER.info("[ext-bridge] autostart spawned %d extensions", started)
+        except Exception:
+            pass
+
+
+# 启用钩子:扩展 store 写 enabled=true 时被调用。留接口供 Phase 1.x 接 UI。
+def _ext_on_enabled(ext_id: str):
+    _ext_spawn(ext_id)
+
+
+def _ext_on_disabled(ext_id: str):
+    _ext_kill(ext_id)
+
+
 def _projects_save():
     """原子写盘:tmp + os.replace 防止半截 JSON。"""
     os.makedirs(os.path.dirname(_PROJECTS_FILE), exist_ok=True)
@@ -2255,11 +2574,16 @@ def _schedule_extractor_clear_all() -> dict:
     # 3) 删 ai 建的 todos(tag 含 ai_extracted)
     try:
         lst = _ext_rpc_call("todo", "todo.list", {"limit": 100}, timeout=5)
-        if lst and isinstance(lst.get("items"), list):
-            for it in lst["items"]:
-                tags = it.get("tags") or []
-                if "ai_extracted" in tags:
-                    _ext_rpc_call("todo", "todo.remove", {"id": it.get("id")}, timeout=3)
+        # P2.5+B-0(2026-09-21)_ext_rpc_call 新契约:{result: {...}} | {error: ...}
+        # todo.list 在 result 里返 {items: [...], total: N}
+        items = []
+        if lst and not lst.get("error") and isinstance(lst.get("result"), dict):
+            items = lst["result"].get("items") or []
+        for it in items:
+            tags = it.get("tags") or []
+            if "ai_extracted" in tags:
+                rr = _ext_rpc_call("todo", "todo.remove", {"id": it.get("id")}, timeout=3)
+                if not (rr and rr.get("error")):
                     stats["todos_removed"] += 1
     except Exception as e:  # noqa: BLE001
         try:
@@ -11245,6 +11569,28 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:  # noqa: BLE001
                 self._json({"ok": False, "error": f"projects 异常: {e}"}, 500)
         # === M3.31 外部版本管理兼容(2026-09-16)===
+        elif path == "/prisiragent/api/ext/rpc":
+            # P2.5+B-0(2026-09-21)ext RPC bridge 调试端点:
+            #   POST {ext_id, method, params, timeout?}
+            #   → 转发到 _ext_rpc_call,返 {ok, result} 或 {ok:false, error}
+            ext_id = (body.get("ext_id") or "").strip()
+            method = (body.get("method") or "").strip()
+            params = body.get("params") or {}
+            timeout = float(body.get("timeout") or 5.0)
+            if not ext_id or not method:
+                self._json({"ok": False, "error": "ext_id 和 method 必填"}, 400)
+                return
+            with _EXT_BRIDGE_LOCK:
+                st = _EXT_PROCS.get(ext_id)
+                if not st or not st.get("proc") or st["proc"].poll() is not None:
+                    _ext_spawn(ext_id)
+            r = _ext_rpc_call(ext_id, method, params, timeout=timeout)
+            if "error" in r:
+                self._json({"ok": False, "error": r["error"], "ext_id": ext_id,
+                            "method": method})
+                return
+            self._json({"ok": True, "result": r.get("result"), "ext_id": ext_id,
+                        "method": method})
         elif path == "/prisiragent/api/git_detect":
             # 探测本机是否有 git;force=true 跳过缓存重跑。
             force = str(body.get("force") or "").lower() in ("1", "true", "yes")
@@ -11993,6 +12339,17 @@ def main():
                          len(_SKILL_INDEX), _skill_dirs())
     except Exception as e:  # noqa: BLE001 — skill 扫失败不致命(只是没 skill 用)
         _LOGGER.warning("skill scan failed (no skills available): %s", e)
+
+    # P2.5+B-0(2026-09-21)ext RPC bridge 自动启动:
+    #   读 ~/.prisir/installed.json,把 enabled=true 的 ext 子进程拉起来。
+    #   文件缺失/坏 → 跳过(等价于没装扩展,正常路径)。
+    try:
+        _ext_autostart_from_installed()
+    except Exception as e:  # noqa: BLE001
+        try:
+            _LOGGER.warning("[ext-bridge] autostart failed: %s", e)
+        except Exception:
+            pass
 
     srv = ThreadingHTTPServer((WEB_HOST, args.port), Handler)
     _LOGGER.info("PrisirAI 对话模式 http://%s:%d  路由=%s  数据=%s",
