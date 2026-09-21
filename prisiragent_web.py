@@ -1364,6 +1364,24 @@ def _shell_system_prompt(user_text: str, sid: str = "") -> str:
             parts.append("\n".join(_tlines))
     except Exception:  # noqa: BLE001
         pass
+    # P2.5+B-4.D(2026-09-21):已落盘 workflow 文件清单注入,让 LLM 知道有哪些
+    # workflow 文件可读可改(tasks vs files 区别:tasks 是 SQLite 运行时,
+    # files 是 workflows/*.json 源代码;LLM 用 new_workflow 写文件 / read_file 读文件)。
+    try:
+        _flst = _ext_rpc_call("task-runner", "task.files.list", {}, timeout=2.0)
+        _ffiles = (_flst.get("result") or {}).get("files") if isinstance(_flst, dict) else None
+        if _ffiles:
+            _flines = ["【已落盘 workflow 文件(workflows/*.json)】用 new_workflow({name, dag}) 写入,"
+                       "用 task.files.read 读。写完不入库不跑,需显式 run_task({name, dag}) 才会跑。",
+                       "| name | path | nodes | trigger |"]
+            for _f in _ffiles[:50]:
+                _flines.append(f"| {_f.get('name','?')} | `{_f.get('path','?')}` "
+                               f"| {_f.get('node_count',0)} | {_f.get('trigger','manual')} |")
+            if len(_ffiles) > 50:
+                _flines.append(f"\n(共 {len(_ffiles)} 个,只列前 50)")
+            parts.append("\n".join(_flines))
+    except Exception:  # noqa: BLE001
+        pass
     return "\n\n".join(parts)
 
 
@@ -4980,7 +4998,8 @@ _PAGE = r"""<!DOCTYPE html>
   #wf-status .wf-ok { color:var(--gh-green-deep); }
   #wf-status .wf-failed { color:#c0392b; }
   #wf-status .wf-running { color:var(--gh-amber); }
-  #wf-tools { display:flex; gap:6px; }
+  #wf-tools { display:flex; gap:6px; align-items:center; }
+  .wf-tools-sep { color:var(--gh-line); margin:0 4px; user-select:none; }
   #wf-body { flex:1; display:flex; min-height:0; }
   #wf-side { width:220px; flex-shrink:0; border-right:1px solid var(--gh-line);
     overflow-y:auto; padding:8px 6px; background:var(--gh-paper-2); }
@@ -5059,9 +5078,16 @@ _PAGE = r"""<!DOCTYPE html>
   #wf-status .wf-canceled { color:#c0392b; }
 
   /* 节点配置弹层 / 模板选择弹层(在 wfmodal 内绝对定位) */
-  #wf-node-modal, #wf-tpl-modal { position:fixed; inset:0; background:rgba(47,58,52,.4);
+  #wf-node-modal, #wf-tpl-modal, #wf-import-modal { position:fixed; inset:0; background:rgba(47,58,52,.4);
     display:none; align-items:center; justify-content:center; z-index:114; }
-  #wf-node-modal.open, #wf-tpl-modal.open { display:flex; }
+  #wf-node-modal.open, #wf-tpl-modal.open, #wf-import-modal.open { display:flex; }
+  /* P2.5+B-4.D(2026-09-21)workflow import 弹层 */
+  .wf-import-hint { font-size:11px; color:var(--gh-ink-faint);
+    margin:0 0 12px; line-height:1.45; }
+  .wf-import-row { display:flex; flex-direction:column; gap:4px;
+    font-size:11px; color:var(--gh-ink-faint); margin:10px 0; font-weight:600; }
+  .wf-import-row input[type="file"] { font-size:11px; }
+  #wf-import-paste { font-family:monospace; min-height:120px; }
   .wf-nm-card { background:var(--gh-paper); border-radius:12px; padding:18px;
     width:480px; max-width:92vw; max-height:90vh; overflow-y:auto;
     box-shadow:0 8px 24px rgba(0,0,0,.18); }
@@ -5761,6 +5787,9 @@ _PAGE = r"""<!DOCTYPE html>
       <button class="topbtn primary" onclick="wfSave()" data-i18n="save">💾 保存</button>
       <button class="topbtn primary" onclick="wfRun()" data-i18n="wf_run">▶ 运行</button>
       <button class="topbtn" onclick="wfToggleSchedule()" id="wf-sched-btn">⏰ 调度: 关</button>
+      <span class="wf-tools-sep">|</span>
+      <button class="topbtn" onclick="wfExportCurrent()" data-i18n="wf_export">📤 导出</button>
+      <button class="topbtn" onclick="wfOpenImport()" data-i18n="wf_import">📥 导入</button>
       <button class="topbtn" onclick="closeWorkflow()" data-i18n="close">关闭</button>
     </div>
   </div>
@@ -5851,6 +5880,26 @@ _PAGE = r"""<!DOCTYPE html>
     <div id="wf-tpl-list"></div>
     <div class="wf-nm-row">
       <button class="topbtn" onclick="wfTplCancel()" data-i18n="close">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- P2.5+B-4.D(2026-09-21)workflow import 弹层:选文件 / 粘贴 JSON -->
+<div id="wf-import-modal" style="display:none">
+  <div class="wf-nm-card">
+    <h3 data-i18n="wf_import_title">📥 导入 workflow</h3>
+    <div class="wf-import-hint" data-i18n="wf_import_hint">选 .json 文件,或直接粘贴 JSON。校验后落到 task-runner,可立即 ▶ 跑。</div>
+    <label class="wf-import-row">
+      <span data-i18n="wf_import_file">📂 选文件</span>
+      <input type="file" id="wf-import-file" accept=".json">
+    </label>
+    <label class="wf-import-row">
+      <span data-i18n="wf_import_paste">📋 或粘贴</span>
+      <textarea id="wf-import-paste" rows="6" placeholder='{"name":"daily_summary","dag":{"n1":{"ext":"todo","method":"todo.add","params":{"title":"hello"}}}}'></textarea>
+    </label>
+    <div class="wf-nm-row">
+      <button class="topbtn" onclick="wfImportCancel()" data-i18n="cancel">取消</button>
+      <button class="topbtn primary" onclick="wfImportApply()" data-i18n="wf_imported">📥 导入</button>
     </div>
   </div>
 </div>
@@ -6034,6 +6083,13 @@ const I18N = {
     // P2.5+B-3 hotfix(2026-09-21)运行历史清理
     wf_runs_clear:'🧹 清空', wf_clear_runs_confirm:'清空所有运行历史?(只清 runs/node_runs,tasks 定义保留)',
     wf_clear_runs_fail:'清空失败',
+    // P2.5+B-4.D(2026-09-21)workflow 文件 import/export
+    wf_export:'📤 导出当前', wf_import:'📥 导入',
+    wf_import_title:'📥 导入 workflow',
+    wf_import_hint:'选 .json 文件,或直接粘贴 JSON。校验后落到 task-runner,可立即 ▶ 跑。',
+    wf_import_file:'📂 选文件', wf_import_paste:'📋 或粘贴',
+    wf_imported:'📥 导入', wf_imported_ok:'✓ 已导入: ', wf_import_fail:'导入失败: ',
+    wf_export_fail:'导出失败: ', wf_export_no_task:'先加载一个任务再导出',
   },
   en: {
     send:'Send', new_session:'+ New chat', model_key:'🔑 Model Key', feedback:'⚙ Feedback',
@@ -6101,6 +6157,13 @@ const I18N = {
     // P2.5+B-3 hotfix(2026-09-21)run history cleanup
     wf_runs_clear:'🧹 Clear', wf_clear_runs_confirm:'Clear all run history?(only runs/node_runs, task definitions kept)',
     wf_clear_runs_fail:'Clear failed',
+    // P2.5+B-4.D(2026-09-21)workflow file import/export
+    wf_export:'📤 Export current', wf_import:'📥 Import',
+    wf_import_title:'📥 Import workflow',
+    wf_import_hint:'Pick a .json file, or paste JSON. After validation it lands in task-runner, ready to ▶ run.',
+    wf_import_file:'📂 File', wf_import_paste:'📋 Or paste',
+    wf_imported:'📥 Import', wf_imported_ok:'✓ Imported: ', wf_import_fail:'Import failed: ',
+    wf_export_fail:'Export failed: ', wf_export_no_task:'Load a task first before exporting',
   }
 };
 let LANG = (function(){
@@ -8169,6 +8232,72 @@ async function wfTemplates() {
 
 function wfTplCancel() {
   document.getElementById('wf-tpl-modal').classList.remove('open');
+}
+
+// === P2.5+B-4.D(2026-09-21)workflow 文件 import/export ===
+async function wfExportCurrent() {
+  if (!_wfCurrentTask || !_wfCurrentTask.id) {
+    alert(T('wf_export_no_task'));
+    return;
+  }
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method: 'task.files.export',
+                          params:{id: _wfCurrentTask.id}, timeout: 8})});
+  if (!r.ok || !r.result) { alert(T('wf_export_fail') + (r.error||'rpc fail')); return; }
+  // task-runner 返 {ok, name, json} — 触发浏览器下载
+  const blob = new Blob([r.result.json || ''], {type: 'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (r.result.name || _wfCurrentTask.name || 'workflow') + '.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  document.getElementById('wf-status').textContent = '✓ ' + a.download;
+}
+
+function wfOpenImport() {
+  document.getElementById('wf-import-file').value = '';
+  document.getElementById('wf-import-paste').value = '';
+  document.getElementById('wf-import-modal').classList.add('open');
+}
+
+function wfImportCancel() {
+  document.getElementById('wf-import-modal').classList.remove('open');
+}
+
+async function wfImportApply() {
+  let content = '';
+  const fileEl = document.getElementById('wf-import-file');
+  if (fileEl && fileEl.files && fileEl.files.length > 0) {
+    try {
+      content = await fileEl.files[0].text();
+    } catch (e) {
+      alert(T('wf_import_fail') + e.message);
+      return;
+    }
+  } else {
+    content = (document.getElementById('wf-import-paste').value || '').trim();
+  }
+  if (!content) {
+    alert(T('wf_import_fail') + 'empty');
+    return;
+  }
+  // 走 task.files.import(content) — task-runner 内部 validateDag + write + upsert
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method: 'task.files.import',
+                          params:{content}, timeout: 10})});
+  if (!r.ok || !(r.result && r.result.ok)) {
+    alert('导入失败: ' + ((r.result && r.result.error) || r.error || 'rpc fail'));
+    return;
+  }
+  wfImportCancel();
+  await wfRenderTaskList();
+  // 导入成功后自动跳到刚导入的 task
+  if (r.result.task_id && typeof wfLoadTask === 'function') {
+    wfLoadTask(r.result.task_id);
+  }
+  document.getElementById('wf-status').textContent = T('wf_imported_ok') + (r.result.name || '');
 }
 
 function wfApplyTpl(tpl) {

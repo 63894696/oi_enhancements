@@ -29,9 +29,19 @@
  *   task.delete       { id }                              → { ok }
  *   task.run          { id, wait? }                       → { ok, run_id } 或 wait=true 同步等结果
  *   task.runs         { task_id?, limit? }                → { runs, total }
+ *   task.run.cancel   { run_id }                          → { ok }
+ *   task.run.active                                    → { active: [...], count }
+ *   task.runs.clear   { task_id? }                        → { ok, cleared_runs, cleared_node_runs }
  *   task.schedule.start { interval_sec? }                 → { ok, running, interval_sec }
  *   task.schedule.stop                                   → { ok }
  *   task.schedule.status                                 → { running, interval_sec, next_tick_at }
+ *   task.template.list                                  → { templates: [...] }
+ *   task.files.list   ()                                 → { ok, files: [...] }   (P2.5+B-4.D)
+ *   task.files.read   { path }                           → { ok, file }            (P2.5+B-4.D)
+ *   task.files.write  { name, dag, trigger?, schedule? }  → { ok, path, name }      (P2.5+B-4.D)
+ *   task.files.delete { path }                           → { ok, path }            (P2.5+B-4.D)
+ *   task.files.import { path? | content? }               → { ok, name, path, task_id }
+ *   task.files.export { id }                             → { ok, name, json }      (P2.5+B-4.D)
  *
  * ── 跨扩展调用 ────────────────────────────────────────────────────
  *   用 SDK ext.invokeExt(target_ext_id, method, params, timeoutMs)
@@ -287,7 +297,9 @@ function rowToTask(row) {
   };
 }
 
-ext.registerCommand('task.upsert', async (args) => {
+// P2.5+B-4.D(2026-09-21)提到模块顶层,供 task.files.import 自调(SDK 无 invokeSelf,
+// 走 registerCommand → 自调 handler 会绕 JSON-RPC 一圈 + 卡死)。直接调函数。
+async function _handlerTaskUpsert(args) {
   const name = String(args.name || '').trim();
   if (!name) return { ok: false, error: 'name required' };
   const err = validateDag(args.dag);
@@ -308,7 +320,9 @@ ext.registerCommand('task.upsert', async (args) => {
            String(args.schedule || ''), now, now);
   }
   return { ok: true, id, task: rowToTask(d.prepare('SELECT * FROM tasks WHERE id = ?').get(id)) };
-});
+}
+
+ext.registerCommand('task.upsert', async (args) => _handlerTaskUpsert(args));
 
 ext.registerCommand('task.list', async (args) => {
   const lim = Math.max(1, Math.min(500, Number(args.limit) || 100));
@@ -316,10 +330,12 @@ ext.registerCommand('task.list', async (args) => {
   return { tasks: rows.map(rowToTask), total: rows.length };
 });
 
-ext.registerCommand('task.get', async (args) => {
+async function _handlerTaskGet(args) {
   if (!args.id) return { ok: false, error: 'id required' };
   return { task: rowToTask(db().prepare('SELECT * FROM tasks WHERE id = ?').get(args.id)) };
-});
+}
+
+ext.registerCommand('task.get', async (args) => _handlerTaskGet(args));
 
 ext.registerCommand('task.delete', async (args) => {
   if (!args.id) return { ok: false, error: 'id required' };
@@ -549,6 +565,159 @@ ext.registerCommand('task.schedule.status', async () => ({
   next_tick_at: _schedNextTick,
   active_runs: _activeRuns.size,
 }));
+
+// ─── P2.5+B-4.D(2026-09-21)workflow 文件读写 ──────────────────────
+// 文件 = 源代码(可读可写可移植),SQLite = 运行时(可执行)。
+// 位置:PRISIR_EXT_HOME/workflows/*.json(跟 state.db 平级)。
+// 设计原则:写文件 ≠ 自动入库+跑。AI 写完文件后,用户/AI 显式调 task.upsert +
+// task.run 才会入库跑。语义分离:写错了不污染 SQLite。
+const WORKFLOWS_DIR = () => path.join(HOME(), 'workflows');
+
+function _ensureWorkflowsDir() {
+  fs.mkdirSync(WORKFLOWS_DIR(), { recursive: true });
+}
+
+// 路径安全:防 ../ 逃逸,只允许 .json 后缀。绝对路径或相对 PRISIR_EXT_HOME
+// (避开相对 workdir 漂移 — AI agent 切换项目时 cwd 跟着变,workflows 必须固定)。
+function _resolveSafePath(relOrAbs) {
+  const base = WORKFLOWS_DIR();
+  let resolved;
+  if (path.isAbsolute(relOrAbs)) {
+    resolved = path.resolve(relOrAbs);
+  } else {
+    resolved = path.resolve(HOME(), relOrAbs);
+  }
+  const baseNorm = base.endsWith(path.sep) ? base : base + path.sep;
+  if (!resolved.startsWith(baseNorm) && resolved !== base) {
+    throw new Error('path outside workflows dir: ' + relOrAbs);
+  }
+  if (!resolved.endsWith('.json')) throw new Error('must be .json');
+  return resolved;
+}
+
+function _workflowFileToObj(filepath) {
+  const content = fs.readFileSync(filepath, 'utf8');
+  let obj;
+  try { obj = JSON.parse(content); } catch (e) { throw new Error('invalid JSON: ' + e.message); }
+  if (!obj.name) throw new Error('missing name');
+  if (!obj.dag || typeof obj.dag !== 'object') throw new Error('missing dag');
+  const stat = fs.statSync(filepath);
+  return {
+    name: String(obj.name),
+    path: filepath,
+    trigger: obj.trigger || 'manual',
+    schedule: obj.schedule || '',
+    dag: obj.dag,
+    updated_at: stat.mtimeMs,
+    node_count: Object.keys(obj.dag).length,
+  };
+}
+
+// task.files.write 提到模块顶层,供 task.files.import 自调(SDK 无 invokeSelf)。
+async function _handlerTaskFilesWrite(args) {
+  if (!args.name) return { ok: false, error: 'name required' };
+  if (!args.dag || typeof args.dag !== 'object') return { ok: false, error: 'dag required' };
+  const err = validateDag(args.dag);
+  if (err) return { ok: false, error: 'invalid dag: ' + err };
+  _ensureWorkflowsDir();
+  // 文件名 sanitize:只允许 [a-z0-9_-]
+  const safeName = String(args.name).replace(/[^\w\-]/g, '_').toLowerCase();
+  const filepath = path.join(WORKFLOWS_DIR(), safeName + '.json');
+  const obj = {
+    name: String(args.name),
+    trigger: args.trigger || 'manual',
+    schedule: args.schedule || '',
+    dag: args.dag,
+  };
+  fs.writeFileSync(filepath, JSON.stringify(obj, null, 2), 'utf8');
+  return { ok: true, path: filepath, name: obj.name, file: _workflowFileToObj(filepath) };
+}
+
+ext.registerCommand('task.files.list', async () => {
+  _ensureWorkflowsDir();
+  try {
+    const files = fs.readdirSync(WORKFLOWS_DIR())
+      .filter(f => f.endsWith('.json'))
+      .map(f => _workflowFileToObj(path.join(WORKFLOWS_DIR(), f)))
+      .sort((a, b) => b.updated_at - a.updated_at);
+    return { ok: true, files, total: files.length };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ext.registerCommand('task.files.read', async (args) => {
+  if (!args.path) return { ok: false, error: 'path required' };
+  try {
+    const p = _resolveSafePath(args.path);
+    return { ok: true, file: _workflowFileToObj(p) };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ext.registerCommand('task.files.write', async (args) => _handlerTaskFilesWrite(args));
+
+ext.registerCommand('task.files.delete', async (args) => {
+  if (!args.path) return { ok: false, error: 'path required' };
+  try {
+    const p = _resolveSafePath(args.path);
+    fs.unlinkSync(p);
+    return { ok: true, path: p };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+// import:接受 path 或 content(JSON 字符串,UI 粘贴用)。流程:解析 → validateDag
+// → 写到 workflows/(自调 _handlerTaskFilesWrite)+ upsert 到 SQLite(自调 _handlerTaskUpsert)。
+// 注意:顺序先写文件再入库 — 文件是源代码,SQLite 是运行时。失败留文件方便排查。
+ext.registerCommand('task.files.import', async (args) => {
+  let obj;
+  try {
+    if (args.content) {
+      obj = JSON.parse(args.content);
+    } else if (args.path) {
+      const p = _resolveSafePath(args.path);
+      obj = JSON.parse(fs.readFileSync(p, 'utf8'));
+    } else {
+      return { ok: false, error: 'path or content required' };
+    }
+  } catch (e) {
+    return { ok: false, error: 'invalid JSON: ' + (e.message || String(e)) };
+  }
+  if (!obj.name) return { ok: false, error: 'JSON must have name' };
+  if (!obj.dag) return { ok: false, error: 'JSON must have dag' };
+  const writeResult = await _handlerTaskFilesWrite({
+    name: obj.name, dag: obj.dag,
+    trigger: obj.trigger || 'manual', schedule: obj.schedule || '',
+  });
+  if (!writeResult || !writeResult.ok) return writeResult || { ok: false, error: 'write failed' };
+  const upsert = await _handlerTaskUpsert({
+    name: obj.name, dag: obj.dag,
+    trigger: obj.trigger || 'manual', schedule: obj.schedule || '',
+  });
+  if (!upsert || !upsert.ok) {
+    return { ok: false, error: 'upsert failed: ' + ((upsert && upsert.error) || 'unknown'),
+             path: writeResult.path, name: obj.name };
+  }
+  return { ok: true, name: obj.name, path: writeResult.path, task_id: upsert.id };
+});
+
+// export:task.get → 序列化为 JSON 字符串。UI 用 Blob 下载。
+ext.registerCommand('task.files.export', async (args) => {
+  if (!args.id) return { ok: false, error: 'id required' };
+  const get = await _handlerTaskGet({ id: args.id });
+  if (!get || !get.task) return { ok: false, error: 'task not found', task_id: args.id };
+  const t = get.task;
+  const obj = {
+    name: t.name,
+    trigger: t.trigger || 'manual',
+    schedule: t.schedule || '',
+    dag: t.dag,
+  };
+  return { ok: true, name: t.name, json: JSON.stringify(obj, null, 2), task_id: t.id };
+});
 
 // ─── 启动 ──────────────────────────────────────────────────────────
 ext.log('info', 'task-runner starting (node:sqlite = ' + (() => {

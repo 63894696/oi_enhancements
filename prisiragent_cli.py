@@ -656,8 +656,9 @@ _SUBAGENT_MAX_LOOPS = 5
 
 
 def _subagent_tools(skills: list | None) -> list:
-    """子代工具集:全量剔除 spawn_subagent + run_workflow + run_task(防递归),再按 skills 白名单过滤。"""
-    pool = [t for t in TOOLS if t["function"]["name"] not in ("spawn_subagent", "run_workflow", "run_task")]
+    """子代工具集:全量剔除 spawn_subagent + run_workflow + run_task + new_workflow(防递归),
+    再按 skills 白名单过滤。new_workflow 同 run_task 一样能让 LLM 写文件 + 入库,子代不应自己派单。"""
+    pool = [t for t in TOOLS if t["function"]["name"] not in ("spawn_subagent", "run_workflow", "run_task", "new_workflow")]
     if not skills:
         return pool
     allow = {str(s).strip() for s in skills if str(s).strip()}
@@ -1810,6 +1811,79 @@ def _t_run_task_by_name(task_name: str, wait: bool) -> str:
     })
 
 
+# P2.5+B-4.D(2026-09-21)AI agent 写 workflow 文件 + import/export 入口。
+# 设计原则:写文件 ≠ 自动入库+跑。AI 写完文件后,显式调 run_task({name, dag})
+# 才会入库 + 跑;或用户手动在 wfmodal 里 📥 导入。语义分离:写错了不污染 SQLite。
+#
+# 三种模式:
+#   • write(name+dag): 落 workflows/<name>.json,不入库不跑
+#   • import(path):    读已有 JSON + 落 workflows/ + upsert 到 SQLite(立即可用)
+#   • paste(content):  UI 粘贴 JSON 文本走同 import 路径
+#
+# 错误兜底:啥都没传 / path+content 都传 / dag 校验失败 — 全部走 RPC 异常透传,
+# LLM 看到 error 自决(改 dag / 改 path / 改 mode)。
+def _t_new_workflow(args: dict, workdir: str, on_event=None) -> str:
+    import json as _json  # 模块顶层 import json,函数体内简写 _json
+    name = str(args.get("name") or "").strip()
+    dag = args.get("dag")
+    path = str(args.get("path") or "").strip()
+    content = str(args.get("content") or "").strip()
+    trigger = str(args.get("trigger") or "manual")
+    schedule = str(args.get("schedule") or "")
+
+    # 模式决策:优先 paste(content) > import(path) > write(name+dag)
+    if content:
+        # paste 模式
+        params = {"content": content}
+    elif path:
+        # import 模式
+        params = {"path": path}
+    elif name and isinstance(dag, dict) and dag:
+        # write 模式
+        params = {
+            "name": name,
+            "dag": dag,
+            "trigger": trigger,
+            "schedule": schedule,
+        }
+    else:
+        return _json.dumps({
+            "error": "new_workflow 需要 (name+dag) write / path import / content paste 三选一",
+            "hint": "示例 write: new_workflow({name:'daily_summary', dag:{n1:{ext:'todo',method:'todo.add',params:{title:'x'}}}});"
+                    "示例 import: new_workflow({path:'/abs/path/to/x.json'});"
+                    "示例 paste: new_workflow({content:'{\"name\":\"x\",\"dag\":{...}}'})",
+        })
+
+    # dispatch:走 task-runner ext RPC(paste/import 走 task.files.import,
+    # write 走 task.files.write — 不入库不跑,符合「写/跑语义分离」)
+    if content or path:
+        method = "task.files.import"
+    else:
+        method = "task.files.write"
+
+    resp = _task_runner_rpc(method, params, timeout=10)
+    if not resp.get("ok"):
+        return _json.dumps({
+            "error": f"{method} failed: {resp.get('error') or resp}",
+            "method": method,
+            "params_sent": list(params.keys()),
+        })
+    result = resp.get("result") or {}
+    out = {
+        "ok": True,
+        "method": method,
+        "name": result.get("name") or name,
+        "path": result.get("path", ""),
+    }
+    # import 模式会带回 task_id(write 模式没有 task_id,因为没入库)
+    if "task_id" in result:
+        out["task_id"] = result["task_id"]
+        out["note"] = "已写入文件 + 入库 SQLite,可立即 run_task({name, dag}) 跑"
+    else:
+        out["note"] = "已写入 workflows/ 目录。要入库/跑请显式调 run_task({name, dag})"
+    return _json.dumps(out)
+
+
 def get_todos(session_id: str = "default") -> list:
     return _TODOS.get(session_id, [])
 
@@ -2597,6 +2671,63 @@ TOOLS = [
             "wait": {"type": "boolean", "default": False,
                      "description": "True = 阻塞等结果(快任务 ≤30s);False = fire-and-forget 返 run_id,默认 false"},
         }, "required": []}}},
+    # P2.5+B-4.D(2026-09-21)AI agent 写 workflow 文件 + import/export 入口。
+    # 设计原则:写文件 ≠ 自动入库+跑。AI 写完文件后,显式调 run_task({name, dag})
+    # 才会入库 + 跑;或用户手动在 wfmodal 里 📥 导入。语义分离:写错了不污染 SQLite。
+    # 三种模式:
+    #   • write mode: (name + dag) → 落 workflows/<name>.json,不入库不跑
+    #   • import mode: (path) → 读已有 JSON + 落 workflows/ + upsert 到 SQLite(立即可用)
+    #   • import-paste mode: (content) → UI 粘贴 JSON 文本走同 import 路径
+    # system prompt 注入 workflow_files 简表,LLM 知道有哪些文件可读可改。
+    {"type": "function", "function": {
+        "name": "new_workflow",
+        "description": (
+            "Author or import a workflow file (workflows/<name>.json) — AI's primary way "
+            "to create persistent, portable workflows that survive across machines and "
+            "can be shared with users / other AI agents.\n"
+            "Three modes:\n"
+            "  • write mode: pass `name` + `dag` → writes file workflows/<name>.json. "
+            "Does NOT auto-upsert to SQLite or run. Chain run_task({name, dag}) to run.\n"
+            "  • import mode: pass `path` to an existing JSON file (absolute or relative "
+            "to PRISIR_EXT_HOME; will be validated to stay inside workflows/) → reads + "
+            "validates + writes to workflows/ + upserts to SQLite (immediately runnable).\n"
+            "  • paste mode: pass `content` (JSON string) → same as import but reads from "
+            "string instead of file (use when user pastes a workflow in chat).\n"
+            "Use this when the user wants to author or port a workflow file. For one-shot "
+            "runs without persistence, prefer run_task({name, dag}) directly."
+        ),
+        "parameters": {"type": "object", "properties": {
+            "name": {"type": "string",
+                     "description": "任务名(同时是文件名,不带扩展名)。仅 write 模式需要。"},
+            "dag": {"type": "object",
+                    "description": "节点字典 {<nid>: {ext, method, params, needs?, retry?}}。"
+                                   "仅 write 模式需要。",
+                    "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                            "ext": {"type": "string"},
+                            "method": {"type": "string"},
+                            "params": {"type": "object"},
+                            "needs": {"type": "array", "items": {"type": "string"}},
+                            "retry": {"type": "object",
+                                      "properties": {
+                                          "max_retries": {"type": "integer"},
+                                          "backoff": {"type": "string"},
+                                          "timeout_sec": {"type": "integer"},
+                                      }},
+                        },
+                        "required": ["ext", "method"],
+                    }},
+            "path": {"type": "string",
+                     "description": "已有 JSON 文件路径(绝对或相对 PRISIR_EXT_HOME)。仅 import 模式需要。"
+                                    "防 ../ 逃逸,只允许 workflows/ 内 .json 文件。"},
+            "content": {"type": "string",
+                        "description": "JSON 字符串(用户粘贴的 workflow)。仅 paste 模式需要。"},
+            "trigger": {"type": "string", "enum": ["manual", "schedule"], "default": "manual",
+                        "description": "触发类型。仅 write 模式生效。"},
+            "schedule": {"type": "string", "default": "",
+                         "description": "调度表达式(如 'daily 09:00')。仅 write 模式 + trigger=schedule 生效。"},
+        }, "required": []}}},
 ]
 
 
@@ -2846,6 +2977,11 @@ def dispatch(name: str, args: dict, workdir: str, on_confirm=None, model: str = 
     if name == "run_task":
         return _t_run_task(args if isinstance(args, dict) else {},
                            workdir, on_event=on_event)
+    # P2.5+B-4.D(2026-09-21)AI agent 写 workflow 文件 + import 入口。语义分离:
+    # write 模式只落文件、不入库不跑;import 模式落文件 + upsert 到 SQLite(可立刻 run_task 跑)。
+    if name == "new_workflow":
+        return _t_new_workflow(args if isinstance(args, dict) else {},
+                              workdir, on_event=on_event)
     if name == "philosopher_debate":
         import prisir_philosopher as _ph  # noqa: PLC0415
         res = _ph.run_philosopher(

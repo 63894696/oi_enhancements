@@ -1,0 +1,32 @@
+feat(p2.5+b-4.d): AI 写 workflow 文件 + wfmodal import/export
+
+B-4 / B-4.B ship 后,task-runner 仍只能在 SQLite 单机内运行。
+用户要的工作流三件事做不到:(1) 导出给同事 / 备份;(2) 导入别人
+的 JSON;(3) AI 在对话里写到 workflows/ 落盘,可被其他机器复用。
+
+本任务 ship:
+- task-runner ext 加 task.files.{list,read,write,delete,import,export}
+  6 命令,落 ~/.prisir/extensions/task-runner/workflows/*.json,
+  文件 = 源代码(可读可写可移植),SQLite = 运行时(可执行)
+- 路径白名单 _resolveSafePath 防 ../ 逃逸 + 仅接受 .json
+- 文件名 sanitize:[a-z0-9_-] only
+- write mode = 只写文件,不入库不跑;import mode = write + upsert
+- 抽 _handlerTaskUpsert/_handlerTaskGet/_handlerTaskFilesWrite 到模块级,
+  SDK 无 invokeSelf,import/export 自调(免 JSON-RPC 绕一圈)
+- cli TOOLS 加 new_workflow 三模式(write name+dag / import path /
+  paste content),子代工具集剔除 new_workflow 防递归
+- web _shell_system_prompt 末尾追加 workflow_files 简表注入
+  (跟 task 简表并列,LLM 一开始就知道有 2 类资源可调)
+- wfmodal 顶部加 📤/📥 按钮 + 导入 modal(选文件/粘贴 JSON)
+- JS wfExportCurrent(Blob + a.click() 下载) /
+  wfOpenImport / wfImportApply / wfImportCancel
+
+测试:_test_p2b4d_workflow_files.py 14/14 sections 绿。
+B-0 (16/16) + B-2 (47/47) + B-3 task_queue (21/21) + hotfix (13/13)
++ doc (14/14) + B-4 (9/9) + B-4.B (8/8) + p259a (12/12) + p259c (7/7) 全绿。
+
+解锁:Phase B-5(workflow marketplace / AI 自动模板)/ 跨机器 workflow
+共享 / user 「把 daily_summary 发给同事」。
+
+参考:[[p2-5-b-4-b-run-by-name-shipped]] B-4.B 模糊匹配
+            [["phase-b3-task-queue-shipped"]] 进度流基础
