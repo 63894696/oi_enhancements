@@ -1,0 +1,92 @@
+feat(p2.5+b-4.f): marketplace 远端镜像 — 论坛(免注册)代替 GitHub 分享 workflow bundle
+
+B-4.E ship 后 workflow 已可跨机器 tar.gz bundle 分享,但只能 1:1 手传。本任务用
+现有论坛 bbs.babelspan.com/forum 替代 GitHub — 帖子带签名 + PoW + attachment
+落到「PrisirAI 对话」子版,任何人可匿名浏览下载。
+
+## 关键决策(用户 2026-09-21 拍板)
+
+1. **远端镜像 = 免注册论坛**,不是 GitHub;落「PrisirAI 对话」子版
+   (browser/shell,forum_relay 已 ship 的 board 白名单,无需新增)
+2. **附件形态 = 主帖 body 写 JSON-LD 元数据 + attachment 字段挂 tar.gz base64**
+   (protocol 扩展 forum_relay.py:可选 attachment {filename, mime, sha256, size, data_b64})
+3. **匿名公开读** — forum 公共 board 默认公开,attachment 公开下载
+4. **实施边界 = 最小化** — 列帖 / 下帖 / 发帖 3 件,不做评分 / 评论 / 搜索 / 版本
+
+## 修改清单(8 文件)
+
+### 服务端协议扩展
+- **forum_relay.py**:attachment 字段白名单 + _validate_attachment(防 path
+  traversal + sha256 重算校 + size 限 2MB + mime 白名单 4 种);validate_post
+  接受可选 attachment;serve() max_size 64KB → 8MB
+- **forum_forward.py**:3 处 websockets.connect max_size 128KB → 8MB(镜像转发)
+
+### 新建 marketplace ext(独立身份,跟 task-runner 平级)
+- **extensions/marketplace/index.js** ~400 行
+  - 独立 Ed25519 身份 ~/.prisir/marketplace_identity.key(首启生成,base64
+    seed,32 字节;PKCS8 DER 包装给 Node crypto.createPrivateKey)
+  - 自实现 _canon 严格匹配 forum_relay.canon:sort_keys + (',',':') + 无空格紧凑
+  - _solvePow 18 位 SHA256 PoW(默认,可调 PRISIR_MARKET_POW_BITS)
+  - WebSocket 单例 + hello/welcome/read/post 帧协议
+  - 4 命令:market.list / market.fetch / market.publish / market.identity
+- **extensions/marketplace/package.json**:manifest + 依赖 @prisir/extension-sdk
+
+### AI agent 工具(cli)
+- **prisIragent_cli.py**:TOOLS 加 workflow_market_list / fetch / publish 三件套
+  - 新通用 helper _ext_rpc_call(ext_id, method, params, timeout) — B-4 旧
+    _task_runner_rpc 是硬编码 task-runner,marketplace 走通用版
+  - _t_workflow_market_publish 双模式:mode A(names[])+ mode B(已含 base64)
+  - _subagent_tools 剔除列表加 workflow_market_publish(list/fetch 允许子代用)
+
+### 前端 UI + system prompt 简表
+- **prisIragent_web.py**:
+  - wfmodal 顶部加 🌐 浏览远端 + 📤 发布到论坛 2 按钮
+  - #wf-market-modal 浏览弹层(表格:title / 作者 fp / workflow 数 / 大小 / 时间 / 📥)
+  - #wf-publish-modal 发布弹层(title + description + 进度状态)
+  - 6 JS 函数:wfMarketList / Refresh / Download / Publish / PublishApply / Cancel
+  - 12 个 i18n key 中英(wf_market_* + wf_publish_*)
+  - _shell_system_prompt 末尾追加「远端 workflow 镜像」简表注入(RPC 3s
+    超时,失败静默,跟 task 简表同模式)
+
+### 测试
+- **tests/_test_p2b4f_marketplace.py** — 20 sections 全绿
+  - forum_relay 协议扩展(attachment + MAX + sha256 + mime)
+  - forum_forward max_size 改 8MB
+  - marketplace ext Identity + canon + PoW + WS + 4 命令
+  - cli 3 工具 + _ext_rpc_call + handler + 子代剔除
+  - web 2 按钮 + 2 modal + 6 JS + 12 i18n + system prompt 简表
+  - py_compile cli/web/forum_relay/forum_forward + node --check marketplace
+
+### 回归全绿
+- B-0 + B-2 + B-3 + hotfix + doc + B-4 + B-4.B + B-4.D + B-4.E = 9 test 100%
+
+## 关键设计点
+
+1. **attachment 入 canon**(签名覆盖附件完整性)— 防攻击者换附件不破签
+2. **canon 严格字节一致** — Node 端 _canon 自实现 sort_keys,跟 forum_relay
+   json.dumps(sort_keys=True, separators=(',',':'), ensure_ascii=False) 双向对拍
+3. **复用 B-4.E bundle_export/bundle_import** — marketplace ext 不重做 bundle
+   编解码;web 端编排「bundle_export 拿 base64 → market.publish 发帖」两步
+4. **mode A/B 双模式** publish — LLM 既有从已存 task 选(names)又有直接传
+   base64 的能力,适应不同对话场景
+5. **子代工具集剔除 publish,保留 list/fetch** — 子代只查不写,防递归发 spam
+6. **marketplace 身份独立** — 跟 fbmodal 反馈身份 / chatroom 身份解耦,
+   签名失败不影响其他场景;~/.prisir/marketplace_identity.key 持久化
+7. **forum attachment 字段协议扩展** — 改造 forum_relay.py 单一处
+   validate_post key 检查 `set(post.keys()) - top_keys != {"attachment"}`,
+   兼容旧纯文字帖(无 attachment);MAX_BODY 仍 4000,attachment 走独立字段
+
+## 解锁(留给后续)
+
+- ❌ 评分 / 标签 / 评论 / 订阅(本轮不做)
+- ❌ AI 自动模板(B-4.C 推迟)
+- ❌ search / author filter / 节点数排序
+- ❌ marketplace ext 自动 sync(本地装 workflow 后问「要不要发论坛」)
+- ❌ attachment 加密 / SHA256 manifest 防中间人(目前公开环境不必要)
+
+参考:[[p2-5-b-4-e-workflow-bundle-shipped]] B-4.E bundle 基础;
+     [[prisIr-extension-roadmap-2026-09-20]] 扩展路线图 Phase B-4。
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>

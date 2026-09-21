@@ -30,7 +30,7 @@ async def mirror_send(post, wait_gap=False):
     返回 True=ack,False=nack/异常。wait_gap=True 时发完睡 BACKFILL_GAP(批量补历史用)。"""
     ok = False
     try:
-        async with websockets.connect(MIRROR, max_size=128 * 1024) as m:
+        async with websockets.connect(MIRROR, max_size=8 * 1024 * 1024) as m:
             await m.send(json.dumps({"type": "post", "post": post}, ensure_ascii=False))
             try:
                 raw = await asyncio.wait_for(m.recv(), timeout=8)
@@ -53,7 +53,7 @@ async def run():
     while True:
         try:
             log(f"连生产 {PROD} (since_seq={since})")
-            async with websockets.connect(PROD, max_size=128 * 1024) as ws:
+            async with websockets.connect(PROD, max_size=8 * 1024 * 1024) as ws:
                 backoff = 2
                 await ws.send(json.dumps({"type": "hello"}))
                 await ws.recv()  # welcome
@@ -103,7 +103,7 @@ async def run():
                             since = s
                     elif t in ("takedown", "retract"):
                         try:
-                            async with websockets.connect(MIRROR, max_size=128 * 1024) as mm:
+                            async with websockets.connect(MIRROR, max_size=8 * 1024 * 1024) as mm:
                                 await mm.send(json.dumps(m, ensure_ascii=False))
                                 await asyncio.wait_for(mm.recv(), timeout=8)
                         except Exception:

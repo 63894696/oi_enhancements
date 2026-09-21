@@ -1382,6 +1382,25 @@ def _shell_system_prompt(user_text: str, sid: str = "") -> str:
             parts.append("\n".join(_flines))
     except Exception:  # noqa: BLE001
         pass
+    # P2.5+B-4.F(2026-09-21):远端 workflow 简表注入 system prompt,让 LLM 知道
+    # 论坛 PrisirAI 对话 子版有哪些可下工作流。marketplace 没启 / RPC 失败 /
+    # 0 帖 一律静默不注入(timeout=3s,失败快速返回,不拖对话启动)。
+    try:
+        _mlst = _ext_rpc_call("marketplace", "market.list", {}, timeout=3.0)
+        _mposts = (_mlst.get("result") or {}).get("posts") if isinstance(_mlst, dict) else None
+        if _mposts:
+            _mlines = ["【远端 workflow 镜像(论坛 PrisirAI 对话 子版)】",
+                       "用 workflow_market_fetch({post_id:\"...\"}) 下载附件 → 自动 batch import。",
+                       "| title | post_id | 作者 fp | workflow 数 | 大小 |"]
+            for _m in _mposts[:20]:
+                _mlines.append(f"| {(_m.get('title','?'))[:30]} | `{(_m.get('post_id','?'))[:16]}` | "
+                              f"`{(_m.get('author_fp','?'))[:8]}` | {_m.get('workflow_count','?')} | "
+                              f"{((_m.get('bundle_size') or 0)/1024):.1f} KB |")
+            if len(_mposts) > 20:
+                _mlines.append(f"\n(共 {len(_mposts)} 个,只列前 20)")
+            parts.append("\n".join(_mlines))
+    except Exception:  # noqa: BLE001
+        pass
     return "\n\n".join(parts)
 
 
@@ -5827,6 +5846,14 @@ _PAGE = r"""<!DOCTYPE html>
         <button class="topbtn small" id="wf-bundle-import-btn" onclick="wfBundleOpenImport()"
                 data-i18n="wf_bundle_import">📥 导入 bundle</button>
       </div>
+      <!-- P2.5+B-4.F(2026-09-21)marketplace 远端镜像:浏览远端论坛帖子 + 发布到论坛
+           「PrisirAI 对话」子版(browser/shell)。走 marketplace ext 命令。 -->
+      <div class="wf-bundle-bar">
+        <button class="topbtn small" id="wf-market-list-btn" onclick="wfMarketList()"
+                data-i18n="wf_market_list">🌐 浏览远端</button>
+        <button class="topbtn small primary" id="wf-market-publish-btn" onclick="wfMarketPublish()"
+                data-i18n="wf_market_publish">📤 发布到论坛</button>
+      </div>
       <div id="wf-task-list"></div>
     </div>
     <div id="wf-canvas-wrap">
@@ -5945,6 +5972,49 @@ _PAGE = r"""<!DOCTYPE html>
       <button class="topbtn" onclick="wfBundleImportCancel()" data-i18n="cancel">取消</button>
       <button class="topbtn primary" onclick="wfBundleImportApply()" data-i18n="wf_bundle_imported">📥 导入</button>
     </div>
+  </div>
+</div>
+
+<!-- P2.5+B-4.F(2026-09-21)marketplace 远端浏览弹层:列出论坛「PrisirAI 对话」子版的
+     [Prisir-Workflow] 帖(带 attachment 的 bundle)。点行 → market.fetch → 走
+     task.files.bundle_import 批量入库。匿名公开读,无需登录。 -->
+<div id="wf-market-modal" style="display:none">
+  <div class="wf-nm-card" style="min-width:680px;max-width:880px">
+    <h3 data-i18n="wf_market_title">🌐 远端 workflow 镜像</h3>
+    <div class="wf-import-hint" data-i18n="wf_market_hint">
+      论坛 PrisirAI 对话 子版(browser/shell)上别人分享的 workflow bundle。
+      点 📥 下载 → 走 task.files.bundle_import 批量入库。匿名公开,无需登录。
+    </div>
+    <div id="wf-market-list"></div>
+    <div class="wf-nm-row">
+      <button class="topbtn" onclick="wfMarketRefresh()" data-i18n="wf_market_refresh">🔄 刷新</button>
+      <button class="topbtn" onclick="wfMarketCancel()" data-i18n="close">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- P2.5+B-4.F(2026-09-21)marketplace 发布弹层:把当前勾选的 task 打包 →
+     marketplace ext 签名 + PoW 发到论坛 PrisirAI 对话 子版。需 1-3s 算 PoW。 -->
+<div id="wf-publish-modal" style="display:none">
+  <div class="wf-nm-card" style="min-width:520px;max-width:620px">
+    <h3 data-i18n="wf_publish_title">📤 发布到 Prisir 论坛</h3>
+    <div class="wf-import-hint" data-i18n="wf_publish_hint">
+      选中左栏 task(checkbox)→ 自动 bundle 打包 → 签名 + PoW 1-3s → 发到论坛「PrisirAI 对话」子版。
+      任何人可匿名下载。Identity 独立,首启自动生成(Ed25519)。
+    </div>
+    <label class="wf-import-row">
+      <span data-i18n="wf_market_title_label">标题</span>
+      <input type="text" id="wf-pub-title" placeholder="daily_summary bundle">
+    </label>
+    <label class="wf-import-row">
+      <span data-i18n="wf_market_desc_label">描述(可选)</span>
+      <textarea id="wf-pub-desc" rows="3" placeholder="这套工作流做…"></textarea>
+    </label>
+    <div class="wf-nm-row">
+      <button class="topbtn primary" onclick="wfPublishApply()" data-i18n="wf_publish_apply">发布</button>
+      <button class="topbtn" onclick="wfMarketCancel()" data-i18n="cancel">取消</button>
+    </div>
+    <div id="wf-pub-status" class="sub"></div>
   </div>
 </div>
 
@@ -6142,6 +6212,16 @@ const I18N = {
     wf_bundle_imported:'✓ bundle 导入完成', wf_bundle_exported:'✓ bundle 已导出',
     wf_bundle_import_title:'📥 导入 bundle', wf_bundle_import_hint:'选 .tar.gz 文件;批量 validateDag + 入库。',
     wf_bundle_import_file:'📂 选 .tar.gz',
+    // P2.5+B-4.F(2026-09-21)marketplace 远端镜像
+    wf_market_list:'🌐 浏览远端', wf_market_publish:'📤 发布到论坛',
+    wf_market_title:'🌐 远端 workflow 镜像',
+    wf_market_hint:'论坛 PrisirAI 对话 子版上别人分享的 workflow bundle。点 📥 下载 → 批量入库。',
+    wf_market_refresh:'🔄 刷新', wf_market_confirm:'确认下载',
+    wf_market_title_required:'请填标题',
+    wf_market_title_label:'标题', wf_market_desc_label:'描述(可选)',
+    wf_publish_title:'📤 发布到 Prisir 论坛',
+    wf_publish_hint:'选中左栏 task → 自动 bundle → 签名 + PoW → 发到论坛。1-3s。',
+    wf_publish_apply:'发布',
   },
   en: {
     send:'Send', new_session:'+ New chat', model_key:'🔑 Model Key', feedback:'⚙ Feedback',
@@ -6224,6 +6304,16 @@ const I18N = {
     wf_bundle_imported:'✓ Bundle imported', wf_bundle_exported:'✓ Bundle exported',
     wf_bundle_import_title:'📥 Import bundle', wf_bundle_import_hint:'Pick .tar.gz; batch validateDag + upsert.',
     wf_bundle_import_file:'📂 Pick .tar.gz',
+    // P2.5+B-4.F(2026-09-21)marketplace 远端镜像
+    wf_market_list:'🌐 Browse remote', wf_market_publish:'📤 Publish to forum',
+    wf_market_title:'🌐 Remote workflow mirror',
+    wf_market_hint:'Workflow bundles shared on forum PrisirAI 对话 sub-board. Click 📥 to batch import.',
+    wf_market_refresh:'🔄 Refresh', wf_market_confirm:'Confirm download',
+    wf_market_title_required:'Title required',
+    wf_market_title_label:'Title', wf_market_desc_label:'Description (optional)',
+    wf_publish_title:'📤 Publish to Prisir forum',
+    wf_publish_hint:'Pick left tasks → bundle → sign + PoW → post. 1-3s.',
+    wf_publish_apply:'Publish',
   }
 };
 let LANG = (function(){
@@ -8361,6 +8451,114 @@ function wfBundleOpenImport() {
 
 function wfBundleImportCancel() {
   document.getElementById('wf-bundle-modal').classList.remove('open');
+}
+
+// ─── P2.5+B-4.F(2026-09-21)marketplace 远端镜像:6 函数 ─────────────
+// 调 marketplace ext 3 命令:market.list / market.fetch / market.publish
+// 发帖 = bundle_export(task-runner) + market.publish(marketplace) 两步
+async function wfMarketList() {
+  document.getElementById('wf-market-modal').classList.add('open');
+  await wfMarketRefresh();
+}
+async function wfMarketRefresh() {
+  const box = document.getElementById('wf-market-list');
+  box.innerHTML = '<div class="sub">⏳ 拉论坛列表…</div>';
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'marketplace', method:'market.list', params:{}, timeout:15})});
+  if (!r.ok || !r.result || !r.result.ok) {
+    box.innerHTML = '<div class="sub">❌ ' + esc((r.result && r.result.error) || r.error || 'rpc fail') + '</div>';
+    return;
+  }
+  const posts = r.result.posts || [];
+  if (!posts.length) { box.innerHTML = '<div class="sub">暂无可下载的工作流</div>'; return; }
+  let h = '<table style="width:100%;font-size:13px;border-collapse:collapse"><tr>' +
+          '<th style="text-align:left">标题</th><th>作者</th><th>workflow</th><th>大小</th><th>时间</th><th></th></tr>';
+  for (const p of posts) {
+    const fp = (p.author_fp || '').slice(0, 8);
+    h += '<tr style="border-top:1px solid var(--gh-line)">' +
+         '<td>' + esc(p.title || '') + '</td>' +
+         '<td style="text-align:center"><code>' + esc(fp) + '</code></td>' +
+         '<td style="text-align:center">' + (p.workflow_count || '?') + '</td>' +
+         '<td style="text-align:center">' + (((p.bundle_size || 0) / 1024).toFixed(1)) + ' KB</td>' +
+         '<td style="text-align:center">' + esc(new Date(p.ts).toLocaleString()) + '</td>' +
+         '<td style="text-align:center"><button class="topbtn mini" onclick="wfMarketDownload(\'' + esc(p.post_id) + '\')">📥 下载</button></td>' +
+         '</tr>';
+  }
+  box.innerHTML = h + '</table>';
+}
+async function wfMarketDownload(postId) {
+  if (!confirm(T('wf_market_confirm') + '?\n' + postId)) return;
+  // 1) market.fetch 拉附件 base64
+  const r1 = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'marketplace', method:'market.fetch', params:{post_id: postId}, timeout:30})});
+  if (!r1.ok || !r1.result || !r1.result.ok) {
+    alert('❌ 拉附件失败: ' + ((r1.result && r1.result.error) || r1.error || 'rpc fail'));
+    return;
+  }
+  // 2) 走 task.files.bundle_import(B-4.E 已 ship)
+  const r2 = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method:'task.files.bundle_import',
+                          params:{base64: r1.result.attachment.data_b64}, timeout:30})});
+  if (!r2.ok || !r2.result || !r2.result.ok) {
+    alert('❌ 导入失败: ' + ((r2.result && r2.result.error) || r2.error || 'rpc fail'));
+    return;
+  }
+  const n = (r2.result.imported || []).length;
+  const s = (r2.result.skipped || []).length;
+  alert('✓ 已导入 ' + n + ' 个 workflow' + (s ? '(跳过 ' + s + ')' : ''));
+  await wfRenderTaskList();
+  document.getElementById('wf-status').textContent = '✓ 远端下载完成: ' + n + ' 个';
+}
+async function wfMarketPublish() {
+  const checked = document.querySelectorAll('#wf-task-list .wf-task-check:checked');
+  if (!checked.length) { alert(T('wf_bundle_select_first')); return; }
+  document.getElementById('wf-pub-title').value = '';
+  document.getElementById('wf-pub-desc').value = '';
+  document.getElementById('wf-pub-status').textContent = '将发布 ' + checked.length + ' 个 workflow';
+  document.getElementById('wf-publish-modal').classList.add('open');
+}
+async function wfPublishApply() {
+  const title = document.getElementById('wf-pub-title').value.trim();
+  const desc = document.getElementById('wf-pub-desc').value.trim();
+  if (!title) { alert(T('wf_market_title_required')); return; }
+  const checked = document.querySelectorAll('#wf-task-list .wf-task-check:checked');
+  const names = Array.from(checked).map(cb => cb.dataset.taskName);
+  const status = document.getElementById('wf-pub-status');
+  status.textContent = '⏳ 1/2 打包中…';
+  // 1) bundle_export(task-runner) 拿 base64
+  const r1 = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method:'task.files.bundle_export',
+                          params:{names}, timeout:60})});
+  if (!r1.ok || !r1.result || !r1.result.ok) {
+    status.textContent = '❌ 打包失败: ' + ((r1.result && r1.result.error) || r1.error || 'rpc fail');
+    return;
+  }
+  status.textContent = '⏳ 2/2 签名 + 发帖中(PoW 1-3s)…';
+  // 2) market.publish(marketplace) 算 PoW + 签名 + 发帖
+  const r2 = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'marketplace', method:'market.publish',
+                          params: {
+                            title, description: desc,
+                            workflow_count: r1.result.count,
+                            attachment_filename: r1.result.name,
+                            attachment_mime: 'application/gzip',
+                            attachment_sha256: '',   // 服务端会重算
+                            attachment_size: r1.result.size_bytes,
+                            attachment_data_b64: r1.result.base64,
+                          }, timeout:60})});
+  if (!r2.ok || !r2.result || !r2.result.ok) {
+    status.textContent = '❌ 发帖失败: ' + ((r2.result && r2.result.error) || r2.error || 'rpc fail');
+    return;
+  }
+  status.textContent = '✓ 已发布: post_id=' + (r2.result.post_id || '?') + ' (seq=' + (r2.result.seq || '?') + ')';
+  setTimeout(() => {
+    document.getElementById('wf-publish-modal').classList.remove('open');
+    document.getElementById('wf-status').textContent = '✓ 已发布到论坛: ' + title;
+  }, 2000);
+}
+function wfMarketCancel() {
+  document.getElementById('wf-market-modal').classList.remove('open');
+  document.getElementById('wf-publish-modal').classList.remove('open');
 }
 
 async function wfBundleImportApply() {

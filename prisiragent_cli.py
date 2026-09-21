@@ -656,9 +656,14 @@ _SUBAGENT_MAX_LOOPS = 5
 
 
 def _subagent_tools(skills: list | None) -> list:
-    """子代工具集:全量剔除 spawn_subagent + run_workflow + run_task + new_workflow(防递归),
-    再按 skills 白名单过滤。new_workflow 同 run_task 一样能让 LLM 写文件 + 入库,子代不应自己派单。"""
-    pool = [t for t in TOOLS if t["function"]["name"] not in ("spawn_subagent", "run_workflow", "run_task", "new_workflow")]
+    """子代工具集:全量剔除 spawn_subagent + run_workflow + run_task + new_workflow + workflow_bundle +
+    workflow_market_publish(防递归),再按 skills 白名单过滤。new_workflow/workflow_bundle/
+    workflow_market_publish 同 run_task 一样能让 LLM 写文件 + 入库 + 跨机器派发,子代不应自己派单。
+    workflow_market_list / workflow_market_fetch 是只读浏览,允许子代用(查资料 OK,写不出去)。"""
+    pool = [t for t in TOOLS if t["function"]["name"] not in (
+        "spawn_subagent", "run_workflow", "run_task", "new_workflow",
+        "workflow_bundle", "workflow_market_publish",
+    )]
     if not skills:
         return pool
     allow = {str(s).strip() for s in skills if str(s).strip()}
@@ -1640,6 +1645,28 @@ def _task_runner_rpc(method: str, params: dict, timeout: int = 8) -> dict:
         return {"error": f"rpc_{method}_failed: {type(e).__name__}: {e}"}
 
 
+def _ext_rpc_call(ext_id: str, method: str, params: dict, timeout: int = 8) -> dict:
+    """P2.5+B-4.F(2026-09-21)通用 ext RPC:调任意扩展(task-runner / marketplace / ...)。
+
+    跟 _task_runner_rpc 同通道,但 ext_id 参数化,不再硬编码 task-runner。
+    marketplace ext(独立身份 + WS + 签名 + PoW)用这个通用 helper 转发。
+    """
+    import json as _json
+    import urllib.request as _ur
+
+    port = int(os.environ.get("PRISIR_WEB_PORT") or os.environ.get("PRISIRAGENT_PORT") or "18800")
+    base = f"http://127.0.0.1:{port}/prisiragent/api/ext/rpc"
+
+    body = _json.dumps({"ext_id": ext_id, "method": method,
+                        "params": params, "timeout": timeout}).encode("utf-8")
+    req = _ur.Request(base, data=body, headers={"Content-Type": "application/json"})
+    try:
+        with _ur.urlopen(req, timeout=timeout + 2) as r:
+            return _json.loads(r.read().decode("utf-8"))
+    except Exception as e:  # noqa: BLE001
+        return {"error": f"rpc_{ext_id}.{method}_failed: {type(e).__name__}: {e}"}
+
+
 def _t_run_task(args: dict, workdir: str, on_event=None) -> str:
     """P2.5+B-4(2026-09-21)AI agent 任务执行派单。
     P2.5+B-4.B(2026-09-21)双模式:
@@ -1881,6 +1908,195 @@ def _t_new_workflow(args: dict, workdir: str, on_event=None) -> str:
         out["note"] = "已写入文件 + 入库 SQLite,可立即 run_task({name, dag}) 跑"
     else:
         out["note"] = "已写入 workflows/ 目录。要入库/跑请显式调 run_task({name, dag})"
+    return _json.dumps(out)
+
+
+def _t_workflow_bundle(args: dict, workdir: str, on_event=None) -> str:
+    """P2.5+B-4.E(2026-09-21)跨机器 workflow 共享:多 workflow 打成 tar.gz。
+    调 task.files.bundle_export 透传 base64,names=[] 走 ALL 分支。
+    接收方用 workflow_bundle_import({base64}) 或 wfmodal 📥 导入 bundle 解压。"""
+    import json as _json
+    names = args.get("names") if isinstance(args.get("names"), list) else []
+    # sanitize:每项 str.strip() 且非空
+    clean_names = [str(n).strip() for n in names if str(n or "").strip()]
+    resp = _task_runner_rpc("task.files.bundle_export", {"names": clean_names}, timeout=30)
+    if not resp.get("ok"):
+        return _json.dumps({"error": f"task.files.bundle_export failed: {resp.get('error') or resp}"})
+    result = resp.get("result") or {}
+    if not result.get("ok"):
+        return _json.dumps({"error": f"bundle_export internal: {result.get('error') or 'unknown'}"})
+    out = {
+        "ok": True,
+        "name": result.get("name", "workflows-bundle.tar.gz"),
+        "count": result.get("count", 0),
+        "size_bytes": result.get("size_bytes", 0),
+        "base64": result.get("base64", ""),
+        "note": "将 base64 字段转成 .tar.gz 文件即可发给同事;接收方用 workflow_bundle_import({base64}) 解压入库",
+    }
+    return _json.dumps(out)
+
+
+def _t_workflow_bundle_import(args: dict, workdir: str, on_event=None) -> str:
+    """P2.5+B-4.E(2026-09-21)接收方:base64 → 解 tar.gz → 逐个 validateDag → 写 + 入库。
+    跟 wfmodal 📥 导入 bundle 同通道(task.files.bundle_import)。"""
+    import json as _json
+    base64 = str(args.get("base64") or "").strip()
+    if not base64:
+        return _json.dumps({
+            "error": "workflow_bundle_import 需要 base64 字段(workflow_bundle 工具返的 tar.gz base64)",
+            "hint": "示例: workflow_bundle_import({base64:'H4sIAAAAAAAAA...'})",
+        })
+    resp = _task_runner_rpc("task.files.bundle_import", {"base64": base64}, timeout=30)
+    if not resp.get("ok"):
+        return _json.dumps({"error": f"task.files.bundle_import failed: {resp.get('error') or resp}"})
+    result = resp.get("result") or {}
+    if not result.get("ok"):
+        return _json.dumps({"error": f"bundle_import internal: {result.get('error') or 'unknown'}"})
+    out = {
+        "ok": True,
+        "imported": result.get("imported", []),
+        "skipped": result.get("skipped", []),
+        "total": result.get("total", 0),
+        "note": f"已导入 {len(result.get('imported', []))}/{result.get('total', 0)} 个 workflow",
+    }
+    return _json.dumps(out)
+
+
+# P2.5+B-4.F(2026-09-21)marketplace 远端镜像 — 论坛(免注册)做 workflow bundle 的
+# 公共橱窗。三工具最小化:列帖 / 下帖 / 发帖。签发流程在 marketplace ext 内部完成
+# (Ed25519 独立身份 + PoW 18 位 + 签名),cli 端只透传参数,跑通走 _ext_rpc_call。
+def _t_workflow_market_list(args: dict, workdir: str, on_event=None) -> str:
+    """P2.5+B-4.F:列远端 marketplace 帖。since_seq 增量游标,默认 0 全量。
+    marketplace ext 没启 / 论坛不可达 / 异常都返 {ok:false, error},不抛。"""
+    import json as _json
+    since_seq = int(args.get("since_seq") or 0)
+    resp = _ext_rpc_call("marketplace", "market.list", {"since_seq": since_seq}, timeout=15)
+    if not resp.get("ok"):
+        return _json.dumps({"error": f"market.list failed: {resp.get('error') or resp}"})
+    result = resp.get("result") or {}
+    if not result.get("ok"):
+        return _json.dumps({"error": f"marketplace internal: {result.get('error') or 'unknown'}"})
+    posts = result.get("posts") or []
+    out = {
+        "ok": True,
+        "posts": posts,
+        "last_seq": result.get("last_seq", 0),
+        "count": len(posts),
+        "note": f"共 {len(posts)} 个可下载 workflow;取其中 post_id 调 workflow_market_fetch({'{'}post_id:\"...\"{'}'}) 下 + 入库",
+    }
+    return _json.dumps(out)
+
+
+def _t_workflow_market_fetch(args: dict, workdir: str, on_event=None) -> str:
+    """P2.5+B-4.F:按 post_id 拿附件 data_b64。可紧接着调 workflow_bundle_import 或
+    task.files.bundle_import 把 base64 入库(本工具不自动 import — 用户/LLM 自主决定)。"""
+    import json as _json
+    post_id = str(args.get("post_id") or "").strip()
+    if not post_id:
+        return _json.dumps({
+            "error": "workflow_market_fetch 需要 post_id 字段",
+            "hint": "示例: workflow_market_fetch({post_id:'abc123...'})",
+        })
+    resp = _ext_rpc_call("marketplace", "market.fetch", {"post_id": post_id}, timeout=30)
+    if not resp.get("ok"):
+        return _json.dumps({"error": f"market.fetch failed: {resp.get('error') or resp}"})
+    result = resp.get("result") or {}
+    if not result.get("ok"):
+        return _json.dumps({"error": f"marketplace internal: {result.get('error') or 'unknown'}"})
+    att = result.get("attachment") or {}
+    out = {
+        "ok": True,
+        "post_id": post_id,
+        "title": result.get("title"),
+        "author_fp": result.get("author_fp"),
+        "attachment": att,
+        "next_step": "用 workflow_bundle_import({base64: attachment.data_b64}) 或 wfmodal 📥 导入完成入库",
+    }
+    return _json.dumps(out)
+
+
+def _t_workflow_market_publish(args: dict, workdir: str, on_event=None) -> str:
+    """P2.5+B-4.F:发 workflow bundle 帖到论坛「PrisirAI 对话」子版。
+
+    mode A(names=[]):调 task.files.bundle_export 拿 base64 → 调 marketplace publish
+    mode B(attachment_data_b64 已含):直接 publish
+
+    签名 + PoW 由 marketplace ext 完成(2s 左右)。成功返 {post_id, seq, confirmed};
+    论坛 nack 透传 {error:'forum_nack:<reason>'}。
+    """
+    import json as _json
+
+    title = str(args.get("title") or "").strip()
+    if not title:
+        return _json.dumps({
+            "error": "workflow_market_publish 需要 title 字段",
+            "hint": "示例: workflow_market_publish({title:'X', names:['a','b']}) 或 "
+                    "workflow_market_publish({title:'X', attachment_data_b64:'...', attachment_filename:'x.tar.gz', attachment_size:123})",
+        })
+
+    names = args.get("names")
+    attachment_data_b64 = str(args.get("attachment_data_b64") or "").strip()
+    description = str(args.get("description") or "").strip()
+
+    # mode A:从已存 task 打包
+    if names and not attachment_data_b64:
+        if not isinstance(names, list):
+            return _json.dumps({"error": "names 必须是数组(workflow 名列表)"})
+        clean_names = [str(n).strip() for n in names if str(n or "").strip()]
+        if not clean_names:
+            return _json.dumps({"error": "names 不能全空"})
+        be_resp = _task_runner_rpc("task.files.bundle_export", {"names": clean_names}, timeout=60)
+        if not be_resp.get("ok"):
+            return _json.dumps({"error": f"task.files.bundle_export failed: {be_resp.get('error') or be_resp}"})
+        be_result = be_resp.get("result") or {}
+        if not be_result.get("ok"):
+            return _json.dumps({"error": f"bundle_export internal: {be_result.get('error') or 'unknown'}"})
+        attachment_data_b64 = be_result.get("base64") or ""
+        if not attachment_data_b64:
+            return _json.dumps({"error": "bundle_export 返了空 base64"})
+        publish_args = {
+            "title": title,
+            "description": description,
+            "workflow_count": be_result.get("count", 0),
+            "attachment_filename": be_result.get("name", "workflows-bundle.tar.gz"),
+            "attachment_size": be_result.get("size_bytes", 0),
+            "attachment_data_b64": attachment_data_b64,
+        }
+    elif attachment_data_b64:
+        # mode B:已打包 inline
+        publish_args = {
+            "title": title,
+            "description": description,
+            "attachment_filename": str(args.get("attachment_filename") or "workflows-bundle.tar.gz").strip(),
+            "attachment_sha256": str(args.get("attachment_sha256") or "").strip(),
+            "attachment_size": int(args.get("attachment_size") or 0),
+            "attachment_data_b64": attachment_data_b64,
+            "workflow_count": int(args.get("workflow_count") or 0),
+        }
+    else:
+        return _json.dumps({
+            "error": "workflow_market_publish 需二选一:names=[...](mode A) 或 attachment_data_b64='...'(mode B)",
+            "hint": "mode A: 从已存 workflow 选几个打包发;mode B: 已经手上有 tar.gz base64 直接发",
+        })
+
+    pub_resp = _ext_rpc_call("marketplace", "market.publish", publish_args, timeout=60)
+    if not pub_resp.get("ok"):
+        return _json.dumps({"error": f"market.publish failed: {pub_resp.get('error') or pub_resp}"})
+    pub_result = pub_resp.get("result") or {}
+    if not pub_result.get("ok"):
+        return _json.dumps({
+            "error": f"marketplace: {pub_result.get('error') or 'unknown'}",
+            "post": pub_result.get("post"),
+        })
+    out = {
+        "ok": True,
+        "post_id": pub_result.get("post_id"),
+        "seq": pub_result.get("seq"),
+        "confirmed": pub_result.get("confirmed"),
+        "board": pub_result.get("board", "browser/shell"),
+        "pow_bits": pub_result.get("pow_bits"),
+        "note": "已发到论坛「PrisirAI 对话」子版;任何人可用 workflow_market_list 看到并下载",
+    }
     return _json.dumps(out)
 
 
@@ -2728,6 +2944,101 @@ TOOLS = [
             "schedule": {"type": "string", "default": "",
                          "description": "调度表达式(如 'daily 09:00')。仅 write 模式 + trigger=schedule 生效。"},
         }, "required": []}}},
+    # P2.5+B-4.E(2026-09-21)跨机器 workflow bundle 共享:多 workflow 打成 tar.gz
+    # (Windows Git Bash 没 zip 命令,tar | gzip 复用 pack-ext.js 模式)。接收方用
+    # workflow_bundle_import({base64}) 或 web 端 wfmodal 📥 导入 bundle 解压入库。
+    {"type": "function", "function": {
+        "name": "workflow_bundle",
+        "description": (
+            "Bundle multiple workflows/*.json into a single .tar.gz for sharing across "
+            "machines. Symmetric to workflow_bundle_import.\n"
+            "Two modes:\n"
+            "  • names: pass `names` (array of workflow names) to bundle a subset.\n"
+            "  • empty names: bundle ALL workflows in workflows/ directory.\n"
+            "Returns base64-encoded tar.gz inline (plus name/count/size_bytes). The "
+            "user can save / share / paste this tar.gz on another machine. Use when the "
+            "user says 'package my workflows', 'send these 3 to my coworker', 'export "
+            "everything for backup' — usually after authoring with new_workflow.\n"
+            "Available on machines with task-runner-ext enabled. Cross-platform: tar.gz "
+            "is recognized by Windows 10+ built-in tar, 7-Zip, macOS Finder, Linux file "
+            "managers."
+        ),
+        "parameters": {"type": "object", "properties": {
+            "names": {"type": "array", "items": {"type": "string"},
+                      "default": [],
+                      "description": "Workflow names to include. Empty array = ALL workflows."},
+        }, "required": []}}},
+    # P2.5+B-4.E(2026-09-21)接收方:base64 → 解 tar.gz → 逐个 validateDag + 写 + 入库。
+    # workflow_bundle 产 tar.gz base64 → workflow_bundle_import 接收入库;跟 wfmodal
+    # 📥 导入 bundle 同通道(task.files.bundle_import)。
+    {"type": "function", "function": {
+        "name": "workflow_bundle_import",
+        "description": (
+            "Import a workflow bundle (tar.gz) previously produced by workflow_bundle. "
+            "Receives base64 string, unpacks, validates DAG per file, writes to workflows/, "
+            "upserts to SQLite. Use after the user pastes a base64 bundle in chat (e.g. "
+            "from a coworker's workflow_bundle output). Symmetric to workflow_bundle."
+        ),
+        "parameters": {"type": "object", "properties": {
+            "base64": {"type": "string",
+                       "description": "workflow_bundle 工具返回的 base64 字符串(或 user 粘贴的整段 tar.gz base64)"},
+        }, "required": []}}},
+    # P2.5+B-4.F(2026-09-21)marketplace 远端镜像 — 论坛(免注册)做 workflow
+    # bundle 的公共橱窗,落到「PrisirAI 对话」子版(browser/shell)。用户原话:
+    # 「github 分享我用不上,用论坛代替」。本任务三工具最小化:列帖 / 下帖 / 发帖。
+    # 协议:WS + Ed25519 + PoW 18 位(默认),见 forum_relay.py。
+    {"type": "function", "function": {
+        "name": "workflow_market_list",
+        "description": (
+            "List remote workflow bundles shared by others on the Prisir forum "
+            "«PrisirAI 对话» sub-board (browser/shell). Symmetric to local task.list "
+            "but public/anonymous read. Returns {posts:[{post_id, title, author_fp, "
+            "workflow_count, bundle_size, ts}]}. Use workflow_market_fetch(post_id) "
+            "to download + auto-import any one. The marketplace ext must be enabled; "
+            "if it is not, this returns {error: 'marketplace_ext_disabled'}. No auth "
+            "needed (forum public read)."
+        ),
+        "parameters": {"type": "object", "properties": {
+            "since_seq": {"type": "integer", "default": 0,
+                          "description": "增量拉取游标;默认 0 拉全量。翻页时传上次返的 last_seq"},
+        }, "required": []}}},
+    {"type": "function", "function": {
+        "name": "workflow_market_fetch",
+        "description": (
+            "Download a remote workflow bundle from the Prisir forum by post_id. "
+            "Returns attachment as base64-encoded tar.gz (and sha256/size metadata). "
+            "Symmetric to local task.get. To use immediately, also call "
+            "task.files.bundle_import with the returned data_b64 to land it in "
+            "the local task-runner — this is what wfmodal does automatically."
+        ),
+        "parameters": {"type": "object", "properties": {
+            "post_id": {"type": "string",
+                        "description": "目标帖子 ID(从 workflow_market_list 拿)"},
+        }, "required": ["post_id"]}}},
+    {"type": "function", "function": {
+        "name": "workflow_market_publish",
+        "description": (
+            "Publish a workflow bundle to the Prisir forum «PrisirAI 对话» sub-board. "
+            "Two modes:\n"
+            "  • Mode A (from existing tasks): pass `names` → handler calls "
+            "task.files.bundle_export to get base64, then calls marketplace publish.\n"
+            "  • Mode B (from inline content): pass `title` + `attachment_data_b64` "
+            "+ `attachment_filename` + `attachment_size` — already-packaged bundle.\n"
+            "Marketplace ext signs (Ed25519) + solves PoW (~2s, default 18 bits) + "
+            "posts to forum_relay. Returns {ok, post_id, seq, confirmed} on success, "
+            "{ok:false, error:'forum_nack:...'} on forum reject (PoW/ts/sig)."
+        ),
+        "parameters": {"type": "object", "properties": {
+            "title": {"type": "string", "description": "帖子标题(显示用)"},
+            "description": {"type": "string", "description": "帖内描述(可选)"},
+            "names": {"type": "array", "items": {"type": "string"},
+                      "description": "要打包的 workflow 名列表;mode A,从已存 task 选"},
+            "attachment_data_b64": {"type": "string", "description": "已经打好的 tar.gz base64;mode B"},
+            "attachment_filename": {"type": "string", "description": "附件文件名(mode B,纯文件名,不带路径)"},
+            "attachment_sha256": {"type": "string",
+                                   "description": "附件 SHA256 前 16 字符 b64url(可选,server 也会重算校)"},
+            "attachment_size": {"type": "integer", "description": "附件字节数(mode B)"},
+        }, "required": ["title"]}}},
 ]
 
 
@@ -2982,6 +3293,27 @@ def dispatch(name: str, args: dict, workdir: str, on_confirm=None, model: str = 
     if name == "new_workflow":
         return _t_new_workflow(args if isinstance(args, dict) else {},
                               workdir, on_event=on_event)
+    # P2.5+B-4.E(2026-09-21)跨机器 workflow bundle:多 workflow 打包成 tar.gz 返 base64。
+    # 子代 agent 工具集已剔除 workflow_bundle 防递归(同 run_task / new_workflow)。
+    if name == "workflow_bundle":
+        return _t_workflow_bundle(args if isinstance(args, dict) else {},
+                                 workdir, on_event=on_event)
+    if name == "workflow_bundle_import":
+        return _t_workflow_bundle_import(args if isinstance(args, dict) else {},
+                                         workdir, on_event=on_event)
+    # P2.5+B-4.F(2026-09-21)marketplace 远端镜像 — 论坛(免注册)做 workflow bundle
+    # 的公共橱窗,落到「PrisirAI 对话」子版。三工具最小化:列/下/发。publish 走
+    # marketplace ext(独立 Ed25519 身份 + WS + 签名 + PoW)。publish 子代工具集剔除
+    # 防递归;list/fetch 只读允许子代用(查资料 OK)。
+    if name == "workflow_market_list":
+        return _t_workflow_market_list(args if isinstance(args, dict) else {},
+                                        workdir, on_event=on_event)
+    if name == "workflow_market_fetch":
+        return _t_workflow_market_fetch(args if isinstance(args, dict) else {},
+                                         workdir, on_event=on_event)
+    if name == "workflow_market_publish":
+        return _t_workflow_market_publish(args if isinstance(args, dict) else {},
+                                          workdir, on_event=on_event)
     if name == "philosopher_debate":
         import prisir_philosopher as _ph  # noqa: PLC0415
         res = _ph.run_philosopher(

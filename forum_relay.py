@@ -85,6 +85,9 @@ _ALL_BOARDS = {slug for boards in BOARDS.values() for slug, _, _ in boards}
 
 MAX_BODY = 4000          # 纯文字帖上限(字符)
 MAX_BODY_IMG = 96 * 1024 # 含内联图片帖上限(base64 data:image;客户端压 ≤64KB WebP 后约 87KB base64)
+MAX_ATT_SIZE = 2 * 1024 * 1024  # P2.5+B-4.F(2026-09-21)附件字节上限(2MB)
+MAX_ATT_MIMES = {"application/gzip", "application/json", "application/zip",
+                 "text/plain", "application/octet-stream"}
 IMG_RE = __import__("re").compile(r"!\[[^\]]*\]\(data:image/(?:webp|jpeg|png);base64,([A-Za-z0-9+/=]+)\)")
 TS_SKEW_SEC = 600
 ALLOWED_KINDS = {"post", "reply", "retract"}
@@ -121,13 +124,45 @@ def _has_forbidden_chars(s: str) -> bool:
     return " " in s or " " in s  # U+2028/U+2029:JS/PY JSON 转义分歧源,协议禁止
 
 
+# P2.5+B-4.F(2026-09-21)attachment 校验:可选附件字段,含文件名 / mime / sha256 / size / data_b64。
+# 防止 path traversal / 巨附件 / 伪造 sha / 非白名单 mime。返回 None 即通过。
+def _validate_attachment(att: object) -> str | None:
+    if not isinstance(att, dict):
+        return "bad_attachment"
+    filename, mime, sha = att.get("filename"), att.get("mime"), att.get("sha256")
+    size, data_b64 = att.get("size"), att.get("data_b64")
+    if not isinstance(filename, str) or not filename \
+            or "/" in filename or "\\" in filename or ".." in filename:
+        return "bad_attachment"
+    if not isinstance(mime, str) or mime not in MAX_ATT_MIMES:
+        return "bad_attachment_mime"
+    if not isinstance(sha, str) or len(sha) < 4 or len(sha) > 64:
+        return "bad_attachment_sha"
+    if not isinstance(size, int) or size < 0 or size > MAX_ATT_SIZE:
+        return "oversize_attachment"
+    if not isinstance(data_b64, str) or not data_b64:
+        return "bad_attachment"
+    # sha256 实际校验(防 base64 损 / 伪造)
+    try:
+        raw = base64.b64decode(data_b64, validate=True)
+        actual = b64url16(hashlib.sha256(raw).digest())
+        if actual != sha:
+            return "bad_attachment_sha"
+        if len(raw) != size:
+            return "bad_attachment_size"
+    except Exception:
+        return "bad_attachment"
+    return None
+
+
 # ── 帖子校验(契约 §4 顺序:形状→board/ts→fp→post_id→PoW→签名) ──
 def validate_post(post: dict, posts_by_id: dict[str, dict]) -> tuple[str | None, dict]:
     """返回 (nack_reason | None, 派生字段 {post_id})。校验顺序见契约 §4。"""
     if not isinstance(post, dict):
         return "bad_field", {}
     top_keys = {"v", "kind", "board", "parent", "body", "author_pub", "author_fp", "ts", "pow", "sig"}
-    if set(post.keys()) != top_keys:
+    # P2.5+B-4.F(2026-09-21)attachment 可选字段
+    if set(post.keys()) - top_keys != {"attachment"} and set(post.keys()) != top_keys:
         return "bad_field", {}
     if post["v"] != 1 or post["kind"] not in ALLOWED_KINDS or post["board"] not in _ALL_BOARDS:
         return "bad_board" if post.get("board") not in _ALL_BOARDS else "bad_field", {}
@@ -138,6 +173,12 @@ def validate_post(post: dict, posts_by_id: dict[str, dict]) -> tuple[str | None,
     limit = MAX_BODY_IMG if IMG_RE.search(body) else MAX_BODY
     if len(body) > limit:
         return "oversize", {}
+    # P2.5+B-4.F attachment 校验(可选,None=纯文字帖)
+    attachment = post.get("attachment")
+    if attachment is not None:
+        att_err = _validate_attachment(attachment)
+        if att_err:
+            return att_err, {}
     pow_ = post.get("pow")
     if not isinstance(pow_, dict) or pow_.get("alg") != "sha256-b64" \
             or not isinstance(pow_.get("bits"), int) or not isinstance(pow_.get("nonce"), int) \
@@ -425,7 +466,7 @@ async def main() -> None:
     print(f"[forum] relay @ {WS_HOST}:{WS_PORT} pow_bits={POW_BITS} genesis={len(GENESIS_FPS)} "
           f"operator={'set' if OPERATOR_PUB else 'OFF'} ttl={POST_TTL_DAYS}d "
           f"state={_STATE_FILE} posts={len(FORUM.posts)}")
-    async with serve(_handle, WS_HOST, WS_PORT, max_size=64 * 1024):
+    async with serve(_handle, WS_HOST, WS_PORT, max_size=8 * 1024 * 1024):  # P2.5+B-4.F:8MB 给 attachment 留路
         await asyncio.Future()
 
 
