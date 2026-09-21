@@ -1,0 +1,39 @@
+feat(p2.5+b-3+1): 节点双击编辑 + 运行历史清理 + wfmodal 主体(补 B-3 漏)+ 文档
+
+P2.5+B-3 commit d22067b 实际只 commit 了 task-runner + SDK + Python
+后端 reader_loop 的「钩子」+ 一个空 wfApplyTpl 函数。前端 wfmodal
+主体(openWorkflow/wfRenderTaskList/wfSave/wfRun/wfRunById/wfRenderNodes
+/wfRenderEdges/wfStartDrag/wfEditNode/wfValidate/wfRefreshRuns/wfCancel
+Run/wfTemplates 等 ~25 个函数)和 progress 流函数(wfStartProgressPoll
+/wfPollProgress/wfOnProgress/wfStopProgressPoll)实际留在 worktree
+未提交。补 commit 时一并 ship。
+
+用户 2026-09-21 反馈三点:
+  1) 节点无法双击编辑 → wfStartDrag mousedown preventDefault 吞了
+     dblclick;改成「mousedown 只记 armed + 移动 >5px 才真 drag」
+  2) 运行历史没清理按钮 → 🧹 清空按钮 + task.runs.clear 命令 +
+     wfClearRuns + i18n wf_runs_clear/wf_clear_runs_confirm/fail
+  3) 使用演示文档 → docs/workflow-usage-demo-2026-09-21.md
+     (10 节:5 分钟上手 + 节点四件套 + 编辑 + 监控 + 历史 + 调度 +
+      端到端最小 demo + 已知坑 + 进阶技巧)
+
+task-runner 端 task.runs.clear 修 SQL bug:
+  tid 不传时不能 bind(null) 给 ? → 抛 column index out of range。
+  分支 SQL:tid 走 WHERE 子句,无 tid 走无 WHERE 全删。
+
+测试:
+  tests/_test_p2b3_hotfix.py     13/13 (双击 fix + 清空 fix + 不回归)
+  tests/_test_p2b3_doc.py        14/14 (文档覆盖三个反馈点)
+  tests/_test_p2b3_task_queue.py 21/21 (B-3 主体锚点)
+  tests/_smoke_b3.py             5/5   (upsert + fire-and-forget +
+                                        长轮询 progress + 持久化 +
+                                        cancel + 清空任务)
+  tests/_test_p2b0_ext_rpc_bridge.py  16/16 (B-0 回归)
+  tests/_test_p2b2_workflow.py        47/47 (B-2 回归)
+
+解锁 B-4 AI agent 派单(wfmodal 真实可用)。
+
+参考:[[p2-5-b-2-workflow-ui-shipped]] [[phase-b3-task-queue-shipped]]
+     [[tasklist-vs-git-truth-m3-35]]
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>

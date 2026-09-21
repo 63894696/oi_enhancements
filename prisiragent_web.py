@@ -4886,6 +4886,8 @@ _PAGE = r"""<!DOCTYPE html>
   #wf-runs-head { padding:6px 14px; font-size:12px; font-weight:600; color:var(--gh-green-deep);
     cursor:pointer; display:flex; align-items:center; justify-content:space-between;
     border-bottom:1px solid var(--gh-line); user-select:none; }
+  #wf-runs-head #wf-runs-clean-btn { font-size:11px; padding:2px 8px; margin-left:auto; }
+  #wf-runs-head #wf-runs-clean-btn:hover { background:#c0392b; color:var(--gh-paper); border-color:#c0392b; }
   #wf-runs-body { overflow-y:auto; padding:4px 8px; }
   #wf-runs-body .wf-run { display:flex; gap:10px; padding:4px 8px; font-size:11px;
     border-bottom:1px solid var(--gh-line); cursor:pointer; }
@@ -5660,6 +5662,8 @@ _PAGE = r"""<!DOCTYPE html>
     <div id="wf-runs-head" onclick="wfToggleRuns()">
       <span data-i18n="wf_runs">运行历史</span>
       <span id="wf-runs-toggle">▾</span>
+      <button class="topbtn" id="wf-runs-clean-btn" onclick="event.stopPropagation();wfClearRuns()"
+              data-i18n="wf_runs_clear" title="清空所有运行历史">🧹 清空</button>
     </div>
     <div id="wf-runs-body"></div>
   </div>
@@ -5888,6 +5892,9 @@ const I18N = {
     // P2.5+B-3(2026-09-21)进度流 + 优雅取消
     wf_cancel:'⏹ 取消当前运行', wf_canceled:'已取消', wf_running:'运行中',
     wf_progress:'进度', wf_active:'当前运行',
+    // P2.5+B-3 hotfix(2026-09-21)运行历史清理
+    wf_runs_clear:'🧹 清空', wf_clear_runs_confirm:'清空所有运行历史?(只清 runs/node_runs,tasks 定义保留)',
+    wf_clear_runs_fail:'清空失败',
   },
   en: {
     send:'Send', new_session:'+ New chat', model_key:'🔑 Model Key', feedback:'⚙ Feedback',
@@ -5952,6 +5959,9 @@ const I18N = {
     // P2.5+B-3(2026-09-21)progress stream + graceful cancel
     wf_cancel:'⏹ Cancel current run', wf_canceled:'Canceled', wf_running:'Running',
     wf_progress:'Progress', wf_active:'Active run',
+    // P2.5+B-3 hotfix(2026-09-21)run history cleanup
+    wf_runs_clear:'🧹 Clear', wf_clear_runs_confirm:'Clear all run history?(only runs/node_runs, task definitions kept)',
+    wf_clear_runs_fail:'Clear failed',
   }
 };
 let LANG = (function(){
@@ -7768,20 +7778,39 @@ function wfRenderEdges() {
 function wfStartDrag(e, nid) {
   if (e.button !== 0) return;
   if (e.target.tagName === 'BUTTON') return;  // 不要拦按钮
-  e.preventDefault();
-  _wfDraggingNode = nid;
+  // P2.5+B-3 hotfix(2026-09-21):之前 preventDefault() 让浏览器不期待 dblclick →
+  // 节点无法双击编辑。改成「mousedown 只记起点,mousemove 距离 >5px 才真拖」,
+  // 双击不被拦截。同时记 _wfDragArmed 让 mouseup 距离不达标时啥也不做。
   const el = e.currentTarget;
   const rect = el.getBoundingClientRect();
+  _wfDragArmed = nid;
   _wfDragOffset = {x: e.clientX - rect.left, y: e.clientY - rect.top};
+  _wfDragOrigin = {x: e.clientX, y: e.clientY};
   document.addEventListener('mousemove', wfOnDragMove);
   document.addEventListener('mouseup', wfOnDragEnd);
 }
+
+let _wfDragArmed = null;     // mousedown 命中但距离未达标,等 mouseup 撤销
+let _wfDragOrigin = {x:0,y:0}; // mousedown 起点(用于阈值)
 function wfOnDragMove(e) {
+  // P2.5+B-3 hotfix:仅在 armed 且移动 >5px 才升级为真 drag,
+  // 否则让双击/单击正常冒泡。升级后继续走 wfApplyDragPos 移动节点。
+  if (_wfDragArmed) {
+    const dx = e.clientX - _wfDragOrigin.x;
+    const dy = e.clientY - _wfDragOrigin.y;
+    if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+    _wfDraggingNode = _wfDragArmed;
+    _wfDragArmed = null;
+  }
   if (!_wfDraggingNode) return;
-  const canvas = document.getElementById('wf-canvas');
-  const cr = canvas.getBoundingClientRect();
   const el = document.querySelector('#wf-nodes .wf-node[data-id="' + _wfDraggingNode + '"]');
   if (!el) return;
+  wfApplyDragPos(el, e);
+}
+
+function wfApplyDragPos(el, e) {
+  const canvas = document.getElementById('wf-canvas');
+  const cr = canvas.getBoundingClientRect();
   const x = Math.max(0, e.clientX - cr.left - _wfDragOffset.x + canvas.scrollLeft);
   const y = Math.max(0, e.clientY - cr.top - _wfDragOffset.y + canvas.scrollTop);
   el.style.left = x + 'px';
@@ -7792,8 +7821,8 @@ function wfOnDragMove(e) {
   }
   wfRenderEdges();
 }
+
 function wfOnDragEnd() {
-  _wfDraggingNode = null;
   document.removeEventListener('mousemove', wfOnDragMove);
   document.removeEventListener('mouseup', wfOnDragEnd);
 }
@@ -7937,6 +7966,19 @@ async function wfRefreshRuns() {
     row.onclick = () => alert(JSON.stringify(run, null, 2));
     body.appendChild(row);
   }
+}
+
+// P2.5+B-3 hotfix(2026-09-21)清空运行历史按钮:
+//   调 task.runs.clear(task_id=current);全清可选 confirm 二次确认。
+async function wfClearRuns() {
+  if (!confirm(T('wf_clear_runs_confirm') || '清空所有运行历史?(只清 runs/node_runs,tasks 定义保留)')) return;
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method:'task.runs.clear', params:{}, timeout: 8})});
+  if (!r || !r.ok) {
+    alert((T('wf_clear_runs_fail') || '清空失败') + ': ' + (r?.error || ''));
+    return;
+  }
+  await wfRefreshRuns();
 }
 
 function wfToggleRuns() {

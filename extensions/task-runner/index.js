@@ -467,6 +467,26 @@ ext.registerCommand('task.runs', async (args) => {
   return { runs, total: runs.length };
 });
 
+// P2.5+B-3 hotfix(2026-09-21)清空运行历史按钮 wfClearRuns:
+//   删 runs 主表全部行 + 对应 node_runs 行(外键无级联,手动清),
+//   不影响 tasks 表(用户任务定义保留,只是清掉历史)。
+//   args.task_id 不传则清全部;传了只清这个 task 的。
+ext.registerCommand('task.runs.clear', async (args) => {
+  const tid = args.task_id ? String(args.task_id) : null;
+  // 分支处理:tid=null 时直接无 WHERE 子句全删,带 ? 的 SQL bind null 会抛 column index out of range
+  let cleared, nodesCleared;
+  if (tid) {
+    cleared = db().prepare('DELETE FROM runs WHERE task_id = ?').run(tid).changes;
+    nodesCleared = db().prepare("DELETE FROM node_runs WHERE run_id IN (SELECT id FROM runs WHERE task_id = ?)")
+      .run(tid).changes;
+  } else {
+    cleared = db().prepare('DELETE FROM runs').run().changes;
+    nodesCleared = db().prepare('DELETE FROM node_runs').run().changes;
+  }
+  ext.log('info', `runs cleared: ${cleared} runs, ${nodesCleared} node_runs (task_id=${tid || 'all'})`);
+  return { ok: true, cleared_runs: cleared, cleared_node_runs: nodesCleared, task_id: tid };
+});
+
 // ─── 调度器(cron-like 简化版) ────────────────────────────────────────
 let _schedTimer = null;
 let _schedInterval = 30;     // 秒
