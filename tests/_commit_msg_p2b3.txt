@@ -1,0 +1,84 @@
+feat(p2.5+b-3): 任务队列升级 — 优雅取消 + 进度流 + 节点持久化
+
+B-2 ship 后留的 3 个真问题一次性解决:用户跑长任务能中途取消、能看
+进度、节点级历史可查。
+
+task-runner ext 改造 (extensions/task-runner/index.js):
+- 新表 node_runs (run_id, node_id, status, attempts, ms, error,
+  started_at, finished_at, PRIMARY KEY(run_id, node_id)) + 索引
+- 每节点 INSERT OR REPLACE 落库 — 中间结果可回放
+- _activeRuns: Map<run_id, {abort: AbortController, task_id, total}>
+  取代旧计数器,每个 run 独立 AbortController,互不影响
+- executeNodeWithRetry 注入 Ac 检测:ac?.signal.aborted → lastErr='aborted'
+  → 标 canceled 不再重试;同时调 ac.signal.addEventListener('abort') 接
+  Promise.race 第二参,abort 瞬间 reject
+- executeDag 在每波前查 ac.signal.aborted → 整波中断 + 标 canceled
+- _notifyProgress(runId, payload) helper 走 ext.notify('task.run.progress', ...)
+  每节点 start/end 各推 1 条 (event: 'start' | 'end' | 'abort')
+- task.run.cancel:真取消 — 查 _activeRuns Map → r.abort.abort() →
+  invokeExt 立刻 reject('aborted') → node_runs 标 canceled + 推 progress;
+  兜底查 runs 表返 current_status
+- task.run.active:列活跃 run(task_id / total / run_id)用于 UI 监控
+- task.run fire-and-forget 模式现在也返 run_id(B-3 设计漏,补):
+  同步建 runId + 注册 Ac + 异步跑 executeDag,这样前端能立刻起 polling
+- task.schedule.status: active_runs 字段从原 _activeRuns(计数器,误传)
+  修成 _activeRuns.size
+
+SDK 修复 (extensions/sdk/index.js):
+- 修 B-0 历史遗留 bug:Python _ext_rpc_call 给 method 加 'command.'
+  前缀,SDK 一直按原名查 commands.get() → 所有真实命令返 unknown method。
+  B-3 烟雾测 task.list 验出。_handleRequest 剥 'command.' 前缀再查,
+  无前缀形式保留向后兼容
+
+Python 后端 (prisIragent_web.py):
+- reader_loop 加 task.run.progress 路由分支 → _ext_run_progress()
+- _WF_PROGRESS_QUEUE[run_id] = {seq, items} + _WF_PROGRESS_LOCK 守护
+- _ext_run_progress(ext_id, params):写入 queue 供前端长轮询 peek
+- 新端点 /prisiragent/api/workflow/run_progress:POST {run_id, since, ack}
+  返 {ok, run_id, items, seq, missing} — missing=true 表示 run 已结束
+  队列被清。wfmodal 500ms 长轮询拉增量,seq 游标 + ack=true 回收已读
+
+前端 (prisIragent_web.py):
+- wfmodal 头部加 progress bar:
+  - #wf-progress-bar 6px 灰色槽
+  - #wf-progress-bar-fill 0~100% 绿(running 时琥珀,canceled 时红)
+  - #wf-progress-text "done/total" 文本
+  - #wf-cancel-btn "⏹ 取消当前运行" 红色描边
+- CSS:.wf-node.canceled 加 line-through
+- wfRunById 拆分支:wait=true 老路径同步返 nodes 上色;wait=false
+  (UI ▶ 默认) fire-and-forget 拿 run_id 立刻调 wfStartProgressPoll
+- wfStartProgressPoll(runId, taskId, total): 重置 UI + setInterval 500ms 拉
+- wfPollProgress(): 拉增量 → wfOnProgress(payload) → 节点上色 +
+  进度条按 ok/failed/canceled 计数
+- wfOnProgress(payload): 按 status 上色 + dataset.attempts/ms + 标题含
+  error 信息;每跑完节点重算 progress bar 宽度
+- wfMaybeFinishRun(): 每 ~10 次 poll 查 task.runs(task_id) 找当前 run
+  status,若不再 running/pending 停轮询 + wfOnRunDone 终态上色
+- wfCancelRun(): 调 task.run.cancel run_id → 立刻把 status 改 '⏹ canceling…'
+- wfStopProgressPoll(): 关 modal / 任务跑完时清;后端 run 仍继续跑
+  (前端只停轮询,不杀任务)
+- closeWorkflow:关 modal 顺带 wfStopProgressPoll
+- i18n zh+en:wf_cancel / wf_canceled / wf_running / wf_progress / wf_active
+
+测试 (tests/_test_p2b3_task_queue.py) 72/72 静态扫绿:
+- task-runner 19 项 (node_runs / Ac / activeRuns / cancel / active / progress / INSERT OR REPLACE / cancel 不重试)
+- SDK 5 项 (notify 暴露 + command. 前缀剥除)
+- Python 12 项 (_WF_PROGRESS_QUEUE / reader_loop / _ext_run_progress / run_progress 端点 / missing)
+- HTML/CSS 15 项 (progress bar 5 元素 + 3 CSS 状态色 + cancel 按钮 + 节点 canceled)
+- JS/i18n 21 项 (5 函数 + 3 全局 + wfRun 接 fire-and-forget + 8 i18n zh+en)
+
+烟雾测试 (curl):
+- task.upsert → {"ok":true,"result":{"id":"t_1789954322578sjb"}}
+- task.run wait=false → {"ok":true,"run_id":"r_1789954345826u0h","status":"running"}
+- task.run.active (跑完后) → {"active":[],"count":0}
+- task.runs(task_id) → 见 node_runs status=failed,attempts=2,ms=1004
+- task.run.cancel 已结束 run → {"error":"run_not_active","current_status":"failed"}
+- task.run.cancel 不存在 run → {"error":"run_not_found"}
+
+回归测试: B-0 / B-2 / M3.35 / p259a / p259c 全绿
+约束:不打安装包 / 不动 DLL/EXE/SPEC / 不删文件 / 不引外部 npm 包
+
+解锁:
+- B-4: AI agent 任务执行派单(走 workflow 编排 → 后端真调度已通)
+- Phase B-3.5: task.run.history(task_id, include_nodes=true) 节点级历史接口
+- Phase B-3.5: node_runs 过期归档策略

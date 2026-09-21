@@ -142,6 +142,13 @@ class PrisIrExt {
   // ──────────────── 内部 ────────────────
   _nextId() { this._msgId += 1; return this._msgId; }
 
+  // P2.5+B-3(2026-09-21)暴露通用 notify 通道:ext 想主动推任何 method 都行。
+  // 之前 _notify 是私有的,ext 只能调 ext.log/ext.injectCard 这些封装过的,
+  // 推自定义 notification(如 task.run.progress)得自己写 stdout。
+  notify(method, params) {
+    this._notify(method, params);
+  }
+
   _notify(method, params) {
     process.stdout.write(JSON.stringify({ jsonrpc: '2.0', method, params: params || {} }) + '\n');
   }
@@ -218,7 +225,12 @@ class PrisIrExt {
   }
 
   async _handleRequest(msg) {
-    const { id, method, params = {} } = msg;
+    const { id, method: rawMethod, params = {} } = msg;
+    // P2.5+B-3(2026-09-21)修 B-0 历史遗留:Python _ext_rpc_call 给 method 加了
+    // 'command.' 前缀,SDK 这边一直按原名查 → 任何真实命令都 'unknown method'。
+    // 烟雾测试 task.list 验出。剥前缀后再查命令表;无前缀形式保留向后兼容。
+    const method = (typeof rawMethod === 'string' && rawMethod.startsWith('command.'))
+      ? rawMethod.slice('command.'.length) : rawMethod;
     const handler = this.commands.get(method);
     if (!handler) {
       this._reply(id, `unknown method: ${method}`, true);

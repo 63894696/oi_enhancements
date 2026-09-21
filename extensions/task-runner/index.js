@@ -75,6 +75,19 @@ function db() {
       error       TEXT NOT NULL DEFAULT ''
     );
     CREATE INDEX IF NOT EXISTS runs_task_idx ON runs(task_id, started_at DESC);
+    -- P2.5+B-3(2026-09-21)节点级结果:中间状态可查、可回放、cancel 标 canceled
+    CREATE TABLE IF NOT EXISTS node_runs (
+      run_id      TEXT NOT NULL,
+      node_id     TEXT NOT NULL,
+      status      TEXT NOT NULL,                     -- running|ok|failed|canceled
+      attempts    INTEGER NOT NULL DEFAULT 1,
+      ms          INTEGER NOT NULL DEFAULT 0,
+      error       TEXT NOT NULL DEFAULT '',
+      started_at  INTEGER NOT NULL DEFAULT 0,
+      finished_at INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (run_id, node_id)
+    );
+    CREATE INDEX IF NOT EXISTS node_runs_run_idx ON node_runs(run_id);
   `);
   return _db;
 }
@@ -136,58 +149,110 @@ function _backoffDelay(backoff, attempt) {
   return Math.pow(2, attempt - 1) * 1000;
 }
 
-async function executeNodeWithRetry(nid, n, log) {
+// P2.5+B-3(2026-09-21)进度通知:每 node 开始 + 完成各推 1 条;cancel/abort 也推
+//   payload = { run_id, node_id, status, attempts, ms, active, total, event, error? }
+//   event: 'start' | 'end' | 'abort'
+//   active/total 给前端 progress bar 用
+function _notifyProgress(runId, payload) {
+  try { ext.notify('task.run.progress', Object.assign({run_id: runId}, payload)); }
+  catch (e) { /* notifier 不可用也别让 run 挂 */ }
+}
+
+// P2.5+B-3(2026-09-21)优雅取消:executeNodeWithRetry 注入 AbortController,
+//   cancel → ac.abort() → 当前 invokeExt 立刻 reject('aborted') → 标 canceled 不重试
+async function executeNodeWithRetry(nid, n, log, runId, totalNodes) {
   const retry = n.retry || {};
   const maxRetries = Math.max(0, Math.min(5, Number(retry.max_retries) || 0));
   const backoff = retry.backoff || 'exponential';
   const timeoutSec = Math.max(1, Math.min(600, Number(retry.timeout_sec) || 30));
+  const ac = _activeRuns.get(runId)?.abort;
   let attempts = 0;
   let lastErr = null;
+  const nodeStart = Date.now();
+  let attemptStart = nodeStart;
+  _notifyProgress(runId, {node_id: nid, status: 'running', attempts: 0,
+                          active: 1, total: totalNodes, event: 'start'});
   while (attempts <= maxRetries) {
     attempts++;
-    const t0 = Date.now();
+    if (ac?.signal.aborted) {
+      lastErr = 'aborted';
+      _notifyProgress(runId, {node_id: nid, status: 'canceled', attempts,
+                              active: 0, total: totalNodes, event: 'abort', error: lastErr});
+      break;
+    }
+    attemptStart = Date.now();
     log('info', `node ${nid} → ${n.ext}.${n.method} (attempt ${attempts}/${maxRetries + 1})`);
     try {
       const result = await Promise.race([
         ext.invokeExt(n.ext, n.method, n.params || {}, timeoutSec * 1000),
-        new Promise((_, rej) => setTimeout(
-          () => rej(new Error(`timeout: ${n.ext}.${n.method} after ${timeoutSec}s`)),
-          timeoutSec * 1000)),
+        new Promise((_, rej) => {
+          const t = setTimeout(
+            () => rej(new Error(`timeout: ${n.ext}.${n.method} after ${timeoutSec}s`)),
+            timeoutSec * 1000);
+          ac?.signal.addEventListener('abort', () => {
+            clearTimeout(t);
+            rej(new Error('aborted'));
+          }, {once: true});
+        }),
       ]);
-      return { nid, status: 'ok', result, ms: Date.now() - t0, attempts };
+      const ms = Date.now() - attemptStart;
+      db().prepare(`INSERT OR REPLACE INTO node_runs
+                    (run_id,node_id,status,attempts,ms,started_at,finished_at)
+                    VALUES (?,?,?,?,?,?,?)`)
+        .run(runId, nid, 'ok', attempts, ms, attemptStart, Date.now());
+      _notifyProgress(runId, {node_id: nid, status: 'ok', attempts, ms,
+                              active: 0, total: totalNodes, event: 'end'});
+      return { nid, status: 'ok', result, ms, attempts };
     } catch (e) {
       lastErr = e.message || String(e);
       log('warn', `node ${nid} attempt ${attempts} failed: ${lastErr}`);
-      if (attempts > maxRetries) break;
+      if (lastErr === 'aborted' || attempts > maxRetries) break;
       await _sleep(_backoffDelay(backoff, attempts));
     }
   }
-  return { nid, status: 'failed', error: lastErr, ms: 0, attempts };
+  const ms = Date.now() - nodeStart;
+  const finalStatus = (lastErr === 'aborted') ? 'canceled' : 'failed';
+  db().prepare(`INSERT OR REPLACE INTO node_runs
+                (run_id,node_id,status,attempts,ms,error,started_at,finished_at)
+                VALUES (?,?,?,?,?,?,?,?)`)
+    .run(runId, nid, finalStatus, attempts, ms, lastErr, nodeStart, Date.now());
+  _notifyProgress(runId, {node_id: nid, status: finalStatus, attempts, ms, error: lastErr,
+                          active: 0, total: totalNodes, event: finalStatus === 'canceled' ? 'abort' : 'end'});
+  return { nid, status: finalStatus, error: lastErr, ms, attempts };
 }
 
-async function executeDag(dag, log) {
+async function executeDag(dag, log, runId, totalNodes) {
   const ids = Object.keys(dag);
   const indeg = new Map(ids.map(i => [i, 0]));
   for (const id of ids) for (const dep of (dag[id].needs || [])) indeg.set(id, indeg.get(id) + 1);
 
   const nodeResults = {};
   let firstError = null;
-  let runFailed = false;
+  let runStatus = 'ok';
+  const ac = _activeRuns.get(runId)?.abort;
 
-  // 分层:indeg==0 入 first wave,跑完一层把下游 indeg -1
   let wave = ids.filter(i => indeg.get(i) === 0);
   while (wave.length) {
-    const results = await Promise.allSettled(wave.map(nid => executeNodeWithRetry(nid, dag[nid], log)));
+    if (ac?.signal.aborted) {
+      runStatus = 'canceled';
+      break;
+    }
+    const results = await Promise.allSettled(
+      wave.map(nid => executeNodeWithRetry(nid, dag[nid], log, runId, totalNodes))
+    );
     for (const r of results) {
       const v = r.value;
       nodeResults[v.nid] = { status: v.status, result: v.result, error: v.error,
                              ms: v.ms, attempts: v.attempts };
-      if (v.status === 'failed' && !runFailed) {
+      if (v.status === 'failed' && runStatus === 'ok') {
         firstError = { node: v.nid, error: v.error };
-        runFailed = true;
+        runStatus = 'failed';
+      } else if (v.status === 'canceled' && runStatus === 'ok') {
+        firstError = { node: v.nid, error: v.error || 'aborted' };
+        runStatus = 'canceled';
       }
     }
-    if (runFailed) break;   // fail-fast
+    if (runStatus !== 'ok') break;   // fail-fast / canceled-fast
     // 下一层
     const next = [];
     for (const id of ids) {
@@ -200,7 +265,7 @@ async function executeDag(dag, log) {
   }
 
   return {
-    status: runFailed ? 'failed' : 'ok',
+    status: runStatus,
     nodes: nodeResults,
     error: firstError ? `${firstError.node}: ${firstError.error}` : null,
   };
@@ -263,20 +328,25 @@ ext.registerCommand('task.delete', async (args) => {
 });
 
 // ─── task.run ───────────────────────────────────────────────────────
-let _activeRuns = 0;
+// P2.5+B-3(2026-09-21)activeRuns Map:run_id → {abort: AbortController, task_id, total}。
+//   取代旧的 _activeRuns 计数器(只数并发数不记是谁);现在每个 run 独立 Ac,
+//   cancel 真能 abort 当前 invokeExt 不影响其他 run。
+const _activeRuns = new Map();
 
 async function runTaskOnce(taskId) {
   const task = rowToTask(db().prepare('SELECT * FROM tasks WHERE id = ?').get(taskId));
   if (!task) return { ok: false, error: 'task not found', task_id: taskId };
   const runId = 'r_' + Date.now() + Math.random().toString(36).slice(2, 5);
+  const ac = new AbortController();
+  const total = Object.keys(task.dag || {}).length;
+  _activeRuns.set(runId, {abort: ac, task_id: taskId, total});
   const startedAt = Date.now();
   db().prepare(`INSERT INTO runs (id,task_id,started_at,status) VALUES (?,?,?,?)`)
     .run(runId, taskId, startedAt, 'running');
-  ext.log('info', `run ${runId} start (task=${taskId} name="${task.name}")`);
-  _activeRuns++;
+  ext.log('info', `run ${runId} start (task=${taskId} total=${total})`);
   let exec;
   try {
-    exec = await executeDag(task.dag, ext.log.bind(ext));
+    exec = await executeDag(task.dag, ext.log.bind(ext), runId, total);
   } catch (e) {
     exec = { status: 'failed', nodes: {}, error: e.message || String(e) };
   }
@@ -284,7 +354,7 @@ async function runTaskOnce(taskId) {
   const resultStr = JSON.stringify(exec);
   db().prepare(`UPDATE runs SET finished_at=?, status=?, result_json=?, error=? WHERE id=?`)
     .run(finishedAt, exec.status, resultStr, exec.error || '', runId);
-  _activeRuns--;
+  _activeRuns.delete(runId);
   ext.log('info', `run ${runId} ${exec.status} (${finishedAt - startedAt}ms, ${Object.keys(exec.nodes).length} nodes)`);
   return { ok: exec.status === 'ok', run_id: runId, status: exec.status, nodes: exec.nodes, error: exec.error };
 }
@@ -294,16 +364,62 @@ ext.registerCommand('task.run', async (args) => {
   if (args.wait === true) {
     return await runTaskOnce(args.id);
   }
-  // fire-and-forget
-  runTaskOnce(args.id).catch((e) => ext.log('error', `run ${args.id} crashed: ${e.message}`));
-  return { ok: true, queued: true, task_id: args.id };
+  // fire-and-forget 但要返 run_id,这样前端能立刻拿 run_id 起 progress polling。
+  // 做法:同步从 tasks 表拿 runId 字段(若有)/新建占位 run 拿到 id 后立刻返,
+  // 真正的 executeDag 异步跑。run_id 现在等于入参 'id' 不行,因为同一 task 可能重跑。
+  // 简化:让 runTaskOnce 在 _activeRuns.set 之后、executeDag 之前通过 Promise.resolve
+  // 暴露 run_id —— 直接重写:fire 模式单独一条路径。
+  const taskRow = db().prepare('SELECT * FROM tasks WHERE id = ?').get(args.id);
+  if (!taskRow) return { ok: false, error: 'task not found', task_id: args.id };
+  const task = rowToTask(taskRow);
+  const runId = 'r_' + Date.now() + Math.random().toString(36).slice(2, 5);
+  const ac = new AbortController();
+  const total = Object.keys(task.dag || {}).length;
+  _activeRuns.set(runId, {abort: ac, task_id: args.id, total});
+  const startedAt = Date.now();
+  db().prepare(`INSERT INTO runs (id,task_id,started_at,status) VALUES (?,?,?,?)`)
+    .run(runId, args.id, startedAt, 'running');
+  ext.log('info', `run ${runId} start fire (task=${args.id} total=${total})`);
+  // 异步跑,出错了不抛(避免污染 RPC 返参)
+  (async () => {
+    let exec;
+    try {
+      exec = await executeDag(task.dag, ext.log.bind(ext), runId, total);
+    } catch (e) {
+      exec = { status: 'failed', nodes: {}, error: e.message || String(e) };
+    }
+    const finishedAt = Date.now();
+    db().prepare(`UPDATE runs SET finished_at=?, status=?, result_json=?, error=? WHERE id=?`)
+      .run(finishedAt, exec.status, JSON.stringify(exec), exec.error || '', runId);
+    _activeRuns.delete(runId);
+    ext.log('info', `run ${runId} ${exec.status} (${finishedAt - startedAt}ms, ${Object.keys(exec.nodes).length} nodes)`);
+  })();
+  return { ok: true, run_id: runId, status: 'running', task_id: args.id, queued: true };
 });
 
-// P2.5+B-2(2026-09-21)取消运行中的任务。stub:Phase B-3 任务队列升级时实现真取消
-// (要 node 主进程维护 activeRuns Map + AbortController);当前返 not_supported。
+// P2.5+B-3(2026-09-21)真取消:走 AbortController,优雅不杀子进程。
+//   行为:activeRuns.get(run_id).abort() → executeNodeWithRetry 里 Promise.race 立刻 reject('aborted')
+//   → 落 node_runs status=canceled + 推 progress canceled → run 主表 status=canceled
 ext.registerCommand('task.run.cancel', async (args) => {
   if (!args.run_id) return { ok: false, error: 'run_id required' };
-  return { ok: false, error: 'not_supported_yet: Phase B-3 任务队列升级后会接通' };
+  const r = _activeRuns.get(args.run_id);
+  if (!r) {
+    // 不在 active 集合 → 已结束(查 runs 表兜底)
+    const row = db().prepare('SELECT status FROM runs WHERE id = ?').get(args.run_id);
+    if (row) return { ok: false, error: 'run_not_active', current_status: row.status };
+    return { ok: false, error: 'run_not_found' };
+  }
+  r.abort.abort();
+  return { ok: true, canceled: args.run_id, task_id: r.task_id, at: Date.now() };
+});
+
+// P2.5+B-3(2026-09-21)活跃 run 列表(task-runner 进程内)。供 wfmodal 显示"正在跑"。
+ext.registerCommand('task.run.active', async () => {
+  const list = [];
+  for (const [rid, v] of _activeRuns.entries()) {
+    list.push({run_id: rid, task_id: v.task_id, total_nodes: v.total, started_at: 0});
+  }
+  return {active: list, count: list.length};
 });
 
 // P2.5+B-2(2026-09-21)内置模板列表(避免前端散落写模板 JSON)。
@@ -411,7 +527,7 @@ ext.registerCommand('task.schedule.status', async () => ({
   running: !!_schedTimer,
   interval_sec: _schedInterval,
   next_tick_at: _schedNextTick,
-  active_runs: _activeRuns,
+  active_runs: _activeRuns.size,
 }));
 
 // ─── 启动 ──────────────────────────────────────────────────────────

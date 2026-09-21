@@ -259,6 +259,11 @@ _EXT_BRIDGE_LOCK = _threading.RLock()
 _EXT_PROCS = {}            # ext_id -> {"proc": Popen, "home": str, "pending": {req_id: (event, box)}, "last_alive_at": float, "crash_count": int, "reader_thread": Thread, "enabled": bool}
 _EXT_LOG_HOOKS = {}        # ext_id -> list[callable](主进程日志钩子,留接口)
 _EXT_INJECT_QUEUE = []     # ui.inject notification 缓冲(主进程同步消费)
+# P2.5+B-3(2026-09-21)run 进度内存队列:run_id → list[payload](按到达顺序 append,带自增 seq)。
+#   reader_loop 收到 task.run.progress notification → append;wfmodal 长轮询 peek → 自判增量。
+#   单主进程模型下不需要分布式锁,_EXT_BRIDGE_LOCK 简单保护一下即可。
+_WF_PROGRESS_QUEUE = {}    # run_id → {"seq": int, "items": [payload]}
+_WF_PROGRESS_LOCK = _threading.RLock()
 
 
 def _ext_home(ext_id: str) -> str:
@@ -401,6 +406,10 @@ def _ext_reader_loop(ext_id: str):
                 _ext_log(ext_id, params.get("level", "info"), params.get("msg", ""))
             elif msg.get("method") == "ui.inject":
                 _ext_inject_card(ext_id, msg.get("params") or {})
+            elif msg.get("method") == "task.run.progress":
+                # P2.5+B-3(2026-09-21)task-runner 主动推节点进度 → 写到内存队列,
+                # wfmodal 长轮询拉。零依赖不引 SSE。
+                _ext_run_progress(ext_id, msg.get("params") or {})
             # 其他 notification 静默忽略
     except Exception as e:
         try:
@@ -480,6 +489,25 @@ def _ext_proxy_dispatch(source_ext_id: str, params: dict):
         src_st["proc"].stdin.flush()
     except (BrokenPipeError, OSError):
         pass
+
+
+# P2.5+B-3(2026-09-21)task.run.progress 路由:写入 _WF_PROGRESS_QUEUE 供 wfmodal 长轮询。
+# payload 期望含 {run_id, node_id, status, attempts, ms, active, total, event, error?}
+def _ext_run_progress(ext_id: str, params: dict) -> None:
+    rid = params.get("run_id")
+    if not rid:
+        return
+    with _WF_PROGRESS_LOCK:
+        q = _WF_PROGRESS_QUEUE.setdefault(rid, {"seq": 0, "items": []})
+        q["seq"] += 1
+        item = dict(params)
+        item["seq"] = q["seq"]
+        item["ext_id"] = ext_id
+        item["at"] = int(time.time() * 1000)
+        q["items"].append(item)
+        # 队列上限 200,防止异常 push 撑爆内存(正常 run 一个 node 就 2 条)
+        if len(q["items"]) > 200:
+            q["items"] = q["items"][-200:]
 
 
 def _ext_log(ext_id: str, level: str, msg: str) -> None:
@@ -4874,6 +4902,21 @@ _PAGE = r"""<!DOCTYPE html>
   #wf-sched-btn.on { background:var(--gh-green-deep); color:var(--gh-paper); border-color:var(--gh-green-deep); }
   .wf-runs-err { color:#c0392b; font-size:12px; padding:8px; }
 
+  /* P2.5+B-3(2026-09-21)顶部 progress bar + 取消按钮 */
+  #wf-progress { display:flex; align-items:center; gap:10px;
+    padding:6px 14px; background:var(--gh-paper); border-bottom:1px solid var(--gh-line); }
+  #wf-progress-bar { flex:1; height:6px; background:var(--gh-line);
+    border-radius:3px; overflow:hidden; }
+  #wf-progress-bar-fill { height:100%; width:0%; background:var(--gh-green-deep);
+    transition:width 200ms ease; }
+  #wf-progress-bar-fill.running { background:var(--gh-amber); }
+  #wf-progress-bar-fill.canceled { background:#c0392b; }
+  #wf-progress-text { font-size:11px; color:var(--gh-ink-faint); min-width:60px; }
+  #wf-cancel-btn { font-size:11px; padding:3px 10px; border-color:#c0392b; color:#c0392b; }
+  #wf-cancel-btn:hover { background:#c0392b; color:var(--gh-paper); }
+  .wf-node.canceled { border-color:#c0392b; opacity:.7; text-decoration:line-through; }
+  #wf-status .wf-canceled { color:#c0392b; }
+
   /* 节点配置弹层 / 模板选择弹层(在 wfmodal 内绝对定位) */
   #wf-node-modal, #wf-tpl-modal { position:fixed; inset:0; background:rgba(47,58,52,.4);
     display:none; align-items:center; justify-content:center; z-index:114; }
@@ -5580,6 +5623,14 @@ _PAGE = r"""<!DOCTYPE html>
       <button class="topbtn" onclick="closeWorkflow()" data-i18n="close">关闭</button>
     </div>
   </div>
+  <!-- P2.5+B-3(2026-09-21)顶部 progress bar:实时显示当前 run 完成度 ok/total;
+       wfRun 启动后由 wfOnProgress 更新;cancel 按钮 拉 _wfCurrentRunId -->
+  <div id="wf-progress">
+    <div id="wf-progress-bar"><div id="wf-progress-bar-fill"></div></div>
+    <span id="wf-progress-text">—</span>
+    <button class="topbtn" id="wf-cancel-btn" onclick="wfCancelRun()" style="display:none"
+            data-i18n="wf_cancel">⏹ 取消</button>
+  </div>
   <div id="wf-body">
     <div id="wf-side">
       <h3 data-i18n="wf_tasks">任务列表</h3>
@@ -5834,6 +5885,9 @@ const I18N = {
     wf_load_fail:'加载任务失败', wf_save_fail:'保存失败', wf_run_fail:'运行失败',
     wf_delete_confirm:'删除任务?不会清运行历史',
     wf_node_save:'保存', wf_dag_cycle:'DAG 有环',
+    // P2.5+B-3(2026-09-21)进度流 + 优雅取消
+    wf_cancel:'⏹ 取消当前运行', wf_canceled:'已取消', wf_running:'运行中',
+    wf_progress:'进度', wf_active:'当前运行',
   },
   en: {
     send:'Send', new_session:'+ New chat', model_key:'🔑 Model Key', feedback:'⚙ Feedback',
@@ -5895,6 +5949,9 @@ const I18N = {
     wf_load_fail:'Load task failed', wf_save_fail:'Save failed', wf_run_fail:'Run failed',
     wf_delete_confirm:'Delete task? Run history will not be cleared',
     wf_node_save:'Save', wf_dag_cycle:'DAG has cycle',
+    // P2.5+B-3(2026-09-21)progress stream + graceful cancel
+    wf_cancel:'⏹ Cancel current run', wf_canceled:'Canceled', wf_running:'Running',
+    wf_progress:'Progress', wf_active:'Active run',
   }
 };
 let LANG = (function(){
@@ -7489,6 +7546,8 @@ function closeWorkflow() {
   document.getElementById('wfmodal').classList.remove('open');
   document.getElementById('wf-node-modal').classList.remove('open');
   document.getElementById('wf-tpl-modal').classList.remove('open');
+  // P2.5+B-3(2026-09-21)关 modal 不杀任务 — 后端 run 继续跑,前端只停轮询
+  wfStopProgressPoll();
 }
 
 async function wfRenderTaskList() {
@@ -7588,7 +7647,9 @@ async function wfRun() {
     if (confirm(T('wf_save_fail') + '? save first')) { await wfSave(); if (!_wfCurrentTask.id) return; }
     else return;
   }
-  await wfRunById(_wfCurrentTask.id, true);
+  // P2.5+B-3(2026-09-21)默认 fire-and-forget 跑,顶部 progress bar 实时跳。
+  // 任务列表行 ▶ 按钮 仍传 wait=true 走同步阻塞路径(wfRunById 旧分支)。
+  await wfRunById(_wfCurrentTask.id, false);
 }
 
 async function wfRunById(taskId, wait) {
@@ -7596,12 +7657,32 @@ async function wfRunById(taskId, wait) {
   // 节点全标 running
   for (const nid of Object.keys(_wfNodes)) {
     const el = document.querySelector('#wf-nodes .wf-node[data-id="' + nid + '"]');
-    if (el) { el.classList.remove('ok','failed'); el.classList.add('running'); }
+    if (el) { el.classList.remove('ok','failed','canceled'); el.classList.add('running'); }
   }
+  // P2.5+B-3(2026-09-21)fire-and-forget 模式:拿 run_id 后启动 progress polling,
+  // 不再同步等 task.run.wait=true 把前端卡死。等 run 结束再调 task.runs 拉最终节点结果。
+  const fireAndForget = !wait;
   const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ext_id:'task-runner', method:'task.run', params:{id:taskId, wait:!!wait}, timeout: 60})});
-  if (!r.ok) { alert(T('wf_run_fail') + ': ' + (r.error||'')); document.getElementById('wf-status').textContent = '✗ ' + (r.error||'fail'); return; }
+  if (!r.ok) {
+    alert(T('wf_run_fail') + ': ' + (r.error||''));
+    document.getElementById('wf-status').textContent = '✗ ' + (r.error||'fail');
+    wfStopProgressPoll();
+    return;
+  }
   const run = r.result || {};
+  const runId = run.run_id || '';
+  if (fireAndForget && runId) {
+    wfStartProgressPoll(runId, taskId, Object.keys(_wfNodes).length);
+    return;
+  }
+  // wait=true 模式:run 跑完拿到 nodes 结果,直接上色(老路径,保留兼容)
+  wfStopProgressPoll();
+  wfOnRunDone(run);
+}
+
+function wfOnRunDone(run) {
+  if (!run) return;
   document.getElementById('wf-status').innerHTML =
     '<span class="wf-' + esc(run.status||'?') + '">' + esc(run.status||'?') + '</span> ' + esc(run.run_id||'');
   if (run.nodes) {
@@ -7617,7 +7698,15 @@ async function wfRunById(taskId, wait) {
       }
     }
   }
-  await wfRefreshRuns();
+  // 进度条 100% / 隐藏 cancel
+  const fill = document.getElementById('wf-progress-bar-fill');
+  if (fill) {
+    fill.style.width = '100%';
+    fill.classList.remove('running');
+  }
+  const cancelBtn = document.getElementById('wf-cancel-btn');
+  if (cancelBtn) cancelBtn.style.display = 'none';
+  wfRefreshRuns();
 }
 
 function wfRenderNodes() {
@@ -7918,6 +8007,133 @@ function wfApplyTpl(tpl) {
   wfRenderNodes();
   wfRenderEdges();
   document.getElementById('wf-status').textContent = '— template: ' + _wfCurrentTask.name + ' (unsaved)';
+}
+
+// ──────────────── P2.5+B-3(2026-09-21)进度流 + 优雅取消 ────────────────
+// 设计:task-runner 子进程跑 task.run(wait=false) 后立即返 run_id,
+// 主进程通过 task.run.progress notification 把每节点 start/end 推进
+// _WF_PROGRESS_QUEUE;wfmodal 用 500ms 长轮询 /api/workflow/run_progress
+// 拿增量(seq 游标),自己驱 progress bar + 节点上色。
+// 取消走 task.run.cancel task_id → 找 activeRuns Map 里 controller.abort()
+// → 当前 invokeExt reject('aborted') → 标 canceled + 写 node_runs。
+let _wfCurrentRunId = null;     // 当前盯的 run_id
+let _wfCurrentRunTaskId = null;
+let _wfPollTimer = null;        // setInterval handle
+let _wfProgressLastSeq = 0;     // 已消费的 seq
+let _wfProgressTotal = 0;       // 节点总数(进度分母)
+
+function wfStartProgressPoll(runId, taskId, total) {
+  _wfCurrentRunId = runId;
+  _wfCurrentRunTaskId = taskId;
+  _wfProgressTotal = total || 0;
+  _wfProgressLastSeq = 0;
+  // 重置 UI
+  const fill = document.getElementById('wf-progress-bar-fill');
+  if (fill) { fill.style.width = '0%'; fill.classList.add('running'); fill.classList.remove('canceled'); }
+  const txt = document.getElementById('wf-progress-text');
+  if (txt) txt.textContent = '0/' + _wfProgressTotal;
+  const btn = document.getElementById('wf-cancel-btn');
+  if (btn) btn.style.display = '';
+  if (_wfPollTimer) clearInterval(_wfPollTimer);
+  _wfPollTimer = setInterval(() => wfPollProgress(), 500);
+  // 立刻拉一次(不 setInterval 等 500ms)
+  wfPollProgress();
+}
+
+function wfStopProgressPoll() {
+  if (_wfPollTimer) { clearInterval(_wfPollTimer); _wfPollTimer = null; }
+  _wfCurrentRunId = null;
+  _wfCurrentRunTaskId = null;
+  _wfProgressLastSeq = 0;
+  _wfProgressTotal = 0;
+}
+
+async function wfPollProgress() {
+  if (!_wfCurrentRunId) return;
+  const r = await api('/workflow/run_progress', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({run_id: _wfCurrentRunId, since: _wfProgressLastSeq, ack: true}),
+  });
+  if (!r || !r.ok) return;
+  if (r.missing) {  // 队列已清(run 结束后 wfmodal 主动清理过)
+    wfStopProgressPoll();
+    return;
+  }
+  const items = r.items || [];
+  if (items.length) {
+    _wfProgressLastSeq = r.seq || _wfProgressLastSeq;
+    for (const p of items) wfOnProgress(p);
+  }
+  // 隔几次 poll 后查 run 主状态,若不再 running/pending,停轮询 + 拉 nodes
+  // (5 秒 = 每 10 次 poll 查一次,降低 RPC 频率)
+  if (_wfPollTimer && ((_wfProgressLastSeq | 0) % 10 === 0) && items.length === 0) {
+    wfMaybeFinishRun();
+  }
+}
+
+async function wfMaybeFinishRun() {
+  if (!_wfCurrentRunId || !_wfCurrentRunTaskId) return;
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method:'task.runs',
+                          params:{task_id:_wfCurrentRunTaskId, limit:5}, timeout: 5})});
+  if (!r.ok || !r.result) return;
+  const runs = (r.result.runs || []);
+  const cur = runs.find(x => x.run_id === _wfCurrentRunId || x.id === _wfCurrentRunId);
+  if (!cur) return;
+  if (cur.status === 'running' || cur.status === 'pending') return;
+  // run 结束
+  wfStopProgressPoll();
+  wfOnRunDone(cur);
+}
+
+function wfOnProgress(payload) {
+  if (!payload) return;
+  if (payload.run_id && _wfCurrentRunId && payload.run_id !== _wfCurrentRunId) return;
+  const nid = payload.node_id;
+  const st = payload.status || 'running';
+  if (nid) {
+    const el = document.querySelector('#wf-nodes .wf-node[data-id="' + nid + '"]');
+    if (el) {
+      el.classList.remove('running','ok','failed','canceled');
+      el.classList.add(st);
+      if (payload.attempts) el.dataset.attempts = payload.attempts;
+      if (payload.ms) el.dataset.ms = payload.ms;
+      if (payload.error) el.title = st + ' · ' + (payload.attempts||1) + ' attempts · ' + (payload.ms||0) + 'ms\nerror: ' + payload.error;
+    }
+  }
+  // 顶部 progress bar + 文本
+  const total = Math.max(1, _wfProgressTotal || Object.keys(_wfNodes).length || 1);
+  const done = document.querySelectorAll(
+    '#wf-nodes .wf-node.ok, #wf-nodes .wf-node.failed, #wf-nodes .wf-node.canceled'
+  ).length;
+  const fill = document.getElementById('wf-progress-bar-fill');
+  if (fill) {
+    fill.style.width = (done / total * 100).toFixed(1) + '%';
+    if (st === 'canceled') {
+      fill.classList.remove('running');
+      fill.classList.add('canceled');
+    } else if (st === 'failed') {
+      fill.classList.remove('running');
+    }
+  }
+  const txt = document.getElementById('wf-progress-text');
+  if (txt) txt.textContent = done + '/' + total;
+}
+
+async function wfCancelRun() {
+  const rid = _wfCurrentRunId;
+  if (!rid) return;
+  if (!confirm(T('wf_cancel') + '?')) return;
+  document.getElementById('wf-status').innerHTML = '<span class="wf-canceled">⏹ canceling…</span>';
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method:'task.run.cancel',
+                          params:{run_id: rid}, timeout: 5})});
+  if (!r || !r.ok) {
+    document.getElementById('wf-status').innerHTML = '<span class="wf-failed">✗ cancel fail: ' + esc(r?.error||'') + '</span>';
+    return;
+  }
+  // 不立即清 _wfCurrentRunId,等下一个 progress 通知(status=canceled)走到 wfOnProgress 自然上色
+  // wfMaybeFinishRun 隔几秒确认 run 主状态 canceled 才停轮询
 }
 
 async function openProject() {
@@ -12327,6 +12543,26 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:  # noqa: BLE001
                 self._json({"ok": True, "templates": _WF_FALLBACK_TEMPLATES,
                             "warn": f"templates 异常: {e}"})
+        elif path == "/prisiragent/api/workflow/run_progress":
+            # P2.5+B-3(2026-09-21)进度长轮询 peek:wfmodal 调 POST body {run_id, since, ack},
+            #   返 {items: [...]} + seq;ack=true 清已读(避免重复推)。
+            #   不在 queue → 返 missing=True(说明 run 没起来或已 GC)
+            run_id = (body.get("run_id") or "").strip() if isinstance(body, dict) else ""
+            try:
+                since = int(body.get("since") or 0) if isinstance(body, dict) else 0
+            except Exception:
+                since = 0
+            ack = bool(body.get("ack")) if isinstance(body, dict) else False
+            with _WF_PROGRESS_LOCK:
+                q = _WF_PROGRESS_QUEUE.get(run_id) if run_id else None
+                if not q:
+                    self._json({"ok": True, "run_id": run_id, "items": [], "seq": 0, "missing": True})
+                    return
+                items = [it for it in q["items"] if it.get("seq", 0) > since]
+                out_seq = q["seq"]
+                if ack and items:
+                    q["items"] = [it for it in q["items"] if it.get("seq", 0) > out_seq - len(items)]
+            self._json({"ok": True, "run_id": run_id, "items": items, "seq": out_seq})
         elif path == "/prisiragent/api/git_detect":
             # 探测本机是否有 git;force=true 跳过缓存重跑。
             force = str(body.get("force") or "").lower() in ("1", "true", "yes")
