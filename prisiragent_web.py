@@ -1346,6 +1346,24 @@ def _shell_system_prompt(user_text: str, sid: str = "") -> str:
             parts.append(sb)
     except Exception:  # noqa: BLE001
         pass
+    # P2.5+B-4.B(2026-09-21):已存 workflow 简表注入 system prompt,让 LLM 知道有哪些
+    # 可跑的 workflow 可用 task_name 重跑(task-runner 没启 / 没 task / 调用失败一律
+    # 静默不注入;timeout=2s 快速失败,不拖对话启动)。
+    try:
+        _tlst = _ext_rpc_call("task-runner", "task.list", {"limit": 100}, timeout=2.0)
+        _ttasks = (_tlst.get("result") or {}).get("tasks") if isinstance(_tlst, dict) else None
+        if _ttasks:
+            _tlines = ["【已存 workflow(可跑)】通过 run_task({task_name:\"...\"}) 重跑,不复传 dag。",
+                       "| name | id | 节点数 | trigger |"]
+            for _t in _ttasks[:50]:
+                _dag = _t.get("dag") or {}
+                _trig = _t.get("trigger") or "manual"
+                _tlines.append(f"| {_t.get('name','?')} | `{_t.get('id','?')}` | {len(_dag)} | {_trig} |")
+            if len(_ttasks) > 50:
+                _tlines.append(f"\n(共 {len(_ttasks)} 个,只列前 50)")
+            parts.append("\n".join(_tlines))
+    except Exception:  # noqa: BLE001
+        pass
     return "\n\n".join(parts)
 
 

@@ -1,0 +1,68 @@
+feat(p2.5+b-4.b): AI agent 触发已存 workflow — run_task({task_name}) 模糊匹配 + 简表注入
+
+B-4 ship 后 AI agent 能用 run_task({name, dag}) 内联生成 workflow,但用户常说
+「再跑一遍 daily_summary」「那个 review 工作流再来一遍」 — 已存 task 在 wfmodal 里
+手动 ▶ 可一键跑,对话里却要 LLM 重生成 dag(可能跟原版略有偏差)。B-4.B 把
+run_task 扩成双模式 + system prompt 注入 task 简表,LLM 直接用 task_name 命中。
+
+关键改动:
+
+cli (prisIragent_cli.py):
+  - run_task tool def 描述改两模式叙述(Inline dag / Re-run existing);
+    加 task_name 字段(子串匹配,大小写不敏感);required 改空数组允许二选一
+  - 新模块顶层 helper _task_runner_rpc(method, params, timeout) —
+    B-4 的 _rpc 闭包提到顶层,让 _t_run_task + _t_run_task_by_name 共用
+  - _t_run_task 加 task_name 分支:优先 task_name;啥都没传返 error+hint
+    引导选模式;task_name + wait 参数透传;legacy (name+dag) 路径不变
+  - 新 _t_run_task_by_name(task_name, wait) 函数:
+      1) task.list limit=100
+      2) exact 优先(case-insensitive),再 substr 子串
+      3) 多命中无精确 → error + candidates[0:10] + hint disambiguate
+      4) 零命中 → error + hint 列前 10 个已存 name 引导改名
+      5) 命中 → task.run(id, wait) 返 {task_id, task_name, matched_by,
+         run_id, status, queued, note}
+  - 子代工具集剔除列表加 "run_task"(同 spawn_subagent / run_workflow 防
+    agent 递归派单)
+
+web (prisIragent_web.py):
+  - _shell_system_prompt 函数末尾追加 task 简表注入:
+      _ext_rpc_call("task-runner", "task.list", {"limit":100}, timeout=2s)
+      → markdown 简表(name/id/节点数/trigger),最多 50 行
+      → task-runner 没启 / 0 task / RPC 异常 → 一律静默不注入(timeout=2s
+        快速失败,不拖对话启动)
+
+B-4 已 ship 的进度桥(_task_run_register / _task_run_push_progress /
+_task_run_poll_done)完全复用 — task_name 分支返的 JSON 结构跟 inline
+dag 一致({task_id, run_id, status}),web 端 _run_chat_thread 正则抓
+run_id 注册零改动。
+
+测试:
+  tests/_test_p2b4b_run_by_name.py          8/8 sections (静态扫 + cli smoke +
+                                                       web smoke)
+    S1. cli run_task tool def 加 task_name + required 改 []
+    S2. cli _t_run_task 加 task_name 分支 + 啥都没传校验
+    S3. cli _t_run_task_by_name 函数体
+    S4. cli _task_runner_rpc 模块顶层 helper
+    S5. web _shell_system_prompt 末尾 task 简表注入
+    S6. py_compile 双文件 OK
+    S7. cli 单元 smoke 7/7 (exact/substr/empty/ambiguous/no-match/legacy-dag/
+                            empty-args)
+    S8. web 单元 smoke 3/3 (0 task 不注入 / 3 task 注入简表 / RPC 异常静默)
+
+  tests/_test_p2b4_agent_dispatch.py        9/9 (更新以适配 _rpc → _task_runner_rpc 重构)
+
+回归(全绿):
+  _test_p2b0_ext_rpc_bridge.py              16/16 (B-0 ext RPC bridge)
+  _test_p2b2_workflow.py                    47/47 (B-2 工作流编排 UI)
+  _test_p2b3_task_queue.py                  21/21 (B-3 任务队列升级)
+  _test_p2b3_hotfix.py                      13/13 (B-3 hotfix)
+  _test_p2b3_doc.py                         14/14 (B-3 doc)
+  _test_p259a_diff_split.py                 12/12 (P2.5+9-A)
+  _test_p259c_cancel_token.py               7/7   (P2.5+9-C)
+
+解锁:B-4.A(AI 帮用户编工作流,已在 B-4 ship)+ B-5(workflow 复用 + import/export)。
+
+参考:[[p2-5-b-4-agent-dispatch-shipped]] run_task 主体 + 进度桥;
+     [[phase-b3-task-queue-shipped]] task.run.progress 通知链。
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>

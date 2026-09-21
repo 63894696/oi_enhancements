@@ -86,21 +86,31 @@ def cli_handler_run_task():
 
 
 def cli_run_task_func():
-    """cli _t_run_task 函数体:urllib / task.upsert / task.run / PRISIR_WEB_PORT / dag 浅校验。"""
-    section("3. cli _t_run_task 函数体")
+    """cli _t_run_task 函数体 + 模块级 _task_runner_rpc(2026-09-21 B-4.B 重构,RPC helper 提到顶层)。
+
+    检查内容拆分:
+      • _t_run_task 自身:dag 浅校验 + task.upsert/task.run 调用 + 返回结构
+      • _task_runner_rpc(模块顶层):urllib + 端口解析 + /api/ext/rpc 端点
+    """
+    section("3. cli _t_run_task 函数体 + _task_runner_rpc 顶层 helper")
     src = _read(CLI)
-    # 找 def _t_run_task 到下一个 def
+    # _t_run_task 函数体
     m = re.search(r'def _t_run_task\(args.*?(?=\ndef |\nclass |\Z)', src, re.S)
     if not m:
         print("  ✗ _t_run_task def NOT FOUND")
         return False
     body = m.group(0)
+    # _task_runner_rpc 函数体(模块级)
+    rpc_m = re.search(r'def _task_runner_rpc\(method.*?(?=\ndef |\nclass |\Z)', src, re.S)
+    rpc_body = rpc_m.group(0) if rpc_m else ""
     checks = [
-        ("urllib.request 引入", "urllib.request" in body),
-        ("urllib.request.Request 调 /api/ext/rpc", "Request(" in body and "/api/ext/rpc" in body),
-        ("PRISIR_WEB_PORT 环境变量", "PRISIR_WEB_PORT" in body),
-        ("回退 PRISIRAGENT_PORT", "PRISIRAGENT_PORT" in body),
-        ("回退默认 18800", "18800" in body),
+        # _task_runner_rpc 顶层 helper 必备字面量(B-4.B 后搬到这)
+        ("urllib.request 引入(在 _task_runner_rpc)", "urllib.request" in rpc_body or "urllib.request" in src),
+        ("urllib.request.Request 调 /api/ext/rpc", "Request(" in rpc_body and "/api/ext/rpc" in rpc_body),
+        ("PRISIR_WEB_PORT 环境变量(在 _task_runner_rpc)", "PRISIR_WEB_PORT" in rpc_body),
+        ("回退 PRISIRAGENT_PORT", "PRISIRAGENT_PORT" in rpc_body),
+        ("回退默认 18800", "18800" in rpc_body),
+        # _t_run_task 自身保留
         ("dag 非空校验", "dag" in body and ("non-empty" in body or "not dag" in body or "dag must" in body or "must be non-empty" in body)),
         ("name required 校验", "name required" in body or "name 不能为空" in body or "name is empty" in body),
         ("每个 node 含 ext + method 校验", "missing ext or method" in body or "missing ext" in body),

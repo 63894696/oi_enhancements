@@ -656,8 +656,8 @@ _SUBAGENT_MAX_LOOPS = 5
 
 
 def _subagent_tools(skills: list | None) -> list:
-    """子代工具集:全量剔除 spawn_subagent + run_workflow(防递归编排),再按 skills 白名单过滤。"""
-    pool = [t for t in TOOLS if t["function"]["name"] not in ("spawn_subagent", "run_workflow")]
+    """子代工具集:全量剔除 spawn_subagent + run_workflow + run_task(防递归),再按 skills 白名单过滤。"""
+    pool = [t for t in TOOLS if t["function"]["name"] not in ("spawn_subagent", "run_workflow", "run_task")]
     if not skills:
         return pool
     allow = {str(s).strip() for s in skills if str(s).strip()}
@@ -1616,6 +1616,200 @@ def _t_todo_write(todos, session_id: str = "default") -> str:
     return get_todos_text(session_id)
 
 
+def _task_runner_rpc(method: str, params: dict, timeout: int = 8) -> dict:
+    """P2.5+B-4(2026-09-21)调 web /api/ext/rpc → task-runner ext。
+
+    B-4.B 后提到模块顶层,让 _t_run_task(内联 dag)+ _t_run_task_by_name(task_name
+    模糊匹配)两个分支共用同一个 RPC 通道 — base_url + headers + timeout 语义统一。
+    失败返 dict(键 'error');成功返 {ok, result, error?}。
+    """
+    import json as _json
+    import urllib.request as _ur
+
+    port = int(os.environ.get("PRISIR_WEB_PORT") or os.environ.get("PRISIRAGENT_PORT") or "18800")
+    base = f"http://127.0.0.1:{port}/prisiragent/api/ext/rpc"
+
+    body = _json.dumps({"ext_id": "task-runner", "method": method,
+                        "params": params, "timeout": timeout}).encode("utf-8")
+    req = _ur.Request(base, data=body, headers={"Content-Type": "application/json"})
+    try:
+        with _ur.urlopen(req, timeout=timeout + 2) as r:
+            return _json.loads(r.read().decode("utf-8"))
+    except Exception as e:  # noqa: BLE001
+        return {"error": f"rpc_{method}_failed: {type(e).__name__}: {e}"}
+
+
+def _t_run_task(args: dict, workdir: str, on_event=None) -> str:
+    """P2.5+B-4(2026-09-21)AI agent 任务执行派单。
+    P2.5+B-4.B(2026-09-21)双模式:
+      • (name+dag) → upsert + run fire-and-forget(B-4 ship)
+      • task_name  → 模糊匹配已存 workflow 直接 run(本任务新增)
+
+    流程:
+      1) task_name 分支:list + fuzzy match + run
+      2) 内联分支:upsert({name, dag}) → run({id, wait}) 拿 run_id
+      3) 返 {task_id, run_id, status} JSON 字符串给 LLM
+
+    关键约束:
+      - cli 子进程不知 sid(它在 web 进程),靠 web 端 _run_chat_thread 入库 tool trace
+        时从本返回值正则抓 run_id 注册到 _TASK_RUN_TO_SID(详见 web 端 _run_chat_thread)
+      - fire-and-forget 默认,wait=false 返 run_id;wait=true 阻塞
+      - 失败要带具体 error 给 LLM(LLM 可改 dag 重试,不要静默)
+    """
+    import json as _json
+
+    name = str(args.get("name") or "").strip()
+    dag = args.get("dag")
+    task_name = str(args.get("task_name") or "").strip()
+    wait = bool(args.get("wait", False))
+
+    # P2.5+B-4.B:啥都没传 → 拦下,引导 LLM 选模式
+    if not name and not dag and not task_name:
+        return _json.dumps({
+            "error": "need either (name + dag) for inline create, or task_name for re-run existing workflow",
+            "hint": "check system prompt '【已存 workflow(可跑)】' table for task_name to re-run; or pass name+dag to create a new one",
+        })
+
+    # P2.5+B-4.B:task_name 分支优先(都传时优先 task_name,语义「我更确定要跑已存的」)
+    if task_name:
+        return _t_run_task_by_name(task_name, wait)
+
+    if not name:
+        return _json.dumps({"error": "name required (or pass task_name to re-run existing)"})
+    if not isinstance(dag, dict) or not dag:
+        return _json.dumps({"error": "dag must be non-empty dict {nid: {ext, method, params, ...}}"})
+
+    # dag 浅校验:每个 nid 都要有 ext + method
+    for nid, n in dag.items():
+        if not isinstance(n, dict):
+            return _json.dumps({"error": f"node {nid} not a dict"})
+        if not n.get("ext") or not n.get("method"):
+            return _json.dumps({"error": f"node {nid} missing ext or method"})
+
+    # 1) upsert task
+    upsert = _task_runner_rpc("task.upsert", {"name": name, "dag": dag})
+    if not upsert.get("ok"):
+        return _json.dumps({"error": f"task.upsert failed: {upsert.get('error') or upsert}"})
+
+    task_id = (upsert.get("result") or {}).get("id")
+    if not task_id:
+        return _json.dumps({"error": "task.upsert returned no id"})
+
+    # 2) run fire-and-forget(默认)
+    run = _task_runner_rpc("task.run", {"id": task_id, "wait": wait}, timeout=5)
+    if not run.get("ok"):
+        return _json.dumps({"error": f"task.run failed: {run.get('error') or run}", "task_id": task_id})
+
+    result = run.get("result") or {}
+    run_id = result.get("run_id")
+    status = result.get("status") or "running"
+
+    # wait=true 模式:run 阻塞已返,带 nodes 给 LLM 看具体结果
+    if wait:
+        return _json.dumps({
+            "task_id": task_id,
+            "run_id": run_id,
+            "status": status,
+            "nodes": result.get("nodes") or {},
+            "error": result.get("error") or "",
+        })
+
+    # fire-and-forget:返最小集,LLM 不用等结果
+    # web 端 _run_chat_thread 会从本 JSON 抓 run_id 注册到 _TASK_RUN_TO_SID
+    return _json.dumps({
+        "task_id": task_id,
+        "run_id": run_id,
+        "status": status,
+        "queued": True,
+        "note": "进度通过 chat 工具轨迹自动推送,无需轮询",
+    })
+
+
+def _t_run_task_by_name(task_name: str, wait: bool) -> str:
+    """P2.5+B-4.B(2026-09-21)task_name 模糊匹配 → 跑已存 workflow。
+
+    匹配优先级:
+      1) 完全相等(task_name 跟 task.name 一致,case-insensitive)— 多命中按 dict 序第一个
+      2) 子串包含(task_name 是某 task.name 的子串,case-insensitive)— 多命中返 candidates
+      3) 零命中 → error + hint 列已存前 10 个 name 给 LLM 决断
+
+    命中后:task.run(id, wait) → 返 {task_id, task_name, matched_by, run_id, status}
+    """
+    import json as _json
+
+    # 1) task.list 拿所有 task(limit=100 跟 web 注入的简表一致)
+    lst = _task_runner_rpc("task.list", {"limit": 100}, timeout=5)
+    if lst.get("error"):
+        return _json.dumps({"error": f"task.list failed: {lst['error']}",
+                            "hint": "is task-runner ext enabled? check topbar 🧩 扩展"})
+    if not lst.get("ok"):
+        return _json.dumps({"error": f"task.list failed: {lst.get('error') or lst}"})
+
+    tasks = (lst.get("result") or {}).get("tasks") or []
+    if not tasks:
+        return _json.dumps({
+            "error": "no stored workflows found",
+            "hint": "use run_task({name, dag}) to create a new one first, then re-run via task_name",
+        })
+
+    # 2) 优先级匹配
+    q = task_name.lower().strip()
+    exact = [t for t in tasks if str(t.get("name", "")).lower() == q]
+    substr = [t for t in tasks
+              if q and q in str(t.get("name", "")).lower() and t not in exact]
+    candidates = exact + substr
+
+    # 3) 决策
+    if not candidates:
+        names = [str(t.get("name")) for t in tasks[:10]]
+        return _json.dumps({
+            "error": f"no workflow matching task_name '{task_name}'",
+            "hint": "可用的已存 workflow: " + ", ".join(names) + ("..." if len(tasks) > 10 else ""),
+        })
+    if len(candidates) > 1 and not exact:
+        return _json.dumps({
+            "error": f"ambiguous task_name '{task_name}': {len(candidates)} candidates",
+            "candidates": [{"id": t.get("id"), "name": t.get("name")} for t in candidates[:10]],
+            "hint": "ask the user which workflow to run, or pass exact name to disambiguate",
+        })
+
+    target = candidates[0]
+    matched_by = "exact" if exact else "substring"
+    # 4) task.run
+    run = _task_runner_rpc("task.run", {"id": target.get("id"), "wait": wait}, timeout=5)
+    if run.get("error") or not run.get("ok"):
+        return _json.dumps({
+            "error": f"task.run failed: {run.get('error') or run}",
+            "task_id": target.get("id"),
+            "task_name": target.get("name"),
+        })
+
+    result = run.get("result") or {}
+    run_id = result.get("run_id")
+    status = result.get("status") or "running"
+
+    if wait:
+        return _json.dumps({
+            "task_id": target.get("id"),
+            "task_name": target.get("name"),
+            "matched_by": matched_by,
+            "run_id": run_id,
+            "status": status,
+            "nodes": result.get("nodes") or {},
+            "error": result.get("error") or "",
+        })
+
+    return _json.dumps({
+        "task_id": target.get("id"),
+        "task_name": target.get("name"),
+        "matched_by": matched_by,
+        "run_id": run_id,
+        "status": status,
+        "queued": True,
+        "note": "进度通过 chat 工具轨迹自动推送,无需轮询",
+    })
+
+
 def get_todos(session_id: str = "default") -> list:
     return _TODOS.get(session_id, [])
 
@@ -2344,6 +2538,65 @@ TOOLS = [
                                      "下次同一事件有新进展时传同一 topic,各家会记得此前立场并就新进展演进,"
                                      "综述会点出立场变化。同一事件用稳定简短的话题名(如「某科技公司裁员」)。"},
             }, "required": ["event"]}}},
+    # P2.5+B-4(2026-09-21)AI agent 任务执行派单:
+    # 用户在对话里说「帮我做个工作流」「跑个任务把 X 加上」,LLM tool_choice='auto'
+    # 触发本函数 → cli handler 走 HTTP 调 web /api/ext/rpc → task-runner ext。
+    # 异步:fire-and-forget 返 run_id;进度通过 add_message(sid, "tool", "[🔀 task-runner] ...")
+    # 落 chat 历史,前端 pollResult 拉历史时直接展示节点级进度。
+    # P2.5+B-4.B(2026-09-21)run_task 双模式:
+    #   • inline dag(name+dag):现编现跑,跟 B-4 ship 一致
+    #   • re-run(task_name 子串):命中已存 workflow 直接跑,不复传 dag
+    # system prompt 里有 task 简表,LLM 可看到有哪些可跑;先选 task_name 模式更准。
+    {"type": "function", "function": {
+        "name": "run_task",
+        "description": (
+            "Create or run a task-runner workflow (DAG). Two modes:\n"
+            "  • Inline dag: pass `name` + `dag` to create-and-run a brand-new workflow.\n"
+            "  • Re-run existing: pass `task_name` (substring of an existing workflow's name) "
+            "to fire the stored workflow without re-sending dag. Use this when the user says "
+            "'run X again', 'fire daily_summary', '那个 X 工作流再跑一遍' — there's a stored-"
+            "workflow table injected in system prompt.\n"
+            "DAG is {node_id: {ext, method, params, needs?, retry?}}. Available exts/methods: "
+            "todo (todo.add / todo.list / todo.update / todo.done); "
+            "calendar (calendar.add / calendar.list); "
+            "system-watchdog (watch.start / watch.stop); "
+            "process-scan (scan.list / scan.kill); "
+            "schedule-write (schedule.add). "
+            "Returns immediately with run_id (fire-and-forget, default); set wait=true "
+            "for short workflows to block until done. Progress streams as tool "
+            "trace messages ('[🔀 task-runner] ...') in chat history — no need to poll."
+        ),
+        "parameters": {"type": "object", "properties": {
+            "name": {"type": "string", "description": "任务名,展示 + 保存用(仅 inline dag 模式需要)"},
+            "dag": {"type": "object", "description": "节点字典 {<nid>: {ext, method, params, needs?, retry?}}(仅 inline dag 模式)",
+                    "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                            "ext": {"type": "string", "description": "扩展 id,如 todo / calendar"},
+                            "method": {"type": "string", "description": "ext method,如 todo.add"},
+                            "params": {"type": "object", "description": "ext method 参数(JSON 对象)"},
+                            "needs": {"type": "array", "items": {"type": "string"},
+                                      "description": "依赖节点 id 列表(空数组 = 立即跑)"},
+                            "retry": {"type": "object",
+                                      "properties": {
+                                          "max_retries": {"type": "integer", "minimum": 0, "maximum": 5,
+                                                          "description": "0-5,默认 0"},
+                                          "backoff": {"type": "string", "enum": ["constant", "linear", "exponential"],
+                                                      "description": "默认 exponential"},
+                                          "timeout_sec": {"type": "integer", "minimum": 1, "maximum": 600,
+                                                          "description": "默认 30"},
+                                      },
+                                      "description": "节点级重试策略"}
+                        },
+                        "required": ["ext", "method"],
+                    }},
+            "task_name": {"type": "string",
+                          "description": "已存 workflow 名(子串匹配,大小写不敏感)。"
+                                         "与 name+dag 二选一;都传时优先 task_name。"
+                                         "命中即跑已存 task,不复传 dag。"},
+            "wait": {"type": "boolean", "default": False,
+                     "description": "True = 阻塞等结果(快任务 ≤30s);False = fire-and-forget 返 run_id,默认 false"},
+        }, "required": []}}},
 ]
 
 
@@ -2586,6 +2839,13 @@ def dispatch(name: str, args: dict, workdir: str, on_confirm=None, model: str = 
                                 workdir, model,
                                 on_event=_SPAWN_CONTEXT.get("on_event"),
                                 on_confirm=on_confirm)
+    # P2.5+B-4(2026-09-21)AI agent 派单:cli 端只做转发,真活 task-runner ext 干。
+    # 走 HTTP 调 web 进程 /api/ext/rpc(task.upsert + task.run),web 端 _ext_run_progress
+    # 自动把 progress 事件落到 add_message(sid, "tool", "[🔀 task-runner] ...")。
+    # cli 子进程完全不知道 sid,web 端从 tool trace 入库时抓 run_id 注册。
+    if name == "run_task":
+        return _t_run_task(args if isinstance(args, dict) else {},
+                           workdir, on_event=on_event)
     if name == "philosopher_debate":
         import prisir_philosopher as _ph  # noqa: PLC0415
         res = _ph.run_philosopher(
