@@ -719,6 +719,224 @@ ext.registerCommand('task.files.export', async (args) => {
   return { ok: true, name: t.name, json: JSON.stringify(obj, null, 2), task_id: t.id };
 });
 
+// ─── P2.5+B-4.E(2026-09-21)跨机器 workflow bundle 共享 ─────────────
+// tar.gz 多文件打包 + 解包。复用 pack-ext.js 的 tar | gzip shell-exec 模式
+// + MSYS 路径转换。Windows Git Bash 没 zip 但有 tar + gzip。
+// bundle 结构: README.md(可选)+ workflows/<name>.json(N 个)。
+
+const { execSync } = require('child_process');
+const os = require('os');
+
+// MSYS 路径转换:C:\Users\foo → /c/Users/foo
+function _toMsysPath(p) {
+  if (/^[A-Za-z]:[\\\/]/.test(p)) {
+    return '/' + p[0].toLowerCase() + p.slice(2).replace(/\\/g, '/');
+  }
+  return p.replace(/\\/g, '/');
+}
+
+// 临时 staging 目录: ~/.prisir/_tmp/bundle-<ts>/(MSYS tar 干净沙箱)
+function _tmpBundlePath(suffix) {
+  const tmp = path.join(os.homedir(), '.prisir', '_tmp');
+  fs.mkdirSync(tmp, { recursive: true });
+  const ts = Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+  return path.join(tmp, `bundle-${ts}${suffix || ''}`);
+}
+
+function _cleanupBundle(stageDir, tarGzPath) {
+  try { fs.rmSync(stageDir, { recursive: true, force: true }); } catch {}
+  try { fs.rmSync(tarGzPath, { force: true }); } catch {}
+}
+
+// bundle_export:多 workflow 打包成 tar.gz 返 base64。
+// args.names: workflow 名列表(必填);空数组 = ALL。
+ext.registerCommand('task.files.bundle_export', async (args) => {
+  if (!args || !Array.isArray(args.names)) {
+    return { ok: false, error: 'names array required' };
+  }
+  _ensureWorkflowsDir();
+
+  // 1) 收集文件(扫 workflows/ + 按 names[] 过滤)
+  let allFiles = [];
+  try {
+    allFiles = fs.readdirSync(WORKFLOWS_DIR())
+      .filter(f => f.endsWith('.json'))
+      .map(f => path.join(WORKFLOWS_DIR(), f));
+  } catch (e) {
+    return { ok: false, error: 'list workflows dir failed: ' + e.message };
+  }
+
+  let selected;
+  if (args.names.length === 0) {
+    // 空数组 = ALL
+    selected = allFiles;
+  } else {
+    selected = [];
+    for (const p of allFiles) {
+      const name = path.basename(p, '.json');
+      if (args.names.includes(name)) selected.push(p);
+    }
+  }
+  if (selected.length === 0) {
+    return { ok: false, error: 'no matching workflow files found' };
+  }
+
+  // 2) 生成 README.md
+  const ts = Date.now();
+  const readmeLines = [
+    '# Prisir Workflows Bundle',
+    'Exported at: ' + new Date(ts).toISOString(),
+    'Total: ' + selected.length + ' workflows',
+    '',
+  ];
+  for (const p of selected) {
+    let f;
+    try { f = _workflowFileToObj(p); }
+    catch (e) { return { ok: false, error: 'invalid file ' + p + ': ' + e.message }; }
+    readmeLines.push('## ' + f.name);
+    readmeLines.push('- nodes: ' + f.node_count);
+    readmeLines.push('- trigger: ' + f.trigger);
+    readmeLines.push('- schedule: ' + (f.schedule || '(none)'));
+    readmeLines.push('');
+  }
+
+  // 3) 临时 staging
+  const stageDir = _tmpBundlePath('');
+  const bundleWorkflowsDir = path.join(stageDir, 'workflows');
+  fs.mkdirSync(bundleWorkflowsDir, { recursive: true });
+  for (const p of selected) {
+    const fname = path.basename(p);
+    fs.copyFileSync(p, path.join(bundleWorkflowsDir, fname));
+  }
+  fs.writeFileSync(path.join(stageDir, 'README.md'), readmeLines.join('\n'), 'utf8');
+
+  // 4) tar.gz 打包
+  const tarGzPath = _tmpBundlePath('.tar.gz');
+  const stageMsys = _toMsysPath(stageDir);
+  const tarGzMsys = _toMsysPath(tarGzPath);
+  try {
+    execSync(
+      `tar -czf "${tarGzMsys}" -C "${stageMsys}" README.md workflows/`,
+      { stdio: 'pipe', shell: '/usr/bin/bash' }
+    );
+  } catch (e) {
+    _cleanupBundle(stageDir, tarGzPath);
+    return { ok: false, error: 'tar -czf failed: ' + e.message };
+  }
+
+  // 5) 读 base64(留 stageDir 给调试用,tarGzPath 留作后续下载源)
+  let buf, base64;
+  try {
+    buf = fs.readFileSync(tarGzPath);
+    base64 = buf.toString('base64');
+  } catch (e) {
+    _cleanupBundle(stageDir, tarGzPath);
+    return { ok: false, error: 'read tar.gz failed: ' + e.message };
+  }
+
+  return {
+    ok: true,
+    name: `workflows-bundle-${ts}.tar.gz`,
+    count: selected.length,
+    size_bytes: buf.length,
+    base64,
+  };
+});
+
+// bundle_import:接受 base64 → 解 tar.gz → 逐个 validateDag → 写文件 + upsert。
+// 跟 task.files.import 同 pattern(写 + 入库),只是源从单文件 JSON 变成 tar.gz 内的 N 个。
+ext.registerCommand('task.files.bundle_import', async (args) => {
+  if (!args || !args.base64) {
+    return { ok: false, error: 'base64 required' };
+  }
+  let buf;
+  try { buf = Buffer.from(args.base64, 'base64'); }
+  catch (e) { return { ok: false, error: 'base64 decode failed: ' + e.message }; }
+  if (buf.length === 0) return { ok: false, error: 'empty bundle' };
+
+  // 1) 写临时 tar.gz
+  const tarGzPath = _tmpBundlePath('.tar.gz');
+  const stageDir = _tmpBundlePath('');
+  try {
+    fs.writeFileSync(tarGzPath, buf);
+    fs.mkdirSync(stageDir, { recursive: true });
+  } catch (e) {
+    _cleanupBundle(stageDir, tarGzPath);
+    return { ok: false, error: 'write tmp failed: ' + e.message };
+  }
+
+  // 2) tar 解压
+  const tarGzMsys = _toMsysPath(tarGzPath);
+  const stageMsys = _toMsysPath(stageDir);
+  try {
+    execSync(
+      `tar -xzf "${tarGzMsys}" -C "${stageMsys}"`,
+      { stdio: 'pipe', shell: '/usr/bin/bash' }
+    );
+  } catch (e) {
+    _cleanupBundle(stageDir, tarGzPath);
+    return { ok: false, error: 'tar -xzf failed: ' + e.message };
+  }
+
+  // 3) 找 workflows/*.json(必须是 workflows/ 子目录 — 拒绝根目录 .json 防止任意解压)
+  const bundleWorkflowsDir = path.join(stageDir, 'workflows');
+  if (!fs.existsSync(bundleWorkflowsDir)) {
+    _cleanupBundle(stageDir, tarGzPath);
+    return { ok: false, error: 'bundle missing workflows/ directory' };
+  }
+  let jsonFiles = [];
+  try {
+    jsonFiles = fs.readdirSync(bundleWorkflowsDir).filter(f => f.endsWith('.json'));
+  } catch (e) {
+    _cleanupBundle(stageDir, tarGzPath);
+    return { ok: false, error: 'list workflows/ failed: ' + e.message };
+  }
+  if (jsonFiles.length === 0) {
+    _cleanupBundle(stageDir, tarGzPath);
+    return { ok: false, error: 'no .json files in bundle workflows/' };
+  }
+
+  // 4) 逐个 validate + 写文件 + upsert
+  const imported = [];
+  const skipped = [];
+  for (const fname of jsonFiles) {
+    const fpath = path.join(bundleWorkflowsDir, fname);
+    let obj;
+    try { obj = JSON.parse(fs.readFileSync(fpath, 'utf8')); }
+    catch (e) { skipped.push({ file: fname, error: 'invalid JSON: ' + e.message }); continue; }
+    if (!obj.name || !obj.dag) {
+      skipped.push({ file: fname, error: 'missing name or dag' }); continue;
+    }
+    const err = validateDag(obj.dag);
+    if (err) { skipped.push({ file: fname, error: 'invalid dag: ' + err }); continue; }
+
+    const writeResult = await _handlerTaskFilesWrite({
+      name: obj.name, dag: obj.dag,
+      trigger: obj.trigger || 'manual', schedule: obj.schedule || '',
+    });
+    if (!writeResult || !writeResult.ok) {
+      skipped.push({ file: fname, error: (writeResult && writeResult.error) || 'write failed' });
+      continue;
+    }
+    const upsert = await _handlerTaskUpsert({
+      name: obj.name, dag: obj.dag,
+      trigger: obj.trigger || 'manual', schedule: obj.schedule || '',
+    });
+    if (!upsert || !upsert.ok) {
+      skipped.push({ file: fname, error: 'upsert failed: ' + ((upsert && upsert.error) || 'unknown') });
+      continue;
+    }
+    imported.push({
+      name: obj.name, path: writeResult.path, task_id: upsert.id, status: 'ok',
+    });
+  }
+
+  // 5) 清理 stage + tarGz
+  _cleanupBundle(stageDir, tarGzPath);
+
+  return { ok: true, imported, skipped, total: jsonFiles.length };
+});
+
 // ─── 启动 ──────────────────────────────────────────────────────────
 ext.log('info', 'task-runner starting (node:sqlite = ' + (() => {
   try { require('node:sqlite'); return 'ok'; } catch (e) { return 'missing'; }

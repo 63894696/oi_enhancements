@@ -5012,6 +5012,19 @@ _PAGE = r"""<!DOCTYPE html>
   #wf-task-list .wf-task-acts { display:flex; gap:2px; }
   #wf-task-list .wf-task-acts button { font-size:11px; padding:1px 5px; cursor:pointer;
     background:transparent; border:1px solid var(--gh-line); border-radius:4px; }
+  /* P2.5+B-4.E(2026-09-21)bundle 聚合操作条 + 任务列表 checkbox */
+  .wf-bundle-bar { display:flex; gap:4px; padding:4px 6px;
+    border-bottom:1px solid var(--gh-line); background:var(--gh-paper); }
+  .topbtn.small { font-size:11px; padding:3px 7px; line-height:1.4;
+    border:1px solid var(--gh-line); border-radius:4px; background:var(--gh-paper);
+    cursor:pointer; color:var(--gh-ink); }
+  .topbtn.small:hover:not(:disabled) { background:var(--gh-paper-2); border-color:var(--gh-green-deep); }
+  .topbtn.small.primary { background:var(--gh-green-deep); color:#fff; border-color:var(--gh-green-deep); }
+  .topbtn.small.primary:disabled { opacity:.4; cursor:not-allowed; }
+  .topbtn.small:disabled { opacity:.45; cursor:not-allowed; }
+  #wf-task-list .wf-task-check { margin:0 4px 0 0; cursor:pointer;
+    accent-color:var(--gh-green-deep); flex-shrink:0; }
+  #wf-bundle-modal .wf-nm-card { min-width:420px; }
   #wf-canvas-wrap { flex:1; display:flex; flex-direction:column; min-width:0; }
   #wf-toolbox { display:flex; align-items:center; gap:10px; padding:6px 12px;
     border-bottom:1px solid var(--gh-line); background:var(--gh-paper-2); }
@@ -5804,6 +5817,16 @@ _PAGE = r"""<!DOCTYPE html>
   <div id="wf-body">
     <div id="wf-side">
       <h3 data-i18n="wf_tasks">任务列表</h3>
+      <!-- P2.5+B-4.E(2026-09-21)bundle 聚合操作:全选 + 导出选中 + 导入 bundle。
+           多选 + 跨机器分享走这里(跟顶部单文件 📤/📥 互不冲突)。 -->
+      <div class="wf-bundle-bar">
+        <button class="topbtn small" id="wf-bundle-all-btn" onclick="wfBundleSelectAll()"
+                data-i18n="wf_bundle_all">📦 全部</button>
+        <button class="topbtn small primary" id="wf-bundle-export-btn" onclick="wfBundleExport()"
+                data-i18n="wf_bundle_export" disabled>📦 导出选中(0)</button>
+        <button class="topbtn small" id="wf-bundle-import-btn" onclick="wfBundleOpenImport()"
+                data-i18n="wf_bundle_import">📥 导入 bundle</button>
+      </div>
       <div id="wf-task-list"></div>
     </div>
     <div id="wf-canvas-wrap">
@@ -5900,6 +5923,27 @@ _PAGE = r"""<!DOCTYPE html>
     <div class="wf-nm-row">
       <button class="topbtn" onclick="wfImportCancel()" data-i18n="cancel">取消</button>
       <button class="topbtn primary" onclick="wfImportApply()" data-i18n="wf_imported">📥 导入</button>
+    </div>
+  </div>
+</div>
+
+<!-- P2.5+B-4.E(2026-09-21)bundle import 弹层:多 workflow tar.gz 批量入库。
+     单文件 JSON 走 #wf-import-modal;tar.gz 走这里。后端 task-files.bundle_import
+     解压 → 写文件 + 写 SQLite,逐个 validateDag,失败列 skipped 不阻塞。 -->
+<div id="wf-bundle-modal" style="display:none">
+  <div class="wf-nm-card">
+    <h3 data-i18n="wf_bundle_import_title">📥 导入 bundle</h3>
+    <div class="wf-import-hint" data-i18n="wf_bundle_import_hint">
+      选 .tar.gz 文件(workflows-bundle-*.tar.gz)。tar.gz 由 task.files.bundle_export 产出;
+      Windows 10+ 内置 tar 可识别,跨机器可直接互发。批量 validateDag + 入库。
+    </div>
+    <label class="wf-import-row">
+      <span data-i18n="wf_bundle_import_file">📂 选 .tar.gz</span>
+      <input type="file" id="wf-bundle-file" accept=".tar.gz,.tgz">
+    </label>
+    <div class="wf-nm-row">
+      <button class="topbtn" onclick="wfBundleImportCancel()" data-i18n="cancel">取消</button>
+      <button class="topbtn primary" onclick="wfBundleImportApply()" data-i18n="wf_bundle_imported">📥 导入</button>
     </div>
   </div>
 </div>
@@ -6090,6 +6134,14 @@ const I18N = {
     wf_import_file:'📂 选文件', wf_import_paste:'📋 或粘贴',
     wf_imported:'📥 导入', wf_imported_ok:'✓ 已导入: ', wf_import_fail:'导入失败: ',
     wf_export_fail:'导出失败: ', wf_export_no_task:'先加载一个任务再导出',
+    // P2.5+B-4.E(2026-09-21)bundle 跨机器共享
+    wf_bundle_all:'📦 全选', wf_bundle_export:'导出选中', wf_bundle_import:'📥 导入 bundle',
+    wf_bundle_select_first:'先在任务列表勾选要打包的 workflow(或点 📦 全选)',
+    wf_bundle_invalid_ext:'只接受 .tar.gz / .tgz 文件',
+    wf_bundle_export_fail:'导出 bundle 失败: ', wf_bundle_import_fail:'导入 bundle 失败: ',
+    wf_bundle_imported:'✓ bundle 导入完成', wf_bundle_exported:'✓ bundle 已导出',
+    wf_bundle_import_title:'📥 导入 bundle', wf_bundle_import_hint:'选 .tar.gz 文件;批量 validateDag + 入库。',
+    wf_bundle_import_file:'📂 选 .tar.gz',
   },
   en: {
     send:'Send', new_session:'+ New chat', model_key:'🔑 Model Key', feedback:'⚙ Feedback',
@@ -6164,6 +6216,14 @@ const I18N = {
     wf_import_file:'📂 File', wf_import_paste:'📋 Or paste',
     wf_imported:'📥 Import', wf_imported_ok:'✓ Imported: ', wf_import_fail:'Import failed: ',
     wf_export_fail:'Export failed: ', wf_export_no_task:'Load a task first before exporting',
+    // P2.5+B-4.E(2026-09-21)bundle cross-machine sharing
+    wf_bundle_all:'📦 Select all', wf_bundle_export:'Export selected', wf_bundle_import:'📥 Import bundle',
+    wf_bundle_select_first:'Check at least one workflow to bundle (or click 📦 Select all)',
+    wf_bundle_invalid_ext:'Only .tar.gz / .tgz files accepted',
+    wf_bundle_export_fail:'Bundle export failed: ', wf_bundle_import_fail:'Bundle import failed: ',
+    wf_bundle_imported:'✓ Bundle imported', wf_bundle_exported:'✓ Bundle exported',
+    wf_bundle_import_title:'📥 Import bundle', wf_bundle_import_hint:'Pick .tar.gz; batch validateDag + upsert.',
+    wf_bundle_import_file:'📂 Pick .tar.gz',
   }
 };
 let LANG = (function(){
@@ -7778,7 +7838,10 @@ async function wfRenderTaskList() {
     const row = document.createElement('div');
     row.className = 'wf-task';
     row.dataset.id = t.id;
+    // P2.5+B-4.E(2026-09-21)checkbox 列:多选 + 跨机器 bundle 导出。
+    // click 不冒泡到 row(行本身 onclick 是 wfLoadTask),所以勾选 checkbox 不触发载入。
     row.innerHTML =
+      '<input type="checkbox" class="wf-task-check" data-task-name="' + esc(t.name) + '" data-task-id="' + esc(t.id) + '" onchange="wfBundleUpdateCount()">' +
       '<span class="wf-task-name">' + esc(t.name) + '</span>' +
       '<span class="wf-task-trigger">' + (t.trigger === 'schedule' ? '⏰' : '▶') + '</span>' +
       '<span class="wf-task-acts">' +
@@ -7792,6 +7855,8 @@ async function wfRenderTaskList() {
     row.onclick = () => wfLoadTask(t.id);
     list.appendChild(row);
   }
+  // 列表渲完后,bundle 选中计数从 0 开始
+  if (typeof wfBundleUpdateCount === 'function') wfBundleUpdateCount();
 }
 
 async function wfLoadTask(taskId) {
@@ -8232,6 +8297,118 @@ async function wfTemplates() {
 
 function wfTplCancel() {
   document.getElementById('wf-tpl-modal').classList.remove('open');
+}
+
+// === P2.5+B-4.E(2026-09-21)workflow bundle 多选打包/解包(跨机器共享) ===
+// 任务列表顶部 + checkbox 列:全选 / 导出选中 / 导入 bundle(走 .tar.gz)。
+// 单文件 JSON 走 wfExportCurrent / wfImportApply(顶部 📤/📥);多文件走这里。
+function wfBundleSelectAll() {
+  const cbs = document.querySelectorAll('#wf-task-list .wf-task-check');
+  if (!cbs.length) { alert(T('wf_bundle_select_first')); return; }
+  // 若已全选 → 反选(取消全选)
+  const allChecked = Array.from(cbs).every(c => c.checked);
+  cbs.forEach(c => { c.checked = !allChecked; });
+  wfBundleUpdateCount();
+}
+
+function wfBundleUpdateCount() {
+  const cbs = document.querySelectorAll('#wf-task-list .wf-task-check');
+  const n = Array.from(cbs).filter(c => c.checked).length;
+  const btn = document.getElementById('wf-bundle-export-btn');
+  if (!btn) return;
+  btn.textContent = '📦 ' + T('wf_bundle_export') + '(' + n + ')';
+  btn.disabled = n === 0;
+}
+
+async function wfBundleExport() {
+  const names = Array.from(document.querySelectorAll('#wf-task-list .wf-task-check:checked'))
+    .map(c => c.dataset.taskName).filter(Boolean);
+  if (names.length === 0) { alert(T('wf_bundle_select_first')); return; }
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method: 'task.files.bundle_export',
+                          params: {names}, timeout: 30})});
+  if (!r.ok || !r.result || !r.result.ok) {
+    const err = (r.result && r.result.error) || r.error || 'rpc fail';
+    alert(T('wf_bundle_export_fail') + err);
+    return;
+  }
+  // base64 → Uint8Array → Blob → 触发下载
+  try {
+    const bin = atob(r.result.base64 || '');
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const blob = new Blob([bytes], {type: 'application/gzip'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = r.result.name || 'workflows-bundle.tar.gz';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+  } catch (e) {
+    alert(T('wf_bundle_export_fail') + 'decode: ' + e.message);
+    return;
+  }
+  document.getElementById('wf-status').textContent =
+    T('wf_bundle_exported') + ' (' + (r.result.count || 0) + ' / ' + Math.round((r.result.size_bytes || 0)/1024) + ' KB)';
+}
+
+function wfBundleOpenImport() {
+  const fi = document.getElementById('wf-bundle-file');
+  if (fi) fi.value = '';
+  document.getElementById('wf-bundle-modal').classList.add('open');
+}
+
+function wfBundleImportCancel() {
+  document.getElementById('wf-bundle-modal').classList.remove('open');
+}
+
+async function wfBundleImportApply() {
+  const fi = document.getElementById('wf-bundle-file');
+  if (!fi || !fi.files || fi.files.length === 0) {
+    alert(T('wf_bundle_select_first'));
+    return;
+  }
+  const file = fi.files[0];
+  const fname = (file.name || '').toLowerCase();
+  if (!fname.endsWith('.tar.gz') && !fname.endsWith('.tgz')) {
+    alert(T('wf_bundle_invalid_ext'));
+    return;
+  }
+  // Uint8Array → base64
+  let base64 = '';
+  try {
+    const buf = await file.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let bin = '';
+    // 大文件分块(避免 String.fromCharCode 长度爆栈)— 64KB/chunk
+    const CHUNK = 0x8000;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+    }
+    base64 = btoa(bin);
+  } catch (e) {
+    alert(T('wf_bundle_import_fail') + 'encode: ' + e.message);
+    return;
+  }
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method: 'task.files.bundle_import',
+                          params: {base64}, timeout: 60})});
+  if (!r.ok || !r.result || !r.result.ok) {
+    const err = (r.result && r.result.error) || r.error || 'rpc fail';
+    alert(T('wf_bundle_import_fail') + err);
+    return;
+  }
+  document.getElementById('wf-bundle-modal').classList.remove('open');
+  await wfRenderTaskList();
+  const imported = (r.result.imported || []).length;
+  const skipped = (r.result.skipped || []).length;
+  const total = r.result.total || 0;
+  document.getElementById('wf-status').textContent =
+    T('wf_bundle_imported') + ' (' + imported + ' / ' + total + ',skipped ' + skipped + ')';
+  if (skipped > 0) {
+    console.warn('[wfBundleImportApply] skipped:', r.result.skipped);
+  }
 }
 
 // === P2.5+B-4.D(2026-09-21)workflow 文件 import/export ===

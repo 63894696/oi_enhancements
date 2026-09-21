@@ -1,0 +1,29 @@
+feat(p2.5+b-4.e): 跨机器 workflow 共享 — bundle 导出/导入
+
+B-4.D ship 单文件 import/export 后,工作流只能在单机分享给同事。
+本任务 ship 多文件 bundle:多个 workflow 打包成 .tar.gz 一次性给同事
+或在 AI 对话里发,接收方批量入库。
+
+本任务 ship:
+- task-runner ext 加 task.files.{bundle_export, bundle_import} 2 命令
+- 打包格式 = tar.gz(Windows Git Bash 没 zip,tar|gzip 复用 pack-ext.js 模式)
+- _toMsysPath helper:C:\foo → /c/foo(tar 路径解析坑)
+- _tmpBundlePath / _cleanupBundle 临时 staging(防止污染 workflows/)
+- bundle 结构: README.md(导出时间戳+节点数)+ workflows/*.json
+- bundle_import 逐个 validateDag + 自调 _handlerTaskFilesWrite + _handlerTaskUpsert
+- cli TOOLS 加 workflow_bundle + workflow_bundle_import 双工具
+- 子代工具集剔除 workflow_bundle(防递归)
+- web wfmodal 左侧 wf-side 加 .wf-bundle-bar 3 按钮(全选/导出选中/导入)
+- wfmodal.task-list 每行加 checkbox 列 + onchange wfBundleUpdateCount
+- web #wf-bundle-modal(只放 file input .tar.gz/.tgz)
+- web JS wfBundle* 6 函数(atob/btoa 分块编码防爆栈)
+- web i18n 11 个 wf_bundle_* key 中英
+
+测试:_test_p2b4e_workflow_bundle.py 17/17 sections 绿。
+回归全绿:B-0 (16/16) + B-2 + B-3 task_queue + hotfix + doc +
+B-4 + B-4.B + B-4.D 全绿(M3.35 redo 后端端口冲突假阴性,无回归)。
+
+解锁:Phase B-5(marketplace + AI 模板留给后续,本任务推迟)。
+
+参考:[[p2-5-b-4-d-workflow-files-shipped]] B-4.D 单文件 import/export
+     [[extension-roadmap]] 路线图 5 阶段
