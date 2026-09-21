@@ -508,6 +508,114 @@ def _ext_run_progress(ext_id: str, params: dict) -> None:
         # 队列上限 200,防止异常 push 撑爆内存(正常 run 一个 node 就 2 条)
         if len(q["items"]) > 200:
             q["items"] = q["items"][-200:]
+    # P2.5+B-4(2026-09-21):AI agent 派单后,run_task handler 走 /api/ext/rpc 触发
+    # task.run,web 端 _run_chat_thread 在 tool trace 入库时抓 run_id 注册到
+    # _TASK_RUN_TO_SID。这里把 progress 事件推到对应 sid 的 chat 历史,前端
+    # pollResult 拉历史时直接展示节点级进度,无需新 SSE 通道。
+    try:
+        _task_run_push_progress(rid, params)
+    except Exception:  # noqa: BLE001 — push 失败不能影响主路径
+        pass
+
+
+# ─── P2.5+B-4(2026-09-21)AI agent 派单 → chat 进度桥 ────────────────────
+# cli 端 run_task handler 走 HTTP 调 /api/ext/rpc(task.upsert + task.run)拿到 run_id;
+# 它不直接知道 sid(sid 在 web 进程),而 web 端 _run_chat_thread 在 tool trace 入库时
+# (line ~3287) 正则抓 run_id + 调 _task_run_register 注册到这里。
+# 注册时同时起 daemon 线程轮询 task.runs 直到终态 → 落完结消息。
+_TASK_RUN_TO_SID: dict = {}     # run_id → session_id
+_TASK_RUN_TO_TASK: dict = {}    # run_id → task_id(完结消息带 display)
+_TASK_RUN_LOCK = _threading.RLock()
+
+
+def _task_run_register(run_id: str, sid: str, task_id: str = "") -> None:
+    """P2.5+B-4:注册 run_id → sid 映射 + 启 daemon 线程监听 run 完成,落完结消息。"""
+    with _TASK_RUN_LOCK:
+        _TASK_RUN_TO_SID[run_id] = sid
+        _TASK_RUN_TO_TASK[run_id] = task_id
+    try:
+        _threading.Thread(target=_task_run_poll_done,
+                          args=(run_id, sid, task_id),
+                          daemon=True).start()
+    except Exception:
+        pass
+
+
+def _task_run_push_progress(run_id: str, payload: dict) -> None:
+    """P2.5+B-4:task.run.progress 推送 → 对应 sid chat 历史工具轨迹。
+
+    payload 来自 _ext_run_progress:含 {run_id, node_id, status, attempts, ms, error?, event}。
+    若 run_id 没注册(用户手动 ▶ 或 wfmodal 触发),静默跳过(wfmodal 自己走自己的 hook)。
+    """
+    sid = _TASK_RUN_TO_SID.get(run_id)
+    if not sid:
+        return
+    nid = payload.get("node_id") or "?"
+    status = payload.get("status") or "?"
+    attempts = payload.get("attempts") or 0
+    ms = payload.get("ms") or 0
+    err = payload.get("error") or ""
+    line = f"[🔀 task-runner] {nid} {status}"
+    if attempts:
+        line += f" attempts={attempts}"
+    if ms:
+        line += f" ms={ms}"
+    if err:
+        line += f" err={str(err)[:80]}"
+    try:
+        add_message(sid, "tool", line)
+    except Exception:
+        pass
+
+
+def _task_run_poll_done(run_id: str, sid: str, task_id: str) -> None:
+    """P2.5+B-4:每 2s 查 task.runs 直到 status 终态,落 add_message 完结消息。
+
+    限制:最长 1h(1800 次 × 2s)。失败静默(连接挂了不致命,run 在 task-runner 进程继续跑)。
+    """
+    import time as _t
+    import urllib.request as _ur
+    base_port = 0
+    try:
+        base_port = int(os.environ.get("PRISIRAGENT_PORT") or "0") or 18899
+    except Exception:
+        base_port = 18899
+    try:
+        for _ in range(1800):
+            try:
+                _t.sleep(2)
+                body = json.dumps({"ext_id": "task-runner", "method": "task.runs",
+                                   "params": {"task_id": task_id, "limit": 1},
+                                   "timeout": 3}).encode("utf-8")
+                req = _ur.Request(
+                    f"http://127.0.0.1:{base_port}/prisiragent/api/ext/rpc",
+                    data=body, headers={"Content-Type": "application/json"})
+                with _ur.urlopen(req, timeout=5) as r:
+                    resp = json.loads(r.read().decode("utf-8"))
+                if not resp.get("ok"):
+                    continue
+                runs = ((resp.get("result") or {}).get("runs")) or []
+                run = next((x for x in runs if x.get("id") == run_id), None)
+                if not run:
+                    continue
+                if run.get("status") in ("ok", "failed", "canceled"):
+                    line = f"[🔀 task-runner] run {run_id} finished status={run.get('status')}"
+                    if run.get("ms"):
+                        line += f" ms={run['ms']}"
+                    if run.get("error"):
+                        line += f" err={str(run['error'])[:120]}"
+                    try:
+                        add_message(sid, "tool", line)
+                    except Exception:
+                        pass
+                    break
+            except Exception:
+                # 静默继续,1h 后自然过期
+                continue
+    finally:
+        with _TASK_RUN_LOCK:
+            _TASK_RUN_TO_SID.pop(run_id, None)
+            _TASK_RUN_TO_TASK.pop(run_id, None)
 
 
 def _ext_log(ext_id: str, level: str, msg: str) -> None:
@@ -3284,7 +3392,20 @@ def _run_chat_thread(sid: str, user_text: str, strategy: str, model: str, workdi
         for step in (res.get("trace") or []):
             if step.get("role") == "tool":
                 nm = step.get("name") or "tool"
-                add_message(sid, "tool", f"[🔧 {nm}]\n{step.get('content','')}")
+                tool_content = step.get("content", "")
+                add_message(sid, "tool", f"[🔧 {nm}]\n{tool_content}")
+                # P2.5+B-4(2026-09-21)AI agent 派单:cli handler run_task 返的 JSON
+                # 含 run_id,从这里正则抓 + 注册到 _TASK_RUN_TO_SID,后续 task.run.progress
+                # 会自动通过 _task_run_push_progress 推到本 sid 的 chat 流。
+                if nm == "run_task":
+                    try:
+                        _rm = re.search(r'"run_id"\s*:\s*"([^"]+)"', tool_content or "")
+                        _tm = re.search(r'"task_id"\s*:\s*"([^"]+)"', tool_content or "")
+                        if _rm:
+                            _task_run_register(_rm.group(1), sid,
+                                                _tm.group(1) if _tm else "")
+                    except Exception:
+                        pass
 
         followups = []
         if len(answer) < 6000:  # 对话太长到底就不再推荐

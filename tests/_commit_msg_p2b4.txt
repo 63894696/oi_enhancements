@@ -1,0 +1,56 @@
+feat(p2.5+b-4): AI agent 任务执行派单 — run_task 函数 + task→sid 桥 + daemon 完结轨迹
+
+B-3 ship 后 task-runner 真可用(UI 编辑器 + 优雅取消 + 进度流 + 持久化),
+但 AI agent 在对话里「帮我做个工作流」「跑个任务把 X 加上」**没法自动派给
+task-runner**。本任务把 cli 端 TOOLS 加 run_task 函数定义,LLM tool_choice='auto'
+触发 → cli handler 走 HTTP 调 /api/ext/rpc → task.upsert + task.run fire-and-forget。
+
+进度回填走最轻方案:不弹 wfmodal、不加小卡,直接 add_message(sid, 'tool',
+'[🔀 task-runner] ...') 落 chat 历史。下一次 pollResult 拉历史,前端 chat
+流展示节点级进度 + run 完结消息。
+
+关键实现:
+
+cli 端:
+  - TOOLS list 加 run_task 函数定义(name/dag/wait/required,available
+    exts:todo/calendar/system-watchdog/process-scan/schedule-write)
+  - handler `if name == "run_task"` → _t_run_task(...)
+  - _t_run_task 函数:浅校验(name/dag 非空/每个 nid 含 ext+method)+
+    PRISIR_WEB_PORT 环境变量找 web 端口 + 调 /api/ext/rpc task.upsert +
+    调 task.run(默认 wait=false fire-and-forget)+ 返 task_id/run_id/status
+  - 子代工具集剔除 run_task 防 agent 递归派单(同 spawn_subagent/run_workflow)
+
+web 端:
+  - 模块级 _TASK_RUN_TO_SID / _TASK_RUN_TO_TASK dict + _TASK_RUN_LOCK = RLock
+  - _task_run_register(run_id, sid, task_id):写映射 + 启 daemon Thread
+    调 _task_run_poll_done
+  - _task_run_push_progress(run_id, payload):查映射 → add_message(sid, "tool",
+    "[🔀 task-runner] nid status attempts=N ms=M [err=...]")
+  - _task_run_poll_done:每 2s 查 task.runs 直到 status 终态,落完结 add_message
+    "run r_xxx finished status=ok ms=N",finally 清映射(最长 1h 1800 次)
+  - _ext_run_progress(B-3 已 ship 的 progress 路由)末尾调 _task_run_push_progress,
+    复用现有 task-runner ext → reader_loop → web 的 progress 通道
+  - _run_chat_thread 末尾 tool trace 入库段识别 nm == "run_task" → 正则抓
+    run_id/task_id 调 _task_run_register 注册映射
+
+测试:
+  tests/_test_p2b4_agent_dispatch.py  9/9 (cli tool def + handler + 防递归 +
+                                          _t_run_task 体 + web 三函数 + 桥 +
+                                          chat-thread 注册 + 关键字段 + py_compile)
+  cli 端 _t_run_task 单元 smoke       5/5 (fire-and-forget / wait=true / 5 失败路径)
+  web 端 _task_run_* 单元 smoke       3/3 (注册前静默 / push_progress 落库 /
+                                          daemon 真轮询 + 完结消息 + 清映射)
+
+回归(全绿):
+  _test_p2b0_ext_rpc_bridge.py        16/16 (B-0 ext RPC bridge)
+  _test_p2b2_workflow.py              47/47 (B-2 工作流编排 UI)
+  _test_p2b3_task_queue.py            21/21 (B-3 任务队列升级)
+  _test_p2b3_hotfix.py                13/13 (B-3 hotfix 双击 + 清空)
+  _test_p2b3_doc.py                   14/14 (B-3 工作流演示文档)
+
+解锁:B-4.A(AI 帮用户编工作流)、B-4.B(AI 触发已存 workflow)、B-5(工作流复用)。
+
+参考:[[p2-5-b-3-hotfix-shipped]] task-runner 主体;
+     [[phase-b3-task-queue-shipped]] 进度流通道 + AbortController + node_runs。
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
