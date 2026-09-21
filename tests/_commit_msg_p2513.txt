@@ -1,0 +1,29 @@
+feat(p2.5+13): Electron 壳托盘加语伴/音乐/📅 打开日历 — 壳内打开页面
+
+用户 2026-09-22 拍板:壳选型 = Electron(prisiragent-shell/main.js),菜单项
+在壳里开对应页面(不调系统浏览器)。
+
+实现:
+- prisiragent-shell/port_config.js 加 DEFAULT_CALENDAR_PORT 常量(复用
+  DEFAULT_WEB_PORT = 18802,日历走 web 的 /prisiragent/calendar 路由)。
+  新增 readCalendarPort() 函数:HKCU web_port → JSON 显式 calendar → 兜底
+  web 端口。导出扩展。
+- prisiragent-shell/main.js createTray() 在「开机自启」后加 separator +
+  3 菜单项:语伴/音乐/📅 打开日历。3 个 click handler 走 openInShell(url, label)
+  复用 BrowserWindow + win.loadURL(不开多窗口)。
+  - openCompanionWindow:readCompanionPort() → http://host:port/
+  - openMusicWindow:readMusicPort(),0 端口兜底回主面板(music web 未就绪)
+  - openCalendarWindow:readCalendarPort() → http://host:port/prisiragent/calendar
+
+测试:
+- tests/_test_p2513_shell_tray.py 39/39 sections 绿(S1-S10 覆盖常量/函数/
+  helper/位置/编译)。
+- node --check port_config.js + main.js 双文件 OK。
+- 回归 B-0 ext rpc bridge 16/16 仍绿。
+
+不改:
+- 不打安装包(关联功能开发中,统一打包发新版)
+- 不动 DLL/EXE/SPEC
+- 不删文件
+- 配置方式:菜单项硬编码(用户已选简单实现),不引入 config.yaml
+- 「在壳里开」而非「系统浏览器」:复用 win.loadURL,不开多窗口

@@ -411,6 +411,39 @@ function openDevReadme() {
 }
 
 // ---------- 托盘 ----------
+// P2.5+13(2026-09-22):语伴/音乐/📅 打开日历 3 个菜单项。
+// 设计:用户在壳里开对应页面(不调系统浏览器),复用同一 BrowserWindow 加载不同 URL,
+// 避免开多窗口的常驻成本 + 保持单进程视觉一致。语伴/音乐可能动态端口,
+// 从 port_config 实时读 HKCU/JSON(写由 Python 端 notify_port_changed 负责)。
+function openInShell(url, label) {
+  if (!win) createWindow();
+  if (!win) return;       // 兜底:极端 race
+  // 不做"已显示就跳过"的优化 — tray click 用户预期就是"打开这个页面",无论当前是哪个。
+  logInfo("trayOpen", "open in shell", `label=${label} url=${url}`);
+  win.show();
+  win.focus();
+  win.loadURL(url);
+}
+function openCompanionWindow() {
+  const port = require("./port_config").readCompanionPort();
+  openInShell(`http://${WEB_HOST}:${port}/`, "companion");
+}
+function openMusicWindow() {
+  const port = require("./port_config").readMusicPort();
+  // music 端口可能 0(动态分配但未就绪)—— 兜底回主面板,等 music web 真起来再点
+  if (port <= 0) {
+    logWarn("trayOpen", "music port not ready", `port=${port}`);
+    openInShell(WEB_URL, "music-fallback");
+    return;
+  }
+  openInShell(`http://${WEB_HOST}:${port}/`, "music");
+}
+function openCalendarWindow() {
+  // 日历 走 prisiragent_web.py 的 /prisiragent/calendar 路由,与主面板共享端口。
+  const port = require("./port_config").readCalendarPort();
+  openInShell(`http://${WEB_HOST}:${port}/prisiragent/calendar`, "calendar");
+}
+
 function createTray() {
   // 用国画风 mark 若存在,否则空图标(Electron 需要有效 image)。
   // 对话壳专属图标:dialog_flame(铜环 + teal 灵机火焰),与浏览器母标圆规分开。
@@ -424,6 +457,11 @@ function createTray() {
     { label: "打开 PrisirAI", click: () => { if (win) { win.show(); loadWhenReady(); } else createWindow(); } },
     { label: "开机自启", type: "checkbox", checked: app.getLoginItemSettings().openAtLogin,
       click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked }) },
+    // P2.5+13(2026-09-22):语伴/音乐/📅 打开日历 — 壳内打开,不复用系统浏览器
+    { type: "separator" },
+    { label: "语伴", click: openCompanionWindow },
+    { label: "音乐", click: openMusicWindow },
+    { label: "📅 打开日历", click: openCalendarWindow },
   ];
   if (devModeAvailable()) {
     trayItems.push({ type: "separator" });

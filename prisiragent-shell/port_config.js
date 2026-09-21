@@ -26,6 +26,9 @@ const { app } = require("electron");
 const DEFAULT_WEB_PORT = 18802;       // 主面板 prisiragent_web.py
 const DEFAULT_COMPANION_PORT = 18850; // 语伴
 const DEFAULT_MUSIC_PORT = 0;         // music web 动态分配
+// 日历 走 prisiragent_web.py 的 /prisiragent/calendar 路由,故 calendar 端口 = web 端口。
+// 留独立常量便于后续若 calendar 拆独立服务时切换。
+const DEFAULT_CALENDAR_PORT = DEFAULT_WEB_PORT;
 
 // Windows 注册表路径
 const REG_KEY_PATH = "Software\\PrisirAI";
@@ -176,15 +179,25 @@ function readPort(name, defaultPort) {
 const readWebPort = () => readPort("web", DEFAULT_WEB_PORT);
 const readCompanionPort = () => readPort("companion", DEFAULT_COMPANION_PORT);
 const readMusicPort = () => readPort("music", DEFAULT_MUSIC_PORT);
+// 日历 = 复用 web 端口(HKCU/JSON 与 web 同源);若 JSON 显式存了 calendar 端口也允许覆盖。
+const readCalendarPort = () => {
+  const v = readWinreg("calendar");
+  if (v !== null) return v;
+  const j = readJson("calendar");
+  if (j !== null) return j;
+  return DEFAULT_CALENDAR_PORT;
+};
 
 module.exports = {
   DEFAULT_WEB_PORT,
   DEFAULT_COMPANION_PORT,
   DEFAULT_MUSIC_PORT,
+  DEFAULT_CALENDAR_PORT,
   readPort,
   readWebPort,
   readCompanionPort,
   readMusicPort,
+  readCalendarPort,
   writeJson,
   // 给测试用
   _readWinreg: readWinreg,
