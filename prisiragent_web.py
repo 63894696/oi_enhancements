@@ -6219,6 +6219,10 @@ const I18N = {
     wf_market_refresh:'🔄 刷新', wf_market_confirm:'确认下载',
     wf_market_title_required:'请填标题',
     wf_market_title_label:'标题', wf_market_desc_label:'描述(可选)',
+    wf_market_retract_confirm:'确认自删此 marketplace 帖(仅你能删自己的)',
+    wf_market_retract_reason_prompt:'为什么删?(可选,会写进 retract 帧 body 留 trace)',
+    wf_market_retracted:'已自删该 marketplace 帖',
+    wf_market_retract_fail:'自删失败',
     wf_publish_title:'📤 发布到 Prisir 论坛',
     wf_publish_hint:'选中左栏 task → 自动 bundle → 签名 + PoW → 发到论坛。1-3s。',
     wf_publish_apply:'发布',
@@ -6311,6 +6315,10 @@ const I18N = {
     wf_market_refresh:'🔄 Refresh', wf_market_confirm:'Confirm download',
     wf_market_title_required:'Title required',
     wf_market_title_label:'Title', wf_market_desc_label:'Description (optional)',
+    wf_market_retract_confirm:'Confirm self-delete this marketplace post (only you can delete your own)',
+    wf_market_retract_reason_prompt:'Why delete? (optional, recorded in retract body for trace)',
+    wf_market_retracted:'Self-deleted this marketplace post',
+    wf_market_retract_fail:'Self-delete failed',
     wf_publish_title:'📤 Publish to Prisir forum',
     wf_publish_hint:'Pick left tasks → bundle → sign + PoW → post. 1-3s.',
     wf_publish_apply:'Publish',
@@ -8463,6 +8471,13 @@ async function wfMarketList() {
 async function wfMarketRefresh() {
   const box = document.getElementById('wf-market-list');
   box.innerHTML = '<div class="sub">⏳ 拉论坛列表…</div>';
+  // P2.5+B-4.F.A(2026-09-21)拿到自己 fp,只有自己发的帖才显示 🗑️ 自删按钮 + ★ 标记
+  let myFp = '';
+  try {
+    const me = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ext_id:'marketplace', method:'market.identity', params:{}, timeout:3})});
+    if (me.ok && me.result && me.result.ok) myFp = (me.result.identity && me.result.identity.fp) || '';
+  } catch {}
   const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ext_id:'marketplace', method:'market.list', params:{}, timeout:15})});
   if (!r.ok || !r.result || !r.result.ok) {
@@ -8475,14 +8490,17 @@ async function wfMarketRefresh() {
           '<th style="text-align:left">标题</th><th>作者</th><th>workflow</th><th>大小</th><th>时间</th><th></th></tr>';
   for (const p of posts) {
     const fp = (p.author_fp || '').slice(0, 8);
+    const isMine = myFp && p.author_fp === myFp;
     h += '<tr style="border-top:1px solid var(--gh-line)">' +
          '<td>' + esc(p.title || '') + '</td>' +
-         '<td style="text-align:center"><code>' + esc(fp) + '</code></td>' +
+         '<td style="text-align:center"><code>' + esc(fp) + '</code>' + (isMine ? ' <span style="color:var(--gh-accent)">★</span>' : '') + '</td>' +
          '<td style="text-align:center">' + (p.workflow_count || '?') + '</td>' +
          '<td style="text-align:center">' + (((p.bundle_size || 0) / 1024).toFixed(1)) + ' KB</td>' +
          '<td style="text-align:center">' + esc(new Date(p.ts).toLocaleString()) + '</td>' +
-         '<td style="text-align:center"><button class="topbtn mini" onclick="wfMarketDownload(\'' + esc(p.post_id) + '\')">📥 下载</button></td>' +
-         '</tr>';
+         '<td style="text-align:center;white-space:nowrap">' +
+         '<button class="topbtn mini" onclick="wfMarketDownload(\'' + esc(p.post_id) + '\')">📥 下载</button>' +
+         (isMine ? ' <button class="topbtn mini" style="color:var(--gh-warn)" onclick="wfMarketRetract(\'' + esc(p.post_id) + '\')">🗑️ 自删</button>' : '') +
+         '</td></tr>';
   }
   box.innerHTML = h + '</table>';
 }
@@ -8508,6 +8526,29 @@ async function wfMarketDownload(postId) {
   alert('✓ 已导入 ' + n + ' 个 workflow' + (s ? '(跳过 ' + s + ')' : ''));
   await wfRenderTaskList();
   document.getElementById('wf-status').textContent = '✓ 远端下载完成: ' + n + ' 个';
+}
+// P2.5+B-4.F.A(2026-09-21)作者一键自删自己发的 marketplace 帖。
+// 流程:prompt 输入 reason → confirm → 调 market.retract → 失败带 rich error / 成功刷新列表。
+async function wfMarketRetract(postId) {
+  if (!postId) return;
+  const reason = prompt(T('wf_market_retract_reason_prompt'), '');
+  if (reason === null) return;  // 用户点取消
+  if (!confirm(T('wf_market_retract_confirm') + '?\n' + postId)) return;
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'marketplace', method:'market.retract',
+                          params:{post_id: postId, reason: reason.trim()}, timeout:30})});
+  if (!r.ok || !r.result || !r.result.ok) {
+    const err = (r.result && r.result.error) || r.error || 'rpc fail';
+    const hint = (r.result && r.result.hint) ? '\n\n' + r.result.hint : '';
+    const fpInfo = (r.result && r.result.your_fp)
+      ? '\n\n你的 fp: ' + r.result.your_fp + '\n该帖作者 fp: ' + (r.result.post_author_fp || '?')
+      : '';
+    alert('❌ ' + T('wf_market_retract_fail') + '\n' + err + hint + fpInfo);
+    return;
+  }
+  alert('✓ ' + T('wf_market_retracted') + '\n' + postId);
+  await wfMarketRefresh();
+  document.getElementById('wf-status').textContent = '✓ ' + T('wf_market_retracted') + ': ' + postId;
 }
 async function wfMarketPublish() {
   const checked = document.querySelectorAll('#wf-task-list .wf-task-check:checked');

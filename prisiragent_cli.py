@@ -657,12 +657,13 @@ _SUBAGENT_MAX_LOOPS = 5
 
 def _subagent_tools(skills: list | None) -> list:
     """子代工具集:全量剔除 spawn_subagent + run_workflow + run_task + new_workflow + workflow_bundle +
-    workflow_market_publish(防递归),再按 skills 白名单过滤。new_workflow/workflow_bundle/
-    workflow_market_publish 同 run_task 一样能让 LLM 写文件 + 入库 + 跨机器派发,子代不应自己派单。
-    workflow_market_list / workflow_market_fetch 是只读浏览,允许子代用(查资料 OK,写不出去)。"""
+    workflow_market_publish + workflow_market_retract(防递归),再按 skills 白名单过滤。
+    new_workflow/workflow_bundle/workflow_market_* 同 run_task 一样能让 LLM 写文件 + 入库 + 跨机器
+    派发 / 自删,子代不应自己派单。workflow_market_list / workflow_market_fetch 是只读浏览,
+    允许子代用(查资料 OK,写不出去)。"""
     pool = [t for t in TOOLS if t["function"]["name"] not in (
         "spawn_subagent", "run_workflow", "run_task", "new_workflow",
-        "workflow_bundle", "workflow_market_publish",
+        "workflow_bundle", "workflow_market_publish", "workflow_market_retract",
     )]
     if not skills:
         return pool
@@ -2015,6 +2016,55 @@ def _t_workflow_market_fetch(args: dict, workdir: str, on_event=None) -> str:
     return _json.dumps(out)
 
 
+def _t_workflow_market_retract(args: dict, workdir: str, on_event=None) -> str:
+    """P2.5+B-4.F.A(2026-09-21)作者一键自删自己发的 marketplace 帖。
+
+    调 marketplace market.retract(走 _ext_rpc_call),内部:
+      1) 读 history 找目标帖(早失败,免白算 PoW 2s)
+      2) 校 author_fp 是自己(marketplace Ed25519 身份)
+      3) 拼 kind=retract + parent=post_id + body=reason
+      4) 算 PoW(18 位,~2s)
+      5) Ed25519 签名 + 发帧
+
+    失败模式透传:
+      not_found / already_retracted / already_taken_down / not_your_post / forum_nack:bad_parent
+    """
+    import json as _json
+
+    post_id = str(args.get("post_id") or "").strip()
+    if not post_id:
+        return _json.dumps({
+            "error": "workflow_market_retract 需要 post_id 字段",
+            "hint": "示例: workflow_market_retract({post_id:'abc123...', reason:'发错了'})",
+        })
+    reason = str(args.get("reason") or "").strip()[:200]
+    since_seq = int(args.get("since_seq") or 0)
+
+    resp = _ext_rpc_call("marketplace", "market.retract",
+                         {"post_id": post_id, "reason": reason, "since_seq": since_seq}, timeout=30)
+    if not resp.get("ok"):
+        return _json.dumps({"error": f"market.retract failed: {resp.get('error') or resp}"})
+    result = resp.get("result") or {}
+    if not result.get("ok"):
+        # 透传 forum 详细 error(hint / your_fp / post_author_fp / already_* 等)
+        err_obj = {"error": f"marketplace: {result.get('error') or 'unknown'}"}
+        for k in ("hint", "your_fp", "post_author_fp"):
+            if result.get(k):
+                err_obj[k] = result[k]
+        if result.get("retract_post"):
+            err_obj["retract_post"] = result["retract_post"]
+        return _json.dumps(err_obj)
+    out = {
+        "ok": True,
+        "post_id": result.get("post_id"),
+        "retract_seq": result.get("retract_seq"),
+        "retracted_at": result.get("retracted_at"),
+        "reason": result.get("reason"),
+        "note": "已从 marketplace 撤下;用户下次 workflow_market_list 该帖不再出现。",
+    }
+    return _json.dumps(out)
+
+
 def _t_workflow_market_publish(args: dict, workdir: str, on_event=None) -> str:
     """P2.5+B-4.F:发 workflow bundle 帖到论坛「PrisirAI 对话」子版。
 
@@ -3039,6 +3089,31 @@ TOOLS = [
                                    "description": "附件 SHA256 前 16 字符 b64url(可选,server 也会重算校)"},
             "attachment_size": {"type": "integer", "description": "附件字节数(mode B)"},
         }, "required": ["title"]}}},
+    # P2.5+B-4.F.A(2026-09-21)作者一键自删自己发的 marketplace 帖 —
+    # kind:retract 协议(forum_relay 已 ship),marketplace ext 用自己的 Ed25519
+    # 身份签名(跟 publish 同身份)。fp 不匹配返 not_your_post — 丢身份/换机器/
+    # 重生成 marketplace_identity.key 都会触发,提示用户走运营者撤下流程。
+    {"type": "function", "function": {
+        "name": "workflow_market_retract",
+        "description": (
+            "Retract (delete) a workflow bundle post you previously published to the "
+            "Prisir forum «PrisirAI 对话» sub-board. Symmetric to workflow_market_publish "
+            "— same Ed25519 identity, same protocol, but kind='retract' instead of 'post'. "
+            "Server enforces: parent post exists, parent author_fp == your fp, not already "
+            "retracted/taken_down. Returns {ok, post_id, retract_seq} on success; "
+            "{ok:false, error:'not_your_post'} if your marketplace identity lost/replaced; "
+            "{ok:false, error:'already_retracted'/'already_taken_down'} for re-retract; "
+            "{ok:false, error:'forum_nack:bad_parent'} for unknown post_id. Use when the "
+            "user says '删了那个帖' / '撤回刚才发的' / 'the bundle was wrong, delete it'."
+        ),
+        "parameters": {"type": "object", "properties": {
+            "post_id": {"type": "string",
+                        "description": "目标帖 ID(从 workflow_market_list 拿,或最近 workflow_market_publish 返的 post_id)"},
+            "reason": {"type": "string",
+                       "description": "删帖原因(选填,≤200 字,写进 retract 帖 body 留 trace)"},
+            "since_seq": {"type": "integer", "default": 0,
+                          "description": "增量游标(查目标帖用,默认 0 拉全量)"},
+        }, "required": ["post_id"]}}},
 ]
 
 
@@ -3313,6 +3388,9 @@ def dispatch(name: str, args: dict, workdir: str, on_confirm=None, model: str = 
                                          workdir, on_event=on_event)
     if name == "workflow_market_publish":
         return _t_workflow_market_publish(args if isinstance(args, dict) else {},
+                                          workdir, on_event=on_event)
+    if name == "workflow_market_retract":
+        return _t_workflow_market_retract(args if isinstance(args, dict) else {},
                                           workdir, on_event=on_event)
     if name == "philosopher_debate":
         import prisir_philosopher as _ph  # noqa: PLC0415

@@ -1,0 +1,66 @@
+feat(p2.5+b-4.f.a): market.retract — 作者一键自删 marketplace 帖
+
+B-4.F ship 后 marketplace 公共橱窗上线,但免注册论坛无账户管理 — 「发错 / 垃圾
+/ 重复」只能靠作者自己撤回。本任务 ship:
+- marketplace ext 新命令 market.retract(kind=retract 帧 + parent=post_id + 自身
+  Ed25519 签名 + PoW,forum_relay 验签 + 校父帖 author_fp 一致才收)
+- cli 新工具 workflow_market_retract({post_id, reason?, since_seq?}) — LLM 在
+  对话里能直接调
+- 子代工具集剔除(防递归)
+- web wfmodal 远端列表每行拿自己 fp — 只对自己发的帖显示 🗑️ 自删按钮 + ★
+  标记;非自己发的帖不可见按钮(防止误操作)
+- 4 个 i18n key 中英(wf_market_retract_confirm / reason_prompt / retracted / fail)
+
+## 关键设计点
+
+**1. 早失败避免白算 PoW(2s 浪费)**:retract 前先 read history 找父帖 +
+校 author_fp == 自己 + 校未 retracted/taken_down。任一失败直接返 error 不进
+PoW 循环,失败响应还带 rich error 信息(hint + your_fp + post_author_fp 给用户
+排查 marketplace_identity.key 丢/重生/换机器)。
+
+**2. retract 帧入 canon(签名覆盖)**:跟 publish 同模式 — 父帖 id、ts、reason
+都进 signed_view,attack 者改任一字段验签失败。 PoW 仍需(抗 spam retract,
+跟 post 一致)。
+
+**3. marketplace ext 用同一身份签名**(~.prisir/marketplace_identity.key):
+「marketplace 这个 ext」专用,跟 fbmodal 反馈身份 / chatroom 身份解耦。
+市场身份丢了 = 不能自删(只能请运营者撤下),这是协议层面正确的设计。
+
+**4. web UI 仅自己可见 🗑️**:wfMarketRefresh 调 market.identity 拿自身 fp,
+isMine 判定后只渲染按钮 + ★ 标记。其他人发的帖看不到按钮,UX 简单,
+不在前端做 author 角色判断。
+
+## 修改清单
+
+- **extensions/marketplace/index.js**:market.retract 命令 ~80 行(早失败
+  校验 + 拼帧 + PoW + 签名 + 发帧)
+- **extensions/marketplace/package.json**:加 ai.invoke.command:market.retract
+- **prisIragent_cli.py**:workflow_market_retract tool def + _t_workflow_market_retract
+  handler + _subagent_tools 剔除列表 + dispatch
+- **prisIragent_web.py**:
+  - wfMarketRefresh 拿 myFp + 渲染 🗑️ 按钮 + ★ 标记(只自己帖)
+  - wfMarketRetract 函数(confirm + prompt reason + RPC + rich error)
+  - i18n 4 keys 中英
+- **tests/_test_p2b4fa_marketplace_retract.py**:55/55 sections 绿(13 大节)
+
+## 验证
+
+- **新测试**:55/55 sections 绿
+- **回归 10 个测试全绿**:B-0(16) + B-2(47) + B-3(21) + hotfix(13) + doc
+  + B-4(9) + B-4.B(8) + B-4.D(14) + B-4.E(17) + B-4.F(20)
+- **py_compile + node --check OK**:cli/web + marketplace ext 全部通过
+
+## 留给后续
+
+- ❌ 运营者撤下(takedown)工具 — VPS 侧,不在 marketplace ext
+- ❌ 帖子版本回滚(撤回后改完重发)— 后续
+- ❌ 撤回通知(作者撤回后通知所有读过的人)— 论坛层无 push,先不做
+- ❌ 撤回原因模板(预设几个常用理由供选择)— 后续
+- ❌ marketplace ext 拿批量撤下(批量读 history 一次撤多帖)— 单帖够用
+
+参考:[[p2-5-b-4-f-marketplace-shipped]] B-4.F 主体;
+     [[forum-prod-deployment]] 论坛拓扑。
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>

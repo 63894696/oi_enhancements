@@ -367,6 +367,89 @@ ext.registerCommand('market.identity', async () => {
   };
 });
 
+// market.retract:B-4.F.A(2026-09-21)作者一键自删自己发的 marketplace 帖。
+// 协议:发 kind='retract' 帧,parent=目标 post_id,author_fp 必须等于被删帖作者
+// fp(forum_relay 验签 + 父帖存在 + fp 一致,任一不过返 nack)。
+// 关键设计:
+//   1) 用 marketplace ext 自己的 Ed25519 身份签名(跟 publish 同身份)—
+//      marketplace_identity.key 是「marketplace 这个 ext」专用,不是「用户本人」,
+//      但只要用户 + ext 同一人,语义就成立。
+//   2) retract 帧不算主帖,server 端给 POST_ID 算 = sha256(canon(retract obj)),
+//      不入主帖流,只标 parent post retracted=true。
+//   3) PoW 仍需:retract 跟 post 一样要走 PoW(抗 spam retract),复用 _solvePow。
+//   4) **先 read 一次** 校被删帖存在 + author_fp 是自己 — 早失败避免白算 PoW(2s 浪费)。
+ext.registerCommand('market.retract', async (args = {}) => {
+  const post_id = String(args.post_id || '').trim();
+  const reason = String(args.reason || '').slice(0, 200);  // 选填,写进 retract body 留 trace
+  if (!post_id) return { ok: false, error: 'post_id required' };
+
+  await _ensureConnected();
+
+  // 1) 拿自身身份(发 retract 必须用前面翻期同身份签)
+  if (!_identity) {
+    _identity = _loadOrCreateIdentity();
+    _authorPub = _pubB64Url(_identity);
+    _authorFp = _fp(_authorPub);
+  }
+
+  // 2) 早验证:读 history 找目标帖 + 校 fp 是自己
+  //    不带 include_takedown(retract 帖不需验 “该帖未撤下”——已撤下不返则用户检不到,早返 not_found)
+  const since = parseInt(args.since_seq || 0, 10) || 0;
+  const hist = await _wsRequest({
+    type: 'read', since_seq: since,
+    board: MARKET_BOARD, include_takedown: false,
+  }, 15000);
+  if (hist.type !== 'history') return { ok: false, error: 'unexpected:' + hist.type };
+  const target = (hist.msgs || []).find(m => m.post_id === post_id);
+  if (!target) return { ok: false, error: 'post_not_found', hint: '该 post_id 在 marketplace 不可见(可能已撤下 / 已自删 / 从未存在)' };
+  if (target.taken_down) return { ok: false, error: 'already_taken_down' };
+  if (target.retracted) return { ok: false, error: 'already_retracted' };
+  if (target.post?.author_fp !== _authorFp) {
+    return {
+      ok: false,
+      error: 'not_your_post',
+      hint: 'marketplace ext 的 Ed25519 身份 fp 与目标帖作者不一致;marketplace_identity.key 丢 / 重生过 / 换机器 都会这样。只能请运营者撤下。',
+      your_fp: _authorFp,
+      post_author_fp: target.post?.author_fp,
+    };
+  }
+
+  // 3) 拼 retract 帖:body 可附简短 reason(不暴露内部 trace),parent=post_id
+  const ts = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+  const body = reason ? '[retracted] ' + reason : '[retracted] author retract';
+
+  // 4) signed_view(parent 必填,server 校存在)
+  const signedView = {
+    v: 1, kind: 'retract', board: MARKET_BOARD, parent: post_id, body,
+    author_pub: _authorPub, author_fp: _authorFp, ts,
+    pow: { alg: 'sha256-b64', bits: POW_BITS, nonce: 0 },
+  };
+  try {
+    signedView.pow.nonce = _solvePow(signedView, POW_BITS);
+  } catch (e) {
+    return { ok: false, error: 'pow_solve_failed: ' + e.message };
+  }
+
+  // 5) 签名
+  const sigPayload = _canon(signedView);
+  const sig = crypto.sign(null, Buffer.from(sigPayload), _identity).toString('base64');
+  const postObj = { ...signedView, sig };
+
+  // 6) 发帧(同 post 帧格式,kind=retract)
+  const r = await _wsRequest({ type: 'post', post: postObj }, 30000);
+  if (r.type === 'nack') return { ok: false, error: 'forum_nack:' + (r.reason || ''), retract_post: postObj };
+  if (r.type !== 'ack') return { ok: false, error: 'unexpected:' + r.type };
+
+  return {
+    ok: true,
+    post_id,                          // 被删帖 ID
+    retract_seq: r.seq,                // retract 帧本身的 seq(用于参考)
+    retracted_at: ts,
+    reason: body,
+    note: '已自删;下次 market.list 该帖不再出现。其它人已在会话中的本地缓存不会自动消失(需重启 wfmodal / 重新查)。',
+  };
+});
+
 if (require.main === module) {
   ext.start().catch((e) => { console.error('marketplace ext fatal:', e); process.exit(1); });
 }
