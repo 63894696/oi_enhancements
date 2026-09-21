@@ -12,7 +12,10 @@
     "ai.invoke.command:market.fetch",
     "ai.invoke.command:market.publish",
     "ai.invoke.command:market.retract",
-    "ai.invoke.command:market.identity"
+    "ai.invoke.command:market.identity",
+    "ai.invoke.command:market.operator_identity",
+    "ai.invoke.command:market.take_down",
+    "ai.invoke.command:market.take_down_batch"
   ],
   "dependencies": {
     "@prisir/extension-sdk": "file:../sdk"

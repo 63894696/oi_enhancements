@@ -144,8 +144,9 @@ def main():
         'async function wfMarketRetract(' in web_src)
     total += 1; passes += check("confirm 二次确认",
         'confirm(' in retract_section)
-    total += 1; passes += check("prompt 输入 reason",
-        'prompt(' in retract_section)
+    # P2.5+B-4.F.B(2026-09-22):retract 走 wfMarketPickReason 模板 dropdown,不再用裸 prompt()
+    total += 1; passes += check("调 wfMarketPickReason 拿 reason",
+        'wfMarketPickReason(' in retract_section)
     total += 1; passes += check("调 ext_id:marketplace / market.retract",
         'ext_id' in retract_section and 'market.retract' in retract_section and 'marketplace' in retract_section)
     total += 1; passes += check("timeout:30",

@@ -79,6 +79,26 @@ function _fp(pubB64url) {
   return crypto.createHash('sha256').update(raw).digest('base64url').slice(0, 16).replace(/=/g, '');
 }
 
+// P2.5+B-4.F.B(2026-09-22):运营者身份(独立于 marketplace 身份,跟论坛 server 的
+// OPERATOR_PUB 对应)。文件不存在 = 当前用户不是运营者,不能发 takedown。
+// 路径:env PRISIR_FORUM_OPERATOR_KEY_PATH 覆盖,默认 ~/.prisir/forum_operator.key
+function _operatorKeyPath() {
+  return process.env.PRISIR_FORUM_OPERATOR_KEY_PATH ||
+    path.join(os.homedir(), '.prisir', 'forum_operator.key');
+}
+function _loadOperatorIdentity() {
+  const fp = _operatorKeyPath();
+  if (!fs.existsSync(fp)) return null;
+  try {
+    const seed = Buffer.from(fs.readFileSync(fp, 'utf8').trim(), 'base64');
+    if (seed.length !== 32) return null;
+    return crypto.createPrivateKey({
+      key: Buffer.concat([Buffer.from('302e020100300506032b657004220420', 'hex'), seed]),
+      format: 'der', type: 'pkcs8',
+    });
+  } catch { return null; }
+}
+
 // ─── canon(与 forum_relay.canon 严格一致) ─────────────────────────
 function _canon(obj) {
   // Python: json.dumps(o, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
@@ -210,18 +230,22 @@ function _validateAttachmentFields(att) {
 // ─── commands ────────────────────────────────────────────────────
 
 // market.list:拉 forum PrisirAI 对话 子版的所有帖,过滤 [Prisir-Workflow] 前缀
+//   include_retracted=true(默认 false):透传已撤下/自删的记录,带 retracted_by /
+//   taken_down_by / reason 字段,UI 显示横幅通知(用户曾经看到过的帖「已撤下」)。
 ext.registerCommand('market.list', async (args = {}) => {
   await _ensureConnected();
   const since = parseInt(args.since_seq || 0, 10) || 0;
+  const includeRetracted = !!args.include_retracted;
   const r = await _wsRequest({
     type: 'read',
     since_seq: since,
     board: MARKET_BOARD,
-    include_takedown: false,
+    // include_retracted 模式必须 include_takedown=true 才能拿到这些记录
+    include_takedown: includeRetracted,
   }, 15000);
   if (r.type !== 'history') return { ok: false, error: 'unexpected: ' + r.type };
   const posts = (r.msgs || [])
-    .filter(m => !m.taken_down && !m.retracted)
+    .filter(m => includeRetracted || (!m.taken_down && !m.retracted))
     .filter(m => (m.post?.body || '').startsWith('[Prisir-Workflow]'))
     .map(m => {
       const p = m.post;
@@ -230,7 +254,10 @@ ext.registerCommand('market.list', async (args = {}) => {
         const after = (p.body || '').split('\n').slice(1).join('\n').trim();
         if (after) meta = JSON.parse(after);
       } catch {}
-      return {
+      // P2.5+B-4.F.B(2026-09-22)撤回通知字段:服务端 history 透传
+      //   retracted_by / taken_down_by / reason(只在该帖已撤时存在)
+      //   kind=retract 帧 body 写 "[retracted]" + reason;运营 takedown 帧 broadcast 也有 reason
+      const out = {
         post_id: m.post_id,
         seq: m.seq,
         title: meta.title || (p.body || '').slice(0, 60),
@@ -244,6 +271,20 @@ ext.registerCommand('market.list', async (args = {}) => {
         confirmations: m.confirmations,
         confirmed: m.confirmed,
       };
+      if (includeRetracted) {
+        if (m.retracted) {
+          out.status = 'retracted';
+          out.retracted_by = p.author_fp;  // 自删:作者本人 fp
+          out.retracted_reason = meta.retracted_reason || '';
+        } else if (m.taken_down) {
+          out.status = 'taken_down';
+          out.taken_down_by = 'operator';
+          out.taken_down_reason = meta.taken_down_reason || '';
+        } else {
+          out.status = 'live';
+        }
+      }
+      return out;
     });
   return { ok: true, posts, last_seq: r.last_seq };
 });
@@ -447,6 +488,128 @@ ext.registerCommand('market.retract', async (args = {}) => {
     retracted_at: ts,
     reason: body,
     note: '已自删;下次 market.list 该帖不再出现。其它人已在会话中的本地缓存不会自动消失(需重启 wfmodal / 重新查)。',
+  };
+});
+
+// ─── P2.5+B-4.F.B(2026-09-22)运营者撤下 ──────────────────────────
+// 协议:服务端 t='takedown' 接收 {post_id, reason, ts, operator_sig},
+//       verify_operator_sig(canon({post_id, reason, ts})) 用 OPERATOR_PUB 验。
+// 客户端:必须 ~/.prisir/forum_operator.key 存在(env PRISIR_FORUM_OPERATOR_KEY_PATH 可改路径);
+//        文件不在 = 当前用户不是运营者,所有 takedown 命令返 not_operator。
+ext.registerCommand('market.operator_identity', async () => {
+  const op = _loadOperatorIdentity();
+  if (!op) return { ok: true, is_operator: false, key_path: _operatorKeyPath(),
+                   hint: '把对应 OPERATOR_PUB 的 ed25519 seed(32 字节 base64)写到该路径,重启 ext 即生效' };
+  const pub = _pubB64Url(op);
+  const fp = _fp(pub);
+  return { ok: true, is_operator: true, pub, fp, key_path: _operatorKeyPath() };
+});
+
+ext.registerCommand('market.take_down', async (args = {}) => {
+  const post_id = String(args.post_id || '').trim();
+  const reason = String(args.reason || '').slice(0, 200);
+  if (!post_id) return { ok: false, error: 'post_id required' };
+
+  const op = _loadOperatorIdentity();
+  if (!op) return { ok: false, error: 'not_operator',
+                    hint: '当前用户不是运营者 — ~/.prisir/forum_operator.key 不存在 / 不可读',
+                    key_path: _operatorKeyPath() };
+
+  await _ensureConnected();
+
+  // 早失败:读 history 拿目标(include_takedown=true 才能验「已撤下」报错)
+  const since = parseInt(args.since_seq || 0, 10) || 0;
+  const hist = await _wsRequest({
+    type: 'read', since_seq: since,
+    board: MARKET_BOARD, include_takedown: true,
+  }, 15000);
+  if (hist.type !== 'history') return { ok: false, error: 'unexpected:' + hist.type };
+  const target = (hist.msgs || []).find(m => m.post_id === post_id);
+  if (!target) return { ok: false, error: 'post_not_found', hint: '该 post_id 不存在 / 已过期(TTL 180 天)' };
+  if (target.taken_down) return { ok: false, error: 'already_taken_down' };
+
+  // 拼 takedown 帧:跟服务端 verify_operator_sig 完全一致的 payload 序列化
+  const ts = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+  const sigPayload = _canon({ post_id, reason, ts });
+  const sig = crypto.sign(null, Buffer.from(sigPayload), op).toString('base64');
+
+  // 发 t='takedown'(独立 type,不走 post 帧)
+  const r = await _wsRequest({
+    type: 'takedown',
+    post_id, reason, ts,
+    operator_sig: sig,
+  }, 15000);
+  if (r.type === 'nack') return { ok: false, error: 'forum_nack:' + (r.reason || 'bad_operator_sig') };
+  if (r.type !== 'takedown') return { ok: false, error: 'unexpected:' + r.type };
+
+  return {
+    ok: true,
+    post_id,
+    taken_down_at: ts,
+    reason,
+    broadcast_type: r.type,    // 论坛会广播,所有连过的客户端可能收到 takedown 通知帧
+  };
+});
+
+ext.registerCommand('market.take_down_batch', async (args = {}) => {
+  // P2.5+B-4.F.B(2026-09-22)批量运营撤下:循环调 take_down,失败不影响其他。
+  // 不走 t='takedown' 协议层的批量帧(协议没这帧),客户端自己做。
+  const post_ids = Array.isArray(args.post_ids) ? args.post_ids.map(s => String(s).trim()).filter(Boolean) : [];
+  const reason = String(args.reason || '').slice(0, 200);
+  if (post_ids.length === 0) return { ok: false, error: 'post_ids array required (non-empty)' };
+  if (post_ids.length > 50) return { ok: false, error: 'too_many: max 50 per batch' };
+
+  const op = _loadOperatorIdentity();
+  if (!op) return { ok: false, error: 'not_operator', key_path: _operatorKeyPath() };
+
+  // 早校验:是否运营者(避免循环到一半发现不是运营者浪费签名算力)
+  if (!_identity) {
+    _identity = _loadOrCreateIdentity();
+    _authorPub = _pubB64Url(_identity);
+    _authorFp = _fp(_authorPub);
+  }
+  await _ensureConnected();
+
+  const results = [];
+  let ok_count = 0, fail_count = 0;
+  for (const pid of post_ids) {
+    // 每条单独 try — 单条失败不中断
+    try {
+      // 复用 take_down 的拼帧逻辑(内联避免再连一次 ws)
+      const hist = await _wsRequest({
+        type: 'read', since_seq: 0,
+        board: MARKET_BOARD, include_takedown: true,
+      }, 15000);
+      if (hist.type !== 'history') {
+        results.push({ post_id: pid, ok: false, error: 'history_fail:' + hist.type });
+        fail_count++; continue;
+      }
+      const target = (hist.msgs || []).find(m => m.post_id === pid);
+      if (!target) { results.push({ post_id: pid, ok: false, error: 'post_not_found' }); fail_count++; continue; }
+      if (target.taken_down) { results.push({ post_id: pid, ok: false, error: 'already_taken_down' }); fail_count++; continue; }
+
+      const ts = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+      const sigPayload = _canon({ post_id: pid, reason, ts });
+      const sig = crypto.sign(null, Buffer.from(sigPayload), op).toString('base64');
+      const r = await _wsRequest({
+        type: 'takedown', post_id: pid, reason, ts, operator_sig: sig,
+      }, 15000);
+      if (r.type === 'takedown') {
+        results.push({ post_id: pid, ok: true, taken_down_at: ts });
+        ok_count++;
+      } else {
+        results.push({ post_id: pid, ok: false, error: 'forum_nack:' + (r.reason || r.type) });
+        fail_count++;
+      }
+    } catch (e) {
+      results.push({ post_id: pid, ok: false, error: 'exception:' + (e.message || String(e)) });
+      fail_count++;
+    }
+  }
+  return {
+    ok: true, total: post_ids.length, succeeded: ok_count, failed: fail_count,
+    results, reason,
+    note: '已撤下帖不再出现在 market.list(下次刷新);taken_down 帧会被论坛广播。',
   };
 });
 

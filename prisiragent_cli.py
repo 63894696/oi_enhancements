@@ -657,13 +657,15 @@ _SUBAGENT_MAX_LOOPS = 5
 
 def _subagent_tools(skills: list | None) -> list:
     """子代工具集:全量剔除 spawn_subagent + run_workflow + run_task + new_workflow + workflow_bundle +
-    workflow_market_publish + workflow_market_retract(防递归),再按 skills 白名单过滤。
+    workflow_market_publish + workflow_market_retract + workflow_market_takedown(+_batch)(防递归),
+    再按 skills 白名单过滤。
     new_workflow/workflow_bundle/workflow_market_* 同 run_task 一样能让 LLM 写文件 + 入库 + 跨机器
-    派发 / 自删,子代不应自己派单。workflow_market_list / workflow_market_fetch 是只读浏览,
-    允许子代用(查资料 OK,写不出去)。"""
+    派发 / 自删 / 撤下,子代不应自己派单。workflow_market_list / workflow_market_fetch /
+    workflow_market_operator_identity 是只读查询,允许子代用。"""
     pool = [t for t in TOOLS if t["function"]["name"] not in (
         "spawn_subagent", "run_workflow", "run_task", "new_workflow",
         "workflow_bundle", "workflow_market_publish", "workflow_market_retract",
+        "workflow_market_takedown", "workflow_market_takedown_batch",
     )]
     if not skills:
         return pool
@@ -2150,6 +2152,94 @@ def _t_workflow_market_publish(args: dict, workdir: str, on_event=None) -> str:
     return _json.dumps(out)
 
 
+def _t_workflow_market_takedown(args: dict, workdir: str, on_event=None) -> str:
+    """P2.5+B-4.F.B(2026-09-22)运营者一键撤下 marketplace 帖。
+
+    调 marketplace market.take_down(走 _ext_rpc_call),内部:
+      1) 验运营者身份(~/.prisir/forum_operator.key 存在 → 用 Ed25519 私钥)
+      2) 读 history 找目标帖 + 校未 taken_down(早失败)
+      3) 拼 canon({post_id, reason, ts}) 签名(无 PoW,信任根)
+      4) 发 t='takedown' 帧(独立帧,不走 post)
+
+    失败模式透传: not_operator / post_not_found / already_taken_down / forum_nack:bad_operator_sig
+    """
+    import json as _json
+
+    post_id = str(args.get("post_id") or "").strip()
+    if not post_id:
+        return _json.dumps({
+            "error": "workflow_market_takedown 需要 post_id 字段",
+            "hint": "示例: workflow_market_takedown({post_id:'abc123...', reason:'spam'})",
+        })
+    reason = str(args.get("reason") or "").strip()[:200]
+    since_seq = int(args.get("since_seq") or 0)
+
+    resp = _ext_rpc_call("marketplace", "market.take_down",
+                         {"post_id": post_id, "reason": reason, "since_seq": since_seq}, timeout=15)
+    if not resp.get("ok"):
+        return _json.dumps({"error": f"market.take_down failed: {resp.get('error') or resp}"})
+    result = resp.get("result") or {}
+    if not result.get("ok"):
+        err_obj = {"error": f"marketplace: {result.get('error') or 'unknown'}"}
+        if result.get("hint"): err_obj["hint"] = result["hint"]
+        if result.get("key_path"): err_obj["key_path"] = result["key_path"]
+        return _json.dumps(err_obj)
+    return _json.dumps({
+        "ok": True,
+        "post_id": result.get("post_id"),
+        "taken_down_at": result.get("taken_down_at"),
+        "reason": result.get("reason"),
+        "note": "运营撤下成功;论坛 broadcast,下次 workflow_market_list 该帖不再出现。",
+    })
+
+
+def _t_workflow_market_takedown_batch(args: dict, workdir: str, on_event=None) -> str:
+    """P2.5+B-4.F.B(2026-09-22)批量运营撤下。
+
+    调 marketplace market.take_down_batch,内部循环每条单独签名 + 发帧,失败不影响其他。
+    """
+    import json as _json
+
+    post_ids = args.get("post_ids")
+    if not isinstance(post_ids, list) or not post_ids:
+        return _json.dumps({
+            "error": "workflow_market_takedown_batch 需要 post_ids 数组字段(>=1 项,<=50)",
+            "hint": "示例: workflow_market_takedown_batch({post_ids:['abc','def'], reason:'spam'})",
+        })
+    reason = str(args.get("reason") or "").strip()[:200]
+
+    resp = _ext_rpc_call("marketplace", "market.take_down_batch",
+                         {"post_ids": post_ids, "reason": reason}, timeout=120)
+    if not resp.get("ok"):
+        return _json.dumps({"error": f"market.take_down_batch failed: {resp.get('error') or resp}"})
+    result = resp.get("result") or {}
+    if not result.get("ok"):
+        err_obj = {"error": f"marketplace: {result.get('error') or 'unknown'}"}
+        if result.get("hint"): err_obj["hint"] = result["hint"]
+        if result.get("key_path"): err_obj["key_path"] = result["key_path"]
+        return _json.dumps(err_obj)
+    return _json.dumps({
+        "ok": True,
+        "total": result.get("total"),
+        "succeeded": result.get("succeeded"),
+        "failed": result.get("failed"),
+        "results": result.get("results"),
+        "reason": result.get("reason"),
+        "note": "批量撤下完成;results 数组每项含 ok / post_id / error,UI 可逐项标 status。",
+    })
+
+
+def _t_workflow_market_operator_identity(args: dict, workdir: str, on_event=None) -> str:
+    """P2.5+B-4.F.B(2026-09-22)查当前用户是不是 marketplace 论坛运营者。
+    用于 LLM / web UI 在显示「撤下」按钮前预检;避免点了再返 not_operator。
+    """
+    import json as _json
+    resp = _ext_rpc_call("marketplace", "market.operator_identity", {}, timeout=3)
+    if not resp.get("ok"):
+        return _json.dumps({"error": f"market.operator_identity failed: {resp.get('error') or resp}"})
+    return _json.dumps(resp.get("result") or {"is_operator": False})
+
+
 def get_todos(session_id: str = "default") -> list:
     return _TODOS.get(session_id, [])
 
@@ -3114,6 +3204,52 @@ TOOLS = [
             "since_seq": {"type": "integer", "default": 0,
                           "description": "增量游标(查目标帖用,默认 0 拉全量)"},
         }, "required": ["post_id"]}}},
+    # P2.5+B-4.F.B(2026-09-22)运营者撤下工具集(单条 + 批量 + 身份查询)
+    {"type": "function", "function": {
+        "name": "workflow_market_takedown",
+        "description": (
+            "Operator-only takedown: remove ANY post on the Prisir forum «PrisirAI 对话» "
+            "sub-board (spam / illegal / off-topic / harassment). Requires "
+            "~/.prisir/forum_operator.key (env PRISIR_FORUM_OPERATOR_KEY_PATH) to exist; "
+            "otherwise returns ok:false error:not_operator. Server-side verify with "
+            "OPERATOR_PUB env on forum_relay.py — no PoW needed (trust root). Use when "
+            "the user (acting as operator) says '撤下那个 spam 帖' / 'take that down' / "
+            "'remove X post'. For bulk: use workflow_market_takedown_batch."
+        ),
+        "parameters": {"type": "object", "properties": {
+            "post_id": {"type": "string",
+                        "description": "目标帖 ID(从 workflow_market_list 拿)"},
+            "reason": {"type": "string",
+                       "description": "撤下原因(选填,≤200 字,留 trace)" +
+                                     "建议从 [spam] / [illegal] / [harassment] / [off-topic] / " +
+                                     "[其他(自填)] 5 个预设里选,见 wf_market_takedown_reasons"},
+            "since_seq": {"type": "integer", "default": 0,
+                          "description": "增量游标(查目标帖用,默认 0)"},
+        }, "required": ["post_id"]}}},
+    {"type": "function", "function": {
+        "name": "workflow_market_takedown_batch",
+        "description": (
+            "Bulk operator takedown: remove up to 50 posts in one call. Same auth as "
+            "workflow_market_takedown (operator only). Loops client-side; one failure "
+            "doesn't block others. Returns {ok, total, succeeded, failed, results: [{post_id, ok, error?}]}. "
+            "Use when the user wants to clear out spam sweep / cleanup batch."
+        ),
+        "parameters": {"type": "object", "properties": {
+            "post_ids": {"type": "array", "items": {"type": "string"},
+                         "description": "目标帖 ID 列表(1..50 项)"},
+            "reason": {"type": "string",
+                       "description": "撤下原因(同 takedown 单条)"},
+        }, "required": ["post_ids"]}}},
+    {"type": "function", "function": {
+        "name": "workflow_market_operator_identity",
+        "description": (
+            "Check whether the current user is a registered operator of the marketplace "
+            "forum (has ~/.prisir/forum_operator.key matching server's OPERATOR_PUB). "
+            "Returns {is_operator: true, pub, fp} or {is_operator: false, hint}. "
+            "Use this BEFORE showing takedown buttons in UI to avoid 'not_operator' errors; "
+            "LLM may also call it to confirm before takedown actions."
+        ),
+        "parameters": {"type": "object", "properties": {}, "required": []}}},
 ]
 
 
@@ -3392,6 +3528,15 @@ def dispatch(name: str, args: dict, workdir: str, on_confirm=None, model: str = 
     if name == "workflow_market_retract":
         return _t_workflow_market_retract(args if isinstance(args, dict) else {},
                                           workdir, on_event=on_event)
+    if name == "workflow_market_takedown":
+        return _t_workflow_market_takedown(args if isinstance(args, dict) else {},
+                                           workdir, on_event=on_event)
+    if name == "workflow_market_takedown_batch":
+        return _t_workflow_market_takedown_batch(args if isinstance(args, dict) else {},
+                                                 workdir, on_event=on_event)
+    if name == "workflow_market_operator_identity":
+        return _t_workflow_market_operator_identity(args if isinstance(args, dict) else {},
+                                                    workdir, on_event=on_event)
     if name == "philosopher_debate":
         import prisir_philosopher as _ph  # noqa: PLC0415
         res = _ph.run_philosopher(

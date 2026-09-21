@@ -5988,8 +5988,49 @@ _PAGE = r"""<!DOCTYPE html>
     <div id="wf-market-list"></div>
     <div class="wf-nm-row">
       <button class="topbtn" onclick="wfMarketRefresh()" data-i18n="wf_market_refresh">🔄 刷新</button>
+      <button class="topbtn" style="color:var(--gh-danger)" onclick="wfMarketTakedownBatch()" data-i18n="wf_market_takedown_batch">🚫 批量撤下</button>
       <button class="topbtn" onclick="wfMarketCancel()" data-i18n="close">关闭</button>
     </div>
+  </div>
+</div>
+
+<!-- P2.5+B-4.F.B(2026-09-22)原因模板 dropdown + 自填输入(撤下 / 自删共用) -->
+<div id="wf-market-reason-modal" style="display:none">
+  <div class="wf-nm-card" style="min-width:380px;max-width:480px">
+    <h3><span id="wf-market-reason-mode">撤下</span>原因</h3>
+    <label class="wf-import-row">
+      <span>预设</span>
+      <select id="wf-market-reason-select" onchange="wfMarketReasonSelect()"></select>
+    </label>
+    <label class="wf-import-row">
+      <span>自填/补充</span>
+      <textarea id="wf-market-reason-text" rows="2" placeholder="选「其他」时必填;其他模式可补充细节"></textarea>
+    </label>
+    <div class="wf-nm-row">
+      <button class="topbtn primary" onclick="wfMarketReasonApply()" data-i18n="ok">确定</button>
+      <button class="topbtn" onclick="wfMarketReasonCancel()" data-i18n="cancel">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- P2.5+B-4.F.B(2026-09-22)批量撤下 modal:勾选远端帖 + 原因 → 一次 RPC -->
+<div id="wf-market-batch-modal" style="display:none">
+  <div class="wf-nm-card" style="min-width:680px;max-width:880px">
+    <h3 data-i18n="wf_market_takedown_batch_title">🚫 批量撤下 marketplace 帖</h3>
+    <div class="wf-import-hint" data-i18n="wf_market_takedown_batch_hint">
+      仅运营者可见。勾选要撤下的远端帖(已撤下的不会显示 checkbox),
+      一次 RPC 提交。失败的条目会标 error,不影响其他条目撤下。
+    </div>
+    <label class="wf-import-row">
+      <span data-i18n="wf_market_takedown_reason">原因</span>
+      <textarea id="wf-market-batch-reason-text" rows="2"></textarea>
+    </label>
+    <div id="wf-market-batch-list" style="max-height:380px;overflow-y:auto"></div>
+    <div class="wf-nm-row">
+      <button class="topbtn primary" style="color:var(--gh-danger)" onclick="wfMarketBatchApply()" data-i18n="wf_market_takedown_apply">撤下选中</button>
+      <button class="topbtn" onclick="wfMarketBatchCancel()" data-i18n="cancel">取消</button>
+    </div>
+    <div id="wf-market-batch-status" class="sub"></div>
   </div>
 </div>
 
@@ -6223,6 +6264,17 @@ const I18N = {
     wf_market_retract_reason_prompt:'为什么删?(可选,会写进 retract 帧 body 留 trace)',
     wf_market_retracted:'已自删该 marketplace 帖',
     wf_market_retract_fail:'自删失败',
+    // P2.5+B-4.F.B(2026-09-22)运营撤下 + 撤回通知 + 原因模板 + 批量撤下
+    wf_market_takedown_confirm:'运营撤下此帖(任何帖可撤,影响论坛可见性)',
+    wf_market_takedown_ok:'运营撤下成功',
+    wf_market_takedown_fail:'运营撤下失败',
+    wf_market_takedown_batch:'🚫 批量撤下',
+    wf_market_takedown_batch_title:'🚫 批量撤下 marketplace 帖',
+    wf_market_takedown_batch_hint:'仅运营者可见。勾选要撤下的远端帖(已撤下的不会显示 checkbox),一次 RPC 提交。失败的条目会标 error,不影响其他条目撤下。',
+    wf_market_takedown_reason:'原因',
+    wf_market_takedown_apply:'撤下选中',
+    wf_market_takedown_reasons:'[spam] [illegal] [harassment] [off-topic] [其他(自填)]',
+    wf_market_retract_reasons:'[误发] [重复] [已更新到新版本] [测试] [其他(自填)]',
     wf_publish_title:'📤 发布到 Prisir 论坛',
     wf_publish_hint:'选中左栏 task → 自动 bundle → 签名 + PoW → 发到论坛。1-3s。',
     wf_publish_apply:'发布',
@@ -6319,6 +6371,17 @@ const I18N = {
     wf_market_retract_reason_prompt:'Why delete? (optional, recorded in retract body for trace)',
     wf_market_retracted:'Self-deleted this marketplace post',
     wf_market_retract_fail:'Self-delete failed',
+    // P2.5+B-4.F.B(2026-09-22)operator takedown + retraction notice + reason templates + batch takedown
+    wf_market_takedown_confirm:'Operator takedown this post (any post, affects forum visibility)',
+    wf_market_takedown_ok:'Operator takedown success',
+    wf_market_takedown_fail:'Operator takedown failed',
+    wf_market_takedown_batch:'🚫 Batch takedown',
+    wf_market_takedown_batch_title:'🚫 Batch takedown marketplace posts',
+    wf_market_takedown_batch_hint:'Operator-only. Pick posts to takedown (already-removed ones hide the checkbox), one RPC. Failed entries flagged but do not block others.',
+    wf_market_takedown_reason:'Reason',
+    wf_market_takedown_apply:'Takedown selected',
+    wf_market_takedown_reasons:'[spam] [illegal] [harassment] [off-topic] [other(custom)]',
+    wf_market_retract_reasons:'[mistake] [duplicate] [updated] [test] [other(custom)]',
     wf_publish_title:'📤 Publish to Prisir forum',
     wf_publish_hint:'Pick left tasks → bundle → sign + PoW → post. 1-3s.',
     wf_publish_apply:'Publish',
@@ -8468,39 +8531,84 @@ async function wfMarketList() {
   document.getElementById('wf-market-modal').classList.add('open');
   await wfMarketRefresh();
 }
-async function wfMarketRefresh() {
-  const box = document.getElementById('wf-market-list');
+async function wfMarketRefresh(opts) {
+  opts = opts || {};
+  const includeRetracted = !!opts.includeRetracted;
+  const batchMode = !!opts.batchMode;
+  const box = batchMode
+    ? document.getElementById('wf-market-batch-list')
+    : document.getElementById('wf-market-list');
+  if (!box) return;
   box.innerHTML = '<div class="sub">⏳ 拉论坛列表…</div>';
   // P2.5+B-4.F.A(2026-09-21)拿到自己 fp,只有自己发的帖才显示 🗑️ 自删按钮 + ★ 标记
-  let myFp = '';
+  // P2.5+B-4.F.B(2026-09-22)拿到运营者身份,是运营者才显示 🚫 撤下按钮(任意帖)
+  let myFp = '', isOperator = false, operatorFp = '';
   try {
     const me = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ext_id:'marketplace', method:'market.identity', params:{}, timeout:3})});
     if (me.ok && me.result && me.result.ok) myFp = (me.result.identity && me.result.identity.fp) || '';
   } catch {}
+  try {
+    const op = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ext_id:'marketplace', method:'market.operator_identity', params:{}, timeout:3})});
+    if (op.ok && op.result && op.result.is_operator) {
+      isOperator = true; operatorFp = op.result.fp || '';
+    }
+  } catch {}
   const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ext_id:'marketplace', method:'market.list', params:{}, timeout:15})});
+    body: JSON.stringify({ext_id:'marketplace', method:'market.list',
+                          params: includeRetracted ? {include_retracted: true} : {}, timeout:15})});
   if (!r.ok || !r.result || !r.result.ok) {
     box.innerHTML = '<div class="sub">❌ ' + esc((r.result && r.result.error) || r.error || 'rpc fail') + '</div>';
     return;
   }
   const posts = r.result.posts || [];
-  if (!posts.length) { box.innerHTML = '<div class="sub">暂无可下载的工作流</div>'; return; }
-  let h = '<table style="width:100%;font-size:13px;border-collapse:collapse"><tr>' +
+  if (!posts.length) {
+    box.innerHTML = '<div class="sub">' +
+                    (batchMode ? 'marketplace 上暂无帖(运营撤下前先发几个?)' : '暂无可下载的工作流') +
+                    '</div>';
+    return;
+  }
+  // 顶部状态:运营者徽章
+  let headBanner = '';
+  if (!batchMode && isOperator) {
+    headBanner = '<div class="sub" style="color:var(--gh-accent);margin-bottom:6px">' +
+                 '⚙️ 当前是 marketplace 运营者(fp=' + esc(operatorFp.slice(0, 8)) + '…),' +
+                 '每行右侧可一键撤下</div>';
+  }
+  let h = headBanner + '<table style="width:100%;font-size:13px;border-collapse:collapse"><tr>' +
           '<th style="text-align:left">标题</th><th>作者</th><th>workflow</th><th>大小</th><th>时间</th><th></th></tr>';
   for (const p of posts) {
     const fp = (p.author_fp || '').slice(0, 8);
     const isMine = myFp && p.author_fp === myFp;
-    h += '<tr style="border-top:1px solid var(--gh-line)">' +
-         '<td>' + esc(p.title || '') + '</td>' +
+    // P2.5+B-4.F.B 已撤下横幅:背景色 + 徽章
+    const isRetracted = p.status === 'retracted';
+    const isTakenDown = p.status === 'taken_down';
+    const rowBg = isRetracted ? 'background:var(--gh-paper);opacity:0.55' :
+                  isTakenDown ? 'background:#fee;border-left:3px solid var(--gh-warn)' : '';
+    const statusBadge = isRetracted ? ' <span title="' + esc(p.retracted_reason || '') +
+                        '" style="color:var(--gh-warn);font-weight:bold">⚠ 已自删</span>' :
+                      isTakenDown ? ' <span title="' + esc(p.taken_down_reason || '') +
+                        '" style="color:var(--gh-danger);font-weight:bold">⚠ 运营撤下</span>' : '';
+    let actions = '';
+    if (batchMode) {
+      if (!isRetracted && !isTakenDown) {
+        actions = '<input type="checkbox" class="wf-market-batch-check" data-post-id="' + esc(p.post_id) + '">';
+      }
+    } else {
+      actions = '<button class="topbtn mini" onclick="wfMarketDownload(\'' + esc(p.post_id) + '\')">📥 下载</button>';
+      if (isMine) actions += ' <button class="topbtn mini" style="color:var(--gh-warn)" onclick="wfMarketRetract(\'' + esc(p.post_id) + '\')">🗑️ 自删</button>';
+      if (isOperator && !isMine && !isRetracted && !isTakenDown) {
+        actions += ' <button class="topbtn mini" style="color:var(--gh-danger)" onclick="wfMarketTakedown(\'' + esc(p.post_id) + '\')">🚫 撤下</button>';
+      }
+    }
+    h += '<tr style="border-top:1px solid var(--gh-line);' + rowBg + '">' +
+         '<td>' + esc(p.title || '') + statusBadge + '</td>' +
          '<td style="text-align:center"><code>' + esc(fp) + '</code>' + (isMine ? ' <span style="color:var(--gh-accent)">★</span>' : '') + '</td>' +
          '<td style="text-align:center">' + (p.workflow_count || '?') + '</td>' +
          '<td style="text-align:center">' + (((p.bundle_size || 0) / 1024).toFixed(1)) + ' KB</td>' +
          '<td style="text-align:center">' + esc(new Date(p.ts).toLocaleString()) + '</td>' +
-         '<td style="text-align:center;white-space:nowrap">' +
-         '<button class="topbtn mini" onclick="wfMarketDownload(\'' + esc(p.post_id) + '\')">📥 下载</button>' +
-         (isMine ? ' <button class="topbtn mini" style="color:var(--gh-warn)" onclick="wfMarketRetract(\'' + esc(p.post_id) + '\')">🗑️ 自删</button>' : '') +
-         '</td></tr>';
+         '<td style="text-align:center;white-space:nowrap">' + actions + '</td></tr>';
   }
   box.innerHTML = h + '</table>';
 }
@@ -8528,15 +8636,16 @@ async function wfMarketDownload(postId) {
   document.getElementById('wf-status').textContent = '✓ 远端下载完成: ' + n + ' 个';
 }
 // P2.5+B-4.F.A(2026-09-21)作者一键自删自己发的 marketplace 帖。
-// 流程:prompt 输入 reason → confirm → 调 market.retract → 失败带 rich error / 成功刷新列表。
+// P2.5+B-4.F.B(2026-09-22)原因改 dropdown 模板 + 自填输入框;运营者撤下走 wfMarketTakedown。
+// 流程:弹 modal 选原因模板(5 预设 + 自填)→ confirm → 调 market.retract → 失败 rich error / 成功刷新。
 async function wfMarketRetract(postId) {
   if (!postId) return;
-  const reason = prompt(T('wf_market_retract_reason_prompt'), '');
+  const reason = await wfMarketPickReason('retract');   // 模板 dropdown + 自填
   if (reason === null) return;  // 用户点取消
-  if (!confirm(T('wf_market_retract_confirm') + '?\n' + postId)) return;
+  if (!confirm(T('wf_market_retract_confirm') + '?\n' + postId + '\n原因: ' + reason)) return;
   const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ext_id:'marketplace', method:'market.retract',
-                          params:{post_id: postId, reason: reason.trim()}, timeout:30})});
+                          params:{post_id: postId, reason: reason}, timeout:30})});
   if (!r.ok || !r.result || !r.result.ok) {
     const err = (r.result && r.result.error) || r.error || 'rpc fail';
     const hint = (r.result && r.result.hint) ? '\n\n' + r.result.hint : '';
@@ -8550,6 +8659,104 @@ async function wfMarketRetract(postId) {
   await wfMarketRefresh();
   document.getElementById('wf-status').textContent = '✓ ' + T('wf_market_retracted') + ': ' + postId;
 }
+
+// P2.5+B-4.F.B(2026-09-22)撤回/撤下原因模板 dropdown(5 预设 + 自填输入)。
+// 弹一个小 modal,用户选预设或输自填;返最终 reason 字符串;点取消返 null。
+// mode='retract' 用 retract 预设,mode='takedown' 用 takedown 预设(更偏运营场景)。
+async function wfMarketPickReason(mode) {
+  const presets = mode === 'takedown'
+    ? ['[spam]', '[illegal]', '[harassment]', '[off-topic]', '[其他(自填)]']
+    : ['[误发]', '[重复]', '[已更新到新版本]', '[测试]', '[其他(自填)]'];
+  const m = document.getElementById('wf-market-reason-modal');
+  const sel = document.getElementById('wf-market-reason-select');
+  const txt = document.getElementById('wf-market-reason-text');
+  sel.innerHTML = '';
+  presets.forEach((p, i) => {
+    const opt = document.createElement('option');
+    opt.value = p;
+    opt.textContent = p;
+    sel.appendChild(opt);
+  });
+  txt.value = '';
+  txt.style.display = 'none';
+  document.getElementById('wf-market-reason-mode').textContent = mode === 'takedown' ? '撤下' : '自删';
+  m.dataset.mode = mode;
+  m.classList.add('open');
+  return await new Promise((resolve) => { m._resolve = resolve; });
+}
+function wfMarketReasonSelect() {
+  const sel = document.getElementById('wf-market-reason-select');
+  const txt = document.getElementById('wf-market-reason-text');
+  txt.style.display = sel.value === '[其他(自填)]' ? '' : 'none';
+  if (sel.value !== '[其他(自填)]') txt.value = sel.value;
+}
+function wfMarketReasonCancel() {
+  const m = document.getElementById('wf-market-reason-modal');
+  m.classList.remove('open');
+  if (m._resolve) { const r = m._resolve; m._resolve = null; r(null); }
+}
+function wfMarketReasonApply() {
+  const m = document.getElementById('wf-market-reason-modal');
+  const sel = document.getElementById('wf-market-reason-select');
+  const txt = document.getElementById('wf-market-reason-text');
+  let reason = (txt.value || '').trim() || sel.value;
+  if (sel.value === '[其他(自填)]' && !txt.value.trim()) { alert('选了「其他」请填具体原因'); return; }
+  m.classList.remove('open');
+  if (m._resolve) { const r = m._resolve; m._resolve = null; r(reason.slice(0, 200)); }
+}
+
+// P2.5+B-4.F.B(2026-09-22)运营者撤下(单条)— 仅 isOperator=true 时由 UI 调用。
+async function wfMarketTakedown(postId) {
+  if (!postId) return;
+  const reason = await wfMarketPickReason('takedown');
+  if (reason === null) return;
+  if (!confirm(T('wf_market_takedown_confirm') + '?\n' + postId + '\n原因: ' + reason)) return;
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'marketplace', method:'market.take_down',
+                          params:{post_id: postId, reason: reason}, timeout:15})});
+  if (!r.ok || !r.result || !r.result.ok) {
+    const err = (r.result && r.result.error) || r.error || 'rpc fail';
+    const hint = (r.result && r.result.hint) ? '\n\n' + r.result.hint : '';
+    alert('❌ ' + T('wf_market_takedown_fail') + '\n' + err + hint);
+    return;
+  }
+  alert('✓ ' + T('wf_market_takedown_ok') + '\n' + postId);
+  await wfMarketRefresh();
+  document.getElementById('wf-status').textContent = '✓ ' + T('wf_market_takedown_ok') + ': ' + postId;
+}
+
+// 批量撤下:弹专用 modal 选要撤的远端帖(checkbox 多选)+ 选原因 → 一次 RPC。
+async function wfMarketTakedownBatch() {
+  const reason = await wfMarketPickReason('takedown');
+  if (reason === null) return;
+  await wfMarketRefresh({includeRetracted: true, batchMode: true});
+  document.getElementById('wf-market-batch-status').textContent = '请勾选要撤下的远端帖';
+  document.getElementById('wf-market-batch-reason-text').value = reason;
+  document.getElementById('wf-market-batch-modal').classList.add('open');
+}
+function wfMarketBatchCancel() { document.getElementById('wf-market-batch-modal').classList.remove('open'); }
+async function wfMarketBatchApply() {
+  const cbs = document.querySelectorAll('#wf-market-batch-list .wf-market-batch-check:checked');
+  const post_ids = Array.from(cbs).map(cb => cb.dataset.postId);
+  if (!post_ids.length) { alert(T('wf_bundle_select_first')); return; }
+  const reason = document.getElementById('wf-market-batch-reason-text').value.trim() || '(批量撤下)';
+  const status = document.getElementById('wf-market-batch-status');
+  status.textContent = '⏳ 撤下中…(' + post_ids.length + ' 帖)';
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'marketplace', method:'market.take_down_batch',
+                          params:{post_ids, reason}, timeout:120})});
+  if (!r.ok || !r.result || !r.result.ok) {
+    status.textContent = '❌ ' + ((r.result && r.result.error) || r.error || 'rpc fail');
+    return;
+  }
+  const result = r.result;
+  status.textContent = '✓ ' + result.succeeded + '/' + result.total + ' 撤下成功,' + result.failed + ' 失败';
+  setTimeout(() => {
+    document.getElementById('wf-market-batch-modal').classList.remove('open');
+    wfMarketRefresh();
+  }, 2000);
+}
+
 async function wfMarketPublish() {
   const checked = document.querySelectorAll('#wf-task-list .wf-task-check:checked');
   if (!checked.length) { alert(T('wf_bundle_select_first')); return; }
@@ -8600,6 +8807,8 @@ async function wfPublishApply() {
 function wfMarketCancel() {
   document.getElementById('wf-market-modal').classList.remove('open');
   document.getElementById('wf-publish-modal').classList.remove('open');
+  document.getElementById('wf-market-reason-modal').classList.remove('open');
+  document.getElementById('wf-market-batch-modal').classList.remove('open');
 }
 
 async function wfBundleImportApply() {

@@ -1,0 +1,45 @@
+feat(p2.5+b-4.fb): marketplace 运营撤下 + 撤回通知 + 原因模板 + 批量撤下
+
+B-4.F.A 落地了作者自删 (market.retract)。本任务把撤下侧补完:
+- VPS 运营者单条撤下 (market.take_down, Ed25519 OPERATOR_PUB 签名 + t='takedown' 帧)
+- 批量撤下 (market.take_down_batch, max 50, 单条失败不中断)
+- 撤回通知 (market.list include_retracted=true, 透传 retracted_by/taken_down_by/status)
+- 原因模板 (5 预设 dropdown:retract 中文/takedown 英文,各带「其他(自填)」)
+
+实现:
+- marketplace ext: _operatorKeyPath() + _loadOperatorIdentity() 从
+  ~/.prisir/forum_operator.key 重建 Ed25519 私钥(PKCS8 DER 种子 32 字节)。
+  env PRISIR_FORUM_OPERATOR_KEY_PATH 可覆盖。OPERATOR_PUB 已在 forum_relay.py
+  存在 (line 230-238 / 422-429),无协议层改动。
+- take_down 早失败: post_id required / not_operator / post_not_found /
+  already_taken_down。验证后拼 canon({post_id, reason, ts}) 签名 + 发
+  t='takedown' 帧。takdedown 是信任根,无 PoW。
+- take_down_batch: try/catch 包每条,累 succeeded/failed/total/results。
+- market.list 加 include_retracted:true 模式:不过滤已撤帖,out 加
+  status (live/retracted/taken_down) + retracted_by (作者 fp) +
+  taken_down_by ('operator') + reason。客户端 read 过滤,无 server push。
+- cli 加 3 工具: workflow_market_takedown / _batch / _operator_identity。
+  _operator_identity 只读保留给子代;takedown + batch 加入子代剔除列表。
+- web wfMarketPickReason(mode) dropdown:5 预设 + 自填输入框,retract/takedown
+  双模式都走。wfMarketTakedown(postId) 单条撤下 + 二次确认;wfMarketTakedownBatch
+  批量勾选 .wf-market-batch-check,拿 post_ids 一次 RPC。
+- wfMarketRefresh 加 opts: includeRetracted / batchMode / isOperator。
+  运营者行渲染 🚫 撤下按钮;已撤下行显示 ⚠ 已自删 / ⚠ 运营撤下 横幅 +
+  reason tooltip + 透明度 + 禁用下载/撤下按钮。
+- 2 个新 modal: #wf-market-reason-modal (select + textarea) +
+  #wf-market-batch-modal (list + reason + status)。
+- wfMarketCancel 升级关 4 modal(wf-market / wf-publish / wf-market-reason /
+  wf-market-batch)。
+- i18n 11 keys 中英 (wf_market_takedown_* / wf_market_retract_reasons)。
+
+测试 _test_p2b4fb_marketplace_takedown.py 100/100 静态扫 + cli/web/扩展
+编译 OK。回归 12 测全绿:B-0/B-2/B-3/hotfix/doc/B-4/B-4.B/B-4.D/B-4.E/
+B-4.F/B-4.F.A/B-4.F.B。
+
+解锁: marketplace 侧运营闭环完成 (发/审/撤/通知),下一阶段可做
+评分/评论/搜索/作者过滤或迁移 marketplace 框架到通用 marketplace (不止
+workflow)。
+
+参考:[[p2-5-b-4-fa-marketplace-retract-shipped]] 自删实现 +
+[[forum-prod-deployment]] 论坛部署 + [[prisIr-forum-board-public-read]]
+论坛匿名公开读。
