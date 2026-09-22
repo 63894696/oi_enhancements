@@ -30,6 +30,7 @@ import time
 import uuid
 import shutil
 import logging
+import prisIrai_config  # P2.5+15(2026-09-22)YAML 三端对齐(端口/品牌/论坛 URL)
 from urllib.parse import urlparse, parse_qs
 
 # 2026-09-08 #102 增量补丁:在任何项目模块 import 前,把可写补丁目录插到 sys.path[0],
@@ -4494,6 +4495,11 @@ _PAGE = r"""<!DOCTYPE html>
 })();
 </script>
 <script>
+// P2.5+15(2026-09-22):后端注入论坛 URL(YAML 三端对齐)。
+// 由 main() 在渲染 HTML 前调 prisIrai_config.forum_url/board/hint 拼好;缺省时 JS fallback。
+window.__PRISIR_FORUM_URL__ = "__PRISIR_FORUM_URL_PLACEHOLDER__";
+</script>
+<script>
 // 2026-08-25 局域网遥控器授权兜底:配对手机经 iframe 打开 /?token=xxx,后端会 Set-Cookie,
 // 但 Android WebView 的 iframe 第三方 cookie 持久化各版本不一;App 重开后若 cookie 丢失,
 // 页面内相对 fetch('/prisiragent/api/...') 会 401(会话/模型/图标全空,用户实测「重开 App 又没了」)。
@@ -7771,7 +7777,12 @@ function closeKeys(){ document.getElementById('keymodal').classList.remove('open
 //   点「发布到论坛」:POST /prisiragent/api/feedback_zip 打 zip + 经主进程 IPC 打开论坛反馈页
 //   点「仅打包到桌面」:只 POST 端点,显示 zip 路径,让用户决定怎么发
 // 不在装包器内做论坛发帖(token 同步/防滥用/邮件验证不在装包器责任范围)
-const FB_FORUM_URL = "https://bbs.babelspan.com/forum.html#board=browser/shell&hint=prisirai";
+// P2.5+15(2026-09-22):论坛 URL 走 prisIrai_config.yaml 三端对齐,找不到 yaml 用内置默认。
+// Python 端 main() 渲染 HTML 前会调 prisIrai_config.forum_url/board/hint 拼好注入到
+// window.__PRISIR_FORUM_URL__;失败/未注入时降级内置默认。
+const FB_FORUM_URL = (typeof window !== 'undefined' && window.__PRISIR_FORUM_URL__)
+  ? window.__PRISIR_FORUM_URL__
+  : "https://bbs.babelspan.com/forum.html#board=browser/shell&hint=prisirai";
 function openFeedback(){
   document.getElementById('fb-desc').value = "";
   // 默认勾选「包含 model key 脱敏信息」(脱敏是默认安全姿态)
@@ -12068,7 +12079,12 @@ class Handler(BaseHTTPRequestHandler):
                 tok = (qs.get("token") or [""])[0]
                 if tok and lp.verify_token(tok):
                     # 手动发响应以附 Set-Cookie(_html 不透出自定义头)
-                    body = _PAGE.encode("utf-8")
+                    # P2.5+15(2026-09-22):跟主路径一致 inline 替换 forum URL placeholder。
+                    try:
+                        _forum_full = f"{prisIrai_config.forum_url()}#board={prisIrai_config.forum_board()}&hint={prisIrai_config.forum_hint()}"
+                    except Exception:
+                        _forum_full = "https://bbs.babelspan.com/forum.html#board=browser/shell&hint=prisirai"
+                    body = _PAGE.replace("__PRISIR_FORUM_URL_PLACEHOLDER__", _forum_full).encode("utf-8")
                     self.send_response(200)
                     self.send_header("Content-Type", "text/html; charset=utf-8")
                     self.send_header("Content-Length", str(len(body)))
@@ -12076,7 +12092,14 @@ class Handler(BaseHTTPRequestHandler):
                     self.end_headers()
                     self.wfile.write(body)
                     return
-            self._html(_PAGE)
+            # P2.5+15(2026-09-22):YAML 三端对齐 — forum URL 拼好注入到 __PRISIR_FORUM_URL__。
+            # 找不到 yaml / import 失败时降级内置默认(JS 里同样的 fallback)。
+            try:
+                _forum_full = f"{prisIrai_config.forum_url()}#board={prisIrai_config.forum_board()}&hint={prisIrai_config.forum_hint()}"
+            except Exception:
+                _forum_full = "https://bbs.babelspan.com/forum.html#board=browser/shell&hint=prisirai"
+            _page_html = _PAGE.replace("__PRISIR_FORUM_URL_PLACEHOLDER__", _forum_full)
+            self._html(_page_html)
         elif path.startswith("/prisiragent/assets/"):
             self._asset(path[len("/prisiragent/assets/"):])
         elif path == "/prisiragent/api/info":

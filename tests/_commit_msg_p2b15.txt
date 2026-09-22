@@ -1,0 +1,72 @@
+feat(p2.5+15): 三端 config.yaml 化(端口/品牌/论坛 URL)
+
+B-4.F.B ship 后,杂七杂八的硬编码散在三端:
+- Python 端 prisIragent_web.py 写死 forum URL
+- Electron 壳 main.js 写死 BRAND_UPDATES_URL + brand_max_per_run
+- Tauri 壳 lib.rs 写死 BRAND_UPDATES_URL + 24h 周期
+- 三端 DEFAULT_WEB_PORT/CALENDAR_PORT 等常量硬编码在 port_config.* 里
+
+本任务统一抽到 prisIrai_config.yaml(仓库根,三端共享)。设计:
+  ports.web / companion / music / calendar      — 端口默认(允许 yaml 覆盖)
+  brand.url / max_per_run / interval_sec / seen_cap  — 品牌通知
+  forum.url / board / hint                       — 论坛 URL
+
+零 PyYAML / js-yaml / serde_yaml 依赖,每端都写极简 regex / 行扫描解析器。
+
+变更清单
+========
+新增:
+  - prisIrai_config.yaml                          — 三端共享配置(11 字段)
+  - prisIrai_config.py                            — Python loader(regex + 进程级缓存)
+  - prisiragent-shell/config_loader.js            — Electron 壳镜像版(零 js-yaml)
+  - prisiragent-tauri/src-tauri/src/config_loader.rs — Tauri 镜像版(零 serde_yaml)
+  - tests/_test_p2b15_config_yaml.py              — 10 项静态扫 + cli smoke
+
+改动:
+  - companion/music/port_config.py                — DEFAULT_* 走 yaml(try/except 失败降级)
+  - prisiragent-shell/port_config.js              — const → let + try require config_loader
+  - prisiragent-shell/main.js                     — BRAND_UPDATES_URL/MAX_PER_RUN/INTERVAL_MS 走 yaml
+  - prisIragent_web.py                            — 顶部显式 import prisIrai_config +
+                                                     HTML placeholder + 渲染前 str.replace
+  - prisiragent-tauri/src-tauri/src/lib.rs        — BRAND_UPDATES_URL → fn brand_updates_url() +
+                                                     周期 brand_interval_ms() 替代 24*60*60
+  - tests/_test_p2514_calendar_port.py            — 正则调整(const|let + indent 兼容)
+
+关键设计点
+==========
+1) yaml 候选路径三端对齐:
+   Python:  __file__ 同级 + $INSTDIR + cwd
+   JS:      __dirname/.. + $INSTDIR + cwd + __dirname 同级
+   Rust:    exe/../prisIrai_config.yaml + exe 上溯 4 级 + $INSTDIR + %APPDATA% + cwd
+
+2) 失败降级:读不到 yaml / 解析失败时,三端都用内置默认值
+   (18802 / 18850 / 0 / 18803 / babelspan.com / bbs.babelspan.com 等)
+   不抛异常,不破坏既有 port_config 行为。
+
+3) calendar 端口 18803 = web + 1 沿用 P2.5+14 设定;
+   日历路由 /prisIragent/calendar + /__calendar_ready 子进程双端口 listen 不变。
+
+4) BRAND 周期默认 86400s = 24h(从 yaml brand.interval_sec),
+   Rust 端用 brand_interval_ms() 即时计算,不再写死 24*60*60。
+
+5) forum URL 通过 HTML placeholder + 渲染前 str.replace 注入,
+   避免全局修改 _PAGE 常量;降级值走 prisIrai_config 模块默认。
+
+验证
+====
+✓ tests/_test_p2b15_config_yaml.py — 10/10 项绿
+✓ tests/_test_p2514_calendar_port.py — 49/49 全绿(原 47/49 经 P2.5+15 调整后)
+✓ tests/_test_m329_electron_port_chain.py — ALL PASS
+✓ tests/_test_p2b0..b4e — 14 个回归全绿
+✓ Tauri cargo check OK(18 unused fn 警告,getter 全暴露供后续 ship 调用)
+✓ Node require config_loader.js OK
+✓ py_compile:prisIrai_config.py / prisIragent_web.py / port_config.py 全 OK
+
+解锁子任务:
+  - P2.5+16 子窗口分离(下一步,基于 config_loader 拿端口)
+  - P2.5+17 tray icon 子菜单(基于 config_loader 拿 brand 配置)
+  - P2.5+18 装包后 UI 验收(基于 $INSTDIR 找 yaml)
+
+参考:
+  - [[prisIragent-tauri-3-blockers-shipped]] Tauri 端口链基础
+  - [[p2514-calendar-independent-port-shipped]] 日历独立端口

@@ -509,10 +509,12 @@ ipcMain.handle("shell:openExternal", (_e, url) => {
 // 红线:L3 只读自治(只推只读更新、点击只开页);无 key(公开静态 JSON);
 // 容错静默(404/非JSON/断网一律当无更新);防轰炸(去重 + 一次最多3条 + 每日一次)。
 // 隐私:只向外 GET babelspan.com,不上报任何数据;seen 只存 item id(落盘于 userData)。
-const BRAND_UPDATES_URL = "https://www.babelspan.com/updates.json";
-const BRAND_MAX_PER_RUN = 3;   // 一次最多 3 条,防轰炸
-const BRAND_SEEN_CAP = 100;    // seen 只留最近 100 个 id
-const BRAND_INTERVAL_MS = 24 * 60 * 60 * 1000; // 每日
+// P2.5+15(2026-09-22):配置走 prisIrai_config.yaml(三端对齐),找不到 yaml 用内置默认。
+const _config = require("./config_loader");
+const BRAND_UPDATES_URL = _config.brandUrl();
+const BRAND_MAX_PER_RUN = _config.brandMaxPerRun();
+const BRAND_SEEN_CAP = _config.brandSeenCap();
+const BRAND_INTERVAL_MS = _config.brandIntervalMs();
 
 function _brandSeenPath() {
   return path.join(app.getPath("userData"), "brand-notify-seen.json");

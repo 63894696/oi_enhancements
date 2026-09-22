@@ -1,0 +1,42 @@
+# prisIrai_config.yaml — PrisirAI 三端配置(2026-09-22, P2.5+15)
+#
+# 用户可改的运行参数集中放这里。三端(Electron 壳 main.js / Tauri 壳 lib.rs /
+# Python 后端 prisIragent_web.py / companion/music/port_config.py)共用同一份 schema。
+#
+# 优先级:CLI > env > 本文件 > 模块内置默认。
+# 装包后路径候选:① 同目录 / ② $INSTDIR /prisIrai_config.yaml / ③ 工作目录。
+#
+# 改动这一份即生效,不用动代码。
+#
+# 三端字段严格对齐(key 名字一致):
+#   ports.web / companion / music / calendar
+#   brand.url / max_per_run / interval_sec
+#   forum.url / forum.board
+
+# ---------- 端口(主面板 / 语伴 / 音乐 web / 日历) ----------
+# 跟 companion/music/port_config.py / prisiragent-shell/port_config.js /
+# prisiragent-tauri/src-tauri/src/port_config.rs 的默认常量对齐。
+# 实际生产端口由 HKCU 注册表 + _prisir_registry/ports.json 覆盖(P2.5+11);
+# 本 yaml 字段 = 模块默认(未设 HKCU/JSON 时的兜底)。
+ports:
+  web: 18802            # prisiragent_web.py 主面板
+  companion: 18850      # 语伴 prisiragent-companion-web.py
+  music: 0              # music web 启动后才有端口(0 = 由 OS 分配)
+  calendar: 18803       # 日历端口(P2.5+14, 同进程双端口 listen)
+
+# ---------- 品牌化应用通知 ----------
+# Electron + Tauri 壳每日轮询 updates.json,新条目弹系统通知。
+# 只 GET,不写;无 key;404 / 非 JSON / 断网一律静默。
+# (跟 M3.36 评审契约 §C 同源)
+brand:
+  url: "https://www.babelspan.com/updates.json"
+  max_per_run: 3        # 一次最多 3 条,防轰炸
+  interval_sec: 86400   # 24h
+  seen_cap: 100         # seen 列表最多保留 100 个 id
+
+# ---------- Prisir 论坛 ----------
+# 反馈 + marketplace 远端镜像走的免注册论坛子版(browser/shell = 「PrisirAI 对话」)。
+forum:
+  url: "https://bbs.babelspan.com/forum.html"
+  board: "browser/shell"
+  hint: "prisirai"      # 反馈入口的 hint 参数

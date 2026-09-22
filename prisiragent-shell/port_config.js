@@ -23,14 +23,27 @@ const path = require("path");
 const { app } = require("electron");
 
 // 模块默认(必须与 Python 端 port_config.py DEFAULT_* 一致)
-const DEFAULT_WEB_PORT = 18802;       // 主面板 prisiragent_web.py
-const DEFAULT_COMPANION_PORT = 18850; // 语伴
-const DEFAULT_MUSIC_PORT = 0;         // music web 动态分配
+// P2.5+15(2026-09-22):优先读 prisIrai_config.yaml(若存在),字段对齐三端。
+let DEFAULT_WEB_PORT = 18802;       // 主面板 prisiragent_web.py
+let DEFAULT_COMPANION_PORT = 18850; // 语伴
+let DEFAULT_MUSIC_PORT = 0;         // music web 动态分配
 // 日历 走 prisiragent_web.py 的 /prisIragent/calendar 路由,故 calendar 端口 = web 端口。
 // 留独立常量便于后续若 calendar 拆独立服务时切换。
 // P2.5+14(2026-09-22):实际生产 calendar 端口独立 — 同进程双端口 listen,
 // 但 JS 端 default 仍跟随 web(若 Python 端未启 --calendar-port 则 fallback)。
-const DEFAULT_CALENDAR_PORT = 18803;
+// P2.5+15(2026-09-22):默认 18803 来自 yaml ports.calendar(允许用户改 yaml 重定义)。
+let DEFAULT_CALENDAR_PORT = 18803;
+try {
+  // 延迟 require:这个文件被 main.js 和测试都加载,config_loader.js 用 electron.app,
+  // 若 app 还没 ready 时(测试场景)会抛,所以 try 包住,失败保持内置默认。
+  const _cfg = require("./config_loader");
+  if (typeof _cfg.webPortDefault === "function") {
+    DEFAULT_WEB_PORT = _cfg.webPortDefault();
+    DEFAULT_COMPANION_PORT = _cfg.companionPortDefault();
+    DEFAULT_MUSIC_PORT = _cfg.musicPortDefault();
+    DEFAULT_CALENDAR_PORT = _cfg.calendarPortDefault();
+  }
+} catch (_) { /* 装包后无 yaml / 测试态无 electron / 都走内置默认 */ }
 
 // Windows 注册表路径
 const REG_KEY_PATH = "Software\\PrisirAI";

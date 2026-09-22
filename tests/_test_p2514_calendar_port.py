@@ -54,7 +54,8 @@ def main():
     # ─── S1: port_config.py DEFAULT_CALENDAR_PORT = 18803 ───
     print("\n[S1] port_config.py DEFAULT_CALENDAR_PORT = 18803")
     total += 1; passes += check("常量定义",
-        re.search(r'^DEFAULT_CALENDAR_PORT\s*=\s*18803\b', py_src, re.MULTILINE) is not None)
+        re.search(r'^\s*DEFAULT_CALENDAR_PORT\s*=\s*18803(?!\d)', py_src, re.MULTILINE) is not None or
+        re.search(r'^\s*DEFAULT_CALENDAR_PORT\s*=\s*int\(', py_src, re.MULTILINE) is not None)  # P2.5+15 改成 yaml 覆盖:int(...)
     total += 1; passes += check("注释说明 18803 = web + 1",
         'web + 1' in py_src or 'web+1' in py_src)
     total += 1; passes += check("注释提到 P2.5+14",
@@ -86,7 +87,7 @@ def main():
     # ─── S6: port_config.js DEFAULT_CALENDAR_PORT = 18803 ───
     print("\n[S6] port_config.js DEFAULT_CALENDAR_PORT = 18803")
     total += 1; passes += check("常量定义",
-        re.search(r'const\s+DEFAULT_CALENDAR_PORT\s*=\s*18803\b', js_src) is not None)
+        re.search(r'(const|let)\s+DEFAULT_CALENDAR_PORT\s*=\s*18803\b', js_src) is not None)  # P2.5+15 改 let 走 yaml 覆盖
     total += 1; passes += check("注释说明 P2.5+14",
         'P2.5+14' in js_src)
 

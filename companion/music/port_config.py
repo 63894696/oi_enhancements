@@ -40,14 +40,55 @@ from pathlib import Path
 from typing import Optional
 
 
-# 模块默认(代码内置)
-DEFAULT_WEB_PORT = 18802       # 主面板 prisIragent_web.py
-DEFAULT_COMPANION_PORT = 18850 # 语伴 companion/prisiragent-companion-web.py
-DEFAULT_MUSIC_PORT = 0         # 音乐 web 启动后才有端口(0 = 由 OS 分配)
-# P2.5+14(2026-09-22):日历独立端口 — 18803 = web + 1,主动避开已知占用
-# (web=18802/companion=18850/music 动态)。Electron 壳 main.js openCalendarWindow
-# 读 HKCU calendar_port,跟其它三端口走同一套 fallback 链。
-DEFAULT_CALENDAR_PORT = 18803  # 日历独立端口 — P2.5+14 同进程双端口 listen
+# 模块默认(代码内置)。P2.5+15(2026-09-22):优先读 prisIrai_config.yaml(若存在),
+# 没读到字段再降级到代码内置值。三端(Electron 壳 / Tauri 壳 / Python)字段对齐。
+try:
+    import sys as _sys
+    _ROOT = _sys.path[0] if _sys.path and _sys.path[0] else ""
+    if _ROOT and _ROOT not in ("", "."):
+        # 开发态:__file__ 在 companion/music/ → 父目录的父目录是仓库根
+        import os as _os
+        _HERE = _os.path.dirname(_os.path.abspath(__file__))
+        _YAML_CANDIDATES = [
+            _os.path.join(_HERE, "..", "..", "prisIrai_config.yaml"),
+            _os.path.join(_os.environ.get("INSTDIR", _HERE), "prisIrai_config.yaml"),
+        ]
+        _yaml_vals = {}
+        for _yp in _YAML_CANDIDATES:
+            try:
+                if _os.path.exists(_yp):
+                    import re as _re
+                    _cur_sec = ""
+                    for _line in open(_yp, "r", encoding="utf-8").read().splitlines():
+                        _s = _line.rstrip()
+                        if not _s.strip() or _s.lstrip().startswith("#"):
+                            continue
+                        _m_sec = _re.match(r"^([A-Za-z_][A-Za-z0-9_.\-]*)\s*:\s*$", _s)
+                        if _m_sec:
+                            _cur_sec = _m_sec.group(1)
+                            continue
+                        _m = _re.match(r"^  ([A-Za-z_][A-Za-z0-9_.\-]*)\s*:\s*(.+?)\s*(?:#.*)?$", _s)
+                        if _m and _cur_sec:
+                            _yaml_vals[f"{_cur_sec}.{_m.group(1)}"] = _m.group(2).strip().strip('"').strip("'")
+                    if _yaml_vals:
+                        break
+            except Exception:
+                pass
+        DEFAULT_WEB_PORT = int(_yaml_vals.get("ports.web", 18802))
+        DEFAULT_COMPANION_PORT = int(_yaml_vals.get("ports.companion", 18850))
+        DEFAULT_MUSIC_PORT = int(_yaml_vals.get("ports.music", 0))
+        # P2.5+14(2026-09-22):日历独立端口 — 18803 = web + 1,主动避开已知占用
+        # (web=18802/companion=18850/music 动态)。Electron 壳 main.js openCalendarWindow
+        # 读 HKCU calendar_port,跟其它三端口走同一套 fallback 链。
+        DEFAULT_CALENDAR_PORT = int(_yaml_vals.get("ports.calendar", 18803))
+        del _yaml_vals, _YAML_CANDIDATES, _HERE, _yp, _line, _s, _m, _m_sec, _cur_sec, _re, _os, _ROOT
+    else:
+        raise RuntimeError("no_root")
+except Exception:
+    DEFAULT_WEB_PORT = 18802       # 主面板 prisIragent_web.py
+    DEFAULT_COMPANION_PORT = 18850 # 语伴 companion/prisiragent-companion-web.py
+    DEFAULT_MUSIC_PORT = 0         # 音乐 web 启动后才有端口(0 = 由 OS 分配)
+    DEFAULT_CALENDAR_PORT = 18803  # 日历独立端口 — P2.5+14 同进程双端口 listen
 
 # Windows 注册表路径(主通道)
 REG_KEY = r"Software\PrisirAI"

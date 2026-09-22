@@ -28,6 +28,7 @@ use tauri_plugin_autostart::ManagerExt as AutostartExt;
 mod music;
 mod calendar;
 mod port_config;
+mod config_loader;
 
 // ---------- 配置 ----------
 // M3.34(2026-09-19): WEB_PORT / COMPANION_PORT 不再是写死常量。
@@ -40,8 +41,11 @@ mod port_config;
 // (默认端口由 calendar.rs::CALENDAR_PORT_DEFAULT = 18803 提供)
 const HOTKEY: &str = "ctrl+shift+o";
 const AI_TOGGLE_EVENT: &str = "PrisirLingXi_AiToggle_Event";
-const BRAND_UPDATES_URL: &str = "https://www.babelspan.com/updates.json";
-const BRAND_MAX_PER_RUN: usize = 3;
+// P2.5+15(2026-09-22):BRAND_* 从 prisIrai_config.yaml 读,默认值走 config_loader 模块;
+// 镜像 Python 端 prisIrai_config.py + Electron 端 config_loader.js 的存储契约。
+// brand_notify 周期走 brand_interval_ms(),默认 86400s = 24h。
+fn brand_updates_url() -> String { config_loader::brand_url() }
+fn brand_max_per_run() -> usize { config_loader::brand_max_per_run() as usize }
 
 /// 全局状态
 struct AppState {
@@ -592,7 +596,7 @@ fn start_brand_notify(app_handle: tauri::AppHandle) {
 
         loop {
             // 拉取更新
-            let items: Vec<serde_json::Value> = match reqwest::blocking::get(BRAND_UPDATES_URL) {
+            let items: Vec<serde_json::Value> = match reqwest::blocking::get(brand_updates_url()) {
                 Ok(resp) => {
                     if resp.status().is_success() {
                         match resp.json::<serde_json::Value>() {
@@ -626,7 +630,7 @@ fn start_brand_notify(app_handle: tauri::AppHandle) {
                             .map(|id| !seen_set.contains(&id.to_string()))
                             .unwrap_or(false)
                     })
-                    .take(BRAND_MAX_PER_RUN)
+                    .take(brand_max_per_run())
                     .collect();
 
                 for item in fresh {
@@ -657,8 +661,9 @@ fn start_brand_notify(app_handle: tauri::AppHandle) {
                 let _ = fs::write(&seen_path, serde_json::to_string(&seen).unwrap_or_default());
             }
 
-            // 每日
-            std::thread::sleep(Duration::from_secs(24 * 60 * 60));
+            // 每日 — P2.5+15 周期走 prisIrai_config.yaml brand.interval_sec(默认 86400s)
+            let _ms = config_loader::brand_interval_ms();
+            std::thread::sleep(Duration::from_millis(_ms.max(60_000)));
         }
     });
 }
