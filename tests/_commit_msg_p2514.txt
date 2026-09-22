@@ -1,0 +1,45 @@
+feat(p2.5+14): 独立日历端口 — 同进程双端口 listen (18803)
+
+用户 2026-09-22 拍板:日历端口从 web 端口拆出独立。复用现有
+port_config 套件(pick_free_port / resolve_start_port / notify_port_changed)
+做端口冲突自动 fallback。
+
+实现:
+- companion/music/port_config.py 加 DEFAULT_CALENDAR_PORT = 18803 (= web + 1,
+  主动避开 web=18802 / companion=18850 / music 动态)。quick_smoke 表面化。
+- prisIragent_web.py:
+  - CalendarHandler(BaseHTTPRequestHandler):只服务 /prisIragent/calendar* 静态 +
+    /prisIragent/api/calendar/* 动态,其它路由 404 + 日志告警。
+    /__calendar_ready 健康端点供 Electron/Tauri 壳探测。
+  - main() 加 --calendar-port CLI(默认 18803,=0 禁用);
+    优先级:CLI > env PRISIRAGENT_CALENDAR_PORT > 用户设置 > 默认。
+  - 双端口 bootstrap:启动 ThreadingHTTPServer(WEB_HOST, calendar_port, CalendarHandler)
+    在 daemon 后台线程;主 web 端口照常 serve_forever。冲突 → OSError 兜底
+    → 日历路由保留在主 web 端口(--calendar-port=0 等同此行为)。
+  - /api/port_status 增 calendar 块(configured/actual/changed/reason/enabled),
+    前端 toast 跟 web 端口行为对齐。
+  - _CONFIGURED_CALENDAR_PORT / _REAL_CALENDAR_PORT 模块级 globals,
+    跟 _CONFIGURED_PORT / _REAL_PORT 同款追踪模式。
+- prisiragent-shell/port_config.js:DEFAULT_CALENDAR_PORT = 18803(原本
+  DEFAULT_WEB_PORT,改独立);注释路径 /prisIragent/calendar 修正大写 I。
+- prisiragent-tauri/src-tauri/src/port_config.rs:DEFAULT_CALENDAR_PORT: u16 = 18803
+  + read_calendar_port() 函数 + tests 加 assert_eq 覆盖默认值。
+  三端(Python/JS/Rust)对齐同一套 storage contract。
+
+测试:
+- tests/_test_p2514_calendar_port.py 新建,49/49 sections 绿(S1-S22):
+  Python port_config 常量/函数/Smoke + JS 端口/路径/导出 + Rust 常量/函数/测试
+  + web CalendarHandler 路由/CLI/双端口 bootstrap/sentinel/OSError 兜底
+  + /api/port_status calendar 字段 + py_compile + port_config.py 真实 import 烟雾。
+- 回归 tests/_test_p2513_shell_tray.py 39/39 仍绿(更新 S1 anchor 适配
+  DEFAULT_CALENDAR_PORT = 18803 独立 / /prisIragent/calendar 大写 I)。
+
+不改:
+- 不打安装包
+- 不动 DLL/EXE/SPEC
+- 不删文件
+- 端口冲突时仅 OSError 兜底(走主 web 端口),不引配置重试/多阶段 fallback
+- 日历端口拒非日历路径(防止 web 端路由意外暴露到 18803)— 边界保护
+
+参考:[[p2513-shell-tray-companion-music-calendar]] P2.5+13 shell tray
+     日历入口(共用 web 端口);[[tav-shell-port-pinning-regression]] Tauri 壳端口钉死教训。

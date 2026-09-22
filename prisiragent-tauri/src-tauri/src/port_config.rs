@@ -10,7 +10,7 @@
 //!   - Rust 端 `port_config::read_port("music", 0)` 读取
 //!
 //! 字段名严格对齐 Python 端,跨语言双端解读一致:
-//!   web_port / companion_port / music_port  (HKCU 值名)
+//!   web_port / companion_port / music_port / calendar_port  (HKCU 值名)
 //!   ports.json  (JSON 文件名)
 //!   _prisir_registry  (目录名,与 port_registry.py 复用)
 
@@ -26,6 +26,10 @@ use winreg::RegKey;
 pub const DEFAULT_WEB_PORT: u16 = 18802;       // prisIragent_web.py 主面板
 pub const DEFAULT_COMPANION_PORT: u16 = 18850; // prisiragent-companion-web.py
 pub const DEFAULT_MUSIC_PORT: u16 = 0;         // music web 动态分配
+// P2.5+14(2026-09-22):独立日历端口 — 与 Python 端 DEFAULT_CALENDAR_PORT 对齐。
+// 同进程双端口 listen,Electron 壳 main.js openCalendarWindow 通过 read_calendar_port() 读,
+// 跟 web/companion/music 走同一套 HKCU/JSON fallback 链。
+pub const DEFAULT_CALENDAR_PORT: u16 = 18803;  // 日历独立端口 — P2.5+14
 
 // Windows 注册表路径
 const REG_KEY_PATH: &str = "Software\\PrisirAI";
@@ -239,6 +243,13 @@ pub fn read_music_port() -> u16 {
     read_port("music", DEFAULT_MUSIC_PORT)
 }
 
+/// P2.5+14(2026-09-22):便捷封装:读 calendar 端口(默认 18803,同进程双端口 listen)。
+/// 日历端口 = web 端口 + 1 主动避开 web 主端口;Electron 壳 main.js openCalendarWindow
+/// 用 read_calendar_port() 拿端口构造 `http://host:port/prisiragent/calendar` URL。
+pub fn read_calendar_port() -> u16 {
+    read_port("calendar", DEFAULT_CALENDAR_PORT)
+}
+
 // =============================================================================
 // 单元测试
 // =============================================================================
@@ -260,6 +271,8 @@ mod tests {
         assert_eq!(DEFAULT_WEB_PORT, 18802);
         assert_eq!(DEFAULT_COMPANION_PORT, 18850);
         assert_eq!(DEFAULT_MUSIC_PORT, 0);
+        // P2.5+14:日历端口默认 18803 = web + 1
+        assert_eq!(DEFAULT_CALENDAR_PORT, 18803);
     }
 
     #[test]

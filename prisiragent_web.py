@@ -183,6 +183,11 @@ WEB_PORT = int(os.environ.get("PRISIRAGENT_WEB_PORT", os.environ.get("OIAGENT_WE
 # /api/port_status 把这一对返给前端,前端用 sessionStorage 弹一次性 toast。
 _CONFIGURED_PORT: int = WEB_PORT
 _REAL_PORT: int = WEB_PORT
+# P2.5+14(2026-09-22)日历端口同款追踪:同进程双端口 listen,日历端口也走 configured/actual 双轨。
+# /api/port_status 增 calendar 字段,前端 toast 跟 web 端口行为对齐。
+# 默认值在 port_config.DEFAULT_CALENDAR_PORT 拿(18803);这里写死 0 是占位,main() 启动时覆盖。
+_CONFIGURED_CALENDAR_PORT: int = 0
+_REAL_CALENDAR_PORT: int = 0
 
 
 def _lan_ip() -> str:
@@ -12098,6 +12103,17 @@ class Handler(BaseHTTPRequestHandler):
             reason = ""
             if changed:
                 reason = "os_allocated" if configured == 0 else "conflict_fallback"
+            # P2.5+14(2026-09-22):日历端口同款追踪。日历端口未启用(--calendar-port=0)时
+            # actual=0,前端跳过 toast。日历端口冲突时 reason 同款。
+            try:
+                cal_configured = int(_CONFIGURED_CALENDAR_PORT)
+                cal_actual = int(_REAL_CALENDAR_PORT)
+            except Exception:  # noqa: BLE001
+                cal_configured, cal_actual = 0, 0
+            cal_changed = (cal_actual != cal_configured)
+            cal_reason = ""
+            if cal_changed and cal_actual > 0:
+                cal_reason = "os_allocated" if cal_configured == 0 else "conflict_fallback"
             self._json({
                 "ok": True,
                 "web": {
@@ -12105,6 +12121,13 @@ class Handler(BaseHTTPRequestHandler):
                     "actual": actual,
                     "changed": changed,
                     "reason": reason,
+                },
+                "calendar": {
+                    "configured": cal_configured,
+                    "actual": cal_actual,
+                    "changed": cal_changed,
+                    "reason": cal_reason,
+                    "enabled": cal_actual > 0,
                 },
             })
         elif path == "/prisiragent/api/schedule/history":
@@ -14168,6 +14191,147 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"ok": True, "platforms": _router.available_platforms()})
 
 
+# ============================================================
+# P2.5+14(2026-09-22):独立日历端口 — 同进程双端口 listen。
+# CalendarHandler 只服务日历相关路由(/prisIragent/calendar* 静态 + /prisIragent/api/calendar/*
+# 动态),其它路由返 404 + 日志告警,避免把主 web 端的非日历路径意外暴露到 18803。
+# 用 BaseHTTPRequestHandler 子类而不是 ThreadingHTTPServer 多 bind,是因为
+# BaseHTTPRequestHandler 不支持多 bind(它把 host/port 绑死);两条独立 server 是更干净的方案。
+# 复用主 Handler 的 _json / _html / _download / _serve_calendar_static / _handle_calendar_*
+# 助手(都是类方法或无依赖 instance 函数),无重复代码。
+# ============================================================
+class CalendarHandler(BaseHTTPRequestHandler):
+    """P2.5+14:日历专用 HTTP handler(只接受 calendar 路由)。
+
+    与主 Handler 共用 CalendarStore + _handle_calendar_* 实现,仅路由表收窄。
+    进程内同源,通过共享内存 + threading.Lock 保证 CalendarStore 单例一致。
+    """
+
+    def log_message(self, fmt, *args):  # noqa: N802
+        pass
+
+    def _json(self, data, code: int = 200):
+        # P2.5+14:复用主 Handler._json 序列化逻辑(避免重复)。通过 type(self).__mro__
+        # 找主 Handler 的 _json 不可靠(它是 _serve_calendar_static 里调
+        # Handler._handle_calendar_timeline 等会走主 handler self);这里直接 inline 一份。
+        body = json.dumps(data, ensure_ascii=False).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        if WEB_HOST == "0.0.0.0":  # P1 局域网同 main() 行为
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Prisir-Token")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _serve_calendar_static(self, filename: str):
+        # P2.5+14:CalendarHandler 不继承 Handler(为路由表收窄),所以静态服务逻辑就地内联。
+        # 跟主 Handler._serve_calendar_static 同款(读 prisIragent_calendar/static/<safe>)。
+        safe = os.path.basename(filename)  # 防穿越
+        if safe != filename:
+            self._json({"error": "bad path"}, 400)
+            return
+        try:
+            base = Path(__file__).resolve().parent / "prisIragent_calendar" / "static"
+            fpath = base / safe
+            if not fpath.is_file():
+                self._json({"error": "not found"}, 404)
+                return
+            data = fpath.read_bytes()
+        except OSError as e:  # noqa: BLE001
+            _LOGGER.warning("[calendar-handler] read %s failed: %s", filename, e)
+            self._json({"error": f"read failed: {e}"}, 500)
+            return
+        if safe.endswith(".html"):
+            ctype = "text/html; charset=utf-8"
+        elif safe.endswith(".js"):
+            ctype = "application/javascript; charset=utf-8"
+        elif safe.endswith(".css"):
+            ctype = "text/css; charset=utf-8"
+        else:
+            ctype = "application/octet-stream"
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_GET(self):  # noqa: N802 — BaseHTTPRequestHandler 接口名
+        from urllib.parse import urlparse, parse_qs
+        u = urlparse(self.path)
+        path = u.path
+        qs = parse_qs(u.query)
+        try:
+            if path == "/" or path == "/prisIragent/calendar" or path == "/prisIragent/calendar/":
+                # 日历端口首页 = 时间线(等同主 web 端 GET /prisIragent/calendar)
+                self._serve_calendar_static("timeline.html")
+                return
+            if path.startswith("/prisIragent/calendar/"):
+                # /prisIragent/calendar/<file> 静态资源
+                self._serve_calendar_static(path[len("/prisIragent/calendar/"):])
+                return
+            if path == "/prisIragent/api/calendar/timeline":
+                # 复用主 Handler._handle_calendar_timeline(qs)(同模块 def 函数,直接调)
+                Handler._handle_calendar_timeline(self, qs)
+                return
+            if path == "/prisIragent/api/calendar/export.ics":
+                Handler._handle_calendar_export(self)
+                return
+            # P2.5+14 日历端口健康端点 — Electron 壳 main.js openCalendarWindow 等 sentinel 时
+            # 用 /__calendar_ready(不要打 prisiragent 前缀,跟主端口的 /__web_ready 对称)。
+            if path == "/__calendar_ready":
+                self._json({"ok": True, "service": "calendar", "port": WEB_PORT})
+                return
+            # 兜底:日历端口拒绝非日历路径(防止 web 端路由意外暴露到 18803)
+            _LOGGER.info("[calendar-handler] rejected non-calendar path: %s", path)
+            self._json({"error": "not a calendar endpoint", "path": path}, 404)
+        except Exception as e:  # noqa: BLE001
+            _LOGGER.exception("[calendar-handler] do_GET %s crashed: %s", path, e)
+            try:
+                self._json({"error": "internal error: %s" % e}, 500)
+            except Exception:
+                pass
+
+    def do_POST(self):  # noqa: N802
+        from urllib.parse import urlparse
+        u = urlparse(self.path)
+        path = u.path
+        # 读 body(同主 Handler.do_POST 早期逻辑)
+        try:
+            length = int(self.headers.get("Content-Length") or "0")
+        except Exception:
+            length = 0
+        raw = self.rfile.read(length) if length > 0 else b""
+        try:
+            body = json.loads(raw.decode("utf-8")) if raw else {}
+        except Exception:
+            body = {}
+        try:
+            if path == "/prisIragent/api/calendar/dismiss":
+                Handler._handle_calendar_dismiss(self, body)
+                return
+            if path == "/prisIragent/api/calendar/scan":
+                Handler._handle_calendar_scan(self, body)
+                return
+            _LOGGER.info("[calendar-handler] rejected non-calendar POST: %s", path)
+            self._json({"error": "not a calendar endpoint", "path": path}, 404)
+        except Exception as e:  # noqa: BLE001
+            _LOGGER.exception("[calendar-handler] do_POST %s crashed: %s", path, e)
+            try:
+                self._json({"error": "internal error: %s" % e}, 500)
+            except Exception:
+                pass
+
+    def do_OPTIONS(self):  # noqa: N802 — CORS preflight,主 handler 已有逻辑,这里返 204
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Prisir-Token")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+
 def main():
     global DEFAULT_MODEL, DEFAULT_WORKDIR, DEFAULT_STRATEGY, WEB_HOST, WEB_PORT
     # M3.34(2026-09-19)端口统一:CLI > env > 用户设置(HKCU/JSON) > 模块默认。
@@ -14184,6 +14348,21 @@ def main():
         _resolved_port = resolve_start_port("web", _env_web, WEB_PORT, _DEFAULT_WEB_PORT)
         ap = argparse.ArgumentParser()
         ap.add_argument("--port", type=int, default=_resolved_port)
+        # P2.5+14(2026-09-22):独立日历端口。优先级跟 web 一致(CLI > env > 用户设置 > 默认)。
+        # env:PRISIRAGENT_CALENDAR_PORT。用户设置:HKCU calendar_port / ports.json['calendar']。
+        # 默认:DEFAULT_CALENDAR_PORT = 18803。可用 --no-calendar-port(=0)禁用(测试态 / 单端口模式)。
+        try:
+            from companion.music.port_config import (
+                DEFAULT_CALENDAR_PORT as _DEFAULT_CALENDAR_PORT,
+                resolve_start_port as _resolve_cal,
+            )
+            _env_cal = os.environ.get("PRISIRAGENT_CALENDAR_PORT")
+            _resolved_cal_port = _resolve_cal("calendar", _env_cal, None, _DEFAULT_CALENDAR_PORT)
+            ap.add_argument("--calendar-port", type=int, default=_resolved_cal_port,
+                            help="独立日历端口(默认 18803);=0 禁用")
+        except Exception:  # noqa: BLE001 — port_config 不可用时退化到默认值
+            ap.add_argument("--calendar-port", type=int, default=18803,
+                            help="独立日历端口(默认 18803);=0 禁用")
     except Exception as _pc_err:  # noqa: BLE001 — port_config 不可用时退化到旧行为
         try:
             _LOGGER.warning("port_config unavailable, fallback to env/CLI/default: %s", _pc_err)
@@ -14191,6 +14370,8 @@ def main():
             pass
         ap = argparse.ArgumentParser()
         ap.add_argument("--port", type=int, default=WEB_PORT)
+        ap.add_argument("--calendar-port", type=int, default=18803,
+                        help="独立日历端口(默认 18803);=0 禁用")
     ap.add_argument("--model", default=DEFAULT_MODEL)
     ap.add_argument("--workdir", default=DEFAULT_WORKDIR)
     ap.add_argument("--strategy", default=DEFAULT_STRATEGY)
@@ -14200,10 +14381,14 @@ def main():
                     help="诊断日志落点(默认 %%APPDATA%%/prisiragent-shell/logs/prisirai-backend.log)")
     args = ap.parse_args()
     DEFAULT_MODEL, DEFAULT_WORKDIR, DEFAULT_STRATEGY = args.model, args.workdir, args.strategy
-    global _CONFIGURED_PORT, _REAL_PORT
+    global _CONFIGURED_PORT, _REAL_PORT, _CONFIGURED_CALENDAR_PORT, _REAL_CALENDAR_PORT
     _CONFIGURED_PORT = args.port
     WEB_PORT = _CONFIGURED_PORT   # 真端口(--port 覆盖 env 默认),供 /api/info 报告给 About 页
     _REAL_PORT = WEB_PORT          # 默认与 configured 相同;启动后若 fallback 则覆盖
+    # P2.5+14:日历端口同样走 configured/actual 双轨。=0 表示禁用(单端口模式,日历走主 web 端
+    # 18802 的 /prisIragent/calendar 路由,跟 P2.5+13 ship 的行为一致 — 向后兼容)。
+    _CONFIGURED_CALENDAR_PORT = int(args.calendar_port)
+    _REAL_CALENDAR_PORT = _CONFIGURED_CALENDAR_PORT
 
     # v2.0 日志基础设施:RotatingFileHandler 5MB×3
     log_file = _setup_logging(args.log_file)
@@ -14282,6 +14467,49 @@ def main():
                     pass
     except Exception:  # noqa: BLE001 — 拿真端口失败不能阻塞 boot
         pass
+
+    # ============================================================
+    # P2.5+14(2026-09-22):日历端口同进程双端口 listen。
+    # CalendarHandler 只服务日历路由,ThreadingHTTPServer 复用线程模型。
+    # 跟主 web 端口并行跑,互不阻塞。
+    # --calendar-port=0 表示禁用日历端口,日历路由仍走主 web 18802(向后兼容 P2.5+13 ship 的行为)。
+    # ============================================================
+    cal_srv = None
+    if _CONFIGURED_CALENDAR_PORT > 0:
+        try:
+            cal_srv = ThreadingHTTPServer((WEB_HOST, _CONFIGURED_CALENDAR_PORT), CalendarHandler)
+            _REAL_CALENDAR_PORT = int(cal_srv.server_address[1])
+            print(f"[prisIragent_web] Listening on http://127.0.0.1:{_REAL_CALENDAR_PORT} (calendar-only)",
+                  flush=True)
+            print(f"[prisIragent_web] PRISIR_CALENDAR_READY port={_REAL_CALENDAR_PORT}", flush=True)
+            _LOGGER.info("calendar sub-server listening on http://%s:%d (calendar-only routes)",
+                         WEB_HOST, _REAL_CALENDAR_PORT)
+            if _REAL_CALENDAR_PORT != int(_CONFIGURED_CALENDAR_PORT):
+                # 跟主端口同款:configured vs actual 不一致时写回注册表
+                try:
+                    from companion.music.port_config import notify_port_changed as _notify_pc_cal
+                    _notify_pc_cal("calendar", int(_CONFIGURED_CALENDAR_PORT), _REAL_CALENDAR_PORT)
+                except Exception as _pc_cal_err:  # noqa: BLE001
+                    try:
+                        _LOGGER.warning("port_config calendar write-back failed: %s", _pc_cal_err)
+                    except Exception:
+                        pass
+            # 后台线程跑日历端口,主线程继续 serve_forever web 端口
+            import threading as _t_cal
+            _cal_thread = _t_cal.Thread(target=cal_srv.serve_forever, name="calendar-http", daemon=True)
+            _cal_thread.start()
+        except OSError as _cal_bind_err:  # 端口被占 → skip(走主 web 端口的日历路由 fallback)
+            _LOGGER.warning("[calendar-handler] bind %s:%d failed: %s — calendar routes stay on main web port %d",
+                            WEB_HOST, _CONFIGURED_CALENDAR_PORT, _cal_bind_err, _REAL_PORT)
+            cal_srv = None
+        except Exception as _cal_boot_err:  # noqa: BLE001 — 日历端口启动失败不能阻塞主 web
+            _LOGGER.warning("[calendar-handler] boot failed: %s — calendar routes stay on main web port",
+                            _cal_boot_err)
+            cal_srv = None
+    else:
+        _LOGGER.info("calendar sub-server disabled (--calendar-port=0); calendar routes on main web port %d",
+                     _REAL_PORT)
+
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
@@ -14289,6 +14517,13 @@ def main():
     except Exception as e:  # noqa: BLE001
         _LOGGER.exception("srv.serve_forever crashed: %s", e)
         raise
+    finally:
+        # 优雅关闭日历端口(daemon 线程随主进程退出,但显式 shutdown 更稳)
+        if cal_srv is not None:
+            try:
+                cal_srv.shutdown()
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":

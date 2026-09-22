@@ -39,10 +39,12 @@ def main():
     print("\n[S1] port_config.js DEFAULT_CALENDAR_PORT 常量")
     total += 1; passes += check("DEFAULT_CALENDAR_PORT 定义",
         'const DEFAULT_CALENDAR_PORT' in cfg_src)
-    total += 1; passes += check("DEFAULT_CALENDAR_PORT 复用 DEFAULT_WEB_PORT",
-        'DEFAULT_CALENDAR_PORT = DEFAULT_WEB_PORT' in cfg_src)
-    total += 1; passes += check("注释说明日历走 web /prisiragent/calendar",
-        '/prisiragent/calendar' in cfg_src)
+    # P2.5+14(2026-09-22):日历端口已独立 — DEFAULT_CALENDAR_PORT = 18803(web + 1),
+    # 同进程双端口 listen(Python CalendarHandler)。不再复用 DEFAULT_WEB_PORT。
+    total += 1; passes += check("DEFAULT_CALENDAR_PORT = 18803(独立端口,P2.5+14)",
+        'DEFAULT_CALENDAR_PORT = 18803' in cfg_src)
+    total += 1; passes += check("注释说明日历路径 /prisIragent/calendar(注意大写 I)",
+        '/prisIragent/calendar' in cfg_src)
 
     # ─── S2: readCalendarPort 函数 ───
     print("\n[S2] port_config.js readCalendarPort 函数")

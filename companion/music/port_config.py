@@ -44,6 +44,10 @@ from typing import Optional
 DEFAULT_WEB_PORT = 18802       # 主面板 prisIragent_web.py
 DEFAULT_COMPANION_PORT = 18850 # 语伴 companion/prisiragent-companion-web.py
 DEFAULT_MUSIC_PORT = 0         # 音乐 web 启动后才有端口(0 = 由 OS 分配)
+# P2.5+14(2026-09-22):日历独立端口 — 18803 = web + 1,主动避开已知占用
+# (web=18802/companion=18850/music 动态)。Electron 壳 main.js openCalendarWindow
+# 读 HKCU calendar_port,跟其它三端口走同一套 fallback 链。
+DEFAULT_CALENDAR_PORT = 18803  # 日历独立端口 — P2.5+14 同进程双端口 listen
 
 # Windows 注册表路径(主通道)
 REG_KEY = r"Software\PrisirAI"
@@ -308,8 +312,10 @@ def quick_smoke() -> dict:
     return {
         "DEFAULT_WEB_PORT": DEFAULT_WEB_PORT,
         "DEFAULT_COMPANION_PORT": DEFAULT_COMPANION_PORT,
+        "DEFAULT_CALENDAR_PORT": DEFAULT_CALENDAR_PORT,
         "read_web": read_port("web", DEFAULT_WEB_PORT),
         "read_companion": read_port("companion", DEFAULT_COMPANION_PORT),
+        "read_calendar": read_port("calendar", DEFAULT_CALENDAR_PORT),
         "read_music": read_port("music", DEFAULT_MUSIC_PORT),
         "pick_free": pick_free_port(DEFAULT_WEB_PORT),
         "resolve_default": resolve_start_port("web", None, None, DEFAULT_WEB_PORT),

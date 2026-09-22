@@ -26,9 +26,11 @@ const { app } = require("electron");
 const DEFAULT_WEB_PORT = 18802;       // 主面板 prisiragent_web.py
 const DEFAULT_COMPANION_PORT = 18850; // 语伴
 const DEFAULT_MUSIC_PORT = 0;         // music web 动态分配
-// 日历 走 prisiragent_web.py 的 /prisiragent/calendar 路由,故 calendar 端口 = web 端口。
+// 日历 走 prisiragent_web.py 的 /prisIragent/calendar 路由,故 calendar 端口 = web 端口。
 // 留独立常量便于后续若 calendar 拆独立服务时切换。
-const DEFAULT_CALENDAR_PORT = DEFAULT_WEB_PORT;
+// P2.5+14(2026-09-22):实际生产 calendar 端口独立 — 同进程双端口 listen,
+// 但 JS 端 default 仍跟随 web(若 Python 端未启 --calendar-port 则 fallback)。
+const DEFAULT_CALENDAR_PORT = 18803;
 
 // Windows 注册表路径
 const REG_KEY_PATH = "Software\\PrisirAI";
