@@ -302,3 +302,68 @@ def _web_health(_body: dict) -> tuple[dict, int]:
         return (result, 200)
     except Exception as e:  # noqa: BLE001
         return ({"ok": False, "warnings": [type(e).__name__]}, 200)
+
+
+# ---------------------------------------------------------------------------
+# P2.5+18b: web.tune per-domain fetcher 学习
+# ---------------------------------------------------------------------------
+
+@register("/web/tune/recommend", method="POST", risk="L0", auth=True)
+def _web_tune_recommend(body: dict) -> tuple[dict, int]:
+    """查 host 的 recommended fetcher 列表。空 / 无记录 → 返 null + hint。
+
+    请求:{"url": "https://github.com/x"}  → host = github.com。
+    """
+    body = body if isinstance(body, dict) else {}
+    try:
+        from prisir_work import tune as _tune
+        from urllib.parse import urlparse
+        url = body.get("url") or body.get("host") or ""
+        host = (urlparse(url).hostname or url).lower() if url else ""
+        rec = _tune.recommend(host) if host else None
+        return ({
+            "ok": True,
+            "host": host,
+            "recommended": rec,
+            "hint": None if rec else "no learned data yet",
+        }, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "warnings": [type(e).__name__]}, 200)
+
+
+@register("/web/tune/stats", method="POST", risk="L0", auth=True)
+def _web_tune_stats(_body: dict) -> tuple[dict, int]:
+    """调试:进程内累加器快照 + tune.json 落盘内容。"""
+    try:
+        from prisir_work import tune as _tune
+        snap = _tune.tune_stats_snapshot()
+        # 落盘内容
+        loaded = {}
+        try:
+            p = _tune.tune_path()
+            if p.exists():
+                import json as _json
+                loaded = _json.loads(p.read_text(encoding="utf-8"))
+                if not isinstance(loaded, dict):
+                    loaded = {}
+        except Exception:
+            loaded = {}
+        return ({
+            "ok": True,
+            "accumulator": snap,
+            "tune_json": loaded,
+            "hosts_learned": len(loaded),
+        }, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "warnings": [type(e).__name__]}, 200)
+
+
+@register("/web/tune/flush", method="POST", risk="L1", auth=True)
+def _web_tune_flush(_body: dict) -> tuple[dict, int]:
+    """手动触发 flush(累加器已稳定 → 写 tune.json)。返回落盘前后 best。"""
+    try:
+        from prisir_work import tune as _tune
+        result = _tune.flush_if_ready()
+        return ({"ok": True, "evaluated": result}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "warnings": [type(e).__name__]}, 200)

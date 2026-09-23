@@ -23,6 +23,12 @@ from urllib.parse import urlparse
 
 from . import cache
 
+# P2.5+18b:per-domain fetcher 优先级学习(可选依赖,缺则跳过)
+try:
+    from . import tune as _tune  # noqa: F401
+except Exception:
+    _tune = None  # type: ignore
+
 FetcherFn = Callable[[str, dict], dict[str, Any]]
 # 内部 fetcher 注册表
 _FETCHERS: dict[str, FetcherFn] = {}
@@ -348,7 +354,28 @@ def fetch(url: str, options: dict | None = None, timeout: float = 10.0) -> dict[
         register_fetcher("a11y", a11y_provider)
         register_fetcher("browser_use_cli", browser_use_cli_provider)
 
-    fetchers = list(_FETCHERS.items())
+    # P2.5+18b:查 host 的 learned 优先级(tune.json 命中 → 只跑 learned 列表)
+    learned: list[str] | None = None
+    learned_source = None  # None=全并发; "tune"=走 learned
+    try:
+        if _tune is not None:
+            parsed = urlparse(norm_url)
+            host = (parsed.hostname or "").lower()
+            if host:
+                learned = _tune.recommend(host)
+                if learned:
+                    learned_source = "tune"
+    except Exception:
+        learned = None
+        learned_source = None
+
+    if learned_source == "tune" and learned:
+        fetchers = [(n, _FETCHERS[n]) for n in learned if n in _FETCHERS]
+        if not fetchers:  # learned 列表里的 fetcher 全没了 → 回退全并发
+            fetchers = list(_FETCHERS.items())
+            learned_source = None
+    else:
+        fetchers = list(_FETCHERS.items())
     results: dict[str, dict | None] = {}
     have_success = False
 
@@ -430,6 +457,23 @@ def fetch(url: str, options: dict | None = None, timeout: float = 10.0) -> dict[
         cache.cache_put(norm_url, payload)
     except Exception:
         pass
+
+    # P2.5+18b:把每个 fetcher 的尝试结果累加到 tune 累加器 + 触发落盘
+    # 只 record 真跑完的 fetcher(已经返 result 的);None = 没跑完/在途,不 record,
+    # 否则 break 后未完成的 fetcher 会误记成 fail,污染学习。
+    if _tune is not None:
+        try:
+            for n, r in results.items():
+                if r is None or not isinstance(r, dict):
+                    continue  # 未跑完/抛了 → 跳过,不污染学习
+                rm = r.get("meta") if isinstance(r.get("meta"), dict) else {}
+                ok = bool(r.get("content")) and not rm.get("error")
+                ms = int(rm.get("elapsed_ms") or 0)
+                _tune.record(norm_url, n, ms, ok=ok)
+            # 顺手触发落盘(累加器已就绪就写)
+            _tune.flush_if_ready()
+        except Exception:
+            pass
     now_iso = ""
     try:
         # 复用 cache 的时间戳生成(避免再 import)

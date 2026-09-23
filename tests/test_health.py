@@ -12,10 +12,12 @@ from prisir_work import cache as cache_mod
 
 @pytest.fixture(autouse=True)
 def _isolated(monkeypatch):
-    tmp = Path(tempfile.mkdtemp(prefix="health_test_"))
+    tmp_parent = Path(tempfile.mkdtemp(prefix="health_parent_"))
+    tmp = tmp_parent / "web"
+    tmp.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(cache_mod, '_CACHE_DIR_OVERRIDE', tmp)
     yield tmp
-    shutil.rmtree(tmp, ignore_errors=True)
+    shutil.rmtree(tmp_parent, ignore_errors=True)
 
 
 # ── 1. cache 子项 ──

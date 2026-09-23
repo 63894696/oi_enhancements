@@ -128,3 +128,28 @@ register_capability(
     keywords=("相似", "类似", "相关", "similar", "related", "find_similar"),
     confirm="",
 )
+
+
+# ---------------------------------------------------------------------------
+# P2.5+18b: per-domain fetcher 优先级学习(查 / 调试 / 手动触发)
+# ---------------------------------------------------------------------------
+
+register_capability(
+    "web.tune.recommend",
+    title="查 host 的 learned fetcher 优先级(慢站加速用)",
+    endpoint="/web/tune/recommend", method="POST", risk="L0", auth=True,
+    keywords=("tune", "learn", "推荐", "优先级", "加速", "host", "slow"),
+)
+register_capability(
+    "web.tune.stats",
+    title="查 tune 学习状态(累加器 + tune.json 内容)",
+    endpoint="/web/tune/stats", method="POST", risk="L0", auth=True,
+    keywords=("tune", "stats", "学习状态", "累加器", "统计"),
+)
+register_capability(
+    "web.tune.flush",
+    title="手动触发 tune flush,把已稳定的 learned best 写盘",
+    endpoint="/web/tune/flush", method="POST", risk="L1", auth=True,
+    keywords=("tune", "flush", "落盘", "手动"),
+    confirm="L1 tune flush:把累加器中已稳定(MIN_SAMPLES=3 + ok 率 ≥ 80%)的 fetcher 优先级写入 tune.json。下次同 host 直接按 learned 顺序调用。",
+)
