@@ -12,10 +12,17 @@ from . import __version__, capability, endpoints, plugins, team, wallet
 
 @endpoints.register("/health", method="GET", risk="L0", auth=False)
 def _health(_body: dict):
-    """探活(免 token):只报进程活着 + 版本 + 白名单目录 + 能力目录,不泄露任何敏感信息。"""
-    return {"ok": True, "service": "prisir-work", "version": __version__,
-            "endpoints": endpoints.catalog(),
-            "capabilities": capability.list_capabilities()}, 200
+    """探活(免 token):进程 + 版本 + 端点/能力目录 + web 子系统状态(P2.5+18a)。"""
+    result = {"ok": True, "service": "prisir-work", "version": __version__,
+              "endpoints": endpoints.catalog(),
+              "capabilities": capability.list_capabilities()}
+    # P2.5+18a:附 web 子系统健康(失败也不影响主 /health)
+    try:
+        from . import health as _h
+        result["web"] = _h.web_health()
+    except Exception as e:
+        result["web"] = {"ok": False, "warnings": [type(e).__name__]}
+    return result, 200
 
 
 @endpoints.register("/wallet/status", method="GET", risk="L0", auth=True)

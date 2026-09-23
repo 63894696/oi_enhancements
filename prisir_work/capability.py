@@ -72,3 +72,59 @@ def search(query: str) -> list[dict[str, Any]]:
                 "auth": e["auth"], "confirm": e["confirm"],
             })
     return out
+
+
+# ---------------------------------------------------------------------------
+# P2.5+16: web.search / web.fetch 能力注册(无 stub,L0 只读免确认)
+# ---------------------------------------------------------------------------
+
+register_capability(
+    "web.search",
+    title="web 搜索(多源 rank fusion,免 API key 优先,失败降级返空)",
+    endpoint="/web/search", method="POST", risk="L0", auth=True,
+    keywords=("搜索", "网页", "web", "search", "find", "找", "查", "internet"),
+    confirm="",
+)
+register_capability(
+    "web.fetch",
+    title="web 抓取(多 fetcher 并发竞速 + 7d 本地缓存,失败降级返空)",
+    endpoint="/web/fetch", method="POST", risk="L0", auth=True,
+    keywords=("抓取", "下载", "网页内容", "fetch", "crawl", "get", "读", "url"),
+    confirm="",
+)
+
+# ---------------------------------------------------------------------------
+# P2.5+16d: web.research 多步研究能力(plan→search×N→fetch→LLM 合成,带 [n] 引用)
+# ---------------------------------------------------------------------------
+
+register_capability(
+    "web.research",
+    title="web 多步研究(plan→search→fetch→LLM 合成,带 [n] 编号引用)",
+    endpoint="/web/research", method="POST", risk="L0", auth=True,
+    keywords=("研究", "调研", "查", "综述", "research", "study", "investigate", "deep"),
+    confirm="",
+)
+
+# ---------------------------------------------------------------------------
+# P2.5+16e: web.extract JSON Schema 结构化抽取
+# ---------------------------------------------------------------------------
+
+register_capability(
+    "web.extract",
+    title="web 结构化抽取(JSON Schema,LLM 可选,失败降级 regex 启发式)",
+    endpoint="/web/extract", method="POST", risk="L0", auth=True,
+    keywords=("抽取", "提取", "解析", "extract", "parse", "structured", "schema"),
+    confirm="",
+)
+
+# ---------------------------------------------------------------------------
+# P2.5+16f: web.find_similar 相似 URL 发现(基于关键词 + 多源:web_search + 可选 Serper related)
+# ---------------------------------------------------------------------------
+
+register_capability(
+    "web.find_similar",
+    title="web 相似 URL 发现(基于关键词 + 多源:web_search + 可选 Serper related)",
+    endpoint="/web/find_similar", method="POST", risk="L0", auth=True,
+    keywords=("相似", "类似", "相关", "similar", "related", "find_similar"),
+    confirm="",
+)
