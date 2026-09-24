@@ -1,0 +1,65 @@
+feat(p2.5+16 + p2.5+17): 子窗口分离 + tray icon 子菜单分组
+
+P2.5+13(2026-09-22)只把 3 菜单项接到托盘,子窗口全靠复用主窗口 BrowserWindow + URL fragment,
+体验上「调出来还是同一个窗口,看不出独立窗口感」。本次一次性 ship 两件:
+
+P2.5+16 子窗口分离(2026-09-22)
+==============================
+- 设计:每个 label(语伴/音乐/📅日历/🔀工作流)一个独立 BrowserWindow 实例
+- _createChildWindow(spec) helper:重用现有实例(秒开)+ ready-to-show 触发 + 3.5s 兜底 +
+  setWindowOpenHandler(外链走 shell.openExternal)+ close 仅 hide(常驻)+ closed → delete from Map
+- _commonWebPreferences():contextIsolation:true / nodeIntegration:false / sandbox:true + preload,
+  4 子窗共用同一红线
+- _CHILD_SPEC = { companion, music, calendar, workflow } 各有 width/height/minWidth/minTitle
+- openInShell 分支:label 缺或 ="main" 走主窗口;否则 _createChildWindow({label, url, ..._CHILD_SPEC[label]})
+- 4 个独立 openXxxWindow 函数:openCompanionWindow / openMusicWindow / openCalendarWindow /
+  openWorkflowWindow,各自从 port_config.js readXxxPort() 拿端口(music 端口 0 兜底回主面板)
+- closeAllChildWindows / destroyAllChildWindows:聚合销毁走 before-quit 钩
+
+P2.5+17 tray icon 子菜单(2026-09-22)
+=====================================
+- 重构 createTray():3 组 submenu — 主控 / 多窗口 / 系统 + 开发者模式独立顶层(if devModeAvailable)
+- 主控:打开 / 隐藏 PrisirAI
+- 多窗口:语伴 / 音乐 / 📅日历 / 🔀工作流 4 项 + separator + 「关闭所有子窗口」聚合
+- 系统:开机自启(checkbox 双向绑 app.getLoginItemSettings.openAtLogin)+ 退出
+- 开发者模式:独立顶层菜单项,不走任何 submenu,保持普通用户菜单简洁
+
+变更清单
+========
+改动:
+  - prisiragent-shell/main.js
+      · let quitting = false + childWindows Map
+      · _commonWebPreferences() 红线 helper
+      · _createChildWindow(spec) + close/destroyAll + before-quit 钩
+      · _CHILD_SPEC 4 子窗口规格
+      · openInShell 分支化(main vs 子窗)
+      · 4 个 openXxxWindow 函数
+      · createTray() 重构(3 submenu + dev mode 独立顶层)
+新增:
+  - tests/_test_p2b16_p2b17_subwindows_and_tray.py
+      · 17 项静态扫 + node --check + port_config 联动验证
+
+关键设计点
+==========
+1) close 仅 hide:用户关子窗不真销毁,后台常驻;下次同 label 秒开(秒级响应)
+2) ready-to-show + 3.5s 兜底:web 后端慢 / 端口冲突 fallback 场景下,用户不会永远看不到窗
+3) _commonWebPreferences 一处定义:4 子窗共用红线,后续要加新子窗无脑复用
+4) openInShell 分支化:标签决定走主还是子,后续加新子窗只在 _CHILD_SPEC 加一行
+5) tray submenu 3 组:主控跟窗口操作解耦(主控管主窗口,多窗口管子窗);开发者模式独立
+6) 不打装包:跟 P2.5+13 同款策略,关联功能继续开发,统一打包发新版
+
+验证
+====
+✓ tests/_test_p2b16_p2b17_subwindows_and_tray.py — 17/17 项绿
+✓ tests/_test_p2b15_config_yaml.py — 10/10 项绿(回归)
+✓ tests/_test_p2514_calendar_port.py — 49/49 项绿(回归)
+✓ node --check main.js OK
+✓ port_config.js 3 个 readXxxPort 都暴露
+
+解锁子任务:
+  - P2.5+18 装包后 UI 验收(主程序 + 托盘 + 子窗口真跑通)
+  - 后续:各子窗实际打开后真 UI 截图,真托盘菜单点击验证
+
+参考:
+  - [[p2-5-15-config-yaml-shipped]] P2.5+15 三端 config.yaml 化(config_loader 端口读取)
+  - [[p2514-calendar-independent-port-shipped]] 日历端口独立化(P2.5+14)

@@ -237,6 +237,89 @@ let win = null;
 let tray = null;
 let quitting = false;
 
+// P2.5+16(2026-09-22):4 子窗口(语伴/音乐/📅日历/🔀工作流)独立 BrowserWindow。
+// 设计:每个 label 一个 BrowserWindow 实例,close 仅 hide(常驻后台),下次同 label
+//      show 时秒开(不重建);各自独立 webPreferences 沙箱红线 + 独立 IPC handler。
+//      子窗口尺寸比主窗口小(语伴 920×680 / 音乐 880×620 / 日历 960×720 / 工作流 1000×720)。
+const childWindows = new Map();   // label → BrowserWindow
+
+function _commonWebPreferences() {
+  return {
+    preload: path.join(__dirname, "preload.js"),
+    contextIsolation: true,        // 红线:渲染层拿不到 Node
+    nodeIntegration: false,
+    sandbox: true,
+  };
+}
+
+function _createChildWindow(spec) {
+  const existing = childWindows.get(spec.label);
+  if (existing && !existing.isDestroyed()) {
+    logInfo("existing", "reuse child window", `label=${spec.label}`);
+    existing.show();
+    existing.focus();
+    return existing;
+  }
+  const w = new BrowserWindow({
+    width: spec.width || 920,
+    height: spec.height || 680,
+    minWidth: spec.minWidth || 640,
+    minHeight: spec.minHeight || 480,
+    title: spec.title || "Prisir(湃睿思) AI",
+    icon: path.join(__dirname, "icon.png"),
+    backgroundColor: "#f6f1e7",
+    show: false,                    // ready-to-show 再亮相
+    autoHideMenuBar: true,
+    webPreferences: _commonWebPreferences(),
+  });
+  // ready-to-show 触发再 show,避免白闪
+  w.once("ready-to-show", () => { if (w && !w.isDestroyed()) { w.show(); w.focus(); } });
+  // 兜底 3.5s 强制亮相(后端慢 / 端口冲突 fallback 场景)
+  setTimeout(() => { if (w && !w.isDestroyed() && !w.isVisible()) { w.show(); w.focus(); } }, 3500);
+  // 外链交系统浏览器,壳内子窗口不复用主窗口 setWindowOpenHandler(子窗独立配置)
+  w.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith(WEB_URL)) return { action: "allow", overrideBrowserWindowOptions: {
+      autoHideMenuBar: true,
+      backgroundColor: "#f6f1e7",
+      webPreferences: _commonWebPreferences(),
+    }};
+    shell.openExternal(url);
+    return { action: "deny" };
+  });
+  // close 仅 hide(常驻),quit 时才真销毁
+  w.on("close", (e) => {
+    if (!quitting) {
+      e.preventDefault();
+      w.hide();
+    }
+  });
+  w.on("closed", () => {
+    childWindows.delete(spec.label);
+  });
+  // 首次创建 → 加载 URL(loadURL 必须发生在 close handler 注册后,否则 ready-to-show 漏)
+  logInfo("childWindow", "create", `label=${spec.label} url=${spec.url}`);
+  w.loadURL(spec.url);
+  childWindows.set(spec.label, w);
+  return w;
+}
+
+function closeAllChildWindows() {
+  for (const w of childWindows.values()) {
+    if (w && !w.isDestroyed()) {
+      try { w.hide(); } catch (_) {}
+    }
+  }
+}
+
+function destroyAllChildWindows() {
+  for (const w of childWindows.values()) {
+    if (w && !w.isDestroyed()) {
+      try { w.destroy(); } catch (_) {}
+    }
+  }
+  childWindows.clear();
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1040,
@@ -412,18 +495,31 @@ function openDevReadme() {
 
 // ---------- 托盘 ----------
 // P2.5+13(2026-09-22):语伴/音乐/📅 打开日历 3 个菜单项。
-// 设计:用户在壳里开对应页面(不调系统浏览器),复用同一 BrowserWindow 加载不同 URL,
-// 避免开多窗口的常驻成本 + 保持单进程视觉一致。语伴/音乐可能动态端口,
-// 从 port_config 实时读 HKCU/JSON(写由 Python 端 notify_port_changed 负责)。
+// 设计:P2.5+16(2026-09-22)起,4 子窗口(语伴/音乐/📅日历/🔀工作流)独立 BrowserWindow,
+// 不再复用主窗口 loadURL。每次 tray click 各自 show/focus;close 仅 hide 不销毁,
+// 下次同 label 秒开。窗口尺寸/标题按各自场景定制。
+// 「主面板」标签仍走主窗口 win(不另建独立 BrowserWindow)。
 function openInShell(url, label) {
-  if (!win) createWindow();
-  if (!win) return;       // 兜底:极端 race
-  // 不做"已显示就跳过"的优化 — tray click 用户预期就是"打开这个页面",无论当前是哪个。
-  logInfo("trayOpen", "open in shell", `label=${label} url=${url}`);
-  win.show();
-  win.focus();
-  win.loadURL(url);
+  // 主面板路径(label="main"或空):复用主窗口
+  if (!label || label === "main") {
+    if (!win) createWindow();
+    if (!win) return;
+    logInfo("trayOpen", "open main in shell", `url=${url}`);
+    win.show();
+    win.focus();
+    win.loadURL(url);
+    return;
+  }
+  // 子窗口:走 _createChildWindow helper
+  _createChildWindow({ label, url, ..._CHILD_SPEC[label] });
 }
+const _CHILD_SPEC = {
+  companion: { width: 920, height: 680, minWidth: 640, minHeight: 480, title: "PrisirAI · 语伴" },
+  music:     { width: 880, height: 620, minWidth: 640, minHeight: 480, title: "PrisirAI · 音乐" },
+  calendar:  { width: 960, height: 720, minWidth: 720, minHeight: 540, title: "PrisirAI · 📅 日历" },
+  workflow:  { width: 1000, height: 720, minWidth: 800, minHeight: 560, title: "PrisirAI · 🔀 工作流" },
+};
+
 function openCompanionWindow() {
   const port = require("./port_config").readCompanionPort();
   openInShell(`http://${WEB_HOST}:${port}/`, "companion");
@@ -433,15 +529,21 @@ function openMusicWindow() {
   // music 端口可能 0(动态分配但未就绪)—— 兜底回主面板,等 music web 真起来再点
   if (port <= 0) {
     logWarn("trayOpen", "music port not ready", `port=${port}`);
-    openInShell(WEB_URL, "music-fallback");
+    openInShell(WEB_URL, "main");
     return;
   }
   openInShell(`http://${WEB_HOST}:${port}/`, "music");
 }
 function openCalendarWindow() {
-  // 日历 走 prisiragent_web.py 的 /prisiragent/calendar 路由,与主面板共享端口。
+  // 日历 走 prisiragent_web.py 的 /prisiragent/calendar 路由。
+  // P2.5+14 起日历独立端口(同进程双端口 listen),从 port_config 读。
   const port = require("./port_config").readCalendarPort();
   openInShell(`http://${WEB_HOST}:${port}/prisiragent/calendar`, "calendar");
+}
+// P2.5+16:工作流窗口 = 主 web 端口 + /prisiragent/#wfmodal 路由锚点(URL fragment 触发 wfmodal 全屏)。
+// 工作流本身是 web 端 wfmodal 组件,不需要新后端,独立 BrowserWindow 让用户能从托盘直开。
+function openWorkflowWindow() {
+  openInShell(`${WEB_URL}#wfmodal`, "workflow");
 }
 
 function createTray() {
@@ -452,17 +554,34 @@ function createTray() {
   if (img.isEmpty()) img = nativeImage.createEmpty();
   tray = new Tray(img);
   tray.setToolTip("Prisir(湃睿思) AI");
-  // 托盘菜单:开发者模式只在该模式安装后才出现(普通用户托盘菜单保持简洁)。
-  const trayItems = [
+  // P2.5+17(2026-09-22):托盘子菜单 3 组 — 主控 / 多窗口 / 系统。
+  // 设计原则:每组一个 submenu,submenu 内项目平铺;开发者模式(若已安装)独立顶层菜单项,
+  // 不塞进任何 submenu,保持普通用户托盘菜单简洁。
+  const mainCtrlSubmenu = [
     { label: "打开 PrisirAI", click: () => { if (win) { win.show(); loadWhenReady(); } else createWindow(); } },
+    { label: "隐藏 PrisirAI", click: () => { if (win) { win.hide(); } } },
+  ];
+  const multiWindowSubmenu = [
+    // P2.5+16(2026-09-22):每个子项独立 BrowserWindow,不再复用主窗口。
+    { label: "语伴",      click: openCompanionWindow },
+    { label: "音乐",      click: openMusicWindow },
+    { label: "📅 日历",   click: openCalendarWindow },
+    { label: "🔀 工作流", click: openWorkflowWindow },
+    { type: "separator" },
+    { label: "关闭所有子窗口", click: () => closeAllChildWindows() },
+  ];
+  const systemSubmenu = [
     { label: "开机自启", type: "checkbox", checked: app.getLoginItemSettings().openAtLogin,
       click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked }) },
-    // P2.5+13(2026-09-22):语伴/音乐/📅 打开日历 — 壳内打开,不复用系统浏览器
     { type: "separator" },
-    { label: "语伴", click: openCompanionWindow },
-    { label: "音乐", click: openMusicWindow },
-    { label: "📅 打开日历", click: openCalendarWindow },
+    { label: "退出", click: () => { quitting = true; app.quit(); } },
   ];
+  const trayItems = [
+    { label: "主控",   submenu: mainCtrlSubmenu },
+    { label: "多窗口", submenu: multiWindowSubmenu },
+    { label: "系统",   submenu: systemSubmenu },
+  ];
+  // 开发者模式(若安装)独立顶层菜单项,不进任何 submenu。
   if (devModeAvailable()) {
     trayItems.push({ type: "separator" });
     trayItems.push({ label: "开发者模式", submenu: [
@@ -470,8 +589,6 @@ function createTray() {
       { label: "查看开发者说明", click: openDevReadme },
     ]});
   }
-  trayItems.push({ type: "separator" });
-  trayItems.push({ label: "退出", click: () => { quitting = true; app.quit(); } });
   tray.setContextMenu(Menu.buildFromTemplate(trayItems));
   tray.on("click", toggleWindow);
 }
@@ -606,7 +723,7 @@ if (!gotLock) {
     app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   });
 
-  app.on("before-quit", () => { quitting = true; logInfo("app", "before-quit"); });
+  app.on("before-quit", () => { quitting = true; destroyAllChildWindows(); logInfo("app", "before-quit"); });
   app.on("will-quit", () => {
     logInfo("app", "will-quit");
     globalShortcut.unregisterAll();
