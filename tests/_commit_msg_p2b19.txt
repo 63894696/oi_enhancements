@@ -1,0 +1,87 @@
+feat(p2.5+19): Tauri 4 子窗独立 WebviewWindow(替代 Electron 4 子窗模型)
+
+P2.5+18 装包 UI 验收 ship 后,装包后用户用 Tauri 壳体验时,4 子窗(语伴/音乐/📅日历/🔀工作流)
+仍走主窗口 in-app navigation(`win.eval("window.location.href='...'")`),看不到独立窗、
+关主窗一起没了。本次把 4 子窗模型从「主窗 URL fragment」拉到 Tauri 2.x WebviewWindow,
+跟 Electron childWindows Map 模型对齐。
+
+设计要点
+========
+
+1) tauri.conf.json app.windows[] 预声明 4 子窗
+   - companion-window / music-window / calendar-window / workflow-window
+   - visible:false(启动时隐藏,点托盘才 show)
+   - url 用默认端口占位,首次 show 时被 win.eval 重设到真实端口
+   - 4 尺寸跟 Electron _CHILD_SPEC 对齐(920×680 / 880×620 / 960×720 / 1000×720)
+
+2) windows.rs 新模块(~210 行)
+   - SUBWINDOW_LABELS:4 label 白名单
+   - url_for_label(app, label) → Option<String>:4 分支动态解析真端口
+     · companion:port_config::read_companion_port()(默认 18850)+ 代启 start_companion
+     · music:port_config::read_music_port()(默认 0,music 没起时 None 兜底)
+     · calendar:calendar::current_url(app)(动态,默认 18803)
+     · workflow:current_web_port(state)(主 web 端口)+ #wfmodal fragment
+   - open_window(app, label):eval 重设 URL + unminimize + show + set_focus 三件套
+   - bind_close_to_tray(app, label):WindowEvent::CloseRequested + api.prevent_close
+     + win.hide()(跟 lib.rs 主窗 close-to-tray 模板同款,quitting 守卫共用)
+   - hide_all(app):4 子窗全部 hide(close-all 聚合)
+   - 5 commands(给前端顶栏按钮调用,装包后注入的 __TAURI_INTERNALS__.invoke):
+     open_companion_window_cmd / open_music_window_cmd / open_calendar_window_cmd /
+     open_workflow_window_cmd / close_all_child_windows_cmd
+   - 1 status 命令:subwindows_status_cmd
+
+3) lib.rs 改造
+   - mod windows; 声明
+   - AppState + current_web_port + start_companion 改 pub(crate),让 windows.rs 拿
+   - invoke_handler 注册 5 个新 commands
+   - setup 末尾 for label in windows::SUBWINDOW_LABELS 循环调 bind_close_to_tray
+   - tray menu 加 open_workflow 项(8 项 → 7 项结构保持,功能等价)
+   - tray click handler 4 项改 windows::open_window + 兜底链(主窗 eval 跳转保留)
+
+4) 前端 __TAURI_INTERNALS__ 双分支
+   - prisIragent_web.py openCompanion / openWorkflow 加 window.__TAURI_INTERNALS__.invoke
+     判断(Tauri 2.x 注入的低层 global,不引 @tauri-apps/api npm 包)
+   - 装包后:调 open_companion_window_cmd / open_workflow_window_cmd
+   - 开发模式(Electron 壳 / 浏览器):走老 window.open 或 wfmodal 全屏打开
+
+完成态
+======
+✓ tests/_test_p2b19_tauri_subwindows.py — 15/15 项绿(静态扫覆盖装包 Tauri 侧)
+✓ tests/_test_p2b18_installer_ui_audit.py — 10/10 项绿(回归,装包路径未破坏)
+✓ tests/_test_p2b15_config_yaml.py — 10/10 项绿(回归)
+✓ tests/_test_p2b16_p2b17_subwindows_and_tray.py — 17/17 项绿(Electron 壳 dev 模式)
+✓ tests/_test_p2514_calendar_port.py — 49/49 项绿
+✓ py_compile + windows.rs / lib.rs 语法 sanity 全过
+
+变更清单
+========
+新增:
+  - prisiragent-tauri/src-tauri/src/windows.rs
+      · url_for_label + open_window + bind_close_to_tray + hide_all + 5 commands
+  - tests/_test_p2b19_tauri_subwindows.py
+      · 15 项静态扫覆盖装包 Tauri 侧 4 子窗
+
+改动:
+  - prisiragent-tauri/src-tauri/tauri.conf.json
+      · app.windows[] 加 companion-window / music-window / calendar-window /
+        workflow-window 4 个预声明(尺寸 + visible:false + url 占位)
+  - prisiragent-tauri/src-tauri/src/lib.rs
+      · mod windows; 声明
+      · AppState + current_web_port + start_companion 改 pub(crate)
+      · invoke_handler 注册 5 个新 commands
+      · tray menu 加 open_workflow item
+      · 4 子窗 tray click 改 windows::open_window + 兜底链保留
+      · setup 末尾用 SUBWINDOW_LABELS 循环调 bind_close_to_tray
+  - prisIragent_web.py
+      · openCompanion / openWorkflow 加 __TAURI_INTERNALS__ 双分支
+
+约束
+====
+✓ 不打安装包(关联功能开发中,统一打包发新版)
+✓ 不动 DLL/EXE/SPEC
+✓ 不删文件
+✓ 「Monaco 风格降级」:不引外部 npm 包,__TAURI_INTERNALS__ 是 Tauri 2.x 内置全局
+
+解锁子任务:
+  - P2.5+20(下一阶段):装包后真跑 Tauri dev 端到端验证(主窗 → 托盘 4 项 → 4 子窗
+    独立弹 → 关 → 重开复用 → 退出全销毁)

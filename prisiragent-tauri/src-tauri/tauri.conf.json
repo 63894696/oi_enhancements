@@ -36,6 +36,58 @@
         "visible": false,
         "backgroundColor": "#00000000",
         "url": "http://127.0.0.1:0/lyrics"
+      },
+      {
+        "label": "companion-window",
+        "title": "PrisirAI · 语伴",
+        "width": 920,
+        "height": 680,
+        "minWidth": 640,
+        "minHeight": 480,
+        "resizable": true,
+        "fullscreen": false,
+        "visible": false,
+        "backgroundColor": "#f6f1e7",
+        "url": "http://127.0.0.1:18850/"
+      },
+      {
+        "label": "music-window",
+        "title": "PrisirAI · 音乐",
+        "width": 880,
+        "height": 620,
+        "minWidth": 640,
+        "minHeight": 480,
+        "resizable": true,
+        "fullscreen": false,
+        "visible": false,
+        "backgroundColor": "#f6f1e7",
+        "url": "http://127.0.0.1:0/"
+      },
+      {
+        "label": "calendar-window",
+        "title": "PrisirAI · 📅 日历",
+        "width": 960,
+        "height": 720,
+        "minWidth": 720,
+        "minHeight": 540,
+        "resizable": true,
+        "fullscreen": false,
+        "visible": false,
+        "backgroundColor": "#f6f1e7",
+        "url": "http://127.0.0.1:18803/prisiragent/calendar"
+      },
+      {
+        "label": "workflow-window",
+        "title": "PrisirAI · 🔀 工作流",
+        "width": 1000,
+        "height": 720,
+        "minWidth": 800,
+        "minHeight": 560,
+        "resizable": true,
+        "fullscreen": false,
+        "visible": false,
+        "backgroundColor": "#f6f1e7",
+        "url": "http://127.0.0.1:18802/#wfmodal"
       }
     ],
     "security": {

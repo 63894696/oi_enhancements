@@ -7797,8 +7797,23 @@ function closeFeedback(){ document.getElementById('fbmodal').classList.remove('o
 function openPatch(){ document.getElementById('patchmodal').classList.add('open'); patchRefreshList(); }
 function closePatch(){ document.getElementById('patchmodal').classList.remove('open'); }
 
-/* ===== M3.27.3 陪聊入口:探活 + 开窗 ===== */
+/* ===== M3.27.3 陪聊入口:探活 + 开窗 =====
+ * P2.5+19(2026-09-22)双分支:
+ *   - 装包后(Tauri 主 WebView 注入 __TAURI_INTERNALS__)→ 调 Rust 命令
+ *     弹独立 companion-window(走 windows::open_window,跟托盘共用)
+ *   - 开发模式(Electron 壳 / 浏览器) → 走老逻辑 window.open(url, "_blank")
+ * 不引 @tauri-apps/api npm 包,只用 Tauri 2.x 自动注入的低层 __TAURI_INTERNALS__.invoke */
 async function openCompanion(){
+  // P2.5+19 分支 1:装包后 Tauri 壳注入的 __TAURI_INTERNALS__.invoke(cmd)
+  if (typeof window !== 'undefined' && window.__TAURI_INTERNALS__
+      && typeof window.__TAURI_INTERNALS__.invoke === 'function') {
+    try {
+      await window.__TAURI_INTERNALS__.invoke('open_companion_window_cmd');
+      return;
+    } catch(e) {
+      console.warn('[openCompanion] tauri invoke err, fallback window.open:', e);
+    }
+  }
   var port = 18850;
   var url = "http://127.0.0.1:" + port + "/";
   try {
@@ -7955,6 +7970,18 @@ let _wfNodeEditing = null;
 let _wfExtListCache = null;   // 节点编辑时动态 ext 下拉缓存
 
 async function openWorkflow() {
+  // P2.5+19 分支 1:装包后 Tauri 壳注入 → 弹独立 workflow-window(独立窗体验)
+  if (typeof window !== 'undefined' && window.__TAURI_INTERNALS__
+      && typeof window.__TAURI_INTERNALS__.invoke === 'function') {
+    try {
+      await window.__TAURI_INTERNALS__.invoke('open_workflow_window_cmd');
+      // 独立窗已弹,主窗里的 wfmodal 不再打开(避免双开)
+      return;
+    } catch(e) {
+      console.warn('[openWorkflow] tauri invoke err, fallback to in-modal:', e);
+    }
+  }
+  // 分支 2:开发模式(Electron 壳 / 浏览器)→ 主窗 wfmodal 全屏打开
   document.getElementById('wfmodal').classList.add('open');
   await wfRenderTaskList();
   await wfRefreshRuns();

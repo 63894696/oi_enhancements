@@ -29,6 +29,8 @@ mod music;
 mod calendar;
 mod port_config;
 mod config_loader;
+// P2.5+19:4 子窗独立 WebviewWindow 模型(close→hide 复用 + 端口动态解析)
+mod windows;
 
 // ---------- 配置 ----------
 // M3.34(2026-09-19): WEB_PORT / COMPANION_PORT 不再是写死常量。
@@ -48,7 +50,7 @@ fn brand_updates_url() -> String { config_loader::brand_url() }
 fn brand_max_per_run() -> usize { config_loader::brand_max_per_run() as usize }
 
 /// 全局状态
-struct AppState {
+pub(crate) struct AppState {
     web_proc: Mutex<Option<Child>>,
     web_ready: Mutex<bool>,
     /// M3.34(2026-09-19): 子进程 stdout sentinel 解析出的真端口。
@@ -78,7 +80,7 @@ impl AppState {
 }
 
 /// 当前 web 端口:sentinel 拿到 → 真端口;否则用启动期候选。
-fn current_web_port(state: &Arc<AppState>) -> u16 {
+pub(crate) fn current_web_port(state: &Arc<AppState>) -> u16 {
     if let Some(p) = *state.real_web_port.lock().unwrap() {
         return p;
     }
@@ -397,7 +399,7 @@ fn companion_up() -> bool {
 }
 
 /// 启动 companion(陪聊)服务
-fn start_companion(state: &Arc<AppState>) -> Result<(), String> {
+pub(crate) fn start_companion(state: &Arc<AppState>) -> Result<(), String> {
     let mut proc_guard = state.companion_proc.lock().unwrap();
     if proc_guard.is_some() {
         return Ok(()); // 已在跑
@@ -825,7 +827,10 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_shell::init())
         .manage(state.clone())
-        .invoke_handler(tauri::generate_handler![shell_info, shell_toggle, shell_open_external, start_companion_cmd, start_music_cmd, open_lyrics_cmd, close_lyrics_cmd, music_status_cmd, start_calendar_cmd, calendar_status_cmd])
+        .invoke_handler(tauri::generate_handler![shell_info, shell_toggle, shell_open_external, start_companion_cmd, start_music_cmd, open_lyrics_cmd, close_lyrics_cmd, music_status_cmd, start_calendar_cmd, calendar_status_cmd,
+            // P2.5+19:4 子窗独立 WebviewWindow commands
+            open_companion_window_cmd, open_music_window_cmd, open_calendar_window_cmd, open_workflow_window_cmd, close_all_child_windows_cmd, subwindows_status_cmd,
+        ])
         .setup(move |app| {
             let app_handle = app.handle().clone();
             let state_clone = Arc::clone(&state);
@@ -840,6 +845,8 @@ pub fn run() {
             let music_item = MenuItemBuilder::with_id("music", "启动音乐播放器").build(app)?;
             // M3.30 task #19: 右键菜单追加「打开日历」
             let calendar_item = MenuItemBuilder::with_id("open_calendar", "📅 打开日历").build(app)?;
+            // P2.5+19: 加「🔀 打开工作流」托盘项,走独立 workflow-window
+            let workflow_item = MenuItemBuilder::with_id("open_workflow", "🔀 打开工作流(独立窗)").build(app)?;
             let lyrics_item = MenuItemBuilder::with_id("lyrics", "桌面歌词(开/关)").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "退出").build(app)?;
             let menu = MenuBuilder::new(app)
@@ -847,6 +854,7 @@ pub fn run() {
                 .item(&companion_item)
                 .item(&music_item)
                 .item(&calendar_item)
+                .item(&workflow_item)
                 .item(&lyrics_item)
                 .item(&autostart_item)
                 .separator()
@@ -874,35 +882,42 @@ pub fn run() {
                             }
                         }
                         "companion" => {
-                            // M3.27.3: 托盘「启动陪聊」→ 代启 companion 服务
-                            let state = app.state::<Arc<AppState>>();
-                            if let Err(e) = start_companion(&state) {
-                                log::error!("[companion] start err: {}", e);
-                            }
-                            // 启完弹窗让用户点开
-                            if let Some(win) = app.get_webview_window("main") {
-                                let _ = win.show();
-                                let _ = win.set_focus();
+                            // P2.5+19: 托盘「启动陪聊」→ 独立 companion-window(走 windows 模块)
+                            if let Err(e) = windows::open_window(app, "companion-window") {
+                                log::error!("[companion] open_window err: {}", e);
+                                // 兜底:走老逻辑(主窗 eval 跳转)
+                                let state = app.state::<Arc<AppState>>();
+                                if let Err(e) = start_companion(&state) {
+                                    log::error!("[companion] start err: {}", e);
+                                }
+                                if let Some(win) = app.get_webview_window("main") {
+                                    let _ = win.show();
+                                    let _ = win.set_focus();
+                                }
                             }
                         }
                         "music" => {
-                            // M3.29.4: 托盘「启动音乐播放器」→ 代启 music web
+                            // P2.5+19: 托盘「启动音乐播放器」→ 独立 music-window
+                            // 先确保 music web 起(端口动态分配 → 写到 HKCU → windows::open_window 拿到)
                             let state = app.state::<Arc<AppState>>();
                             match music::start_music(&state) {
                                 Ok(port) => log::info!("[music] started port={}", port),
                                 Err(e) => log::error!("[music] start err: {}", e),
                             }
-                            // 同时打开歌词窗
-                            let app_handle = app.clone();
-                            std::thread::spawn(move || {
-                                std::thread::sleep(Duration::from_millis(800));
-                                if let Err(e) = music::open_lyrics_window(&app_handle) {
-                                    log::warn!("[music] open lyrics err: {}", e);
+                            if let Err(e) = windows::open_window(app, "music-window") {
+                                log::error!("[music] open_window err: {}", e);
+                                // 兜底:主窗 eval 跳转 + 歌词浮窗(不变)
+                                let app_handle = app.clone();
+                                std::thread::spawn(move || {
+                                    std::thread::sleep(Duration::from_millis(800));
+                                    if let Err(e) = music::open_lyrics_window(&app_handle) {
+                                        log::warn!("[music] open lyrics err: {}", e);
+                                    }
+                                });
+                                if let Some(win) = app.get_webview_window("main") {
+                                    let _ = win.show();
+                                    let _ = win.set_focus();
                                 }
-                            });
-                            if let Some(win) = app.get_webview_window("main") {
-                                let _ = win.show();
-                                let _ = win.set_focus();
                             }
                         }
                         "lyrics" => {
@@ -919,36 +934,52 @@ pub fn run() {
                             }
                         }
                         "open_calendar" => {
-                            // P2.5+12: 托盘「📅 打开日历」— 代启 calendar 子进程 + 打开浏览器
+                            // P2.5+19: 托盘「📅 打开日历」→ 独立 calendar-window
+                            // 兜底链:windows 模块(优先)→ 主窗 eval 跳转(回退)
                             let app_clone = app.clone();
-                            std::thread::spawn(move || {
-                                // 1) spawn calendar 子进程(若未起),等就绪后拿真端口
-                                let port = match tauri::async_runtime::block_on(async {
-                                    calendar::start(&app_clone).await
-                                }) {
-                                    Ok(p) => p,
-                                    Err(e) => {
-                                        log::error!("[calendar] start err: {}", e);
+                            if let Err(e) = windows::open_window(app, "calendar-window") {
+                                log::error!("[calendar] open_window err: {}", e);
+                                std::thread::spawn(move || {
+                                    let port = match tauri::async_runtime::block_on(async {
+                                        calendar::start(&app_clone).await
+                                    }) {
+                                        Ok(p) => p,
+                                        Err(e) => {
+                                            log::error!("[calendar] start err: {}", e);
+                                            return;
+                                        }
+                                    };
+                                    if !calendar::is_running(&app_clone) {
+                                        log::warn!("[calendar] not running yet, skip open");
                                         return;
                                     }
-                                };
-                                // 2) 等健康检查通过(calendar::start 内已轮询,这里再保险兜底)
-                                if !calendar::is_running(&app_clone) {
-                                    log::warn!("[calendar] not running yet, skip open");
-                                    return;
-                                }
-                                // 3) 在主窗口里打开 calendar 页(走应用内 WebView 而非外部浏览器)
-                                let url = format!(
-                                    "http://127.0.0.1:{}/prisiragent/calendar",
-                                    port
-                                );
-                                log::info!("[calendar] opening in-app {}", url);
-                                if let Some(win) = app_clone.get_webview_window("main") {
+                                    let url = format!(
+                                        "http://127.0.0.1:{}/prisiragent/calendar",
+                                        port
+                                    );
+                                    log::info!("[calendar] opening in-app fallback {}", url);
+                                    if let Some(win) = app_clone.get_webview_window("main") {
+                                        let _ = win.show();
+                                        let _ = win.set_focus();
+                                        let _ = win.eval(&format!("window.location.href = '{}';", url));
+                                    }
+                                });
+                            }
+                        }
+                        "open_workflow" => {
+                            // P2.5+19: 托盘「🔀 打开工作流(独立窗)」→ 独立 workflow-window
+                            if let Err(e) = windows::open_window(app, "workflow-window") {
+                                log::error!("[workflow] open_window err: {}", e);
+                                // 兜底:主窗里跳 #wfmodal fragment
+                                if let Some(win) = app.get_webview_window("main") {
+                                    let state = app.state::<Arc<AppState>>();
+                                    let port = current_web_port(&state);
+                                    let url = format!("http://127.0.0.1:{}/#wfmodal", port);
+                                    let _ = win.eval(&format!("window.location.href = '{}';", url));
                                     let _ = win.show();
                                     let _ = win.set_focus();
-                                    let _ = win.eval(&format!("window.location.href = '{}';", url));
                                 }
-                            });
+                            }
                         }
                         "quit" => {
                             app.exit(0);
@@ -1004,6 +1035,11 @@ pub fn run() {
                         }
                     }
                 });
+            }
+
+            // P2.5+19: 4 子窗 close → hide 复用(跟主窗同款模板,quitting 守卫共用)
+            for label in windows::SUBWINDOW_LABELS.iter() {
+                windows::bind_close_to_tray(&app_handle, label);
             }
 
             // M3.34(2026-09-19): 等后端就绪后加载 URL + 显式 set_icon + show
