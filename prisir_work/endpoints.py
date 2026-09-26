@@ -1423,3 +1423,117 @@ def _web_ab_close(_body: dict) -> tuple[dict, int]:
         return ({"ok": True, **_ab.ab_close()}, 200)
     except Exception as e:  # noqa: BLE001
         return ({"ok": False, "error": type(e).__name__}, 200)
+
+
+# ---------------------------------------------------------------------------
+# P3j T28: joeblack-lha/screenshot-mcp 集成(2026-09-26, 桌面截图)
+# ---------------------------------------------------------------------------
+# 失败/未装 screenshot-mcp / Node.js 过低 / 当前平台无原生后端
+# → 200 + ok=False + mode(4 档:missing_cli/missing_node/no_backend/ready)。
+# 设计:复用 gh_bridge / agent_browser_bridge 的 batch subprocess 模式,
+# 每次调用 subprocess.run 一个 screenshot-mcp capture(或 list glob 直读)。
+
+@register("/web/screenshot/health", method="POST", risk="L0", auth=True)
+def _web_ss_health(_body: dict) -> tuple[dict, int]:
+    """探活(4 档 mode:missing_cli / missing_node / no_backend / ready)。
+
+    返回字段:mode / installed / version / node / backend / platform / hint。
+    """
+    try:
+        from prisir_work import screenshot_bridge as _ss
+        return ({"ok": True, **_ss.ss_health()}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "error": type(e).__name__,
+                 "detail": str(e)[:200]}, 200)
+
+
+@register("/web/screenshot/capture", method="POST", risk="L0", auth=True)
+def _web_ss_capture(body: dict) -> tuple[dict, int]:
+    """桌面截图主操作。L0 只读(截图本质不破坏数据,但属用户环境副作用)。
+
+    body 字段(全部可选):
+      mode: 'fullscreen' | 'window' | 'area'(默认 fullscreen)
+      area: 'x,y,w,h'(仅 mode=area 必填)
+      filename: 自定义文件名(留空自动 timestamp)
+      output_dir: 自定义输出目录(默认 ~/.screenshot-mcp/captures/)
+      timeout: 超时秒数(默认 30)
+    """
+    try:
+        from prisir_work import screenshot_bridge as _ss
+        mode = (body.get("mode") or "fullscreen").strip()
+        area = (body.get("area") or "").strip()
+        filename = (body.get("filename") or "").strip()
+        output_dir = (body.get("output_dir") or "").strip()
+        timeout = body.get("timeout") or _ss.SS_TIMEOUT
+        try:
+            timeout = float(timeout)
+        except (TypeError, ValueError):
+            timeout = _ss.SS_TIMEOUT
+        r = _ss.ss_capture(mode, area=area, filename=filename,
+                           output_dir=output_dir, timeout=timeout)
+        # r 自身带 ok 字段(成功/失败),不再强制覆盖 — 跟 ab_click 等保持一致
+        return (r, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "error": type(e).__name__,
+                 "detail": str(e)[:200]}, 200)
+
+
+@register("/web/screenshot/list", method="POST", risk="L0", auth=True)
+def _web_ss_list(body: dict) -> tuple[dict, int]:
+    """列已保存截图(直接 glob 默认输出目录)。
+
+    body 字段:limit(默认 20)/ output_dir(可选)
+    """
+    try:
+        from prisir_work import screenshot_bridge as _ss
+        limit = body.get("limit") or 20
+        try:
+            limit = int(limit)
+        except (TypeError, ValueError):
+            limit = 20
+        output_dir = (body.get("output_dir") or "").strip()
+        r = _ss.ss_list(limit=limit, output_dir=output_dir)
+        return ({"ok": True, **r}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "error": type(e).__name__,
+                 "detail": str(e)[:200]}, 200)
+
+
+@register("/web/screenshot/read", method="POST", risk="L0", auth=True)
+def _web_ss_read(body: dict) -> tuple[dict, int]:
+    """读截图 PNG/JPG 元数据(尺寸 / 大小 / mtime)。
+
+    body 字段:path(必填,绝对路径)
+    """
+    try:
+        from prisir_work import screenshot_bridge as _ss
+        path = (body.get("path") or "").strip()
+        if not path:
+            return ({"ok": False, "error": "ss_empty_path"}, 200)
+        r = _ss.ss_read(path)
+        return ({"ok": True, **r}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "error": type(e).__name__,
+                 "detail": str(e)[:200]}, 200)
+
+
+@register("/web/screenshot/active_backend", method="POST", risk="L0", auth=True)
+def _web_ss_active_backend(_body: dict) -> tuple[dict, int]:
+    """查当前平台 + 已选后端 + 是否可用(纯本地探查,无 subprocess)。"""
+    try:
+        from prisir_work import screenshot_bridge as _ss
+        return ({"ok": True, **_ss.ss_active_backend()}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "error": type(e).__name__,
+                 "detail": str(e)[:200]}, 200)
+
+
+@register("/web/screenshot/install_hint", method="POST", risk="L0", auth=True)
+def _web_ss_install_hint(_body: dict) -> tuple[dict, int]:
+    """返回当前平台的安装提示(静态,无 subprocess)。"""
+    try:
+        from prisir_work import screenshot_bridge as _ss
+        return ({"ok": True, **_ss.ss_install_hint()}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "error": type(e).__name__,
+                 "detail": str(e)[:200]}, 200)

@@ -669,3 +669,58 @@ register_capability(
     keywords=("关浏览器", "关闭浏览器", "agent-browser 关闭",
               "agent-browser close", "终止 agent-browser"),
 )
+
+
+# ---------------------------------------------------------------------------
+# P3j T28: joeblack-lha/screenshot-mcp 集成(2026-09-26, 桌面截图)
+# ---------------------------------------------------------------------------
+# 跟 T25/T26 浏览器内截图的差异:T28 能截「整个桌面 / 任意窗口 / 指定区域」,
+# 补完用户真实场景(微信/钉钉/游戏/IDE 等桌面应用界面)。
+# 依赖:npm + screenshot-mcp(npm 全局;底层按平台调原生后端:
+# Win PowerShell + .NET / macOS screencapture / Linux grim-scrot-maim-import)
+# 全部 L0 只读 — 截图本质不破坏数据,但属用户环境副作用。
+
+register_capability(
+    "web.screenshot.health",
+    title="screenshot-mcp 探活(4 档:missing_cli / missing_node / no_backend / ready)",
+    endpoint="/web/screenshot/health", method="POST", risk="L0", auth=True,
+    keywords=("screenshot 状态", "screenshot 健康", "screenshot 探活",
+              "screenshot mcp 装没装", "截图 mcp 健康"),
+)
+register_capability(
+    "web.screenshot.capture",
+    title="桌面截图(全屏 / 窗口 / 区域 三档)— L0 只读",
+    endpoint="/web/screenshot/capture", method="POST", risk="L0", auth=True,
+    keywords=("截图", "截屏", "拍屏幕", "screenshot",
+              "桌面截图", "截全屏", "截窗口", "截区域",
+              "截指定区域", "截桌面", "看屏幕",
+              "桌面截屏", "screenshot mcp 截图",
+              "截个图", "截个图给我看看"),
+)
+register_capability(
+    "web.screenshot.list",
+    title="列已保存截图(默认 ~/.screenshot-mcp/captures/,按 mtime desc)",
+    endpoint="/web/screenshot/list", method="POST", risk="L0", auth=True,
+    keywords=("列截图", "看历史截图", "screenshot 列表",
+              "最近截图", "screenshot list", "之前截的图"),
+)
+register_capability(
+    "web.screenshot.read",
+    title="读截图 PNG/JPG 元数据(尺寸 / 大小 / mtime)— 不下载图片内容",
+    endpoint="/web/screenshot/read", method="POST", risk="L0", auth=True,
+    keywords=("看截图信息", "读截图", "screenshot 元数据",
+              "截图尺寸", "截图大小", "screenshot read"),
+)
+register_capability(
+    "web.screenshot.active_backend",
+    title="查当前平台 + 已选原生后端(PowerShell / screencapture / grim / scrot ...)",
+    endpoint="/web/screenshot/active_backend", method="POST", risk="L0", auth=True,
+    keywords=("截图后端", "screenshot 后端", "看后端", "active backend"),
+)
+register_capability(
+    "web.screenshot.install_hint",
+    title="当前平台的 screenshot-mcp 安装提示(命令 + Node.js 要求)",
+    endpoint="/web/screenshot/install_hint", method="POST", risk="L0", auth=True,
+    keywords=("screenshot 装法", "screenshot 怎么装", "install hint",
+              "screenshot install", "npm install screenshot-mcp"),
+)

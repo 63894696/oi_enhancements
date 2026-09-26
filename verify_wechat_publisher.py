@@ -2040,6 +2040,104 @@ def check_agent_browser_capability(_ctx: VerifyCtx) -> str:
     return f"8 agent-browser capabilities · 2=L1(confirm ✓)· 6=L0 ✓"
 
 
+# ---------------------------------------------------------------------------
+# P3j T28: joeblack-lha/screenshot-mcp(桌面截图,补完浏览器外场景)
+# ---------------------------------------------------------------------------
+
+def check_screenshot_bridge_module(_ctx: VerifyCtx) -> str:
+    """screenshot_bridge module + 6 公开 fns (P3j T28)。
+
+    公开 API:ss_health / ss_capture / ss_list / ss_read /
+              ss_active_backend / ss_install_hint。
+    """
+    try:
+        from prisir_work import screenshot_bridge as _ss
+    except Exception as e:  # noqa: BLE001
+        return f"[FAIL] screenshot_bridge import failed: {type(e).__name__}: {e}"
+    required = ("ss_health", "ss_capture", "ss_list", "ss_read",
+                "ss_active_backend", "ss_install_hint",
+                "_run", "_detect_platform", "_detect_backend",
+                "_parse_saved_path")
+    missing = [n for n in required if not hasattr(_ss, n)]
+    if missing:
+        return f"[FAIL] screenshot_bridge 缺函数: {missing}"
+    # 核心常量
+    for c in ("SS_BIN", "SS_TIMEOUT", "SS_MODES", "SS_DEFAULT_OUTPUT_DIR"):
+        if not hasattr(_ss, c):
+            return f"[FAIL] screenshot_bridge 缺常量: {c}"
+    return f"screenshot_bridge + {len(required)-4} public APIs + 4 常量 ✓"
+
+
+def check_screenshot_endpoints(_ctx: VerifyCtx) -> str:
+    """6 screenshot 端点全部登记 + 全部 L0 (P3j T28)。"""
+    from prisir_work import endpoints as _ep
+    expected = ("/web/screenshot/health", "/web/screenshot/capture",
+                "/web/screenshot/list", "/web/screenshot/read",
+                "/web/screenshot/active_backend",
+                "/web/screenshot/install_hint")
+    missing = [p for p in expected if p not in _ep._REGISTRY]
+    if missing:
+        return f"[FAIL] 缺 endpoint: {missing}"
+    for p in expected:
+        if _ep._REGISTRY[p]["method"] != "POST":
+            return f"[FAIL] {p} method 应为 POST"
+        if not _ep._REGISTRY[p]["auth"]:
+            return f"[FAIL] {p} 应要 auth"
+        if _ep._REGISTRY[p]["risk"] != "L0":
+            return f"[FAIL] {p} 应为 L0"
+    return f"6 screenshot endpoints · 全部 L0 + POST + auth ✓"
+
+
+def check_screenshot_health_modes(_ctx: VerifyCtx) -> str:
+    """ss_health 返回字段 + 4 档 mode 识别 (P3j T28)。"""
+    from prisir_work import screenshot_bridge as _ss
+    h = _ss.ss_health()
+    # 必有字段
+    required = ("mode", "installed", "backend", "platform", "hint")
+    missing = [k for k in required if k not in h]
+    if missing:
+        return f"[FAIL] ss_health 缺字段: {missing}"
+    # mode 必须是 4 档之一
+    valid_modes = ("missing_cli", "missing_node", "no_backend", "ready")
+    if h["mode"] not in valid_modes:
+        return f"[FAIL] ss_health.mode={h['mode']!r} 不在 4 档中"
+    # 当前平台
+    if h["platform"] not in ("windows", "darwin", "linux"):
+        return f"[FAIL] platform={h['platform']!r} 异常"
+    return f"ss_health mode={h['mode']} platform={h['platform']} backend={h.get('backend','')} ✓"
+
+
+def check_screenshot_capability(_ctx: VerifyCtx) -> str:
+    """6 screenshot capability + 中英 keywords + 全部 L0 (P3j T28)。"""
+    from prisir_work import capability as _cap
+    caps = {c["id"]: c for c in _cap.list_capabilities()}
+    expected = ("web.screenshot.health", "web.screenshot.capture",
+                "web.screenshot.list", "web.screenshot.read",
+                "web.screenshot.active_backend",
+                "web.screenshot.install_hint")
+    missing = [c for c in expected if c not in caps]
+    if missing:
+        return f"[FAIL] 缺 capability: {missing}"
+    # 全部 L0
+    wrong_risk = [c for c in expected if caps[c]["risk"] != "L0"]
+    if wrong_risk:
+        return f"[FAIL] capability 不应为 L1: {wrong_risk}"
+    # keywords 含中英
+    no_kw = []
+    for cid in expected:
+        kws = caps[cid].get("keywords", [])
+        if not kws:
+            no_kw.append(cid)
+    if no_kw:
+        return f"[FAIL] capability 缺 keywords: {no_kw}"
+    # namespace 不撞 agent-browser
+    ss_caps = {c for c in caps if c.startswith("web.screenshot.")}
+    ab_caps = {c for c in caps if c.startswith("web.agent-browser.")}
+    if not ss_caps.isdisjoint(ab_caps):
+        return "[FAIL] web.screenshot.* 跟 web.agent-browser.* 重叠"
+    return f"6 screenshot capabilities · 全部 L0 · namespace 独立 ✓"
+
+
 CHECKS: list[Check] = [
     Check("Python",                   check_python),
     Check("Git",                      check_git),
@@ -2126,6 +2224,15 @@ CHECKS: list[Check] = [
           check_agent_browser_health_modes),
     Check("8 agent-browser capabilities · 2 L1 confirm (P3j T26)",
           check_agent_browser_capability),
+    # P3j T28: joeblack-lha/screenshot-mcp(桌面截图,补完浏览器外场景)
+    Check("screenshot_bridge module + 6 APIs (P3j T28)",
+          check_screenshot_bridge_module),
+    Check("6 screenshot endpoints · 全部 L0 (P3j T28)",
+          check_screenshot_endpoints),
+    Check("ss_health 4 档 mode 探活 (P3j T28)",
+          check_screenshot_health_modes),
+    Check("6 screenshot capabilities · 全部 L0 + namespace 独立 (P3j T28)",
+          check_screenshot_capability),
 ]
 
 
