@@ -1406,6 +1406,54 @@ def check_jina_endpoints_and_registration(_ctx: VerifyCtx) -> str:
     return "3 jina endpoints + 3 capabilities + jina fetcher registered ✓"
 
 
+# ---------------------------------------------------------------------------
+# P3j T20-I.2:免 key 自动走 hosted + 20 RPM 限流
+# ---------------------------------------------------------------------------
+
+def check_jina_zero_config(_ctx: VerifyCtx) -> str:
+    """零配置 hosted_no_key 模式 + 限流 + no_cache 都备齐。
+
+    4 个核心检查:
+      · mode 字段枚举(hosted_no_key / hosted_with_key / self_hosted)
+      · quota_status() 4 字段齐
+      · RATE_LIMITED_ERROR 错误码常量
+      · _http_get 接受 no_cache kwarg(X-No-Cache 头支持)
+    """
+    import inspect
+    from prisir_work import web_fetch_jina as _jina
+
+    # 1. mode 枚举
+    mode = _jina._current_mode_str()
+    if mode not in ("hosted_no_key", "hosted_with_key", "self_hosted"):
+        return f"[FAIL] unknown mode={mode}"
+
+    # 2. quota_status 4 字段
+    qs = _jina.quota_status()
+    needed = ("rpm_limit", "used_last_60s", "remaining", "window_seconds")
+    miss = [k for k in needed if k not in qs]
+    if miss:
+        return f"[FAIL] quota_status 缺字段 {miss}"
+
+    # 3. RATE_LIMITED_ERROR 常量对齐
+    if _jina.RATE_LIMITED_ERROR != "jina_rate_limited":
+        return f"[FAIL] RATE_LIMITED_ERROR={_jina.RATE_LIMITED_ERROR!r}"
+
+    # 4. _http_get 签名接 no_cache
+    sig = inspect.signature(_jina._http_get)
+    if "no_cache" not in sig.parameters:
+        return "[FAIL] _http_get 未接 no_cache 参数"
+
+    # 5. _current_rpm_limit 跟 mode 联动(hosted_no_key → 20, with_key → 500)
+    rpm = _jina._current_rpm_limit()
+    expected_rpm = ({"hosted_no_key": 20, "hosted_with_key": 500,
+                     "self_hosted": 10_000}).get(mode, 20)
+    if rpm != expected_rpm:
+        return f"[FAIL] rpm={rpm}, mode={mode} 期望 {expected_rpm}"
+
+    return (f"jina zero-config 模式可工作 · mode={mode} · "
+            f"quota={rpm} RPM · {len(qs)} quota 字段 ✓")
+
+
 CHECKS: list[Check] = [
     Check("Python",                   check_python),
     Check("Git",                      check_git),
@@ -1452,6 +1500,7 @@ CHECKS: list[Check] = [
     # P3j T20-I: jina-ai/reader 复现
     Check("jina web_fetch_jina module (P3j T20-I)", check_jina_module),
     Check("3 jina endpoints + 3 caps + jina fetcher (P3j T20-I)", check_jina_endpoints_and_registration),
+    Check("jina zero-config 免 key + 20 RPM 限流 (P3j T20-I.2)", check_jina_zero_config),
 ]
 
 

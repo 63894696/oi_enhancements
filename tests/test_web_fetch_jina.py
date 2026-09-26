@@ -33,14 +33,20 @@ def test_jina_fetch_ok(monkeypatch):
         lambda *a, **kw: {"ok": True, "status": 200,
                           "content": md, "headers": {}},
     )
+    # 重置 quota,确保 hosted_no_key 默认 20 配额从干净状态起算
+    _jina._QUOTA_TIMES.clear()
     r = _jina.jina_fetch("https://example.com", {"timeout": 5.0})
     assert r["meta"]["fetcher"] == "jina"
     assert r["meta"]["ok"] is True
     assert r["meta"]["status"] == 200
     assert r["meta"]["format"] == "markdown"
-    assert r["meta"]["mode"] in ("hosted", "self_hosted")
+    assert r["meta"]["mode"] in ("hosted_no_key", "hosted_with_key",
+                                  "self_hosted")
     assert "Example Domain" in r["content"]
     assert "illustrative" in r["content"]
+    # P3j T20-I.2:meta 暴露 quota 字段
+    assert r["meta"]["rpm_limit"] == 20  # 默认 hosted_no_key
+    assert "rpm_used_last_60s" in r["meta"]
 
 
 def test_jina_fetch_http_error(monkeypatch):
@@ -70,11 +76,13 @@ def test_jina_fetch_timeout(monkeypatch):
                           "detail": "timed out",
                           "content": ""},
     )
+    _jina._QUOTA_TIMES.clear()
     r = _jina.jina_fetch("https://very-slow.test/")
     assert r["meta"]["ok"] is False
     assert r["meta"]["error"] == "url_error"
     assert r["meta"]["detail"] == "timed out"
-    assert r["meta"]["mode"] in ("hosted", "self_hosted")
+    assert r["meta"]["mode"] in ("hosted_no_key", "hosted_with_key",
+                                  "self_hosted")
 
 
 def test_jina_fetch_self_hosted(monkeypatch):
@@ -84,9 +92,12 @@ def test_jina_fetch_self_hosted(monkeypatch):
     saved = _jina.JINA_READER_URL
     _jina.JINA_READER_URL = "http://localhost:8081"
     try:
+        _jina._QUOTA_TIMES.clear()
         captured = {}
-        def fake(url, *, timeout=30.0, headers=None, params=None):
+        def fake(url, *, timeout=30.0, headers=None, params=None,
+                 no_cache=False):
             captured["url"] = url
+            captured["no_cache"] = no_cache
             return {"ok": True, "status": 200,
                     "content": "self-hosted markdown", "headers": {}}
         monkeypatch.setattr(_jina, "_http_get", fake)
@@ -94,6 +105,8 @@ def test_jina_fetch_self_hosted(monkeypatch):
         assert r["meta"]["mode"] == "self_hosted"
         assert r["meta"]["ok"] is True
         assert captured["url"].startswith("http://localhost:8081/")
+        # P3j T20-I.2:自部署模式 quota 10000,rpm_limit 跟着 mode 走
+        assert r["meta"]["rpm_limit"] == 10_000
     finally:
         _jina.JINA_READER_URL = saved
 
@@ -140,18 +153,32 @@ def test_jina_search_empty_query():
 # ---------------------------------------------------------------------------
 
 def test_jina_health_hosted_ok(monkeypatch):
-    """hosted:两端均 ok → ok=True, mode=hosted, reader/search 字典存在。"""
+    """hosted:两端均 ok → ok=True, mode 字段存在, reader/search 字典存在。
+
+    P3j T20-I.2:无 key 时 health.search.skipped=True,所以这里需要
+    monkeypatch JINA_API_KEY 让 search 真的去探。
+    """
     from prisir_work import web_fetch_jina as _jina
 
     monkeypatch.setattr(
         _jina, "_http_get",
         lambda *a, **kw: {"ok": True, "status": 200, "content": "ok", "headers": {}},
     )
-    h = _jina.jina_health()
-    assert h["ok"] is True
-    assert h["mode"] == "hosted"
-    assert h["reader"]["ok"] is True
-    assert h["search"]["ok"] is True
+    saved_key = _jina.JINA_API_KEY
+    _jina.JINA_API_KEY = "test_key"
+    try:
+        _jina._QUOTA_TIMES.clear()
+        h = _jina.jina_health()
+        assert h["ok"] is True
+        assert h["mode"] == "hosted_with_key"
+        assert h["reader"]["ok"] is True
+        assert h["search"]["ok"] is True
+        assert h["search"]["skipped"] is False
+        assert h["no_key_supported"] is True
+        assert h["search_requires_key"] is True
+        assert h["quota"]["rpm_limit"] == 500
+    finally:
+        _jina.JINA_API_KEY = saved_key
 
 
 def test_jina_health_both_down(monkeypatch):
@@ -259,6 +286,132 @@ def test_jina_search_provider_registers_when_env(monkeypatch, tmp_path):
             os.environ["JINA_API_KEY"] = saved_key
         if saved_url:
             os.environ["JINA_SEARCH_URL"] = saved_url
+
+
+# ---------------------------------------------------------------------------
+# 5. P3j T20-I.2:令牌桶 + X-No-Cache + 免 key health
+# ---------------------------------------------------------------------------
+
+def test_jina_fetch_rate_limited(monkeypatch):
+    """填满令牌桶 → jina_fetch 返 ok=False + error=jina_rate_limited,不走 HTTP。
+
+    设计意图:超额让 picker 自动落 urllib,绝不阻塞主对话。
+    """
+    from prisir_work import web_fetch_jina as _jina
+
+    # 强制 hosted_no_key 模式(env 全空,verify 默认就是)
+    monkeypatch.delenv("JINA_API_KEY", raising=False)
+    monkeypatch.delenv("JINA_READER_URL", raising=False)
+    monkeypatch.delenv("JINA_SEARCH_URL", raising=False)
+    _jina._QUOTA_TIMES.clear()
+    import time as _t
+    # 装满 20 个令牌(hosted_no_key 上限)
+    _jina._QUOTA_TIMES.extend([_t.monotonic()] * _jina._current_rpm_limit())
+
+    called = []
+    monkeypatch.setattr(_jina, "_http_get",
+                        lambda *a, **kw: called.append(1) or {"ok": False})
+    r = _jina.jina_fetch("https://example.com")
+    assert r["meta"]["error"] == "jina_rate_limited", \
+        f"want jina_rate_limited, got {r['meta'].get('error')}"
+    assert r["meta"]["rate_limit_per_min"] == 20
+    assert r["meta"]["mode"] == "hosted_no_key"
+    assert called == [], \
+        f"限流时不应调 HTTP,但调了 {len(called)} 次"
+    # quota 状态应满
+    qs = _jina.quota_status()
+    assert qs["rpm_limit"] == 20
+    assert qs["used_last_60s"] == 20
+    assert qs["remaining"] == 0
+
+
+def test_jina_fetch_self_hosted_skips_quota(monkeypatch):
+    """自部署模式 → quota=10000,即便 _QUOTA_TIMES 满了也放行。
+
+    设计意图:自部署不限流,不应被令牌桶误拦截。
+    """
+    from prisir_work import web_fetch_jina as _jina
+
+    saved_url = _jina.JINA_READER_URL
+    _jina.JINA_READER_URL = "http://localhost:8081"
+    try:
+        _jina._QUOTA_TIMES.clear()
+        import time as _t
+        # 装 100 个(>自部署 limit 10000 的 1/100,但这里测试意图是
+        # 即便桶满也放行,因为 quota 检查在 hosted 模式才触发)
+        _jina._QUOTA_TIMES.extend([_t.monotonic()] * 100)
+
+        captured = []
+        monkeypatch.setattr(_jina, "_http_get",
+                            lambda *a, **kw: captured.append(1) or
+                            {"ok": True, "status": 200,
+                             "content": "ok", "headers": {}})
+        r = _jina.jina_fetch("https://example.com")
+        assert captured, "自部署不应被 quota 拦截,应该走 HTTP"
+        assert r["meta"]["ok"] is True
+        assert r["meta"]["mode"] == "self_hosted"
+    finally:
+        _jina.JINA_READER_URL = saved_url
+
+
+def test_jina_fetch_no_cache_header(monkeypatch):
+    """options.no_cache=True → _http_get 收到 no_cache=True。"""
+    from prisir_work import web_fetch_jina as _jina
+
+    _jina._QUOTA_TIMES.clear()
+    captured = {}
+    def fake(url, *, timeout=30.0, headers=None, params=None,
+             no_cache=False):
+        captured["no_cache"] = no_cache
+        return {"ok": True, "status": 200, "content": "ok", "headers": {}}
+    monkeypatch.setattr(_jina, "_http_get", fake)
+
+    # default:no_cache=False
+    _jina.jina_fetch("https://example.com")
+    assert captured["no_cache"] is False
+
+    # 传 no_cache=True
+    _jina.jina_fetch("https://example.com", {"no_cache": True})
+    assert captured["no_cache"] is True
+
+
+def test_jina_health_no_key_mode(monkeypatch):
+    """env 全空 → health.mode=hosted_no_key + quota.rpm_limit=20 +
+    search.skipped=True(不打 s.jina.ai 避免 403 污染日志)。"""
+    from prisir_work import web_fetch_jina as _jina
+
+    monkeypatch.delenv("JINA_API_KEY", raising=False)
+    monkeypatch.delenv("JINA_SEARCH_URL", raising=False)
+    monkeypatch.delenv("JINA_READER_URL", raising=False)
+    _jina._QUOTA_TIMES.clear()
+
+    # reader mock 真探活
+    def fake_http(url, *, timeout=5.0, headers=None, params=None,
+                  no_cache=False):
+        # 抓 reader / search 区分
+        if "/example.com" in url:
+            return {"ok": True, "status": 200,
+                    "content": "ok", "headers": {}}
+        # 理论上无 key 时不应该走到 search 这条,先返 fail
+        return {"ok": False, "status": 403, "error": "http_403"}
+
+    monkeypatch.setattr(_jina, "_http_get", fake_http)
+    h = _jina.jina_health()
+
+    assert h["mode"] == "hosted_no_key"
+    assert h["api_key_set"] is False
+    assert h["self_hosted"] is False
+    assert h["no_key_supported"] is True
+    assert h["search_requires_key"] is True
+    # search 应被跳过(无 key,不真打 s.jina.ai)
+    assert h["search"]["skipped"] is True
+    assert h["search"]["error"] == "no_key_required"
+    # reader 真打
+    assert h["reader"]["ok"] is True
+    # quota 字段
+    assert h["quota"]["rpm_limit"] == 20
+    assert h["quota"]["used_last_60s"] == 0
+    assert h["quota"]["remaining"] == 20
 
 
 # ---------------------------------------------------------------------------

@@ -123,3 +123,77 @@ agent 主对话
 - [ ] jina self-hosted Docker 一键拉取脚本(companion/_setup_jina.sh)
 - [ ] 多 jina 实例并发(目前 hosted 一个 URL,自部署一个 URL)
 - [ ] cache layer:web_fetch 已 7d 磁盘缓存,jina hosted 自己有 CDN cache,两层互不冲突
+
+---
+
+## 免 key 自动接入(2026-09-26 增量,P3j T20-I.2)
+
+> 用户意识到大部分用户根本不知道 jina 有 key,在 [api.jina.ai/scalar](https://api.jina.ai/scalar)
+> 调研后发现:r.jina.ai **零 key 也可用**,只是被限 **20 RPM**;s.jina.ai **无 key 直接 403**。
+> 据此做了免 key 接入调整。
+
+### 接入策略
+
+| 端点 | env 全空行为 | 配 JINA_API_KEY | 自部署 URL |
+|------|------------|----------------|-----------|
+| **r.jina.ai(fetch)** | ✅ hosted_no_key,**20 RPM**,5min 缓存 | hosted_with_key,**500 RPM** | self_hosted,基本无限 |
+| **s.jina.ai(search)** | ❌ 跳过,不调(免 403 污染日志) | ✅ 100 RPM | ✅ 自部署 |
+
+### 令牌桶
+
+- **滑动窗口**:模块级 `_QUOTA_TIMES: list[float]`,每次请求前 prune 60s 外的
+- **配额按模式查表**:`JINA_RPM_BY_MODE = {hosted_no_key: 20, hosted_with_key: 500, self_hosted: 10000}`
+- **超额行为**:`jina_fetch` 返 `{ok: False, error: "jina_rate_limited", rate_limit_per_min: 20, hint: "..."}`,**不 raise**
+- **web_fetch picker**:jina 超额 / 失败 → 自动落 urllib(已有逻辑)
+- **健康检查**:health 端点返 `quota = {rpm_limit, used_last_60s, remaining, window_seconds}`
+- **服务端 429 防御**:`_http_get` 捕 HTTPError 429 时显式 `error="jina_rate_limited"`,并 `_refund_quota()` 归还令牌(服务端没算成功请求)
+
+### 默认走 jina 缓存 + X-No-Cache 透传
+
+- jina hosted 5 分钟内同 URL 自动返 cached snapshot(`r.jina.ai` 默认行为)
+- 调用方传 `options.no_cache=True` → jina_fetch 内部转发到 `_http_get(no_cache=True)` → 设 `X-No-Cache: true` 头强制 fresh
+- 本地 web_fetch 还有 7d 磁盘缓存 + 32 条内存 LRU,两层不冲突
+
+### 调用方
+
+```python
+# 默认零配置(20 RPM)
+from prisir_work import web_fetch
+r = web_fetch.fetch("https://example.com")
+# → fetcher="jina", content 是干净 markdown
+
+# 强制 fresh(跳过 jina 5min 缓存)
+r = web_fetch.fetch("https://news.example.com",
+                    options={"no_cache": True})
+
+# 显式调 jina,不走 picker
+from prisir_work import web_fetch_jina as jina
+r = jina.jina_fetch("https://example.com")
+# → meta.mode = "hosted_no_key" / "hosted_with_key" / "self_hosted"
+
+# 查 quota 状态
+print(jina.quota_status())
+# → {rpm_limit: 20, used_last_60s: 5, remaining: 15, window_seconds: 60.0}
+
+# health 端点(已部署,/web/jina/health POST)
+# → {mode, api_key_set, no_key_supported, search_requires_key,
+#    quota, reader, search}
+```
+
+### 何时升级到 hosted_with_key
+
+- 单进程一分钟内抓超过 20 个 URL(主对话 + 研究 + reach 子搜索并发)
+- 长期看不希望撞 429 → 去 [jina.ai](https://jina.ai) 拿 free key(500 RPM)
+
+### 何时用 self_hosted
+
+- 隐私合规(数据不能出本机)
+- 不希望依赖外部 hosted(防火墙/离线)
+- 跑 `docker run -p 8081:8081 ghcr.io/jina-ai/reader:oss`
+
+### 易踩坑
+
+1. **测试时 quota 累加**:同一个 python 进程内 `_QUOTA_TIMES` 会一直累;测试间需 `_QUOTA_TIMES.clear()`
+2. **reload 模块后 quota 漂移**:dev-only trade-off,生产用 CLI 自检重置
+3. **跨进程 quota 漏算**:本实现是单进程令牌桶;多进程下仍可能撞服务端 429(自动识别 + 落 urllib)
+4. **hosted_with_key 检测靠 `JINA_API_KEY`** env,空字符串视为无 key

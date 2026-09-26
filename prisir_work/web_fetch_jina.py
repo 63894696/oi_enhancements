@@ -72,14 +72,96 @@ def _search_base() -> str:
 
 
 # ---------------------------------------------------------------------------
+# P3j T20-I.2:零配置免 key 自动走 hosted + 令牌桶限流
+# ---------------------------------------------------------------------------
+
+# jina 官方文档(https://api.jina.ai/scalar):
+#   · r.jina.ai (fetch) — 无 key 20 RPM;free key 500 RPM
+#   · s.jina.ai (search)— 无 key 阻塞;free key 100 RPM
+# fetch 端点零配置即可用(返 cached snapshot);search 必须有 key 或自部署。
+# 策略:按当前模式动态查 RPM 上限,单进程内滑动窗口令牌桶保护。
+JINA_RPM_BY_MODE: dict[str, int] = {
+    "hosted_no_key":   20,     # env 全空
+    "hosted_with_key": 500,    # env 有 JINA_API_KEY
+    "self_hosted":     10_000, # 自部署基本无限,占位
+}
+# 令牌桶滑动窗口:最近 60 秒内的请求时间戳 list
+_QUOTA_TIMES: list[float] = []
+_RPM_WINDOW_SEC = 60.0
+# 错误码常量(便于上层 / 错误翻译 / verify 引用)
+RATE_LIMITED_ERROR = "jina_rate_limited"
+
+
+def _current_mode_str() -> str:
+    """返 hosted_no_key / hosted_with_key / self_hosted。"""
+    if _is_self_hosted():
+        return "self_hosted"
+    if JINA_API_KEY:
+        return "hosted_with_key"
+    return "hosted_no_key"
+
+
+def _current_rpm_limit() -> int:
+    """根据 env / 模式返当前 jina 端点 RPM 上限。"""
+    return JINA_RPM_BY_MODE.get(_current_mode_str(),
+                                JINA_RPM_BY_MODE["hosted_no_key"])
+
+
+def _prune_quota(now: float) -> None:
+    """清掉 60s 之外的过期时间戳。"""
+    while _QUOTA_TIMES and (now - _QUOTA_TIMES[0]) > _RPM_WINDOW_SEC:
+        _QUOTA_TIMES.pop(0)
+
+
+def _try_consume_quota() -> bool:
+    """滑动窗口令牌桶:返 True=有配额可发,False=被限流。
+
+    单进程内做;跨进程由 jina 服务端做(撞墙会被 429)。
+    自部署模式直接放过(quota=10000 实际不会触顶)。
+    """
+    now = time.monotonic()
+    _prune_quota(now)
+    limit = _current_rpm_limit()
+    if len(_QUOTA_TIMES) >= limit:
+        return False
+    _QUOTA_TIMES.append(now)
+    return True
+
+
+def _refund_quota() -> None:
+    """服务端正向 429 时归还令牌(不算成功请求)。"""
+    try:
+        if _QUOTA_TIMES:
+            _QUOTA_TIMES.pop()
+    except Exception:
+        pass
+
+
+def quota_status() -> dict[str, Any]:
+    """暴露给 /web/jina/health:rpm_limit / used_last_60s / remaining。"""
+    now = time.monotonic()
+    _prune_quota(now)
+    limit = _current_rpm_limit()
+    used = len(_QUOTA_TIMES)
+    return {
+        "rpm_limit": limit,
+        "used_last_60s": used,
+        "remaining": max(0, limit - used),
+        "window_seconds": _RPM_WINDOW_SEC,
+    }
+
+
+# ---------------------------------------------------------------------------
 # 共享 HTTP 工具
 # ---------------------------------------------------------------------------
 
 def _http_get(url: str, *, timeout: float = JINA_DEFAULT_TIMEOUT,
               headers: dict[str, str] | None = None,
-              params: dict[str, str] | None = None) -> dict[str, Any]:
-    """调 jina 端点,统一异常处理。返 {ok, status, content, raw}。
+              params: dict[str, str] | None = None,
+              no_cache: bool = False) -> dict[str, Any]:
+    """调 jina 端点,统一异常处理。返 {ok, status, content, headers}。
 
+    no_cache=True 时设 X-No-Cache: true 头(jina 5 分钟同 URL 缓存跳过)。
     永不 raise。
     """
     if params:
@@ -93,6 +175,9 @@ def _http_get(url: str, *, timeout: float = JINA_DEFAULT_TIMEOUT,
     }
     if JINA_API_KEY:
         hdrs["Authorization"] = f"Bearer {JINA_API_KEY}"
+    if no_cache:
+        # P3j T20-I.2:用户传 no_cache=True → 跳过 jina hosted 5 分钟缓存
+        hdrs["X-No-Cache"] = "true"
     if headers:
         hdrs.update(headers)
     try:
@@ -110,8 +195,16 @@ def _http_get(url: str, *, timeout: float = JINA_DEFAULT_TIMEOUT,
                     "content": content,
                     "headers": resp_headers}
     except urllib.error.HTTPError as e:
-        return {"ok": False, "status": int(getattr(e, "code", 0) or 0),
-                "error": f"http_{e.code}", "content": ""}
+        code = int(getattr(e, "code", 0) or 0)
+        # P3j T20-I.2:撞 20 RPM hosted 限流 → 显式 jina_rate_limited
+        if code == 429:
+            _refund_quota()
+            return {"ok": False, "status": 429,
+                    "error": RATE_LIMITED_ERROR,
+                    "detail": "jina hosted 20 RPM 限流;env 配 JINA_API_KEY 可升 500 RPM",
+                    "content": ""}
+        return {"ok": False, "status": code,
+                "error": f"http_{code}", "content": ""}
     except urllib.error.URLError as e:
         return {"ok": False, "status": 0,
                 "error": "url_error", "detail": str(getattr(e, "reason", e)),
@@ -141,20 +234,38 @@ def jina_fetch(url: str, options: dict[str, Any] | None = None) -> dict[str, Any
 
     给 web_fetch.fetch() 调用,签名同 register_fetcher 注册的 fetcher。
     失败返 {content: "", meta: {ok: False, error: "jina_xxx"}},永不 raise。
+
+    P3j T20-I.2:hosted 模式做令牌桶前置检查;options.no_cache=True 时
+    设 X-No-Cache: true 头强制 fresh(跳过 jina 5min 同 URL 缓存)。
     """
     options = options or {}
     timeout = float(options.get("timeout", JINA_DEFAULT_TIMEOUT))
     max_chars = int(options.get("max_chars", JINA_MAX_CHARS))
+    no_cache = bool(options.get("no_cache", False))
 
     if not url or not isinstance(url, str):
         return {"content": "", "meta": {"fetcher": "jina", "ok": False,
                                         "error": "bad_url"}}
 
+    mode = _current_mode_str()
+
+    # 令牌桶前置检查:仅 hosted 模式触发;自部署 quota 10000 实际不触顶
+    if not _is_self_hosted():
+        if not _try_consume_quota():
+            return {"content": "", "meta": {
+                "fetcher": "jina", "ok": False,
+                "error": RATE_LIMITED_ERROR,
+                "rate_limit_per_min": _current_rpm_limit(),
+                "mode": mode,
+                "hint": ("jina hosted 无 key 20 RPM 限流;web_fetch 会自动落 urllib。"
+                         "env 配 JINA_API_KEY 可升 500 RPM"),
+            }}
+
     # jina reader 端点:GET {reader_base}/{url}
     # 注:url 里通常有 https://,直接拼接即可
     full_url = f"{_reader_base()}/{url}"
     t0 = time.monotonic()
-    r = _http_get(full_url, timeout=timeout)
+    r = _http_get(full_url, timeout=timeout, no_cache=no_cache)
     elapsed_ms = int((time.monotonic() - t0) * 1000)
 
     if not r.get("ok"):
@@ -164,17 +275,20 @@ def jina_fetch(url: str, options: dict[str, Any] | None = None) -> dict[str, Any
             "status": r.get("status", 0),
             "detail": r.get("detail", ""),
             "elapsed_ms": elapsed_ms,
-            "mode": "self_hosted" if _is_self_hosted() else "hosted",
+            "mode": mode,
         }}
 
     content = _truncate(r.get("content", ""), max_chars)
+    quota = quota_status()
     meta = {
         "fetcher": "jina",
         "ok": bool(content),
         "status": r.get("status", 200),
         "elapsed_ms": elapsed_ms,
         "format": "markdown",
-        "mode": "self_hosted" if _is_self_hosted() else "hosted",
+        "mode": mode,
+        "rpm_used_last_60s": quota["used_last_60s"],
+        "rpm_limit": quota["rpm_limit"],
     }
     if not content:
         meta["error"] = "empty_content"
@@ -244,37 +358,64 @@ def jina_search(query: str, limit: int = 5,
 def jina_health() -> dict[str, Any]:
     """检查 jina reader / search 部署状态。
 
-    返 {ok, mode: "hosted"|"self_hosted", reader: {ok, ...}, search: {ok, ...}}。
+    P3j T20-I.2 扩字段:
+      · mode: hosted_no_key / hosted_with_key / self_hosted
+      · no_key_supported: True(fetch 永远无 key 也行)
+      · search_requires_key: True(search 必须 key 或自部署)
+      · search.skipped: True(无 key 时不打 s.jina.ai,避免 403 污染日志)
+      · quota: {rpm_limit, used_last_60s, remaining, window_seconds}
+
+    返 {ok, mode, ...}。
     """
+    mode = _current_mode_str()
     reader_url = f"{_reader_base()}/https://example.com"
     search_url = f"{_search_base()}/test"
 
+    # reader 真探:fetch 端点始终试(hosted_no_key 也行)
     t0 = time.monotonic()
     reader_r = _http_get(reader_url, timeout=5.0)
     reader_ms = int((time.monotonic() - t0) * 1000)
 
-    t0 = time.monotonic()
-    search_r = _http_get(search_url, timeout=5.0,
-                          headers={"Accept": "application/json"})
-    search_ms = int((time.monotonic() - t0) * 1000)
+    # search 探活:无 key 时直接跳过,避免 s.jina.ai 返 403 污染错误日志
+    if JINA_API_KEY or JINA_SEARCH_URL:
+        t0 = time.monotonic()
+        search_r = _http_get(search_url, timeout=5.0,
+                             headers={"Accept": "application/json"})
+        search_ms = int((time.monotonic() - t0) * 1000)
+        search_skipped = False
+        search_error = (search_r.get("error", "")
+                        if not search_r.get("ok") else "")
+    else:
+        # 无 key 时不调,免得返 403 污染日志
+        search_r = {"ok": False, "error": "no_key_required"}
+        search_ms = 0
+        search_skipped = True
+        search_error = "no_key_required"
 
+    quota = quota_status()
     return {
         "ok": bool(reader_r.get("ok") or search_r.get("ok")),
-        "mode": "self_hosted" if _is_self_hosted() else "hosted",
+        "mode": mode,
         "api_key_set": bool(JINA_API_KEY),
+        "self_hosted": _is_self_hosted(),
+        "no_key_supported": True,        # fetch 永远无 key 也行
+        "search_requires_key": True,    # search 必须 key / 自部署
+        "quota": quota,
         "reader": {
             "url": _reader_base(),
             "ok": reader_r.get("ok", False),
             "status": reader_r.get("status", 0),
             "elapsed_ms": reader_ms,
-            "error": reader_r.get("error", "") if not reader_r.get("ok") else "",
+            "error": (reader_r.get("error", "")
+                      if not reader_r.get("ok") else ""),
         },
         "search": {
             "url": _search_base(),
             "ok": search_r.get("ok", False),
             "status": search_r.get("status", 0),
             "elapsed_ms": search_ms,
-            "error": search_r.get("error", "") if not search_r.get("ok") else "",
+            "error": search_error,
+            "skipped": search_skipped,
         },
     }
 
