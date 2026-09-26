@@ -101,6 +101,70 @@ def test_wechat_publisher_test_button():
 
 
 # ---------------------------------------------------------------------------
+# P3j T19: 全配置面提示 + 纯开源模式 banner
+# ---------------------------------------------------------------------------
+
+def test_t19_intro_block_present():
+    """P3j T19: deps-intro 块说明多模型协作 + 零 key 也能用。"""
+    html = (REPO_ROOT / "companion" / "prisIragent-wechat-publisher" /
+            "static" / "index.html").read_text(encoding="utf-8")
+    assert "deps-intro" in html, "missing deps-intro block"
+    assert "多模型协作" in html, "missing 多模型协作 in intro"
+    assert "不填任何 key" in html or "完全不填" in html, \
+        "missing 零 key 也能用 message"
+
+
+def test_t19_oss_disclosure_present():
+    """P3j T19: 折叠说明 — 纯开源模式(零 key + ffmpeg + faster-whisper)。"""
+    html = (REPO_ROOT / "companion" / "prisIragent-wechat-publisher" /
+            "static" / "index.html").read_text(encoding="utf-8")
+    assert "deps-oss" in html, "missing deps-oss (纯开源模式) disclosure"
+    assert "纯开源模式" in html, "missing 纯开源模式 title"
+    assert "ffmpeg" in html, "missing ffmpeg in disclosure"
+    assert "faster-whisper" in html, "missing faster-whisper in disclosure"
+
+
+def test_t19_deps_matrix_present():
+    """P3j T19: 4 环节矩阵 — 配图/视频/配音/转字幕 + JS 渲染。"""
+    html = (REPO_ROOT / "companion" / "prisIragent-wechat-publisher" /
+            "static" / "index.html").read_text(encoding="utf-8")
+    assert "video-deps-matrix" in html, "missing video-deps-matrix container"
+    assert "setDepsMatrix" in html, "missing setDepsMatrix JS function"
+    assert "_matrixRow" in html, "missing _matrixRow helper"
+    # 4 环节图标 + label
+    for icon_label in ("🖼️", "🎬", "🗣️", "🎤", "⚙️"):
+        assert icon_label in html, f"missing icon {icon_label}"
+    # 推荐文案
+    assert "SiliconFlow" in html, "missing SiliconFlow recommendation"
+    assert "edge-tts" in html or "edge TTS" in html, "missing edge-tts recommendation"
+
+
+def test_t19_matrix_cta_focus():
+    """P3j T19: 矩阵 CTA 点 → 展开配置卡 + 滚动 + focus 输入框。"""
+    html = (REPO_ROOT / "companion" / "prisIragent-wechat-publisher" /
+            "static" / "index.html").read_text(encoding="utf-8")
+    assert "_focusProviderCard" in html, "missing _focusProviderCard JS"
+    assert "data-pid" in html, "missing data-pid attribute (CTA 锚点)"
+    assert "scrollIntoView" in html, "missing scrollIntoView in CTA"
+
+
+def test_t19_css_classes_present():
+    """P3j T19: CSS 类 — deps-intro / deps-matrix / deps-oss。"""
+    css = (REPO_ROOT / "companion" / "prisIragent-wechat-publisher" /
+           "static" / "index.html").read_text(encoding="utf-8")
+    # 静态扫 inline style/CSS — index.html 含 <style> 块
+    assert ".deps-intro" in css, "missing .deps-intro CSS"
+    assert ".deps-matrix" in css, "missing .deps-matrix CSS"
+    assert ".deps-matrix-row" in css or "deps-matrix-row" in css, \
+        "missing .deps-matrix-row CSS"
+    assert ".deps-oss" in css, "missing .deps-oss CSS"
+    assert "deps-matrix-status-ok" in css, \
+        "missing .deps-matrix-status-ok CSS"
+    assert "deps-matrix-status-miss" in css, \
+        "missing .deps-matrix-status-miss CSS"
+
+
+# ---------------------------------------------------------------------------
 # 允许直接 python tests/test_render_cap_exec_zh.py 跑
 # ---------------------------------------------------------------------------
 

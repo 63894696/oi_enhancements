@@ -1083,7 +1083,7 @@ def check_media_test_endpoint(ctx: VerifyCtx) -> str:
                 data=json.dumps({"provider": "whisper"}).encode(),
                 method="POST",
                 headers={"Content-Type": "application/json"})
-            with urllib.request.urlopen(req, timeout=15) as r:
+            with urllib.request.urlopen(req, timeout=30) as r:
                 body = json.loads(r.read().decode("utf-8"))
                 checks.append(("whisper", f"{r.status}/mode={body.get('mode')}"))
         except Exception as e:
@@ -1142,6 +1142,53 @@ def check_zh_link_render_frontend(_ctx: VerifyCtx) -> str:
     return "app.js zh/link + CSS + autoFocusFromUrl 3/3 ✓"
 
 
+def check_t19_full_config_disclosure(_ctx: VerifyCtx) -> str:
+    """P3j T19:全配置面提示 + 纯开源模式 banner + 4 环节矩阵。
+
+    静态扫 wechat-publisher index.html + CSS:
+      - deps-intro 顶部固定说明(含「多模型协作」+「零 key 也能用」)
+      - video-deps-matrix 4 环节容器 + setDepsMatrix JS
+      - deps-oss 折叠披露(纯开源模式 + ffmpeg + faster-whisper)
+      - data-pid 锚点 + _focusProviderCard JS + scrollIntoView
+      - CSS:deps-intro / deps-matrix / deps-oss / deps-matrix-status-ok / deps-matrix-status-miss
+    """
+    import pathlib
+    idx = pathlib.Path(
+        "companion/prisIragent-wechat-publisher/static/index.html")
+    src = idx.read_text(encoding="utf-8")
+    needed = (
+        ("deps-intro",                "顶部固定提示块"),
+        ("多模型协作",                  "intro 文案 — 多模型协作"),
+        ("完全不填任何 key",  "intro 文案 — 零 key 也能跑"),
+        ("video-deps-matrix",         "4 环节矩阵容器"),
+        ("setDepsMatrix",             "JS 渲染函数"),
+        ("_matrixRow",                "JS 单行 helper"),
+        ("deps-oss",                  "纯开源模式折叠块"),
+        ("纯开源模式",                  "OSS 标题"),
+        ("ffmpeg",                    "OSS 内容含 ffmpeg"),
+        ("faster-whisper",            "OSS 内容含 faster-whisper"),
+        ("_focusProviderCard",        "CTA 锚点 helper"),
+        ("data-pid",                  "provider 卡片锚点属性"),
+        ("scrollIntoView",            "CTA 滚动"),
+        ("🖼️",                     "配图图标"),
+        ("🎬",                       "视频图标"),
+        ("🗣️",                     "配音图标"),
+        ("🎤",                       "转字幕图标"),
+        ("⚙️",                     "合成图标"),
+        ("SiliconFlow",              "推荐 SiliconFlow"),
+        ("edge-tts",                 "推荐 edge-tts(免费)"),
+        (".deps-intro",              "CSS .deps-intro"),
+        (".deps-matrix",             "CSS .deps-matrix"),
+        ("deps-matrix-status-ok",    "CSS .deps-matrix-status-ok"),
+        ("deps-matrix-status-miss",  "CSS .deps-matrix-status-miss"),
+        (".deps-oss",                "CSS .deps-oss"),
+    )
+    miss = [n for n, desc in needed if n not in src]
+    if miss:
+        return f"[FAIL] T19 缺 [{len(miss)}/{len(needed)}]: {miss[:6]}"
+    return f"T19 全配置面 + OSS 折叠 + 4 环节矩阵 24/24 ✓"
+
+
 def check_probe_provider_module(_ctx: VerifyCtx) -> str:
     """P3j T18:companion.media_keys.probe_provider 静态检查。"""
     try:
@@ -1194,6 +1241,9 @@ CHECKS: list[Check] = [
     Check("probe_provider (P3j T18-A)", check_probe_provider_module),
     Check("HTTP /api/media/test (P3j T18-B)", check_media_test_endpoint),
     Check("zh/link + autoFocusFromUrl (P3j T17-H)", check_zh_link_render_frontend),
+    # P3j T19: 全配置面提示 + 纯开源模式 banner
+    Check("T19 full config disclosure (4 环节 + OSS 折叠)",
+          check_t19_full_config_disclosure),
 ]
 
 

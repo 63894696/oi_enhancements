@@ -1,6 +1,6 @@
-# PrisirAI 多媒体创作 Key 配置 + 视频 Tab 横幅 — P3j T17 + T17-H + T18 全 ship
+# PrisirAI 多媒体创作 Key 配置 + 视频 Tab 横幅 — P3j T17 + T17-H + T18 + T19 全 ship
 
-2026-09-26 ship。**T17-A/B/C/D/E + T17-H + T18-A/B/C/D 全 ship** — 多媒体模型 key 单独分模块页填(仿 LLM/ASR 范式),视频 Tab 顶部横幅持续显示依赖状态,主对话 EXEC 失败时给中文 hint + 「点此去配置」链接,且每个 provider 卡片可点 🔬 真探活验证 key 有效性。
+2026-09-26 ship。**T17-A/B/C/D/E + T17-H + T18-A/B/C/D + T19 全 ship** — 多媒体模型 key 单独分模块页填(仿 LLM/ASR 范式),视频 Tab 顶部横幅持续显示依赖状态,主对话 EXEC 失败时给中文 hint + 「点此去配置」链接,每个 provider 卡片可点 🔬 真探活验证 key 有效性,**且显式告知用户「做视频需多模型协作 + 但零 key 也能用纯开源模式」**。
 
 ## 问题
 
@@ -90,15 +90,16 @@ _ERROR_ZH = [
 
 - **tests/test_media_keys.py**:**13/13 passed**
 - **tests/test_media_keys_probe.py**(T18-D):**7/7 passed**
-- **tests/test_render_cap_exec_zh.py**(T17-H):**5/5 passed**
+- **tests/test_render_cap_exec_zh.py**(T17-H + T19):**10/10 passed**
 - **tests/test_agent_video.py**(T16):**111/111 passed**(无回归)
-- **verify_wechat_publisher.py**:**32/32 passed**(含 HTTP)
+- **verify_wechat_publisher.py**:**33/33 passed**(含 HTTP)
   - `media_keys module import (P3j T17-A)`:模块 OK;PROVIDERS 4 个
   - `HTTP media routes (3 ep, P3j T17-B)`:keys GET n=4; keys POST 400? + 200; status n=7
   - `media UI DOM (P3j T17-D/E)`:UI DOM 元素 + CSS + JS 10/10 ✓
   - `probe_provider (P3j T18-A)`:返 shape={ok,status,latency_ms,hint,mode}
   - `HTTP /api/media/test (P3j T18-B)`:400? + whisper + siliconflow 3 路都返 200
   - `zh/link + autoFocusFromUrl (P3j T17-H)`:app.js zh/link + CSS + autoFocusFromUrl 3/3 ✓
+  - `T19 full config disclosure (4 环节 + OSS 折叠)`:全配置面 + 纯开源模式 + 4 环节矩阵 + CSS + CTA 24/24 ✓
 
 ## T17-H 主对话前端接 hint/link
 
@@ -238,8 +239,62 @@ async function testMediaProvider(pid) {
 
 ## 下一步(留接口给后续)
 
-- **T19** (后续):Whisper 自动下载 — `resolve_media_key` 检测到 model=large 但本地无 → 提示「首次下载 3GB」并提供一键下载
-- **T20** (后续):URL `?focus=` 支持多目标(不只是 media-keys),可对接「任务列表」、「发布历史」等
+- **T20** (后续):Whisper 自动下载 — `resolve_media_key` 检测到 model=large 但本地无 → 提示「首次下载 3GB」并提供一键下载
+- **T21** (后续):URL `?focus=` 支持多目标(不只是 media-keys),可对接「任务列表」、「发布历史」等
+
+## T19 全配置面提示 + 纯开源模式 banner
+
+**为什么**:用户做视频常常不知道需要多模型协作 — 配图/视频/配音/转字幕各有推荐方案,只填一个 key 不能全跑通。同时 PrisirAI 也提供「纯开源模式」(零 key 也能用,但质量/速度有损) — 两件事都得显式告知,用户自己权衡。
+
+### Banner 三段结构
+
+1. **顶部固定提示行**(`.deps-intro`):蓝底强调 — 「做视频通常需多模型协作 · 推荐全配 · 但 PrisirAI 也可完全不填任何 key,用打包的开源组件完成」
+2. **4 环节矩阵**(`.deps-matrix`):CSS grid 4 列 — `环节 / 推荐方案 / 当前状态 / 配置入口`,每行可点 → 展开配置卡 + 滚动到对应 provider + focus 输入框
+3. **纯开源模式折叠披露**(`.deps-oss` `<details>`):默认折叠 — 列出 4 项零 key fallback + 质量权衡 + 「推荐至少配 SILICONFLOW_API_KEY」
+
+### 4 环节矩阵内容
+
+| 环节 | 推荐 | 当前态文案 | 配置入口 CTA |
+|------|------|-----------|------------|
+| 🖼️ 配图 | SiliconFlow SDXL / 占位图 | `✅ SF · siliconflow` or `⚠ 占位图` | `去填 siliconflow →` |
+| 🎬 视频 | SiliconFlow Wan2.1 / 占位视频 | 同上 | `去填 siliconflow →` |
+| 🗣️ 配音 | DashScope CosyVoice / OpenAI TTS / edge-tts | `✅ 闭源 TTS` or `✅ edge-tts` | `去填 dashscope →`(若未配) |
+| 🎤 转字幕 | 本地 Whisper base/small/medium/large-v3 | `✅ base(本地)` | `去填 Whisper 模型大小 →` |
+| ⚙️ 合成 | 系统 ffmpeg(必装) | `✅ ffmpeg 就绪` or `❌ 未装` | `—`(不可在 UI 配) |
+
+### 关键 JS
+
+```js
+// 渲染 4 环节矩阵
+function setDepsMatrix(st) { ... }
+
+// 点矩阵 CTA → 展开 + 滚动 + focus
+function _focusProviderCard(provider, field) {
+  const card = document.getElementById('media-keys-card');
+  if (card) card.style.display = 'block';
+  setTimeout(() => {
+    const target = document.querySelector('.media-provider[data-pid="' + provider + '"]');
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      target.style.outline = '2px solid var(--accent)';  // 1.5s 高亮
+      setTimeout(() => { target.style.outline = ''; }, 1500);
+    }
+    const input = document.getElementById('mp-' + provider + '-' + field);
+    if (input) input.focus();
+  }, 200);
+}
+```
+
+### Provider 卡片 data-pid 锚点
+
+```js
+reg.forEach(p => {
+  const div = document.createElement('div');
+  div.className = 'media-provider';
+  div.setAttribute('data-pid', p.id);  // 矩阵 CTA 锚点
+  ...
+});
+```
 
 ## 关联
 

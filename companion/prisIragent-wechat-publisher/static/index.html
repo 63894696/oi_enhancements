@@ -80,6 +80,33 @@ input,textarea,select{padding:6px 10px;border:1px solid var(--border);
 .deps-banner.deps-partial{background:#fff8c5;border-color:#9a6700;color:#9a6700}
 .deps-banner.deps-missing{background:#ffebe9;border-color:#cf222e;color:#cf222e}
 
+/* P3j T19: 4 环节矩阵 + 纯开源模式说明 */
+.deps-intro{background:#eef4ff;border:1px solid #5a89c4;
+  color:#2a4d7a;padding:8px 14px;border-radius:var(--radius);
+  margin-bottom:10px;font-size:13px;line-height:1.55}
+.deps-intro b{color:#1a3d6a}
+.deps-matrix{display:grid;
+  grid-template-columns:80px 1fr 100px 90px;
+  gap:6px 12px;padding:8px 12px;
+  border:1px solid var(--border);border-radius:var(--radius);
+  margin-bottom:10px;font-size:12px;background:#fff}
+.deps-matrix-head{font-weight:600;color:var(--muted);
+  border-bottom:1px solid var(--border);padding-bottom:4px}
+.deps-matrix-icon{font-size:18px;display:flex;align-items:center}
+.deps-matrix-rec{color:#1a7f37;font-weight:500}
+.deps-matrix-status-ok{color:#1a7f37}
+.deps-matrix-status-warn{color:#9a6700}
+.deps-matrix-status-miss{color:#cf222e}
+.deps-matrix-cta{font-size:11px;color:var(--accent);
+  cursor:pointer;text-decoration:underline;text-align:right}
+.deps-oss{background:#f6f8fa;border:1px dashed #9a9a9a;
+  color:#5a5a5a;padding:6px 14px;border-radius:var(--radius);
+  margin-bottom:12px;font-size:12px;line-height:1.5;cursor:pointer}
+.deps-oss summary{font-weight:600;color:#3a3a3a}
+.deps-oss summary::before{content:'⚙ ';margin-right:4px}
+.deps-oss[open]{padding-bottom:10px}
+.deps-oss-body{padding-top:6px;color:#666}
+
 /* P3j T17-E: media provider 子卡片 */
 .media-provider{padding:10px 12px;border:1px solid var(--border);
   border-radius:6px;margin-bottom:8px;background:#fcfcfd}
@@ -193,6 +220,14 @@ input,textarea,select{padding:6px 10px;border:1px solid var(--border);
 
   <!-- TAB: 视频创作(P3j T11)— 主题→终片,弹确认卡后再扣费调用 -->
   <div class="tab" id="tab-video">
+    <!-- P3j T19: 全配置面提示 — 顶部固定一行说明 -->
+    <div class="deps-intro">
+      💡 <b>做视频通常需多模型协作才能保证质量</b> — 配图 / 视频 / 配音 / 转字幕
+      各有推荐方案,但 <b>PrisirAI 也可完全不填任何 key,</b> 用打包的开源组件
+      (占位图 + 占位视频 + edge-tts + faster-whisper)完成制作,质量一般但立即可用。
+      详细对比见下方 ⚙ 「纯开源模式」。
+    </div>
+
     <!-- P3j T17-D: 依赖状态横幅(进入 Tab 即拉一次 /api/media/status) -->
     <div id="video-deps-banner" class="deps-banner deps-loading"
          onclick="toggleMediaKeysCard()">
@@ -202,6 +237,32 @@ input,textarea,select{padding:6px 10px;border:1px solid var(--border);
         <span class="deps-banner-cta" id="deps-cta">点此配置 →</span>
       </div>
     </div>
+
+    <!-- P3j T19: 4 环节矩阵 — 让用户清楚看到每个能力用什么 key -->
+    <div class="deps-matrix" id="video-deps-matrix">
+      <div class="deps-matrix-head">环节</div>
+      <div class="deps-matrix-head">推荐方案</div>
+      <div class="deps-matrix-head">当前状态</div>
+      <div class="deps-matrix-head">配置入口</div>
+      <!-- JS 渲染 4 行:配图/视频/配音/转字幕 -->
+    </div>
+
+    <!-- P3j T19: 纯开源模式说明(折叠) -->
+    <details class="deps-oss">
+      <summary>纯开源模式 — 零 key 也能用 · 仅依赖本地 ffmpeg + faster-whisper</summary>
+      <div class="deps-oss-body">
+        即使 <b>所有 key 都不填</b>,PrisirAI 仍能用以下打包的开源组件完成视频全流程:
+        <ul style="margin:6px 0 4px 16px">
+          <li><b>配图</b>:本地占位图(纯色 + 主题文字)— 视觉简陋但能跑</li>
+          <li><b>视频片段</b>:本地占位视频(同色循环)→ 最终拼接到主轨</li>
+          <li><b>配音 TTS</b>:edge-tts 走微软免费接口,需外网,音质尚可</li>
+          <li><b>语音转字幕</b>:本地 faster-whisper,首次启动下载模型(base=150MB / large-v3=3GB)</li>
+          <li><b>合成</b>:本地 ffmpeg 必装(视频处理必备)</li>
+        </ul>
+        <b>质量权衡</b>:占位图/视频视觉差,字幕精度看模型大小,合成慢看 CPU。
+        推荐至少配 <b>SILICONFLOW_API_KEY</b>(配图/视频提升最明显)。
+      </div>
+    </details>
 
     <!-- P3j T17-E: 🎨 多媒体创作 Key 配置面板(默认折叠) -->
     <div class="card" id="media-keys-card" style="display:none">
@@ -1285,6 +1346,143 @@ function setDepsBanner(level, icon, text, cta) {
   document.getElementById('deps-cta').textContent = cta || '点此配置 →';
 }
 
+// P3j T19: 渲染 4 环节矩阵 — 每行显示「推荐 / 当前 / 配置入口」
+function setDepsMatrix(st) {
+  const m = document.getElementById('video-deps-matrix');
+  if (!m) return;
+  // 清空除 head 之外的所有 row
+  Array.from(m.querySelectorAll('.deps-matrix-row')).forEach(
+    el => el.remove());
+
+  // 1) 配图(image-gen)
+  const ig = st.image_gen || {};
+  m.appendChild(_matrixRow({
+    icon: '🖼️',
+    label: '配图',
+    rec: ig.mode === 'siliconflow'
+      ? 'SiliconFlow SDXL(高质量)'
+      : '占位图 · 纯开源模式',
+    status: ig.key_present
+      ? ('✅ SiliconFlow · ' + (ig.mode || '?'))
+      : '⚠ 占位图',
+    statusCls: ig.key_present ? 'deps-matrix-status-ok' : 'deps-matrix-status-warn',
+    provider: 'siliconflow',
+    field: 'api_key',
+  }));
+  // 2) 视频(video-gen)
+  const vg = st.video_gen || {};
+  m.appendChild(_matrixRow({
+    icon: '🎬',
+    label: '视频',
+    rec: vg.mode === 'siliconflow'
+      ? 'SiliconFlow Wan2.1(高质量)'
+      : '占位视频 · 纯开源模式',
+    status: vg.key_present
+      ? ('✅ SiliconFlow · ' + (vg.mode || '?'))
+      : '⚠ 占位视频',
+    statusCls: vg.key_present ? 'deps-matrix-status-ok' : 'deps-matrix-status-warn',
+    provider: 'siliconflow',
+    field: 'api_key',
+  }));
+  // 3) 配音(TTS)
+  const tts = st.tts || {};
+  m.appendChild(_matrixRow({
+    icon: '🗣️',
+    label: '配音',
+    rec: tts.mode === 'closed'
+      ? 'DashScope CosyVoice / OpenAI TTS'
+      : 'edge-tts(免费,需外网)',
+    status: tts.key_present
+      ? ('✅ ' + (tts.mode === 'closed' ? '闭源 TTS' : tts.mode))
+      : '✅ edge-tts',
+    statusCls: 'deps-matrix-status-ok',
+    provider: tts.key_present && tts.mode === 'closed' ? 'dashscope' : null,
+    field: 'api_key',
+  }));
+  // 4) 语音转字幕(ASR)
+  const asr = st.asr || {};
+  m.appendChild(_matrixRow({
+    icon: '🎤',
+    label: '转字幕',
+    rec: '本地 Whisper ' + (asr.model || 'base'),
+    status: '✅ ' + (asr.model || 'base') + '(本地)',
+    statusCls: 'deps-matrix-status-ok',
+    provider: 'whisper',
+    field: 'model',
+  }));
+  // 5) ffmpeg(单独一行 — 强依赖,缺则全挂)
+  const ff = st.ffmpeg || {};
+  m.appendChild(_matrixRow({
+    icon: '⚙️',
+    label: '合成',
+    rec: '系统 ffmpeg(必装)',
+    status: ff.ready
+      ? '✅ ffmpeg 就绪'
+      : '❌ ffmpeg 未装 · 视频合成全挂',
+    statusCls: ff.ready
+      ? 'deps-matrix-status-ok'
+      : 'deps-matrix-status-miss',
+    provider: null,  // 不在配置卡里
+    field: null,
+  }));
+}
+
+function _matrixRow(o) {
+  const row = document.createElement('div');
+  row.className = 'deps-matrix-row';
+  row.style.display = 'contents';  // CSS grid 子节点继承 grid 布局
+  const c1 = document.createElement('div');
+  c1.className = 'deps-matrix-icon';
+  c1.innerHTML = `<span style="margin-right:4px">${o.icon}</span>${o.label}`;
+  const c2 = document.createElement('div');
+  c2.className = 'deps-matrix-rec';
+  c2.textContent = o.rec;
+  const c3 = document.createElement('div');
+  c3.className = o.statusCls;
+  c3.textContent = o.status;
+  const c4 = document.createElement('div');
+  c4.className = 'deps-matrix-cta';
+  if (o.provider) {
+    const a = document.createElement('a');
+    a.textContent = '去填 ' + (o.provider === 'whisper' ? 'Whisper 模型大小'
+                                : o.provider) + ' →';
+    a.style.color = 'inherit';
+    a.style.textDecoration = 'underline';
+    a.style.cursor = 'pointer';
+    a.onclick = (e) => {
+      e.preventDefault();
+      _focusProviderCard(o.provider, o.field);
+    };
+    c4.appendChild(a);
+  } else {
+    c4.textContent = '—';
+  }
+  row.appendChild(c1);
+  row.appendChild(c2);
+  row.appendChild(c3);
+  row.appendChild(c4);
+  return row;
+}
+
+// P3j T19: 点矩阵某行 → 展开配置卡 + 滚动到对应 provider 卡片 + focus 输入框
+function _focusProviderCard(provider, field) {
+  const card = document.getElementById('media-keys-card');
+  if (card) card.style.display = 'block';
+  // 等下一帧再滚,确保 DOM 已渲染
+  setTimeout(() => {
+    const target = document.querySelector('.media-provider[data-pid="' + provider + '"]');
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      target.style.outline = '2px solid var(--accent, #4d6b5b)';
+      setTimeout(() => { target.style.outline = ''; }, 1500);
+    }
+    if (field) {
+      const input = document.getElementById('mp-' + provider + '-' + field);
+      if (input) input.focus();
+    }
+  }, 200);
+}
+
 async function refreshMediaStatus() {
   const b = document.getElementById('video-deps-banner');
   if (!b) return;
@@ -1297,6 +1495,8 @@ async function refreshMediaStatus() {
     }
     _mediaStatusCache = r;
     const st = r;
+    // P3j T19: 渲染 4 环节矩阵
+    setDepsMatrix(st);
     // 4 档判定:全绿(全 ok)/部分(缺 SF key 或 ffmpeg)/缺失(Easel 未装)
     if (!st.easel.ready) {
       setDepsBanner('missing', '❌', 'Easel 项目根目录未找到 — 视频/AI 配图功能不可用',
@@ -1378,6 +1578,7 @@ function renderMediaProviders(r) {
     const cfg = provs[p.id] || {};
     const div = document.createElement('div');
     div.className = 'media-provider';
+    div.setAttribute('data-pid', p.id);  // P3j T19: 矩阵 CTA 锚点
     // 状态灯:有任一 api_key_present=True → ok;否则 missing
     const hasKey = Object.keys(cfg).some(k =>
       k.endsWith('_present') && cfg[k] === true);
