@@ -87,6 +87,111 @@
   margin-right: 4px;
 }
 
+/* P3j T16-C: 视频/YouTube 能力确认卡 */
+.cap-confirm {
+  position: fixed;
+  inset: 0;
+  z-index: 2100;  /* 高于 m323 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cap-confirm-mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(2px);
+}
+.cap-confirm-box {
+  position: relative;
+  background: var(--gh-paper, #fbf6ec);
+  border-radius: 10px;
+  padding: 20px 22px;
+  width: 440px;
+  max-width: 92vw;
+  box-shadow: 0 12px 44px rgba(0, 0, 0, 0.28);
+  border-left: 5px solid var(--acc, #4d6b5b);
+}
+.cap-confirm[data-risk="L1"] .cap-confirm-box { border-left-color: #6b8e7f; }
+.cap-confirm[data-risk="L2"] .cap-confirm-box { border-left-color: #c79a3a; }
+.cap-confirm[data-risk="L3"] .cap-confirm-box { border-left-color: #b65c5c; }
+.cap-confirm-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg, #2c2c2c);
+  margin-bottom: 8px;
+}
+.cap-confirm-meta {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+.cap-confirm-cap {
+  background: var(--acc, #4d6b5b);
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: monospace;
+}
+.cap-confirm-risk {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+.cap-confirm[data-risk="L1"] .cap-confirm-risk { background: #6b8e7f; color: #fff; }
+.cap-confirm[data-risk="L2"] .cap-confirm-risk { background: #c79a3a; color: #fff; }
+.cap-confirm[data-risk="L3"] .cap-confirm-risk { background: #b65c5c; color: #fff; }
+.cap-confirm-body {
+  font-size: 13px;
+  color: var(--dim, #6b6b6b);
+  line-height: 1.6;
+  margin-bottom: 10px;
+  white-space: pre-wrap;
+}
+.cap-confirm-args {
+  font-size: 12px;
+  color: var(--dim, #6b6b6b);
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin-bottom: 14px;
+  font-family: monospace;
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+/* P3j T16-D: 真发结果节点 */
+.cap-exec {
+  text-align: left;
+  padding: 8px 12px;
+  margin: 6px 0;
+  border-left: 4px solid var(--acc, #4d6b5b);
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 4px;
+  font-size: 13px;
+}
+.cap-exec.cap-ok  { border-left-color: #6b8e7f; }
+.cap-exec.cap-bad { border-left-color: #b65c5c; }
+.cap-exec-head { font-weight: 600; }
+.cap-exec-err { color: #b65c5c; margin-top: 4px; font-size: 12px; }
+.cap-exec-zh { color: #5a5a5a; margin-top: 4px; font-size: 12px; }
+.cap-exec-path {
+  color: var(--dim, #6b6b6b);
+  font-family: monospace;
+  font-size: 12px;
+  margin-top: 4px;
+  word-break: break-all;
+}
+.cap-exec-link {
+  display: inline-block;
+  margin-top: 6px;
+  color: var(--acc, #4d6b5b);
+  text-decoration: none;
+  font-size: 12px;
+}
+.cap-exec-link:hover { text-decoration: underline; }
+
 /* M3.25 — 知识库引用徽标(「📎 来源 N」+ 展开 hit 列表)*/
 .kb-hits {
   margin-top: 4px;

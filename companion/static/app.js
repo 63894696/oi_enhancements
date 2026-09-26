@@ -46,6 +46,15 @@ const m323ConfirmBody = $("m323ConfirmBody");
 const m323ConfirmTitle = $("m323ConfirmTitle");
 const m323ConfirmOk = $("m323ConfirmOk");
 const m323ConfirmCancel = $("m323ConfirmCancel");
+// P3j T16-C: 视频/YouTube 能力确认卡
+const capConfirm = $("capConfirm");
+const capConfirmTitle = $("capConfirmTitle");
+const capConfirmCap = $("capConfirmCap");
+const capConfirmRisk = $("capConfirmRisk");
+const capConfirmBody = $("capConfirmBody");
+const capConfirmArgs = $("capConfirmArgs");
+const capConfirmOk = $("capConfirmOk");
+const capConfirmCancel = $("capConfirmCancel");
 
 // ---- 常量 -------------------------------------------------------------------
 const EMOJI_GROUPS = [
@@ -63,6 +72,7 @@ const st = {
         + "//" + location.host + "/ws",
     wsRetry: 0,
     wsTimer: null,
+    pendingCapConfirm: null,  // P3j T16-C: 待确认 capability
     // 会话生命周期:不启动则不计时;M3.29.8 用户反馈「点开就开始计费」误解
     running: false,
     sessionStart: 0,
@@ -286,6 +296,43 @@ function handleWsMsg(m) {
         if (shouldDispatch(m.text || "")) {
             askDispatchConfirm("检测到派发触发词,是否派发到 PrisirAI?");
         }
+    } else if (t === "guard_block") {
+        // M3.45 P0-2 护栏:Jev 前置拦截
+        // - need_confirm=True → 复用 m323Confirm 弹卡
+        // - need_confirm=False(block) → 直接提示,不让用户走 LLM
+        const reason = m.reason || "risk";
+        const risk = m.risk || "?";
+        const jbP = (m.jailbreak_prob || 0).toFixed(2);
+        if (m.need_confirm) {
+            m323ConfirmTitle.textContent = "⚠ 消息被识别为高风险,是否继续?";
+            m323ConfirmBody.textContent =
+                `Jev 评估:risk=${risk}, 越狱概率=${jbP}。\n` +
+                `继续 = 该消息依然发送给 AI;取消 = 丢弃。`;
+            m323Confirm.style.display = "block";
+            st.pendingConfirmResolve = (ok) => {
+                if (ok) {
+                    // 通知后端标记 sess 已 confirm,后续同 sess 不再弹
+                    if (st.ws && st.ws.readyState === 1) {
+                        st.ws.send(JSON.stringify({ type: "jev_confirm" }));
+                    }
+                    setStatus("", "已确认,等待下一条");
+                } else {
+                    setStatus("", "已拒绝");
+                }
+            };
+        } else {
+            renderSys(`🛡 Jev 已拦截(${reason}):risk=${risk}, 越狱=${jbP}`);
+            setStatus("off", "已拦截");
+        }
+    } else if (t === "intent") {
+        // M3.45 P0-1 意图分发:Jev Choice 给本轮消息打标签
+        renderIntentBadge(m);
+    } else if (t === "incremental_added") {
+        // M3.45 P1-4 阶段成果入库成功
+        renderIncrementalAdded(m);
+    } else if (t === "incremental_skipped") {
+        // 调试用:评估了但未入库(异常 reason)
+        console.log("[p14] skipped:", m);
     } else if (t === "asr_started") {
         setStatus("speaking", "正在识别…");
     } else if (t === "asr_partial") {
@@ -299,6 +346,12 @@ function handleWsMsg(m) {
         setStatus("", "已连接");
     } else if (t === "asr_fallback") {
         renderSys("🔁 ASR 兜底切换:" + m.from_provider + " → " + m.to_provider);
+    } else if (t === "capability_confirm_request") {
+        // P3j T16-C: 弹确认卡(L1/L2/L3 风险)
+        showCapConfirm(m);
+    } else if (t === "capability_exec_result") {
+        // P3j T16-C: 真发结果(主对话流中嵌的能力执行)
+        renderCapExecResult(m);
     } else if (t === "ai_delta") {
         // 流式累积到当前 ai div
         let aiDiv = msgsEl.querySelector(".msg.them.streaming");
@@ -368,6 +421,90 @@ function renderContinueCard(card) {
     }
     continueCard.innerHTML = html;
     continueCard.style.display = "block";
+}
+
+// ---- 意图徽标(M3.45 P0-1) ---------------------------------------------------
+const INTENT_BADGE_COLORS = {
+    chat:      "var(--acc)",
+    code:      "#3b82f6",
+    search:    "#a855f7",
+    tool_call: "#e0a34a",
+    roleplay:  "#d6b26c",
+    unknown:   "var(--dim)",
+};
+
+function renderIntentBadge(m) {
+    // m = {intent, intent_zh, confidence, probabilities, route_applied, elapsed_ms}
+    const intent = m.intent || "unknown";
+    const zh = m.intent_zh || "未识别";
+    const conf = (m.confidence || 0);
+    const elapsed = m.elapsed_ms || 0;
+    const routeApplied = !!m.route_applied;
+    const color = INTENT_BADGE_COLORS[intent] || INTENT_BADGE_COLORS.unknown;
+    const sym = intent === "code" ? "💻"
+        : intent === "search" ? "🔍"
+        : intent === "tool_call" ? "🛠"
+        : intent === "roleplay" ? "🎭"
+        : intent === "chat" ? "💬"
+        : "❔";
+    const tag = routeApplied ? "已路由" : "未路由";
+    const confPct = (conf * 100).toFixed(0);
+    // 把徽标挂到当前正在 streaming 的 AI 气泡上;
+    // 没有 streaming 气泡(比如路由前就被 guard 拦)→ 用 sys 行显示
+    const aiDiv = msgsEl.querySelector(".msg.them.streaming");
+    if (aiDiv) {
+        // 清掉同位置的旧徽标,避免叠加
+        const old = aiDiv.querySelector(".intent-badge");
+        if (old) old.remove();
+        const badge = document.createElement("div");
+        badge.className = "intent-badge";
+        badge.style.cssText = (
+            "font-size:11px;color:" + color +
+            ";margin-top:4px;opacity:.85;display:flex;gap:6px;align-items:center;"
+        );
+        badge.innerHTML =
+            sym + " <b>" + escHtml(zh) + "</b> " +
+            "<span style='opacity:.6'>" + confPct + "%</span>" +
+            "<span style='opacity:.5;font-size:10px'>·" + elapsed + "ms</span>" +
+            "<span style='opacity:.5;font-size:10px'>·" + tag + "</span>";
+        aiDiv.appendChild(badge);
+    } else {
+        // 无 streaming 气泡 → sys 行
+        renderSys(sym + " 意图:" + zh + " · " + confPct + "% · " + elapsed + "ms · " + tag);
+    }
+}
+
+// ---- 阶段成果入库(M3.45 P1-4) ---------------------------------------------
+// 本会话累计入库段数(启动会话时清零)
+st.p14SessionAdded = 0;
+
+function renderIncrementalAdded(m) {
+    // m = {value, value_zh, value_index, added_count, skipped_count, path,
+    //      has_prob, total_added, reason}
+    const added = m.added_count || 0;
+    const skipped = m.skipped_count || 0;
+    const valueZh = m.value_zh || "可入档";
+    const total = m.total_added || 0;
+    if (typeof total === "number") st.p14SessionAdded = total;
+    // toast 通知(用现有的 sys 行即可,避免引入额外 UI 组件)
+    let pathShort = "";
+    if (m.path) {
+        const parts = m.path.split(/[\\\/]/);
+        pathShort = parts[parts.length - 1];
+    }
+    const skipInfo = skipped > 0 ? ` · 跳重 ${skipped}` : "";
+    const icon = "📚";
+    renderSys(
+        `${icon} 阶段成果入库 ${valueZh}: +${added} 段${skipInfo}`
+        + (pathShort ? ` → ${pathShort}` : "")
+        + (m.has_prob ? ` · prob=${(m.has_prob * 100).toFixed(0)}%` : "")
+    );
+    // 更新顶部徽标(若元素存在)
+    const badge = $("p14Badge");
+    if (badge) {
+        badge.textContent = String(st.p14SessionAdded);
+        badge.style.display = st.p14SessionAdded > 0 ? "inline-block" : "none";
+    }
 }
 
 // ---- 历史侧栏 ---------------------------------------------------------------
@@ -447,14 +584,19 @@ settingsClose.addEventListener("click", () => {
 });
 function loadSettingsPanel() {
     // M3.29.8 — 厂商下拉换 ASR,删除「已配」重复块;真实测试连接
+    // M3.45 — 加 Jev 护栏 settings
     Promise.all([
         fetch("/api/asr/providers").then((r) => r.json()).catch(() => ({ ok: false, providers: [] })),
         fetch("/api/m323/cfg").then((r) => r.json()).catch(() => ({ ok: false })),
         fetch("/api/dispatch/settings").then((r) => r.json()).catch(() => ({})),
-    ]).then(([prov, m323, dispatch]) => {
+        fetch("/api/m345/jev/cfg").then((r) => r.json()).catch(() => ({ ok: false })),
+    ]).then(([prov, m323, dispatch, m345]) => {
         renderProviderForm(prov.providers || []);
         renderM323Panel(m323.cfg || {}, m323.fcontent || {});
         renderM327Panel(dispatch || {});
+        renderM345Panel(m345.cfg || {});
+        renderM345IntentPanel(m345.intent_cfg || {});
+        renderM345P14Panel(m345.p14_cfg || {});
     });
 }
 function renderProviderForm(specs) {
@@ -632,6 +774,357 @@ function renderM323Panel(cfg, fcontent) {
         m323Confirm.style.display = "none";
         if (st.pendingConfirmResolve) { st.pendingConfirmResolve(false); st.pendingConfirmResolve = null; }
     });
+    // P3j T16-C: 视频能力确认卡
+    capConfirmOk.addEventListener("click", () => {
+        const pending = st.pendingCapConfirm;
+        capConfirm.style.display = "none";
+        st.pendingCapConfirm = null;
+        if (pending && st.ws && st.ws.readyState === 1) {
+            st.ws.send(JSON.stringify({
+                type: "capability_confirm",
+                capability: pending.capability,
+                args: pending.args,
+                approved: true,
+            }));
+        }
+    });
+    capConfirmCancel.addEventListener("click", () => {
+        const pending = st.pendingCapConfirm;
+        capConfirm.style.display = "none";
+        st.pendingCapConfirm = null;
+        if (pending && st.ws && st.ws.readyState === 1) {
+            st.ws.send(JSON.stringify({
+                type: "capability_confirm",
+                capability: pending.capability,
+                args: pending.args,
+                approved: false,
+            }));
+        }
+    });
+}
+
+// P3j T16-C: 弹视频能力确认卡
+function showCapConfirm(m) {
+    const cap = m.capability || "";
+    const risk = m.risk || "L1";
+    const args = m.args || {};
+    if (capConfirmTitle) capConfirmTitle.textContent = m.title || ("⚠ 能力需要确认:" + cap);
+    if (capConfirmCap) capConfirmCap.textContent = cap;
+    if (capConfirmRisk) capConfirmRisk.textContent = risk;
+    if (capConfirmBody) capConfirmBody.textContent = m.confirm || ("风险等级:" + risk);
+    if (capConfirmArgs) {
+        // 渲染 args 为 key=value 列表(便于用户看清要发什么)
+        const lines = Object.keys(args).map(k => `${k} = ${args[k]}`);
+        capConfirmArgs.textContent = lines.length ? lines.join("\n") : "(无参数)";
+    }
+    if (capConfirm) {
+        capConfirm.setAttribute("data-risk", risk);
+        capConfirm.style.display = "flex";
+    }
+    st.pendingCapConfirm = { capability: cap, args: args };
+}
+
+// P3j T16-C: 渲染真发结果(主对话流)
+function renderCapExecResult(m) {
+    const cap = m.capability || "?";
+    const ok = m.ok === true;
+    const err = m.error || "";
+    const result = m.result || {};
+    // P3j T16-D: 渲染一个富节点 — 状态 + capability + 跳转链接
+    const div = document.createElement("div");
+    div.className = "sys cap-exec " + (ok ? "cap-ok" : "cap-bad");
+    const sym = ok ? "✅" : "❌";
+    const head = document.createElement("div");
+    head.className = "cap-exec-head";
+    head.textContent = `${sym} ${cap} ${ok ? "已执行" : "执行失败"}`;
+    div.appendChild(head);
+    if (!ok && err) {
+        const errDiv = document.createElement("div");
+        errDiv.className = "cap-exec-err";
+        errDiv.textContent = err;
+        div.appendChild(errDiv);
+    }
+    // P3j T17-H: 中文翻译 + hint/link 跳转(主对话 EXEC 失败时引导用户)
+    if (!ok && m.zh) {
+        const zhDiv = document.createElement("div");
+        zhDiv.className = "cap-exec-zh";
+        zhDiv.textContent = "💡 " + m.zh;
+        div.appendChild(zhDiv);
+    }
+    if (!ok && m.link) {
+        const publisherBase = "http://localhost:18899";
+        const focusId = String(m.link).replace(/^\//, "");
+        const a = document.createElement("a");
+        a.className = "cap-exec-link";
+        a.textContent = "💡 " + (m.hint || "点此去配置") + " →";
+        a.href = publisherBase + "/?focus=" + encodeURIComponent(focusId);
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        div.appendChild(a);
+    }
+    // 真发成功的:展示 artifact 路径(若有) + 跳转 💬 一句话 Tab 链接
+    if (ok && result.artifact && result.artifact.path) {
+        const pathDiv = document.createElement("div");
+        pathDiv.className = "cap-exec-path";
+        pathDiv.textContent = "📁 " + result.artifact.path;
+        div.appendChild(pathDiv);
+    }
+    // 跳转到 💬 一句话 Tab 链接(若有 window 切换能力)
+    const link = document.createElement("a");
+    link.className = "cap-exec-link";
+    link.textContent = "💬 查看「一句话」任务列表";
+    link.href = "#";
+    link.style.cursor = "pointer";
+    link.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        // 触发 custom event,让 wechat-publisher 监听 + 切到对应 Tab
+        try {
+            window.dispatchEvent(new CustomEvent("prisIrai:cap-exec-link", {
+                detail: { capability: cap, ok: ok, result: result },
+            }));
+        } catch (e) { /* ignore */ }
+        renderSys(`(${cap} 已跳转 💬 一句话)`);
+    });
+    div.appendChild(link);
+    msgsEl.appendChild(div);
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+}
+
+// P3j T16-D: ESC 关闭确认卡
+document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && capConfirm && capConfirm.style.display !== "none") {
+        capConfirmCancel.click();
+    }
+});
+
+// ---- M3.27 panel ------------------------------------------------------------
+function renderM345Panel(cfg) {
+    const enToggle = $("m345EnabledToggle");
+    const riskSel = $("m345RiskThreshold");
+    const jbInput = $("m345JailbreakThreshold");
+    const testInput = $("m345TestInput");
+    const statusEl = $("m345Status");
+    if (!enToggle) return;
+    enToggle.checked = !!cfg.jev_enabled;
+    if (riskSel) riskSel.value = cfg.jev_risk_threshold || "medium";
+    if (jbInput) jbInput.value = (cfg.jev_jailbreak_threshold ?? 0.7);
+
+    function save() {
+        // 同步收集 intent 字段,一起提交(避免 intent 段单独再点保存)
+        const intentEnabled = $("m345IntentEnabled");
+        const intentRouting = $("m345IntentRouting");
+        const intentTimeout = $("m345IntentTimeout");
+        const intentMinConf = $("m345IntentMinConf");
+        fetch("/api/m345/jev/cfg", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                jev_enabled: enToggle.checked,
+                jev_risk_threshold: riskSel ? riskSel.value : "medium",
+                jev_jailbreak_threshold: jbInput ? parseFloat(jbInput.value) : 0.7,
+                intent_enabled: intentEnabled ? intentEnabled.checked : true,
+                intent_routing: intentRouting ? intentRouting.checked : true,
+                intent_timeout_sec: intentTimeout ? parseFloat(intentTimeout.value) : 1.0,
+                intent_min_confidence: intentMinConf ? parseFloat(intentMinConf.value) : 0.55,
+            })
+        }).then((r) => r.json()).then((j) => {
+            if (statusEl) {
+                statusEl.textContent = j.ok ? "✅ 已保存(jev + intent)" : ("❌ " + (j.err || "失败"));
+                statusEl.className = "test-out " + (j.ok ? "ok" : "bad");
+            }
+        });
+    }
+    if ($("btnM345Save")) $("btnM345Save").addEventListener("click", save);
+    if ($("btnM345Test")) $("btnM345Test").addEventListener("click", () => {
+        const text = (testInput && testInput.value || "").trim();
+        if (!text) {
+            if (statusEl) { statusEl.textContent = "❌ 测试文本为空"; statusEl.className = "test-out bad"; }
+            return;
+        }
+        if (statusEl) { statusEl.textContent = "⏳ 探测中…"; statusEl.className = "test-out"; }
+        fetch("/api/m345/jev/test", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text })
+        }).then((r) => r.json()).then((j) => {
+            if (!statusEl) return;
+            if (!j.ok) {
+                statusEl.textContent = "❌ " + (j.err || "失败");
+                statusEl.className = "test-out bad";
+                return;
+            }
+            const r = (j.judgments && j.judgments.risk) || {};
+            const jb = (j.judgments && j.judgments.jailbreak) || {};
+            const d = j.decision || {};
+            statusEl.textContent =
+                `risk=${r.score || "?"} conf=${(r.confidence || 0).toFixed(2)} | ` +
+                `jailbreak=${jb.yes ? "YES" : "no"} prob=${(jb.probability || 0).toFixed(2)} | ` +
+                `decision=${d.reason}${d.block ? " (硬拦)" : d.need_confirm ? " (待确认)" : " (直通)"}`;
+            statusEl.className = "test-out ok";
+        });
+    });
+}
+
+// ---- M3.45 P0-1 意图分发 panel(2026-09-22)---------------------------------
+function renderM345IntentPanel(cfg) {
+    const enToggle = $("m345IntentEnabled");
+    const routeToggle = $("m345IntentRouting");
+    const timeoutInput = $("m345IntentTimeout");
+    const minConfInput = $("m345IntentMinConf");
+    const testInput = $("m345IntentTestInput");
+    const statusEl = $("m345IntentStatus");
+    if (!enToggle) return;
+    enToggle.checked = cfg.intent_enabled !== false;
+    if (routeToggle) routeToggle.checked = cfg.intent_routing !== false;
+    if (timeoutInput) timeoutInput.value = cfg.intent_timeout_sec ?? 1.0;
+    if (minConfInput) minConfInput.value = cfg.intent_min_confidence ?? 0.55;
+
+    function save() {
+        fetch("/api/m345/jev/cfg", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                intent_enabled: enToggle.checked,
+                intent_routing: routeToggle ? routeToggle.checked : true,
+                intent_timeout_sec: timeoutInput ? parseFloat(timeoutInput.value) : 1.0,
+                intent_min_confidence: minConfInput ? parseFloat(minConfInput.value) : 0.55,
+            })
+        }).then((r) => r.json()).then((j) => {
+            if (statusEl) {
+                statusEl.textContent = j.ok ? "✅ 已保存" : ("❌ " + (j.err || "失败"));
+                statusEl.className = "test-out " + (j.ok ? "ok" : "bad");
+            }
+        });
+    }
+    if ($("btnM345IntentSave")) $("btnM345IntentSave").addEventListener("click", save);
+    if ($("btnM345IntentTest")) $("btnM345IntentTest").addEventListener("click", () => {
+        const text = (testInput && testInput.value || "").trim();
+        if (!text) {
+            if (statusEl) { statusEl.textContent = "❌ 测试文本为空"; statusEl.className = "test-out bad"; }
+            return;
+        }
+        if (statusEl) { statusEl.textContent = "⏳ 探测中…"; statusEl.className = "test-out"; }
+        fetch("/api/m345/intent/test", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text })
+        }).then((r) => r.json()).then((j) => {
+            if (!statusEl) return;
+            if (!j.ok) {
+                statusEl.textContent = "❌ " + (j.err || "失败");
+                statusEl.className = "test-out bad";
+                return;
+            }
+            const it = j.intent || {};
+            const probs = it.probabilities || {};
+            const probsStr = Object.keys(probs).length
+                ? Object.entries(probs)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([k, v]) => k + ":" + (v * 100).toFixed(0) + "%")
+                    .join(" ")
+                : "(无)";
+            statusEl.textContent =
+                `意图=${it.choice || "?"} (${it.confidence >= 0.55 ? "已路由" : "未路由"}) ` +
+                `conf=${(it.confidence || 0).toFixed(2)} | ` +
+                `probs=${probsStr} | ${j.elapsed_ms || 0}ms`;
+            statusEl.className = "test-out ok";
+        });
+    });
+}
+
+// ---- M3.45 P1-4 阶段成果入库 panel(2026-09-22)---------------------------
+function renderM345P14Panel(cfg) {
+    const enToggle = $("m345P14Enabled");
+    const minValSel = $("m345P14MinValue");
+    const topicSel = $("m345P14TopicStrategy");
+    const timeoutInput = $("m345P14Timeout");
+    const userInput = $("m345P14UserText");
+    const asstInput = $("m345P14AssistantText");
+    const statusEl = $("m345P14Status");
+    const statsEl = $("m345P14Stats");
+    if (!enToggle) return;
+    enToggle.checked = cfg.p14_enabled !== false;
+    if (minValSel) minValSel.value = cfg.p14_min_value ?? 2;
+    if (topicSel) topicSel.value = cfg.p14_topic_strategy ?? "auto";
+    if (timeoutInput) timeoutInput.value = cfg.p14_timeout_sec ?? 1.2;
+
+    function refreshStats() {
+        fetch("/api/m345/p14/stats").then((r) => r.json()).then((j) => {
+            if (!statsEl) return;
+            if (!j.ok) {
+                statsEl.textContent = "未连接";
+                return;
+            }
+            statsEl.textContent = `${j.n_segments} 段 / ${j.n_files} 文件 (root=${j.root || "未设"})`;
+        }).catch(() => {
+            if (statsEl) statsEl.textContent = "查询失败";
+        });
+    }
+    refreshStats();
+
+    function save() {
+        fetch("/api/m345/jev/cfg", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                p14_enabled: enToggle.checked,
+                p14_min_value: minValSel ? parseInt(minValSel.value, 10) : 2,
+                p14_topic_strategy: topicSel ? topicSel.value : "auto",
+                p14_timeout_sec: timeoutInput ? parseFloat(timeoutInput.value) : 1.2,
+            })
+        }).then((r) => r.json()).then((j) => {
+            if (statusEl) {
+                statusEl.textContent = j.ok ? "✅ 已保存" : ("❌ " + (j.err || "失败"));
+                statusEl.className = "test-out " + (j.ok ? "ok" : "bad");
+            }
+        });
+    }
+    if ($("btnM345P14Save")) $("btnM345P14Save").addEventListener("click", save);
+    if ($("btnM345P14StatsRefresh")) $("btnM345P14StatsRefresh").addEventListener("click", refreshStats);
+    if ($("btnM345P14Test")) $("btnM345P14Test").addEventListener("click", () => {
+        const userText = (userInput && userInput.value || "").trim();
+        const asstText = (asstInput && asstInput.value || "").trim();
+        if (!userText || !asstText) {
+            if (statusEl) {
+                statusEl.textContent = "❌ user_text / assistant_text 都必填";
+                statusEl.className = "test-out bad";
+            }
+            return;
+        }
+        if (statusEl) { statusEl.textContent = "⏳ 评估+入库中…"; statusEl.className = "test-out"; }
+        fetch("/api/m345/p14/test", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user_text: userText, assistant_text: asstText })
+        }).then((r) => r.json()).then((j) => {
+            if (!statusEl) return;
+            if (!j.ok) {
+                statusEl.textContent = "❌ " + (j.err || "失败");
+                statusEl.className = "test-out bad";
+                return;
+            }
+            const r = j.result || {};
+            let line = `reason=${r.reason || "?"}`;
+            if (r.has_prob) line += ` has=${(r.has_prob * 100).toFixed(0)}%`;
+            if (r.value_index !== undefined) line += ` value=${r.value || "?"}(${r.value_index})`;
+            if (r.added_count !== undefined) line += ` added=${r.added_count} skipped=${r.skipped_count || 0}`;
+            if (r.path) line += ` path=${r.path.split(/[\\\/]/).pop()}`;
+            line += ` · ${j.elapsed_ms || 0}ms`;
+            statusEl.textContent = line;
+            statusEl.className = r.added_count > 0 ? "test-out ok" : "test-out";
+            refreshStats();
+        });
+    });
+    // 顶部按钮点击 = 打开 settings + 刷新索引
+    if ($("btnP14Stats")) $("btnP14Stats").addEventListener("click", () => {
+        if (typeof openSettings === "function") openSettings();
+        // 滚到 P1-4 段
+        setTimeout(() => {
+            const det = document.querySelector(".m345-p14-section");
+            if (det && det.open !== undefined) det.open = true;
+            refreshStats();
+        }, 100);
+    });
 }
 
 // ---- M3.27 panel ------------------------------------------------------------
@@ -770,6 +1263,10 @@ function startSession() {
     if (st.running) return;
     st.running = true;
     st.sessionStart = Date.now();
+    // M3.45 P1-4:启动会话时清零本会话入库累计
+    st.p14SessionAdded = 0;
+    const p14Badge = $("p14Badge");
+    if (p14Badge) p14Badge.style.display = "none";
     if (timerEl) timerEl.textContent = "00:00";
     setStatus("", "会话中…");
     connectWs();

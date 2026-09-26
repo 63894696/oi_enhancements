@@ -1,0 +1,1516 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>PrisirAI 多平台发布</title>
+<style>
+:root{
+  --bg:#fafafa;--panel:#fff;--fg:#222;--muted:#888;
+  --accent:#06c;--ok:#1a7f37;--warn:#9a6700;--err:#cf222e;
+  --border:#e1e4e8;--radius:8px;
+}
+*{box-sizing:border-box}
+body{font:14px -apple-system,system-ui,Segoe UI,Roboto,sans-serif;
+  margin:0;padding:0;background:var(--bg);color:var(--fg)}
+header{padding:16px 24px;background:#fff;border-bottom:1px solid var(--border);
+  display:flex;justify-content:space-between;align-items:center}
+header h1{margin:0;font-size:16px;font-weight:600}
+header .meta{font-size:12px;color:var(--muted)}
+main{max-width:1100px;margin:24px auto;padding:0 24px}
+.card{background:var(--panel);border:1px solid var(--border);
+  border-radius:var(--radius);padding:16px;margin-bottom:16px}
+.card h2{margin:0 0 12px;font-size:14px;font-weight:600;
+  border-bottom:1px solid var(--border);padding-bottom:8px}
+.tabs{display:flex;border-bottom:1px solid var(--border);margin-bottom:16px}
+.tabs button{padding:8px 16px;background:none;border:none;border-bottom:2px solid transparent;
+  cursor:pointer;font-size:13px;color:var(--muted)}
+.tabs button.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab{display:none}.tab.active{display:block}
+.platform{display:flex;justify-content:space-between;align-items:center;
+  padding:12px;border:1px solid var(--border);border-radius:6px;margin-bottom:8px}
+.platform .name{font-weight:500}.platform .ready{font-size:12px;
+  padding:2px 8px;border-radius:12px}
+.ready.true{background:#ddf4e1;color:var(--ok)}
+.ready.false{background:#fff8c5;color:var(--warn)}
+button{padding:6px 12px;background:var(--accent);color:#fff;border:none;
+  border-radius:4px;cursor:pointer;font-size:12px}
+button:hover{opacity:0.85}
+button.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+button:disabled{opacity:0.5;cursor:not-allowed}
+input,textarea,select{padding:6px 10px;border:1px solid var(--border);
+  border-radius:4px;font-size:13px;width:100%}
+.row{display:flex;gap:8px;margin-bottom:8px}
+.row>*{flex:1}
+.hit{padding:10px;border:1px solid var(--border);border-radius:6px;
+  margin-bottom:6px;font-size:12px;background:#fff}
+.hit .title{font-weight:500;font-size:13px;margin-bottom:4px}
+.hit .meta{color:var(--muted);font-size:11px}
+.snippet{background:#f6f8fa;padding:4px 8px;border-radius:4px;margin-top:4px;font-size:11px}
+#toast{position:fixed;top:20px;right:20px;padding:10px 16px;border-radius:4px;
+  color:#fff;font-size:13px;display:none;z-index:1000}
+#toast.ok{background:var(--ok)}#toast.err{background:var(--err)}
+#toast.warn{background:var(--warn)}
+
+/* 确认卡(对齐 PrisirAI 权限闸 UI) */
+#modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;
+  align-items:center;justify-content:center;z-index:2000}
+#modal{background:#fff;border-radius:8px;padding:20px 24px;max-width:480px;
+  width:90%;box-shadow:0 4px 20px rgba(0,0,0,.2)}
+#modal h3{margin:0 0 12px;font-size:15px}
+#modal .body{font-size:13px;color:var(--fg);line-height:1.6;margin-bottom:16px}
+#modal .body code{background:#f6f8fa;padding:1px 6px;border-radius:3px;font-size:12px}
+#modal .actions{display:flex;gap:8px;justify-content:flex-end}
+#modal button{cursor:pointer}
+#modal button.danger{background:var(--err)}
+#modal button.danger:hover{opacity:.85}
+
+/* P3j T17-D: deps-banner 3 档视觉 */
+.deps-banner{padding:10px 14px;border-radius:var(--radius);
+  border:1px solid var(--border);margin-bottom:12px;
+  cursor:pointer;transition:opacity .15s}
+.deps-banner:hover{opacity:0.85}
+.deps-banner-row{display:flex;align-items:center;gap:10px;
+  font-size:13px}
+.deps-banner-icon{font-size:18px}
+.deps-banner-text{flex:1;font-weight:500}
+.deps-banner-cta{font-size:11px;color:var(--accent);
+  text-decoration:underline}
+.deps-banner.deps-loading{background:#f6f8fa;color:var(--muted)}
+.deps-banner.deps-all-ok{background:#ddf4e1;border-color:#1a7f37;color:#1a7f37}
+.deps-banner.deps-partial{background:#fff8c5;border-color:#9a6700;color:#9a6700}
+.deps-banner.deps-missing{background:#ffebe9;border-color:#cf222e;color:#cf222e}
+
+/* P3j T17-E: media provider 子卡片 */
+.media-provider{padding:10px 12px;border:1px solid var(--border);
+  border-radius:6px;margin-bottom:8px;background:#fcfcfd}
+.media-provider-head{display:flex;justify-content:space-between;
+  align-items:center;margin-bottom:6px}
+.media-provider-title{font-weight:600;font-size:13px}
+.media-provider-lamp{font-size:11px;padding:2px 8px;border-radius:10px;
+  background:#fff8c5;color:#9a6700}
+.media-provider-lamp.ok{background:#ddf4e1;color:#1a7f37}
+.media-provider-purpose{font-size:11px;color:var(--muted);
+  margin-bottom:6px}
+.media-provider-hint{font-size:11px;color:var(--muted);
+  margin-top:6px;padding:6px 8px;background:#f6f8fa;
+  border-radius:4px;font-family:monospace}
+.media-provider-row{display:flex;gap:6px;align-items:center;
+  margin-bottom:6px}
+.media-provider-row label{flex:0 0 70px;font-size:12px}
+.media-provider-row input{flex:1}
+.media-provider-row select{flex:1}
+.media-provider-save{font-size:11px;padding:4px 10px}
+</style>
+</head>
+<body>
+<header>
+  <h1>📢 PrisirAI 多平台发布</h1>
+  <div class="meta" id="meta">...</div>
+</header>
+<main>
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="publish">📤 发布</button>
+    <button class="tab-btn" data-tab="video">🎬 视频</button>
+    <button class="tab-btn" data-tab="recall">🔍 历史 Recall</button>
+    <button class="tab-btn" data-tab="stats">📊 数据</button>
+    <button class="tab-btn" data-tab="platforms">⚙️ 平台</button>
+    <button class="tab-btn" data-tab="vtools">🔧 视频处理</button>
+    <button class="tab-btn" data-tab="analytics">📈 数据分析</button>
+    <button class="tab-btn" data-tab="youtube">📺 YouTube</button>
+    <button class="tab-btn" data-tab="chat">💬 一句话</button>
+  </div>
+
+  <!-- TAB: 发布 -->
+  <div class="tab active" id="tab-publish">
+    <div class="card">
+      <h2>发布到平台</h2>
+      <div class="row">
+        <select id="pub-platform" onchange="onPlatformChange()">
+          <option value="">-- 选择平台 --</option>
+        </select>
+        <select id="pub-mode">
+          <option value="html">📄 HTML 草稿(公众号)</option>
+          <option value="text">📝 图文(小红书)</option>
+          <option value="video">🎬 视频(B站)</option>
+        </select>
+      </div>
+
+      <!-- A: HTML(默认) -->
+      <div id="pub-mode-html" class="pub-mode">
+        <div class="row">
+          <input id="pub-html-path" placeholder="HTML 文件绝对路径"/>
+          <input id="pub-cover" placeholder="封面图绝对路径"/>
+        </div>
+        <div class="row">
+          <input id="pub-title" placeholder="标题"/>
+          <input id="pub-digest" placeholder="摘要(可选)"/>
+        </div>
+        <div class="row">
+          <input id="pub-author" placeholder="署名(可选)"/>
+        </div>
+      </div>
+
+      <!-- B: 小红书图文 -->
+      <div id="pub-mode-text" class="pub-mode" style="display:none">
+        <div class="row">
+          <input id="pub-xhs-title" placeholder="标题"/>
+          <input id="pub-xhs-tags" placeholder="标签 #tag1,#tag2"/>
+        </div>
+        <div class="row" style="flex-direction:column">
+          <textarea id="pub-xhs-content" rows="6"
+                    placeholder="正文(纯文本/emoji)"></textarea>
+        </div>
+        <div class="row">
+          <input id="pub-xhs-images" placeholder="图片路径,逗号分隔(可选)"/>
+        </div>
+        <label style="font-size:12px"><input type="checkbox" id="pub-xhs-exec"/> exec_real(去掉勾=dry-run)</label>
+      </div>
+
+      <!-- C: B站视频 -->
+      <div id="pub-mode-video" class="pub-mode" style="display:none">
+        <div class="row">
+          <input id="pub-bili-video" placeholder="视频文件绝对路径"/>
+          <input id="pub-bili-title" placeholder="标题"/>
+        </div>
+        <div class="row">
+          <input id="pub-bili-partition" placeholder="分区(知识/生活/游戏 ...)"/>
+          <input id="pub-bili-tid" type="number" placeholder="分区 tid(数字)"/>
+        </div>
+        <div class="row">
+          <input id="pub-bili-tag" placeholder="标签,逗号分隔"/>
+          <input id="pub-bili-cover" placeholder="封面图(可选)"/>
+        </div>
+        <div class="row" style="flex-direction:column">
+          <textarea id="pub-bili-desc" rows="4" placeholder="简介"></textarea>
+        </div>
+        <label style="font-size:12px"><input type="checkbox" id="pub-bili-exec"/> exec_real(去掉勾=dry-run)</label>
+      </div>
+
+      <button onclick="doPublish()" style="margin-top:8px">📤 发布</button>
+      <div id="pub-result" style="margin-top:12px;font-size:12px"></div>
+    </div>
+  </div>
+
+  <!-- TAB: 视频创作(P3j T11)— 主题→终片,弹确认卡后再扣费调用 -->
+  <div class="tab" id="tab-video">
+    <!-- P3j T17-D: 依赖状态横幅(进入 Tab 即拉一次 /api/media/status) -->
+    <div id="video-deps-banner" class="deps-banner deps-loading"
+         onclick="toggleMediaKeysCard()">
+      <div class="deps-banner-row">
+        <span class="deps-banner-icon" id="deps-icon">⏳</span>
+        <span class="deps-banner-text" id="deps-text">加载依赖状态…</span>
+        <span class="deps-banner-cta" id="deps-cta">点此配置 →</span>
+      </div>
+    </div>
+
+    <!-- P3j T17-E: 🎨 多媒体创作 Key 配置面板(默认折叠) -->
+    <div class="card" id="media-keys-card" style="display:none">
+      <h2>🎨 多媒体创作 Key 配置
+        <button class="ghost" style="float:right;font-size:11px"
+                onclick="refreshMediaKeys()">🔄 刷新</button>
+      </h2>
+      <div class="meta" style="margin-bottom:8px">
+        仿 LLM/ASR 分模块页填范式 — tts / 图片生成 / 视频生成 / 音频生成 各自独立。
+        key 镜像保存到 <code>%PRISIR_DATA_DIR%/media_keys.json</code>(主源仍是 Easel .env)。
+      </div>
+      <div id="media-providers-list">
+        <!-- JS 渲染 4 个 provider 子卡片 -->
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>🎬 一键出片(主题→终片)</h2>
+      <div class="row">
+        <input id="vid-topic" placeholder="视频主题(如:AI 改变办公的 3 个真相)"/>
+      </div>
+      <div class="row" style="flex-direction:column">
+        <textarea id="vid-script" rows="6" placeholder="口播文案分镜(每句一行;由 LLM 生成后贴入)"></textarea>
+      </div>
+      <div class="row">
+        <select id="vid-aspect">
+          <option value="9:16">9:16 竖版(抖音/小红书/视频号)</option>
+          <option value="16:9">16:9 横版(B站/YouTube)</option>
+          <option value="1:1">1:1 方形(微信图文)</option>
+        </select>
+        <input id="vid-duration" type="number" value="60" placeholder="时长(秒)"/>
+      </div>
+      <div class="row">
+        <input id="vid-voice" placeholder="TTS 音色(edge 名或闭源 voice-id,可空)"/>
+        <input id="vid-output" placeholder="输出目录(留空默认 ~/work/zju_easel/outputs/<主题>/)"/>
+      </div>
+      <div class="row">
+        <label style="font-size:12px"><input type="checkbox" id="vid-subtitle" checked/> 出字幕烧录</label>
+        <label style="font-size:12px;margin-left:12px"><input type="checkbox" id="vid-images"/> AI 配图(需 SILICONFLOW_API_KEY)</label>
+      </div>
+      <button onclick="doVideoConfirm()" style="margin-top:8px">🎬 生成视频</button>
+      <div id="vid-result" style="margin-top:12px;font-size:12px"></div>
+      <div id="vid-publish-row" style="margin-top:8px;display:none">
+        <button class="ghost" onclick="doVideoPublishBili()">📺 投到 B站(dry-run)</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>🔧 零件调用</h2>
+      <div class="row">
+        <select id="part-creator">
+          <option value="">-- 选 creator --</option>
+        </select>
+        <span id="part-status" style="font-size:11px;color:#888;align-self:center"></span>
+      </div>
+      <div id="part-forms">
+        <!-- TTS -->
+        <div class="part-form" id="form-tts" style="display:none">
+          <div class="row">
+            <input id="tts-text" placeholder="要合成的文字"/>
+            <input id="tts-out" placeholder="输出音频路径(默认 mp3)"/>
+          </div>
+          <div class="row">
+            <input id="tts-voice" placeholder="音色(edge 名)"/>
+            <input id="tts-rate" placeholder="语速如 +10%"/>
+          </div>
+          <div class="row">
+            <input id="tts-sub" placeholder="同时输出 SRT(可选)"/>
+            <button onclick="callTts()">▶ TTS</button>
+          </div>
+        </div>
+        <!-- ASR -->
+        <div class="part-form" id="form-asr" style="display:none">
+          <div class="row">
+            <input id="asr-input" placeholder="音频/视频绝对路径"/>
+            <input id="asr-output" placeholder="字幕输出路径(可选)"/>
+          </div>
+          <div class="row">
+            <select id="asr-model">
+              <option value="base">base(中文 OK,150MB)</option>
+              <option value="small">small(更准,500MB)</option>
+              <option value="medium">medium(更更准,1.5GB)</option>
+              <option value="large-v3">large-v3(最准,3GB)</option>
+            </select>
+            <select id="asr-fmt">
+              <option value="srt">SRT</option>
+              <option value="ass">ASS</option>
+              <option value="txt">TXT</option>
+              <option value="json">JSON</option>
+            </select>
+            <button onclick="callAsr()">▶ ASR</button>
+          </div>
+        </div>
+        <!-- assemble -->
+        <div class="part-form" id="form-assemble" style="display:none">
+          <div class="row">
+            <input id="asm-sb" placeholder="storyboard JSON 路径"/>
+            <input id="asm-out" placeholder="输出 mp4 路径"/>
+          </div>
+          <button onclick="callAssemble()">▶ Assemble</button>
+        </div>
+        <!-- image-gen / video-gen(占位提示) -->
+        <div class="part-form" id="form-image-gen" style="display:none">
+          <div class="meta" style="color:#9a6700">⚠ 需 SILICONFLOW_API_KEY(在 ~/work/zju_easel/.env 配)</div>
+          <div class="row">
+            <input id="img-prompt" placeholder="配图提示词"/>
+            <input id="img-out" placeholder="输出图片路径"/>
+          </div>
+          <div class="row">
+            <select id="img-size">
+              <option value="1024x1024">1024x1024</option>
+              <option value="1280x720">1280x720</option>
+              <option value="720x1280">720x1280</option>
+            </select>
+            <button onclick="callImageGen()">▶ Image Gen</button>
+          </div>
+        </div>
+        <div class="part-form" id="form-video-gen" style="display:none">
+          <div class="meta" style="color:#9a6700">⚠ 视频生成比配图贵</div>
+          <div class="row">
+            <input id="vgen-prompt" placeholder="视频片段提示词"/>
+            <input id="vgen-out" placeholder="输出 mp4 路径"/>
+          </div>
+          <div class="row">
+            <input id="vgen-dur" type="number" value="4" placeholder="时长(秒)"/>
+            <button onclick="callVideoGen()">▶ Video Gen</button>
+          </div>
+        </div>
+      </div>
+      <div id="part-result" style="margin-top:12px;font-size:12px"></div>
+    </div>
+  </div>
+
+  <!-- TAB: Recall -->
+  <div class="tab" id="tab-recall">
+    <div class="card">
+      <h2>公众号历史 Recall(本地 FTS5)</h2>
+      <div class="row">
+        <input id="recall-q" placeholder="搜索关键词(中文/英文)"/>
+        <input id="recall-limit" type="number" value="20" style="max-width:100px"/>
+        <button onclick="doRecall()">🔍 搜索</button>
+      </div>
+      <div id="recall-result"></div>
+    </div>
+  </div>
+
+  <!-- TAB: Stats -->
+  <div class="tab" id="tab-stats">
+    <div class="card">
+      <h2>公众号数据回收</h2>
+      <div class="row">
+        <select id="stats-platform">
+          <option value="wechat-oa">wechat-oa</option>
+        </select>
+        <input id="stats-count" type="number" value="30" style="max-width:100px"/>
+        <button onclick="doStats()">📊 拉数据</button>
+      </div>
+      <pre id="stats-result" style="font-size:11px;max-height:400px;overflow:auto"></pre>
+    </div>
+  </div>
+
+  <!-- TAB: 平台 -->
+  <div class="tab" id="tab-platforms">
+    <div class="card">
+      <h2>平台登录态</h2>
+      <div id="platforms-list"></div>
+    </div>
+  </div>
+
+  <!-- TAB: 视频处理(P3j T12-C) — video_ops + subtitle_ops -->
+  <div class="tab" id="tab-vtools">
+    <div class="card">
+      <h2>🔧 视频处理(ffmpeg 封装)</h2>
+      <p class="muted">走 Easel video_ops.py / subtitle_ops.py — 确定性本地处理,无需 API key。</p>
+      <div class="row">
+        <label>操作 (op)</label>
+        <select id="vt-op">
+          <optgroup label="基础编辑">
+            <option value="cut">cut 裁剪</option>
+            <option value="concat">concat 拼接</option>
+            <option value="speed">speed 变速</option>
+            <option value="aspect">aspect 横竖比</option>
+            <option value="compress">compress 压缩</option>
+            <option value="frame">frame 抽帧</option>
+            <option value="gif">gif 转 GIF</option>
+            <option value="info">info ffprobe 元数据</option>
+          </optgroup>
+          <optgroup label="音频 / 字幕">
+            <option value="silence-cut">silence-cut 静音检测切</option>
+            <option value="mute-cut">mute-cut 静音切(去音轨)</option>
+            <option value="bgm">bgm 加背景音乐</option>
+            <option value="text">text 文字覆盖</option>
+            <option value="watermark">watermark 图片水印</option>
+          </optgroup>
+        </select>
+      </div>
+      <div class="row">
+        <label>输入视频</label>
+        <input id="vt-input" placeholder="C:/videos/in.mp4">
+      </div>
+      <div class="row">
+        <label>输出路径</label>
+        <input id="vt-output" placeholder="C:/videos/out.mp4">
+      </div>
+      <div class="row">
+        <label>额外参数(可选)</label>
+        <input id="vt-opts" placeholder='start=00:00:05 end=00:00:15 或 concat_args="C:/v1.mp4|C:/v2.mp4"'>
+      </div>
+      <div class="row">
+        <button class="primary" onclick="doVideoOps()">🎬 执行</button>
+        <button class="ghost" onclick="doVideoInfo()">🔍 只查元数据(info)</button>
+        <span id="vt-status" class="muted"></span>
+      </div>
+      <pre id="vt-result" class="code"></pre>
+    </div>
+
+    <div class="card">
+      <h2>📝 字幕处理</h2>
+      <p class="muted">走 Easel subtitle_ops.py — 解析 / 合并 / 烧录。翻译由 LLM 完成(外部接口)。</p>
+      <div class="row">
+        <label>操作 (op)</label>
+        <select id="sub-op">
+          <option value="parse">parse 解析 → JSON</option>
+          <option value="merge">merge 双语合并</option>
+          <option value="build">build JSON → 字幕</option>
+          <option value="convert">convert 格式互转</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>输入字幕 (srt/vtt/ass)</label>
+        <input id="sub-input" placeholder="C:/subs/a.srt">
+      </div>
+      <div class="row">
+        <label>输出字幕</label>
+        <input id="sub-output" placeholder="C:/subs/b.srt">
+      </div>
+      <div class="row">
+        <button class="primary" onclick="doSubtitleOps()">📝 执行</button>
+        <span id="sub-status" class="muted"></span>
+      </div>
+      <pre id="sub-result" class="code"></pre>
+    </div>
+
+    <div class="card">
+      <h2>🔥 字幕烧录进视频</h2>
+      <p class="muted">走 /api/video/subtitle/burn — 字幕 srt/vtt/ass 硬烧录(默认)或软挂载(可开关)。</p>
+      <div class="row">
+        <label>输入视频</label>
+        <input id="burn-input" placeholder="C:/videos/in.mp4">
+      </div>
+      <div class="row">
+        <label>字幕文件</label>
+        <input id="burn-sub" placeholder="C:/subs/cn.srt">
+      </div>
+      <div class="row">
+        <label>输出视频</label>
+        <input id="burn-output" placeholder="C:/videos/out.mp4">
+      </div>
+      <div class="row">
+        <label><input type="checkbox" id="burn-soft"> 软字幕(默认硬烧录)</label>
+      </div>
+      <div class="row">
+        <button class="primary" onclick="doSubtitleBurn()">🔥 烧录</button>
+        <span id="burn-status" class="muted"></span>
+      </div>
+      <pre id="burn-result" class="code"></pre>
+    </div>
+  </div>
+
+  <!-- TAB: 数据分析(P3j T12-C) — publish_analytics -->
+  <div class="tab" id="tab-analytics">
+    <div class="card">
+      <h2>📈 发布数据分析</h2>
+      <p class="muted">走 Easel publish-analytics analyze.py — 确定性计算,读本地缓存。</p>
+      <div class="row">
+        <label>分析维度</label>
+        <select id="an-mode">
+          <option value="selftest">selftest 自检(永远可跑)</option>
+          <option value="all">all A+B+C 默认组合</option>
+          <option value="time">time 最佳发布时段</option>
+          <option value="tags">tags 标签效果</option>
+          <option value="types">types 内容类型对比</option>
+          <option value="growth">growth 增长归因</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>数据文件(可选,jsonl)</label>
+        <input id="an-data" placeholder="C:/path/to/wechat_stats.jsonl(空=selftest)">
+      </div>
+      <div class="row">
+        <label>粉丝日志(可选)</label>
+        <input id="an-follower" placeholder="follower_log.jsonl">
+      </div>
+      <div class="row">
+        <label>Profile 过滤(可选)</label>
+        <input id="an-profile" placeholder="wechat-oa">
+      </div>
+      <div class="row">
+        <button class="primary" onclick="doAnalytics()">📈 分析</button>
+        <span id="an-status" class="muted"></span>
+      </div>
+      <pre id="an-result" class="code"></pre>
+    </div>
+  </div>
+
+  <!-- TAB: YouTube(P3j T13) — 海外视频平台 -->
+  <div class="tab" id="tab-youtube">
+    <div class="card">
+      <h2>📺 YouTube 桥接</h2>
+      <p class="muted">走 YouTube Data API v3 + yt-dlp。不依赖 Easel。需先在 <code>~/.prisIrai/youtube_client_secrets.json</code> 放 GCP 申请的 OAuth client。</p>
+      <div class="row">
+        <button class="primary" onclick="ytStatus()">🔍 探测</button>
+        <span id="yt-status-text" class="muted">点击「探测」查依赖 + token 状态</span>
+      </div>
+      <pre id="yt-status" class="code"></pre>
+    </div>
+
+    <div class="card">
+      <h2>🔑 OAuth 授权</h2>
+      <p class="muted">首次需要授权 — 浏览器跳转到 Google 登录页 → 回调到 <code>http://127.0.0.1:8765</code> → token 落 <code>~/.prisIrai/youtube_token.json</code>。</p>
+      <div class="row">
+        <label>回调端口</label>
+        <input id="yt-port" value="8765" style="width:100px">
+      </div>
+      <div class="row">
+        <button class="primary" onclick="ytAuth()">🔑 授权(浏览器跳转)</button>
+        <span id="yt-auth-status" class="muted"></span>
+      </div>
+      <pre id="yt-auth-result" class="code"></pre>
+    </div>
+
+    <div class="card">
+      <h2>📤 上传视频</h2>
+      <p class="muted">调 YouTube Data API v3 的 <code>videos.insert</code>(resumable upload)。</p>
+      <div class="row">
+        <label>视频文件</label>
+        <input id="yt-video" placeholder="C:/videos/out.mp4">
+      </div>
+      <div class="row">
+        <label>标题(title)</label>
+        <input id="yt-title" placeholder="视频标题">
+      </div>
+      <div class="row">
+        <label>描述(description)</label>
+        <textarea id="yt-desc" rows="3" placeholder="视频描述..."></textarea>
+      </div>
+      <div class="row">
+        <label>标签(tags,逗号分隔)</label>
+        <input id="yt-tags" placeholder="AI, prisir, demo">
+      </div>
+      <div class="row">
+        <label>分类(category_id)</label>
+        <select id="yt-category">
+          <option value="22">22 People & Blog</option>
+          <option value="27">27 Education</option>
+          <option value="28">28 Science & Tech</option>
+          <option value="24">24 Entertainment</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>隐私(privacy)</label>
+        <select id="yt-privacy">
+          <option value="private">private 仅自己</option>
+          <option value="unlisted">unlisted 有链接可看</option>
+          <option value="public">public 公开</option>
+        </select>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" id="yt-exec-real"> exec_real 真传(默认 dry-run,仅校验参数)</label>
+      </div>
+      <div class="row">
+        <button class="primary" onclick="ytUpload()">📤 上传(dry-run 默认)</button>
+        <span id="yt-upload-status" class="muted"></span>
+      </div>
+      <pre id="yt-upload-result" class="code"></pre>
+    </div>
+
+    <div class="card">
+      <h2>📋 我的视频列表</h2>
+      <p class="muted">调 YouTube Data API v3 的 <code>videos.list?mine=true</code>(需 youtube.readonly 权限)。</p>
+      <div class="row">
+        <label>最多返回</label>
+        <input id="yt-max-results" value="10" style="width:80px">
+        <label><input type="checkbox" id="yt-list-real"> exec_real 真查</label>
+      </div>
+      <div class="row">
+        <button class="primary" onclick="ytList()">📋 列表</button>
+        <span id="yt-list-status" class="muted"></span>
+      </div>
+      <pre id="yt-list-result" class="code"></pre>
+    </div>
+  </div>
+</main>
+
+<div id="toast"></div>
+
+<!-- 确认卡(对齐 PrisirAI 权限闸) -->
+<div id="modal-bg">
+  <!-- TAB: 一句话 — 自然语言 → 视频/YouTube 能力(P3j T15-A) -->
+  <div class="tab" id="tab-chat">
+    <div class="card">
+      <h2>💬 一句话 — 自然语言入口</h2>
+      <p class="muted">不选 Tab,不填表单,直接说人话。例: 帮我做个 9:16 短视频,主题 PrisirAI,文案 介绍 PrisirAI / 把 C:/v.mp4 从 00:10 裁到 00:30 输出 C:/out.mp4 / 上传 C:/v.mp4 到 YouTube,标题 X,公开</p>
+      <div class="row">
+        <label>告诉我你想做什么</label>
+        <textarea id="chat-input" rows="2"
+                  placeholder="例如:帮我做个 9:16 短视频,主题 PrisirAI,文案 介绍 PrisirAI"
+                  style="width:100%;resize:vertical"></textarea>
+      </div>
+      <div class="row">
+        <button class="primary" onclick="doChatParse()">🔍 解析意图</button>
+        <button class="ghost" onclick="chatClear()">🗑 清空</button>
+      </div>
+    </div>
+
+    <div class="card" id="chat-preview-card" style="display:none">
+      <h3>📋 解析结果</h3>
+      <div id="chat-preview-body"></div>
+      <div class="row">
+        <button id="chat-exec-btn" class="primary" onclick="doChatExec()">🚀 真发(我已确认)</button>
+        <button class="ghost" onclick="chatClear()">🔄 换一个</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>💡 我能帮你做什么</h3>
+      <pre id="chat-help" style="white-space:pre-wrap;font-size:13px;color:var(--muted);background:var(--bg-2);padding:12px;border-radius:6px"></pre>
+    </div>
+  </div>
+
+  <div id="modal">
+    <h3 id="modal-title">⚠ 确认操作</h3>
+    <div class="body" id="modal-body">内容</div>
+    <div class="actions">
+      <button class="ghost" onclick="closeModal()">取消</button>
+      <button id="modal-ok" class="danger" onclick="confirmModal()">确认</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ====== 状态 ======
+let platforms = [];
+let serviceState = null;
+
+function toast(msg, kind='ok'){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = kind;
+  t.style.display = 'block';
+  setTimeout(()=>t.style.display='none', 3500);
+}
+
+// ====== tabs ======
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    // P3j T17-D: 切到视频 Tab 时刷一次 deps-banner
+    if (btn.dataset.tab === 'video') {
+      refreshMediaStatus();
+    }
+  };
+});
+
+// ====== API ======
+async function api(path, opts={}){
+  const r = await fetch(path, {
+    headers: {'Content-Type':'application/json'},
+    ...opts
+  });
+  return await r.json();
+}
+
+// ====== load ======
+async function loadMeta(){
+  const s = await api('/api/state');
+  serviceState = s;
+  document.getElementById('meta').textContent =
+    `port=${s.port} · pid=${s.pid} · uptime=${s.uptime_sec}s`;
+}
+
+async function loadPlatforms(){
+  const r = await api('/api/platforms');
+  platforms = r.platforms || [];
+  // pub-platform select
+  const sel = document.getElementById('pub-platform');
+  sel.innerHTML = '<option value="">-- 选择平台 --</option>';
+  platforms.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p.name;
+    opt.textContent = `${p.title} (${p.name}) ${p.ready ? '✅' : '❌'}`;
+    sel.appendChild(opt);
+  });
+  // platforms-list
+  const lst = document.getElementById('platforms-list');
+  lst.innerHTML = '';
+  platforms.forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'platform';
+    const st = p.status || {};
+    div.innerHTML = `
+      <div>
+        <div class="name">${p.title} <span style="color:#888;font-size:11px">(${p.name})</span></div>
+        <div class="meta" style="font-size:11px;color:#888">
+          loggedIn: <b>${st.loggedIn ? '✅' : '❌'}</b> ·
+          bridge: ${st.bridge_ready ? '✅' : '❌'} ·
+          ${st.error ? '⚠️ ' + st.error : ''}
+        </div>
+      </div>
+      <button class="ghost" onclick="doLogin('${p.name}')">扫码登录</button>
+    `;
+    lst.appendChild(div);
+  });
+}
+
+// ====== actions ======
+async function doLogin(platform){
+  toast(`🔐 启动 ${platform} 扫码...`, 'warn');
+  const r = await api('/api/login', {method:'POST', body: JSON.stringify({platform})});
+  if (r.ok) toast('✅ 扫码窗口已启动,看浏览器', 'ok');
+  else toast('❌ ' + r.error, 'err');
+}
+
+function onPlatformChange(){
+  const p = document.getElementById('pub-platform').value;
+  const modeSel = document.getElementById('pub-mode');
+  // 自动按平台切模式: xhs→text, bilibili→video, 其他→html
+  if (p === 'xhs'){ modeSel.value = 'text'; }
+  else if (p === 'bilibili'){ modeSel.value = 'video'; }
+  else { modeSel.value = 'html'; }
+  refreshMode();
+}
+
+function refreshMode(){
+  const mode = document.getElementById('pub-mode').value;
+  document.querySelectorAll('.pub-mode').forEach(el => el.style.display = 'none');
+  document.getElementById('pub-mode-' + mode).style.display = 'block';
+}
+document.getElementById('pub-mode').addEventListener('change', refreshMode);
+
+async function doPublish(){
+  const platform = document.getElementById('pub-platform').value;
+  if (!platform){ toast('❌ 请选择平台', 'err'); return; }
+  const mode = document.getElementById('pub-mode').value;
+  let body = {platform, mode};
+  if (mode === 'html'){
+    body.html_path = document.getElementById('pub-html-path').value;
+    body.title    = document.getElementById('pub-title').value;
+    body.cover    = document.getElementById('pub-cover').value;
+    body.digest   = document.getElementById('pub-digest').value;
+    body.author   = document.getElementById('pub-author').value;
+    if (!body.html_path || !body.title || !body.cover){
+      toast('❌ html_path / title / cover 必填', 'err'); return;
+    }
+  } else if (mode === 'text'){
+    body.title     = document.getElementById('pub-xhs-title').value;
+    body.content   = document.getElementById('pub-xhs-content').value;
+    body.images    = document.getElementById('pub-xhs-images').value;
+    body.tags      = document.getElementById('pub-xhs-tags').value;
+    body.exec_real = document.getElementById('pub-xhs-exec').checked;
+    if (!body.title || !body.content){
+      toast('❌ 标题/正文必填', 'err'); return;
+    }
+  } else if (mode === 'video'){
+    body.video     = document.getElementById('pub-bili-video').value;
+    body.title     = document.getElementById('pub-bili-title').value;
+    body.partition = document.getElementById('pub-bili-partition').value;
+    body.tid       = document.getElementById('pub-bili-tid').value;
+    body.tag       = document.getElementById('pub-bili-tag').value;
+    body.cover     = document.getElementById('pub-bili-cover').value;
+    body.desc      = document.getElementById('pub-bili-desc').value;
+    body.exec_real = document.getElementById('pub-bili-exec').checked;
+    if (!body.video || !body.title){
+      toast('❌ video / title 必填', 'err'); return;
+    }
+  }
+  toast('📤 发布中...', 'warn');
+  const r = await api('/api/publish', {method:'POST', body: JSON.stringify(body)});
+  document.getElementById('pub-result').innerHTML =
+    `<pre>${JSON.stringify(r, null, 2)}</pre>`;
+  if (r.ok) toast('✅ 已提交(artifact=' + JSON.stringify(r.artifact||{}) + ')', 'ok');
+  else toast('❌ ' + r.error, 'err');
+}
+
+async function doRecall(){
+  const q = document.getElementById('recall-q').value;
+  const limit = document.getElementById('recall-limit').value || 20;
+  if (!q){ toast('❌ 请输入关键词', 'err'); return; }
+  const r = await api('/api/recall?q=' + encodeURIComponent(q) + '&limit=' + limit);
+  const target = document.getElementById('recall-result');
+  if (r.warning){
+    target.innerHTML = `<div class="hit" style="background:#fff8c5">⚠️ ${r.warning}</div>`;
+    return;
+  }
+  if (!r.hits || !r.hits.length){
+    target.innerHTML = `<div class="hit">无结果 (total=${r.total})</div>`;
+    return;
+  }
+  target.innerHTML = `<div style="font-size:12px;color:#888;margin-bottom:8px">
+    匹配 ${r.total} 条,展示 ${r.hits.length} 条</div>`;
+  r.hits.forEach(h => {
+    const d = document.createElement('div');
+    d.className = 'hit';
+    d.innerHTML = `
+      <div class="title">${h.title}</div>
+      <div class="meta">${h.publisher || '?'} · ${new Date(h.ts*1000).toISOString().slice(0,10)}</div>
+      <div class="meta">${h.url}</div>
+      ${h.snippet ? `<div class="snippet">…${h.snippet}…</div>` : ''}
+    `;
+    target.appendChild(d);
+  });
+}
+
+async function doStats(){
+  const platform = document.getElementById('stats-platform').value;
+  const count = document.getElementById('stats-count').value || 30;
+  const r = await api(`/api/stats?platform=${platform}&count=${count}`);
+  document.getElementById('stats-result').textContent = JSON.stringify(r, null, 2);
+  if (r.ok) toast('✅ 数据已拉回', 'ok');
+  else toast('❌ ' + (r.error || r.warning), 'err');
+}
+
+// ====== init ======
+loadMeta();
+loadPlatforms();
+loadCreators();
+setInterval(() => { loadMeta(); loadPlatforms(); }, 10000);
+
+// ====== 视频 Tab:确认卡 + 编排 ======
+function showModal(title, body, onOk, okLabel='确认', danger=true){
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').innerHTML = body;
+  const okBtn = document.getElementById('modal-ok');
+  okBtn.textContent = okLabel;
+  okBtn.className = danger ? 'danger' : '';
+  window._modalCb = onOk;
+  document.getElementById('modal-bg').style.display = 'flex';
+}
+function closeModal(){
+  document.getElementById('modal-bg').style.display = 'none';
+  window._modalCb = null;
+}
+async function confirmModal(){
+  const cb = window._modalCb; closeModal();
+  if (cb) await cb();
+}
+
+async function loadCreators(){
+  const r = await api('/api/video/creators');
+  const sel = document.getElementById('part-creator');
+  sel.innerHTML = '<option value="">-- 选 creator --</option>';
+  for (const c of r.creators || []){
+    const opt = document.createElement('option');
+    opt.value = c.name; opt.textContent = `${c.title} (${c.name}) ${c.ready?'✅':'❌'}`;
+    sel.appendChild(opt);
+  }
+  document.getElementById('part-status').textContent =
+    `${(r.creators||[]).filter(c=>c.ready).length} 个就绪 / ${(r.creators||[]).length} 个`;
+}
+document.getElementById('part-creator').addEventListener('change', e => {
+  const name = e.target.value;
+  document.querySelectorAll('.part-form').forEach(el => el.style.display = 'none');
+  if (name) document.getElementById('form-' + name).style.display = 'block';
+});
+
+async function doVideoConfirm(){
+  const topic = document.getElementById('vid-topic').value.trim();
+  const script = document.getElementById('vid-script').value.trim();
+  if (!topic || !script){ toast('❌ 主题/文案必填', 'err'); return; }
+  const aspect = document.getElementById('vid-aspect').value;
+  const duration = document.getElementById('vid-duration').value;
+  const voice = document.getElementById('vid-voice').value;
+  const with_subtitle = document.getElementById('vid-subtitle').checked;
+  const with_images = document.getElementById('vid-images').checked;
+  // 弹确认卡(对齐 SKILL.md「画幅确认硬门」)
+  const body = `
+    主题:<code>${topic}</code><br>
+    文案长度:${script.length} 字 / 估算时长约 ${duration}s<br>
+    画幅:<code>${aspect}</code> · 时长:<code>${duration}s</code><br>
+    TTS 音色:<code>${voice || '(默认)'}</code><br>
+    字幕烧录:<b>${with_subtitle?'✅':'❌'}</b> · AI 配图:<b>${with_images?'✅(扣费)':'❌'}</b><br><br>
+    <b style="color:var(--err)">本操作会真发网络调用(TTS / 可选 AI 配图)。</b><br>
+    <span style="font-size:11px;color:#888">如需 dry-run,请把 with_images 关掉并使用「零件调用→TTS」单独测。</span>
+  `;
+  showModal('🎬 确认出片', body, async () => {
+    toast('🎬 开始编排...', 'warn');
+    const r = await api('/api/video/orchestrate', {method:'POST', body: JSON.stringify({
+      topic, script, aspect_ratio: aspect, duration: parseInt(duration,10),
+      voice, with_subtitle, with_images})});
+    const target = document.getElementById('vid-result');
+    target.innerHTML = `<pre>${JSON.stringify(r, null, 2)}</pre>`;
+    if (r.ok){
+      const ap = r.artifact || {};
+      toast('✅ 视频已出 → ' + (ap.video_path || '?'), 'ok');
+      // 出片成功 → 显示「投到 B站」按钮
+      if (ap.video_path){
+        window._lastVideoPath = ap.video_path;
+        document.getElementById('vid-publish-row').style.display = 'block';
+      }
+    } else {
+      toast('❌ ' + (r.error || 'unknown'), 'err');
+    }
+  });
+}
+
+async function doVideoPublishBili(){
+  const video = window._lastVideoPath;
+  if (!video){ toast('❌ 没有视频路径,先 orchestrate', 'err'); return; }
+  showModal('📺 确认投稿 B站',
+    `视频:<code>${video}</code><br>本次为 <b>dry-run</b>(不真投)。想真投请用「📤 发布→bilibili→video」勾选 exec_real。`,
+    async () => {
+      const r = await api('/api/video/publish', {method:'POST', body: JSON.stringify({
+        video_path: video, title: document.getElementById('vid-topic').value,
+        exec_real: false})});
+      document.getElementById('vid-result').innerHTML =
+        `<pre>${JSON.stringify(r, null, 2)}</pre>`;
+      if (r.ok) toast('✅ 投递提交(可能 dry-run)', 'ok');
+      else toast('❌ ' + r.error, 'err');
+    });
+}
+
+// ====== 零件调用 ======
+async function callTts(){
+  const text = document.getElementById('tts-text').value;
+  const output = document.getElementById('tts-out').value || '/tmp/tts.mp3';
+  const voice = document.getElementById('tts-voice').value;
+  const rate = document.getElementById('tts-rate').value;
+  const subtitle = document.getElementById('tts-sub').value;
+  if (!text){ toast('❌ 文字必填', 'err'); return; }
+  const r = await api('/api/video/create', {method:'POST', body: JSON.stringify({
+    creator:'tts', text, output, voice, rate, subtitle})});
+  showPartResult(r);
+}
+
+async function callAsr(){
+  const input = document.getElementById('asr-input').value;
+  const output = document.getElementById('asr-output').value;
+  const model = document.getElementById('asr-model').value;
+  const fmt = document.getElementById('asr-fmt').value;
+  if (!input){ toast('❌ 输入文件必填', 'err'); return; }
+  showModal('🎙 确认 ASR', `音频/视频:<code>${input}</code><br>模型:<code>${model}</code>(首次会下模型)<br>本操作会下载模型(若未缓存)。`, async () => {
+    toast('🎙 跑 ASR 中...', 'warn');
+    const r = await api('/api/video/create', {method:'POST', body: JSON.stringify({
+      creator:'asr', input, output, model, format: fmt})});
+    showPartResult(r);
+  });
+}
+
+async function callAssemble(){
+  const storyboard = document.getElementById('asm-sb').value;
+  const output = document.getElementById('asm-out').value;
+  if (!storyboard || !output){ toast('❌ storyboard/output 必填', 'err'); return; }
+  toast('🎬 合成中(最长 15min)...', 'warn');
+  const r = await api('/api/video/create', {method:'POST', body: JSON.stringify({
+    creator:'assemble', storyboard, output})});
+  showPartResult(r);
+}
+
+async function callImageGen(){
+  const prompt = document.getElementById('img-prompt').value;
+  const output = document.getElementById('img-out').value || '/tmp/img.png';
+  const size = document.getElementById('img-size').value;
+  if (!prompt){ toast('❌ 提示词必填', 'err'); return; }
+  showModal('🖼 确认 AI 配图', `提示词:<code>${prompt}</code><br>尺寸:<code>${size}</code><br><b style="color:var(--err)">扣费 API 调用。</b>`, async () => {
+    const r = await api('/api/video/create', {method:'POST', body: JSON.stringify({
+      creator:'image-gen', prompt, output, size})});
+    showPartResult(r);
+  });
+}
+
+async function callVideoGen(){
+  const prompt = document.getElementById('vgen-prompt').value;
+  const output = document.getElementById('vgen-out').value || '/tmp/clip.mp4';
+  const duration = parseInt(document.getElementById('vgen-dur').value || '4', 10);
+  if (!prompt){ toast('❌ 提示词必填', 'err'); return; }
+  showModal('🎬 确认 AI 视频生成', `提示词:<code>${prompt}</code><br>时长:<code>${duration}s</code><br><b style="color:var(--err)">扣费较贵的 API 调用。</b>`, async () => {
+    const r = await api('/api/video/create', {method:'POST', body: JSON.stringify({
+      creator:'video-gen', prompt, output, duration})});
+    showPartResult(r);
+  });
+}
+
+function showPartResult(r){
+  document.getElementById('part-result').innerHTML =
+    `<pre>${JSON.stringify(r, null, 2)}</pre>`;
+  if (r.ok) toast('✅ 完成', 'ok');
+  else toast('❌ ' + (r.error || 'unknown'), 'err');
+}
+
+// ====== P3j T12-C:视频处理 Tab ======
+// video-ops / subtitle-ops creator 通过 /api/video/create 路由(op+input/output/extra opts)
+
+function _parseOpts(s){
+  // 解析 "start=00:00:05 end=00:00:15 crf=20" → {start:"00:00:05",end:"00:00:15",crf:"20"}
+  // 注意:值含空格/竖线时本解析不准 — 复杂参数建议直接用 JSON 对象传
+  const out = {};
+  if (!s) return out;
+  // 简单 regex: key=value(值可不含空格或竖线)
+  const re = /(\w+)=([^\s|]+)/g;
+  let m;
+  while ((m = re.exec(s)) !== null){
+    let v = m[2];
+    // 数字尝试转
+    if (/^\d+(\.\d+)?$/.test(v)) v = Number(v);
+    else if (v === 'true') v = true;
+    else if (v === 'false') v = false;
+    out[m[1]] = v;
+  }
+  return out;
+}
+
+async function doVideoOps(){
+  const op = document.getElementById('vt-op').value;
+  const input = document.getElementById('vt-input').value;
+  const output = document.getElementById('vt-output').value;
+  const optsStr = document.getElementById('vt-opts').value;
+  const opts = _parseOpts(optsStr);
+  document.getElementById('vt-status').innerText = '执行中...';
+  const body = {creator:'video-ops', op, input, output, ...opts};
+  const r = await api('/api/video/create', {method:'POST',
+    body: JSON.stringify(body)});
+  document.getElementById('vt-result').innerHTML =
+    `<pre>${JSON.stringify(r, null, 2)}</pre>`;
+  document.getElementById('vt-status').innerText =
+    r.ok ? `✅ 完成(creator=${r.creator})` : `❌ ${r.error}`;
+  toast(r.ok ? '✅ 完成' : '❌ ' + r.error, r.ok ? 'ok' : 'err');
+}
+
+async function doVideoInfo(){
+  const path = document.getElementById('vt-input').value;
+  if (!path){ toast('❌ 输入视频路径必填', 'err'); return; }
+  const r = await api(`/api/video/info?path=${encodeURIComponent(path)}`,
+    {method:'GET'});
+  document.getElementById('vt-result').innerHTML =
+    `<pre>${JSON.stringify(r, null, 2)}</pre>`;
+  toast(r.ok ? '✅ 元数据已查' : '❌ ' + r.error, r.ok ? 'ok' : 'err');
+}
+
+async function doSubtitleOps(){
+  const op = document.getElementById('sub-op').value;
+  const input = document.getElementById('sub-input').value;
+  const output = document.getElementById('sub-output').value;
+  document.getElementById('sub-status').innerText = '执行中...';
+  const r = await api('/api/video/create', {method:'POST',
+    body: JSON.stringify({creator:'subtitle-ops', op, input, output})});
+  document.getElementById('sub-result').innerHTML =
+    `<pre>${JSON.stringify(r, null, 2)}</pre>`;
+  document.getElementById('sub-status').innerText =
+    r.ok ? '✅ 完成' : `❌ ${r.error}`;
+  toast(r.ok ? '✅ 完成' : '❌ ' + r.error, r.ok ? 'ok' : 'err');
+}
+
+async function doSubtitleBurn(){
+  const input = document.getElementById('burn-input').value;
+  const sub = document.getElementById('burn-sub').value;
+  const output = document.getElementById('burn-output').value;
+  const soft = document.getElementById('burn-soft').checked;
+  if (!input || !sub || !output){
+    toast('❌ 视频/字幕/输出 3 个必填', 'err'); return; }
+  document.getElementById('burn-status').innerText = '烧录中...';
+  const r = await api('/api/video/subtitle/burn', {method:'POST',
+    body: JSON.stringify({input, sub, output, soft})});
+  document.getElementById('burn-result').innerHTML =
+    `<pre>${JSON.stringify(r, null, 2)}</pre>`;
+  document.getElementById('burn-status').innerText =
+    r.ok ? '✅ 烧录完成' : `❌ ${r.error}`;
+  toast(r.ok ? '✅ 烧录完成' : '❌ ' + r.error, r.ok ? 'ok' : 'err');
+}
+
+async function doAnalytics(){
+  const mode = document.getElementById('an-mode').value;
+  const data = document.getElementById('an-data').value;
+  const follower_log = document.getElementById('an-follower').value;
+  const profile = document.getElementById('an-profile').value;
+  document.getElementById('an-status').innerText = '分析中...';
+  const qs = new URLSearchParams({mode});
+  if (data) qs.set('data', data);
+  if (follower_log) qs.set('follower_log', follower_log);
+  if (profile) qs.set('profile', profile);
+  const r = await api(`/api/analytics?${qs.toString()}`, {method:'GET'});
+  document.getElementById('an-result').innerHTML =
+    `<pre>${JSON.stringify(r, null, 2)}</pre>`;
+  document.getElementById('an-status').innerText =
+    r.ok ? `✅ 完成(mode=${mode})` : `❌ ${r.error}`;
+  toast(r.ok ? '✅ 分析完成' : '❌ ' + r.error, r.ok ? 'ok' : 'err');
+}
+
+// ====== P3j T13:YouTube Tab ======
+
+async function ytStatus(){
+  const r = await api('/api/youtube/status', {method:'GET'});
+  document.getElementById('yt-status').innerHTML =
+    `<pre>${JSON.stringify(r, null, 2)}</pre>`;
+  if (r.ok){
+    const st = r.status || {};
+    const summary = `ready=${r.ready} api_client=${st.has_google_api_client} oauthlib=${st.has_oauthlib} yt_dlp=${st.has_yt_dlp} logged_in=${st.logged_in}`;
+    document.getElementById('yt-status-text').innerText = summary;
+    toast(r.ready ? '✅ YouTube 桥接就绪' : '⚠️ 未就绪(看 hint)', r.ready ? 'ok' : 'warn');
+  } else {
+    toast('❌ ' + r.error, 'err');
+  }
+}
+
+async function ytAuth(){
+  const port = parseInt(document.getElementById('yt-port').value || '8765', 10);
+  showModal('🔑 确认 OAuth 授权',
+    '将打开浏览器跳转到 Google 登录页。授权后回调到 <code>http://127.0.0.1:' + port + '</code> → token 落 <code>~/.prisIrai/youtube_token.json</code>。<br><b style="color:var(--err)">会用到 youtube.upload + youtube.readonly 权限。</b>',
+    async () => {
+      document.getElementById('yt-auth-status').innerText = '授权中...';
+      const r = await api(`/api/youtube/auth?port=${port}`, {method:'GET', timeout: 120000});
+      document.getElementById('yt-auth-result').innerHTML =
+        `<pre>${JSON.stringify(r, null, 2)}</pre>`;
+      document.getElementById('yt-auth-status').innerText =
+        r.ok ? '✅ 已授权(token 已落盘)' : `❌ ${r.error}`;
+      toast(r.ok ? '✅ OAuth 完成' : '❌ ' + r.error, r.ok ? 'ok' : 'err');
+    });
+}
+
+async function ytUpload(){
+  const video = document.getElementById('yt-video').value;
+  const title = document.getElementById('yt-title').value;
+  const description = document.getElementById('yt-desc').value;
+  const tagsRaw = document.getElementById('yt-tags').value;
+  const category_id = document.getElementById('yt-category').value;
+  const privacy = document.getElementById('yt-privacy').value;
+  const exec_real = document.getElementById('yt-exec-real').checked;
+  if (!video || !title){ toast('❌ 视频/标题 必填', 'err'); return; }
+  const tags = tagsRaw.split(',').map(s => s.trim()).filter(Boolean);
+  const sendExec = () => {
+    const body = {video, title, description, tags, category_id, privacy, exec_real};
+    document.getElementById('yt-upload-status').innerText = exec_real ? '真传中...' : 'dry-run 校验中...';
+    const to = exec_real ? 600000 : 15000;  // 真传 10 分钟;dry-run 15 秒
+    return api('/api/youtube/upload', {method:'POST', timeout: to,
+      body: JSON.stringify(body)});
+  };
+  if (exec_real){
+    showModal('📤 确认上传 YouTube',
+      `视频:<code>${video}</code><br>标题:<code>${title}</code><br>隐私:<code>${privacy}</code><br>分类:<code>${category_id}</code><br>标签:${tags.join(', ')}<br><b style="color:var(--err)">真传到 YouTube。不可撤回 — public 后任何人能看。</b>`,
+      async () => {
+        const r = await sendExec();
+        document.getElementById('yt-upload-result').innerHTML =
+          `<pre>${JSON.stringify(r, null, 2)}</pre>`;
+        document.getElementById('yt-upload-status').innerText =
+          r.ok ? `✅ ${r.artifact?.url || '上传完成'}` : `❌ ${r.error}`;
+        toast(r.ok ? '✅ 上传完成' : '❌ ' + r.error, r.ok ? 'ok' : 'err');
+      });
+  } else {
+    const r = await sendExec();
+    document.getElementById('yt-upload-result').innerHTML =
+      `<pre>${JSON.stringify(r, null, 2)}</pre>`;
+    document.getElementById('yt-upload-status').innerText =
+      r.ok ? '✅ dry-run 校验通过' : `❌ ${r.error}`;
+    toast(r.ok ? '✅ dry-run OK' : '❌ ' + r.error, r.ok ? 'ok' : 'err');
+  }
+}
+
+async function ytList(){
+  const max = parseInt(document.getElementById('yt-max-results').value || '10', 10);
+  const exec_real = document.getElementById('yt-list-real').checked;
+  const qs = new URLSearchParams({max_results: String(max), exec_real: String(exec_real)});
+  document.getElementById('yt-list-status').innerText = '查询中...';
+  const r = await api(`/api/youtube/list?${qs.toString()}`, {method:'GET', timeout: 30000});
+  document.getElementById('yt-list-result').innerHTML =
+    `<pre>${JSON.stringify(r, null, 2)}</pre>`;
+  document.getElementById('yt-list-status').innerText =
+    r.ok ? `✅ ${r.artifact?.count ?? 0} 视频` : `❌ ${r.error}`;
+  toast(r.ok ? `✅ ${r.artifact?.count ?? 0} 视频` : '❌ ' + r.error, r.ok ? 'ok' : 'err');
+}
+
+// ====== 💬 一句话 (P3j T15-A) ======
+// 状态:最后一次 parse_intent 的结果。doChatExec 复用。
+let _chatLastIntent = null;
+
+async function chatLoadHelp(){
+  // 静态加载 — 不打网络。agent_natural_video.intent_summary 文案嵌入更省事。
+  const help = `我可以帮你做这些视频相关的事(用自然语言告诉我):
+
+📹 视频创作
+  · "做个 9:16 短视频,主题是 X,文案是 Y"           → 一键出片(L2)
+  · "给这段文字配音,音色用云希"                      → TTS 文字转语音
+  · "给 C:/v.mp4 自动加字幕"                         → ASR 识别出字幕
+
+✂️ 视频处理
+  · "把 C:/v.mp4 从 00:10 裁到 00:30 输出 C:/out.mp4" → 裁剪
+  · "给 C:/v.mp4 加背景音乐 C:/bgm.mp3"              → BGM
+  · "把 C:/a.srt 字幕烧到 C:/v.mp4 输出 C:/out.mp4"  → 字幕烧录
+  · "查 C:/v.mp4 多长多大"                            → 视频元数据
+
+📈 数据分析
+  · "看看发布最佳时段" / "分析标签效果"               → 发布数据分析
+
+📺 YouTube 海外
+  · "上传 C:/v.mp4 到 YouTube,标题 XXX,公开"         → YouTube 上传(L3)
+  · "我 YouTube 有什么视频"                          → 列我的视频`;
+  const el = document.getElementById('chat-help');
+  if (el) el.textContent = help;
+}
+
+async function doChatParse(){
+  const q = (document.getElementById('chat-input').value || '').trim();
+  if (!q) { toast('说点什么再点解析', 'err'); return; }
+  const r = await api('/api/chat/parse', {
+    method:'POST',
+    body: JSON.stringify({query: q}),
+  });
+  if (!r.ok){
+    document.getElementById('chat-preview-card').style.display = 'block';
+    document.getElementById('chat-preview-body').innerHTML =
+      `<div class="err">❌ ${r.error}</div>
+       <p class="muted">提示:试试说 "做个 9:16 短视频" / "上传到 YouTube" / "加字幕" 之类</p>`;
+    document.getElementById('chat-exec-btn').disabled = true;
+    _chatLastIntent = null;
+    return;
+  }
+  _chatLastIntent = r;
+  const missing = (r.intent.missing || []).length === 0
+    ? '✅ 全部就绪' : `⚠ 待补:${r.intent.missing.join(', ')}`;
+  const body = JSON.stringify(r.body, null, 2);
+  document.getElementById('chat-preview-card').style.display = 'block';
+  document.getElementById('chat-preview-body').innerHTML = `
+    <p><b>🎯 命中能力:</b> <code>${r.intent.capability}</code>
+       <span class="muted">(confidence=${r.intent.confidence})</span></p>
+    <p><b>📋 参数状态:</b> ${missing}</p>
+    <details open><summary><b>📦 完整 body</b></summary>
+      <pre>${body}</pre>
+    </details>`;
+  const ok_missing = (r.intent.missing || []).length === 0;
+  const btn = document.getElementById('chat-exec-btn');
+  btn.disabled = !ok_missing;
+  btn.textContent = ok_missing ? '🚀 真发(我已确认)' : '⚠ 待补参数,无法真发';
+  toast(ok_missing ? '✅ 解析完成,可真发' : `⚠ 缺 ${r.intent.missing.length} 个参数`, 'ok');
+}
+
+async function doChatExec(){
+  if (!_chatLastIntent || !_chatLastIntent.ok){
+    toast('请先解析', 'err'); return;
+  }
+  const q = (document.getElementById('chat-input').value || '').trim();
+  const r = await api('/api/chat/exec', {
+    method:'POST',
+    body: JSON.stringify({query: q, intent: _chatLastIntent.intent}),
+    timeout: 300000,  // 视频可能很慢,5 分钟
+  });
+  document.getElementById('chat-preview-card').style.display = 'block';
+  const artifact = r.result ? JSON.stringify(r.result, null, 2) : '(无)';
+  document.getElementById('chat-preview-body').innerHTML += `
+    <hr>
+    <p><b>🚀 执行结果:</b> ${r.ok ? '✅ ok' : '❌ ' + r.error}</p>
+    <pre>${artifact}</pre>`;
+  toast(r.ok ? '✅ 完成' : '❌ ' + r.error, r.ok ? 'ok' : 'err');
+}
+
+function chatClear(){
+  document.getElementById('chat-input').value = '';
+  document.getElementById('chat-preview-card').style.display = 'none';
+  document.getElementById('chat-preview-body').innerHTML = '';
+  _chatLastIntent = null;
+}
+
+// tab 切到 chat 时自动加载 help 文案
+const _origTabHandler = document.querySelectorAll;
+document.addEventListener('DOMContentLoaded', () => chatLoadHelp());
+chatLoadHelp();
+
+// ============================================================
+// P3j T17-D + T17-E: 多媒体依赖 banner + key 配置面板
+// ============================================================
+
+let _mediaKeysCache = null;       // 最近一次 GET /api/media/keys 结果
+let _mediaStatusCache = null;     // 最近一次 GET /api/media/status 结果
+
+function setDepsBanner(level, icon, text, cta) {
+  const b = document.getElementById('video-deps-banner');
+  if (!b) return;
+  b.classList.remove('deps-loading', 'deps-all-ok', 'deps-partial', 'deps-missing');
+  b.classList.add('deps-' + level);
+  document.getElementById('deps-icon').textContent = icon;
+  document.getElementById('deps-text').textContent = text;
+  document.getElementById('deps-cta').textContent = cta || '点此配置 →';
+}
+
+async function refreshMediaStatus() {
+  const b = document.getElementById('video-deps-banner');
+  if (!b) return;
+  setDepsBanner('loading', '⏳', '加载依赖状态…');
+  try {
+    const r = await api('/api/media/status');
+    if (!r.ok) {
+      setDepsBanner('missing', '❌', '依赖检测失败:' + (r.error || 'unknown'));
+      return;
+    }
+    _mediaStatusCache = r;
+    const st = r;
+    // 4 档判定:全绿(全 ok)/部分(缺 SF key 或 ffmpeg)/缺失(Easel 未装)
+    if (!st.easel.ready) {
+      setDepsBanner('missing', '❌', 'Easel 项目根目录未找到 — 视频/AI 配图功能不可用',
+                    '查看 hint');
+    } else if (!st.image_gen.key_present || !st.video_gen.key_present ||
+               !st.ffmpeg.ready) {
+      const missing = [];
+      if (!st.image_gen.key_present || !st.video_gen.key_present) {
+        missing.push('SILICONFLOW_API_KEY');
+      }
+      if (!st.ffmpeg.ready) missing.push('ffmpeg');
+      setDepsBanner('partial', '⚠',
+        '配图/视频走占位图 · 缺: ' + missing.join('、') +
+        ` · TTS: ${st.tts.mode} · ASR: ${st.asr.model}`,
+        '点此配置 key');
+    } else {
+      setDepsBanner('all-ok', '✅',
+        `全部依赖就绪 · SF=OK · TTS=${st.tts.mode} · ASR=${st.asr.model}`,
+        '查看配置');
+    }
+  } catch (e) {
+    setDepsBanner('missing', '❌', '依赖检测网络错误:' + e.message);
+  }
+}
+
+function toggleMediaKeysCard() {
+  const c = document.getElementById('media-keys-card');
+  if (!c) return;
+  const showing = c.style.display !== 'none';
+  c.style.display = showing ? 'none' : 'block';
+  if (!showing) refreshMediaKeys();
+}
+
+// P3j T17-H: URL ?focus=media-keys → 自动展开配置卡 + scrollIntoView
+(function autoFocusFromUrl(){
+  try {
+    const params = new URLSearchParams(location.search);
+    const focus = params.get('focus');
+    if (!focus) return;
+    const map = { 'media-keys': 'media-keys-card' };
+    const elId = map[focus];
+    if (!elId) return;
+    setTimeout(() => {
+      // 切到视频 Tab
+      document.querySelectorAll('.tab-btn').forEach(b => {
+        if (b.dataset && b.dataset.tab === 'video') b.click();
+      });
+      setTimeout(() => {
+        const el = document.getElementById(elId);
+        if (el) {
+          el.style.display = 'block';
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 200);
+    }, 300);
+  } catch (_) { /* no-op */ }
+})();
+
+async function refreshMediaKeys() {
+  try {
+    const r = await api('/api/media/keys');
+    if (!r.ok) {
+      toast('读取 key 配置失败:' + (r.error || 'unknown'), 'err');
+      return;
+    }
+    _mediaKeysCache = r;
+    renderMediaProviders(r);
+  } catch (e) {
+    toast('网络错误:' + e.message, 'err');
+  }
+}
+
+function renderMediaProviders(r) {
+  const lst = document.getElementById('media-providers-list');
+  lst.innerHTML = '';
+  const reg = r.registry || [];
+  const provs = r.providers || {};
+  reg.forEach(p => {
+    const cfg = provs[p.id] || {};
+    const div = document.createElement('div');
+    div.className = 'media-provider';
+    // 状态灯:有任一 api_key_present=True → ok;否则 missing
+    const hasKey = Object.keys(cfg).some(k =>
+      k.endsWith('_present') && cfg[k] === true);
+    const div_html = `
+      <div class="media-provider-head">
+        <span class="media-provider-title">${p.title}</span>
+        <span class="media-provider-lamp ${hasKey ? 'ok' : ''}">
+          ${hasKey ? '✅ 已配' : '⚠ 未配'}
+        </span>
+      </div>
+      <div class="media-provider-purpose">${p.purpose || ''}</div>
+      <div id="mp-fields-${p.id}"></div>
+      <div class="media-provider-hint" id="mp-hint-${p.id}">${p.hint || ''}</div>
+    `;
+    div.innerHTML = div_html;
+    lst.appendChild(div);
+    // 渲染字段
+    const fieldsDiv = document.getElementById('mp-fields-' + p.id);
+    // 找出该 provider 的字段元数据(从 PROVIDERS 注册表反查)
+    // 简化:从 cfg key 推
+    const fieldKeys = Object.keys(cfg).filter(k => !k.endsWith('_present'));
+    fieldKeys.forEach(fk => {
+      const row = document.createElement('div');
+      row.className = 'media-provider-row';
+      const isWhisper = p.id === 'whisper' && fk === 'model';
+      const isBaseUrl = fk === 'base_url';
+      if (isWhisper) {
+        row.innerHTML = `
+          <label>${fk}</label>
+          <select id="mp-${p.id}-${fk}">
+            ${['tiny', 'base', 'small', 'medium', 'large-v3'].map(o =>
+              `<option value="${o}" ${cfg[fk] === o ? 'selected' : ''}>${o}</option>`
+            ).join('')}
+          </select>
+        `;
+      } else {
+        row.innerHTML = `
+          <label>${fk}</label>
+          <input id="mp-${p.id}-${fk}" type="text"
+                 placeholder="${cfg[fk] || ''}"
+                 value="${cfg[fk] || ''}"/>
+        `;
+      }
+      fieldsDiv.appendChild(row);
+    });
+    // 保存按钮
+    const btnRow = document.createElement('div');
+    btnRow.style.marginTop = '6px';
+    btnRow.innerHTML = `
+      <button class="media-provider-save" onclick="saveMediaProvider('${p.id}')">
+        💾 保存
+      </button>
+      <button class="media-provider-test" onclick="testMediaProvider('${p.id}')"
+              style="margin-left:6px">
+        🔬 测试
+      </button>
+      <span id="mp-status-${p.id}"
+            style="margin-left:8px;font-size:11px;color:var(--muted)"></span>
+    `;
+    fieldsDiv.appendChild(btnRow);
+  });
+}
+
+async function testMediaProvider(pid) {
+  // P3j T18: 真探活该 provider
+  const statusEl = document.getElementById('mp-status-' + pid);
+  if (statusEl) statusEl.textContent = '⏳ 测试中...';
+  try {
+    const cfg = (_mediaKeysCache && _mediaKeysCache.providers
+                 && _mediaKeysCache.providers[pid]) || {};
+    const payload = { provider: pid };
+    Object.keys(cfg).filter(k => !k.endsWith('_present')).forEach(fk => {
+      const el = document.getElementById('mp-' + pid + '-' + fk);
+      if (el) payload[fk] = el.value;
+    });
+    const r = await api('/api/media/test', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+    // r 形状:{ok, status, latency_ms, hint, mode}
+    if (r && r.ok) {
+      const detail = `✅ ${r.latency_ms}ms · status=${r.status}`;
+      if (statusEl) statusEl.textContent = detail;
+      toast(detail, 'ok');
+    } else {
+      const err = (r && r.hint) || (r && r.error) || 'unknown';
+      const detail = `❌ ${err}`;
+      if (statusEl) statusEl.textContent = detail;
+      toast(detail, 'err');
+    }
+  } catch (e) {
+    if (statusEl) statusEl.textContent = '❌ ' + e.message;
+    toast('测试失败:' + e.message, 'err');
+  }
+}
+
+async function saveMediaProvider(pid) {
+  // 收集该 provider 所有字段(从 DOM 读)
+  const cfg = _mediaKeysCache && _mediaKeysCache.providers && _mediaKeysCache.providers[pid] || {};
+  const fieldKeys = Object.keys(cfg).filter(k => !k.endsWith('_present'));
+  const payload = {};
+  fieldKeys.forEach(fk => {
+    const el = document.getElementById('mp-' + pid + '-' + fk);
+    if (el) payload[fk] = el.value;
+  });
+  const body = { providers: { [pid]: payload } };
+  try {
+    const r = await api('/api/media/keys', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) {
+      toast('保存失败:' + (r.error || 'unknown'), 'err');
+      return;
+    }
+    _mediaKeysCache = r;
+    const statusEl = document.getElementById('mp-status-' + pid);
+    if (statusEl) {
+      statusEl.textContent = '✅ 已保存';
+      setTimeout(() => { statusEl.textContent = ''; }, 2000);
+    }
+    toast('保存成功', 'ok');
+    // 保存后刷一次 status(让 banner 更新)
+    refreshMediaStatus();
+  } catch (e) {
+    toast('网络错误:' + e.message, 'err');
+  }
+}
+
+// 进 video tab 时自动刷(首次也算)
+if (typeof document !== 'undefined') {
+  document.addEventListener('DOMContentLoaded', () => refreshMediaStatus());
+}
+</script>
+</body>
+</html>
