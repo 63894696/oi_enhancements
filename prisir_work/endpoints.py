@@ -879,3 +879,90 @@ def _web_jina_search(body: dict) -> tuple[dict, int]:
                  "sources": ["jina_search"] * len(results)}, 200)
     except Exception as e:  # noqa: BLE001
         return ({"ok": False, "query": query, "warnings": [type(e).__name__]}, 200)
+
+
+# ---------------------------------------------------------------------------
+# P3j T21-C: web.gh.{health,repo,issue,search} 直接调 gh CLI(不绕 Playwright)
+# ---------------------------------------------------------------------------
+
+@register("/web/gh/health", method="POST", risk="L0", auth=True)
+def _web_gh_health(_body: dict) -> tuple[dict, int]:
+    """gh CLI 安装 + 版本 + auth 状态(无需 token)。"""
+    try:
+        from prisir_work import gh_bridge as _gh
+        return ({"ok": True, **_gh.gh_health()}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "error": type(e).__name__}, 200)
+
+
+@register("/web/gh/repo", method="POST", risk="L0", auth=True)
+def _web_gh_repo(body: dict) -> tuple[dict, int]:
+    """读 GitHub 仓库元数据(stars/forks/desc)。无需 token(public)。
+
+    body: {owner, name, timeout?}
+    """
+    body = body or {}
+    owner = (body.get("owner") or "").strip()
+    name = (body.get("name") or "").strip()
+    if not owner or not name:
+        return ({"ok": False, "error": "missing_owner_or_name",
+                 "required": ["owner", "name"]}, 200)
+    timeout = float(body.get("timeout", 30.0))
+    try:
+        from prisir_work import gh_bridge as _gh
+        r = _gh.repo_info(owner, name, timeout=timeout)
+        return ({"ok": True, **r}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "owner": owner, "name": name,
+                 "warnings": [type(e).__name__]}, 200)
+
+
+@register("/web/gh/issue", method="POST", risk="L0", auth=True)
+def _web_gh_issue(body: dict) -> tuple[dict, int]:
+    """读 GitHub issue/PR。无需 token(public)。
+
+    body: {owner, name, number, timeout?}
+    """
+    body = body or {}
+    owner = (body.get("owner") or "").strip()
+    name = (body.get("name") or "").strip()
+    number = int(body.get("number", 0))
+    if not owner or not name or not number:
+        return ({"ok": False, "error": "missing_fields",
+                 "required": ["owner", "name", "number"]}, 200)
+    timeout = float(body.get("timeout", 30.0))
+    try:
+        from prisir_work import gh_bridge as _gh
+        # issue 端点同时也支持 PR(gh api 不区分,统一 issues 端点返 PR)
+        r = _gh.issue_get(owner, name, number, timeout=timeout)
+        return ({"ok": True, **r}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "owner": owner, "name": name,
+                 "number": number,
+                 "warnings": [type(e).__name__]}, 200)
+
+
+@register("/web/gh/search", method="POST", risk="L0", auth=True)
+def _web_gh_search(body: dict) -> tuple[dict, int]:
+    """GitHub 搜索(repos/issues/prs/code)。无需 token(public)。
+
+    body: {query, kind?, limit?, timeout?}
+    """
+    body = body or {}
+    query = (body.get("query") or "").strip()
+    if not query:
+        return ({"ok": False, "error": "empty_query",
+                 "required": ["query"]}, 200)
+    kind = (body.get("kind") or "repos").strip()
+    limit = int(body.get("limit", 10))
+    timeout = float(body.get("timeout", 30.0))
+    try:
+        from prisir_work import gh_bridge as _gh
+        results = _gh.search(query, kind=kind, limit=limit,
+                             timeout=timeout)
+        return ({"ok": True, "query": query, "kind": kind,
+                 "results": results,
+                 "sources": ["gh_search"] * len(results)}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "query": query, "kind": kind,
+                 "warnings": [type(e).__name__]}, 200)

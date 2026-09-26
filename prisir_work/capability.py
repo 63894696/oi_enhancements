@@ -410,3 +410,38 @@ register_capability(
     keywords=("jina 搜", "jina search", "jina 全文搜索",
               "s.jina.ai", "jina 搜索"),
 )
+
+# ---------------------------------------------------------------------------
+# P3j T21-C: web.gh.{health,repo,issue,search} — gh CLI 直接调(无需 token)
+# ---------------------------------------------------------------------------
+
+register_capability(
+    "web.gh.health",
+    title="查 gh CLI 安装 + 版本 + auth 状态(无需 token,L0 探活)",
+    endpoint="/web/gh/health", method="POST", risk="L0", auth=True,
+    keywords=("gh 状态", "gh cli", "github cli", "github cli 探活",
+              "gh health"),
+)
+register_capability(
+    "web.gh.repo",
+    title="读 GitHub 仓库元数据(stars/forks/desc,public 免 token)",
+    endpoint="/web/gh/repo", method="POST", risk="L0", auth=True,
+    keywords=("github 仓库", "github repo", "查 github",
+              "查仓库", "repo info", "查 stars",
+              "github 仓库元数据"),
+)
+register_capability(
+    "web.gh.issue",
+    title="读 GitHub issue / PR(title/body/labels,public 免 token)",
+    endpoint="/web/gh/issue", method="POST", risk="L0", auth=True,
+    keywords=("github issue", "读 issue", "查 issue",
+              "gh issue", "issue 内容",
+              "github pr", "github pull request"),
+)
+register_capability(
+    "web.gh.search",
+    title="GitHub 搜索(repos / issues / prs / code,public 免 token)",
+    endpoint="/web/gh/search", method="POST", risk="L0", auth=True,
+    keywords=("github 搜索", "gh search", "搜 github",
+              "搜仓库", "搜 issue", "搜 pr", "搜代码"),
+)

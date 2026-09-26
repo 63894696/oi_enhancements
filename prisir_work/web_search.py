@@ -569,6 +569,22 @@ if os.environ.get("JINA_API_KEY", "").strip() or \
                 for it in items if it.get("url")]
     register_provider("jina_search", jina_search_provider)
 
+# P3j T21-C: gh_search provider — 只在 gh CLI 已装时注册
+# 走 gh search repos(kind 默认),结果转 {url, title, snippet} 给 web_search.merge
+try:
+    import shutil as _shutil_gh
+    if _shutil_gh.which("gh"):
+        def gh_search_provider(query: str, limit: int = 10) -> list[dict[str, Any]]:
+            """GitHub 仓库搜索(gh search repos)。失败返 []。"""
+            try:
+                from prisir_work import gh_bridge as _gh
+                return _gh.search(query, kind="repos", limit=min(max(limit, 1), 30))
+            except Exception:  # noqa: BLE001
+                return []
+        register_provider("gh_search", gh_search_provider)
+except Exception:  # noqa: BLE001
+    pass  # gh CLI 不在,跳过注册
+
 
 # ---------------------------------------------------------------------------
 # CLI

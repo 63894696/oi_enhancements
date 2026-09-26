@@ -1582,6 +1582,100 @@ def check_ytdlp_endpoints_and_registration(_ctx: VerifyCtx) -> str:
     return "2 ytdlp endpoints + 2 capabilities + ytdlp_meta fetcher registered ✓"
 
 
+# ---------------------------------------------------------------------------
+# P3j T21-C: gh CLI 直接整合(github.com URL → gh api + gh_search provider)
+# ---------------------------------------------------------------------------
+
+def check_gh_bridge_module(_ctx: VerifyCtx) -> str:
+    """gh_bridge 模块 importable + 5 公开 fn + version 字段。"""
+    from prisir_work import gh_bridge as _gh
+    fns = ["gh_health", "repo_info", "issue_get", "pr_get", "search"]
+    for fn_name in fns:
+        if not hasattr(_gh, fn_name):
+            return f"[FAIL] gh_bridge.{fn_name} 缺失"
+    h = _gh.gh_health()
+    if not h.get("ok"):
+        return f"[FAIL] gh_health 没返 ok: {h}"
+    if "installed" not in h or "version" not in h:
+        return f"[FAIL] gh_health 字段缺失: {h}"
+    return f"gh_bridge: 5 fns + version={h.get('version','?')[:30]} ✓"
+
+
+def check_gh_api_provider(_ctx: VerifyCtx) -> str:
+    """gh_api_provider 能识别 github.com URL + 路由到正确分支。"""
+    from prisir_work import gh_api_provider as _ghp
+    # 非 github.com
+    r1 = _ghp.gh_api_provider("https://gitlab.com/x/y")
+    if r1["meta"]["error"] != "non_github_url":
+        return f"[FAIL] non_github_url 没识别: {r1['meta']}"
+    # unsupported(3 段非 issues/pull)
+    r2 = _ghp.gh_api_provider("https://github.com/settings/profile/edit")
+    if r2["meta"]["error"] != "unsupported_github_url":
+        return f"[FAIL] unsupported_github_url 没识别: {r2['meta']}"
+    return "gh_api_provider: 3 URL 形式识别 ✓"
+
+
+def check_gh_endpoints_and_registration(_ctx: VerifyCtx) -> str:
+    """4 gh 端点 + 4 capability + fetcher/provider 都注册了。"""
+    from prisir_work import endpoints as _ep
+    from prisir_work import capability as _cap
+    # 4 endpoint
+    expected_paths = [
+        "/web/gh/health", "/web/gh/repo",
+        "/web/gh/issue", "/web/gh/search",
+    ]
+    import importlib
+    _ep_mod = importlib.import_module("prisir_work.endpoints")
+    reg_paths = {c.path for c in _ep_mod.CHECKS.values()} if hasattr(_ep_mod, "CHECKS") else set()
+    # 用 _handlers 表兜底
+    if not reg_paths and hasattr(_ep_mod, "_ROUTES"):
+        reg_paths = {p for p in _ep_mod._ROUTES.keys()}
+    # 直接搜函数定义
+    found = sum(1 for fn in ("_web_gh_health", "_web_gh_repo",
+                              "_web_gh_issue", "_web_gh_search")
+                if hasattr(_ep, fn))
+    if found != 4:
+        return f"[FAIL] gh endpoints 数={found}, want 4"
+    # 4 capability
+    caps = {c["id"] for c in _cap.list_capabilities()}
+    want_caps = {"web.gh.health", "web.gh.repo",
+                 "web.gh.issue", "web.gh.search"}
+    missing = want_caps - caps
+    if missing:
+        return f"[FAIL] capability 缺: {missing}"
+    # fetcher + provider 注册
+    from prisir_work import web_fetch as _wf
+    try:
+        _wf.fetch("about:blank", options={"no_cache": True, "timeout": 0.1})
+    except Exception:
+        pass
+    if "gh_api" not in _wf._FETCHERS:
+        return f"[FAIL] gh_api 没注册到 _FETCHERS: {list(_wf._FETCHERS.keys())}"
+    import shutil as _sh
+    from prisir_work import web_search as _ws
+    if _sh.which("gh") and "gh_search" not in _ws._PROVIDERS:
+        return f"[FAIL] gh_search 没注册到 _PROVIDERS: {list(_ws._PROVIDERS.keys())}"
+    return "4 gh endpoints + 4 capabilities + gh_api fetcher + gh_search provider ✓"
+
+
+def check_gh_capability_keywords(_ctx: VerifyCtx) -> str:
+    """gh capability keywords 含中英关键词(LLM 命中用)。"""
+    from prisir_work import capability as _cap
+    caps = {c["id"]: c for c in _cap.list_capabilities()}
+    gh_caps = ["web.gh.health", "web.gh.repo", "web.gh.issue", "web.gh.search"]
+    missing = []
+    for cid in gh_caps:
+        if cid not in caps:
+            missing.append(cid)
+            continue
+        kws = caps[cid].get("keywords", [])
+        if not kws:
+            missing.append(f"{cid}_no_keywords")
+    if missing:
+        return f"[FAIL] gh capability 字段缺失: {missing}"
+    return f"4 gh capabilities 全有 keywords ✓"
+
+
 CHECKS: list[Check] = [
     Check("Python",                   check_python),
     Check("Git",                      check_git),
@@ -1635,6 +1729,11 @@ CHECKS: list[Check] = [
     # P3j T21-B: yt-dlp provider 化
     Check("ytdlp web_fetch_ytdlp module (P3j T21-B)", check_ytdlp_module),
     Check("2 ytdlp endpoints + 2 caps + fetcher (P3j T21-B)", check_ytdlp_endpoints_and_registration),
+    # P3j T21-C: gh CLI 直接整合
+    Check("gh_bridge module + 5 fns (P3j T21-C)", check_gh_bridge_module),
+    Check("gh_api_provider URL 识别 (P3j T21-C)", check_gh_api_provider),
+    Check("4 gh endpoints + 4 caps + fetcher/provider (P3j T21-C)", check_gh_endpoints_and_registration),
+    Check("gh capabilities keywords (P3j T21-C)", check_gh_capability_keywords),
 ]
 
 

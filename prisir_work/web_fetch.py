@@ -379,6 +379,14 @@ def fetch(url: str, options: dict | None = None, timeout: float = 10.0) -> dict[
             import logging as _logging
             _logging.getLogger(__name__).warning(
                 "web_fetch_ytdlp load failed, skip: %s", e)
+        # P3j T21-C: gh_api fetcher(github.com URL → gh api 直查)
+        try:
+            from . import gh_api_provider as _ghp
+            register_fetcher("gh_api", _ghp.gh_api_provider)
+        except Exception as e:  # noqa: BLE001
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "gh_api_provider load failed, skip: %s", e)
 
     # P2.5+18b:查 host 的 learned 优先级(tune.json 命中 → 只跑 learned 列表)
     learned: list[str] | None = None
