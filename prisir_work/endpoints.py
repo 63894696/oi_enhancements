@@ -123,6 +123,71 @@ def _web_extract(body: dict) -> tuple[dict, int]:
 
 
 # ---------------------------------------------------------------------------
+# P3j T21-A: web.feedparser.{fetch,health} 直接调 feedparser 库(不绕 agent-reach)
+# ---------------------------------------------------------------------------
+
+@register("/web/feedparser/fetch", method="POST", risk="L0", auth=True)
+def _web_feedparser_fetch(body: dict) -> tuple[dict, int]:
+    """feedparser 直接抓 RSS / Atom / JSON Feed。"""
+    body = body or {}
+    url = (body.get("url") or "").strip()
+    if not url:
+        return ({"ok": False, "error": "empty_url",
+                 "required": ["url"]}, 200)
+    try:
+        from prisir_work import web_fetch_feedparser as _fp
+        r = _fp.feedparser_fetch(url, options=body)
+        return ({"ok": True, "url": url, **r}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "url": url,
+                 "warnings": [type(e).__name__]}, 200)
+
+
+@register("/web/feedparser/health", method="POST", risk="L0", auth=True)
+def _web_feedparser_health(_body: dict) -> tuple[dict, int]:
+    """feedparser 版本 + 能力探活(无需网络)。"""
+    try:
+        from prisir_work import web_fetch_feedparser as _fp
+        return ({"ok": True, **_fp.feedparser_health()}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "error": type(e).__name__}, 200)
+
+
+# ---------------------------------------------------------------------------
+# P3j T21-B: web.ytdlp.{meta,health} 把 yt-dlp 抽成通用 fetcher
+# ---------------------------------------------------------------------------
+
+@register("/web/ytdlp/meta", method="POST", risk="L0", auth=True)
+def _web_ytdlp_meta(body: dict) -> tuple[dict, int]:
+    """yt-dlp 通用元数据 + 字幕探测(200+ 网站:B站/微博/Twitter/Reddit/Vimeo/Niconico/TikTok)。
+
+    不下载任何视频流,只抽 metadata + 字幕语言列表。
+    """
+    body = body or {}
+    url = (body.get("url") or "").strip()
+    if not url:
+        return ({"ok": False, "error": "empty_url",
+                 "required": ["url"]}, 200)
+    try:
+        from prisir_work import web_fetch_ytdlp as _yt
+        r = _yt.ytdlp_meta(url, options=body)
+        return ({"ok": True, "url": url, **r}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "url": url,
+                 "warnings": [type(e).__name__]}, 200)
+
+
+@register("/web/ytdlp/health", method="POST", risk="L0", auth=True)
+def _web_ytdlp_health(_body: dict) -> tuple[dict, int]:
+    """yt-dlp 版本 + 支持网站数探活(无需网络)。"""
+    try:
+        from prisir_work import web_fetch_ytdlp as _yt
+        return ({"ok": True, **_yt.ytdlp_health()}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "error": type(e).__name__}, 200)
+
+
+# ---------------------------------------------------------------------------
 # P2.5+16f: web.find_similar 相似 URL 发现(多源:web_search + 可选 Serper related)
 # ---------------------------------------------------------------------------
 

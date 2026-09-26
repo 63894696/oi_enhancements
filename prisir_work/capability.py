@@ -129,6 +129,49 @@ register_capability(
     confirm="",
 )
 
+# ---------------------------------------------------------------------------
+# P3j T21-A: web.feedparser.{fetch,health} 直接调 feedparser 库
+# ---------------------------------------------------------------------------
+
+register_capability(
+    "web.feedparser.fetch",
+    title="抓 RSS / Atom / JSON Feed → markdown(feedparser 直接调用,免走 agent-reach)",
+    endpoint="/web/feedparser/fetch", method="POST", risk="L0", auth=True,
+    keywords=("rss", "atom", "feed", "订阅", "博客 feed", "RSS feed",
+              "feedparser", "xml feed", "/feed", "RSS 抓取",
+              "Atom 抓取", "json feed"),
+    confirm="",
+)
+register_capability(
+    "web.feedparser.health",
+    title="feedparser 版本 + 能力探活(RSS/Atom/JSON Feed/条件 GET 支持)",
+    endpoint="/web/feedparser/health", method="POST", risk="L0", auth=True,
+    keywords=("feedparser 状态", "feedparser 探活", "feedparser 版本",
+              "feedparser 版本检查"),
+    confirm="",
+)
+
+# ---------------------------------------------------------------------------
+# P3j T21-B: web.ytdlp.{meta,health} 通用元数据 + 字幕探测(200+ 网站)
+# ---------------------------------------------------------------------------
+
+register_capability(
+    "web.ytdlp.meta",
+    title="yt-dlp 通用元数据 + 字幕探测(200+ 网站:B站/微博/Twitter/Reddit/Vimeo/Niconico/TikTok)",
+    endpoint="/web/ytdlp/meta", method="POST", risk="L0", auth=True,
+    keywords=("yt-dlp", "ytdlp", "video metadata", "字幕探测",
+              "b站元数据", "twitter 元数据", "reddit 帖子",
+              "vimeo", "niconico", "tiktok", "200+ 网站元数据"),
+    confirm="",
+)
+register_capability(
+    "web.ytdlp.health",
+    title="yt-dlp 版本 + 支持网站数探活(无需网络)",
+    endpoint="/web/ytdlp/health", method="POST", risk="L0", auth=True,
+    keywords=("yt-dlp 状态", "ytdlp 版本", "ytdlp 支持站点"),
+    confirm="",
+)
+
 
 # ---------------------------------------------------------------------------
 # P2.5+18b: per-domain fetcher 优先级学习(查 / 调试 / 手动触发)

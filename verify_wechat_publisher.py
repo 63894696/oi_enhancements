@@ -1454,6 +1454,134 @@ def check_jina_zero_config(_ctx: VerifyCtx) -> str:
             f"quota={rpm} RPM · {len(qs)} quota 字段 ✓")
 
 
+# ---------------------------------------------------------------------------
+# P3j T21-A: feedparser 直接 fetcher(免走 agent-reach)
+# ---------------------------------------------------------------------------
+
+def check_feedparser_module(_ctx: VerifyCtx) -> str:
+    """P3j T21-A:web_fetch_feedparser 模块 2 函数 + 3 配置常量齐。"""
+    try:
+        from prisir_work import web_fetch_feedparser as _fp
+    except Exception as e:  # noqa: BLE001
+        return f"[FAIL] import web_fetch_feedparser: {e}"
+    if not callable(getattr(_fp, "feedparser_fetch", None)):
+        return "[FAIL] feedparser_fetch 不可调用"
+    if not callable(getattr(_fp, "feedparser_health", None)):
+        return "[FAIL] feedparser_health 不可调用"
+    # 默认参数常量
+    if not isinstance(getattr(_fp, "FEEDPARSER_MAX_ITEMS", 0), int):
+        return "[FAIL] FEEDPARSER_MAX_ITEMS 非 int"
+    if not isinstance(getattr(_fp, "FEEDPARSER_MAX_CHARS", 0), int):
+        return "[FAIL] FEEDPARSER_MAX_CHARS 非 int"
+    # health 应返 6 个能力字段
+    h = _fp.feedparser_health()
+    needed = ("supports_rss", "supports_atom", "supports_json_feed",
+              "supports_conditional_get", "version", "user_agent")
+    miss = [k for k in needed if k not in h]
+    if miss:
+        return f"[FAIL] health 缺字段 {miss}"
+    return f"feedparser module: 2 fns + {len(h)} health fields ✓"
+
+
+def check_feedparser_endpoints_and_registration(_ctx: VerifyCtx) -> str:
+    """P3j T21-A:2 个 /web/feedparser/* 端点 + 2 个 capability + fetcher 注册。"""
+    from prisir_work import endpoints as ep
+    from prisir_work import capability as cap
+    expected_paths = {
+        "/web/feedparser/fetch":  ("POST", "L0"),
+        "/web/feedparser/health": ("POST", "L0"),
+    }
+    for path, (method, risk) in expected_paths.items():
+        e = ep._REGISTRY.get(path)
+        if e is None:
+            return f"[FAIL] endpoint {path} 未注册"
+        if e["method"] != method:
+            return f"[FAIL] {path} method={e['method']},want {method}"
+        if e["risk"] != risk:
+            return f"[FAIL] {path} risk={e['risk']},want {risk}"
+    for cid in ("web.feedparser.fetch", "web.feedparser.health"):
+        e = cap._REGISTRY.get(cid)
+        if e is None:
+            return f"[FAIL] capability {cid} 未注册"
+        if not e["endpoint"].startswith("/web/feedparser/"):
+            return f"[FAIL] {cid} endpoint={e['endpoint']}"
+        if e["risk"] != "L0":
+            return f"[FAIL] {cid} risk={e['risk']}"
+    # feedparser 注册为 fetcher
+    from prisir_work import web_fetch as _wf
+    if not _wf._FETCHERS:
+        _wf.fetch("about:blank", options={"no_cache": True, "timeout": 0.1})
+    if "feedparser" not in _wf._FETCHERS:
+        return "[FAIL] feedparser fetcher 未注册到 web_fetch._FETCHERS"
+    return "2 feedparser endpoints + 2 capabilities + feedparser fetcher registered ✓"
+
+
+# ---------------------------------------------------------------------------
+# P3j T21-B: yt-dlp 通用 fetcher(provider 化)
+# ---------------------------------------------------------------------------
+
+def check_ytdlp_module(_ctx: VerifyCtx) -> str:
+    """P3j T21-B:web_fetch_ytdlp 模块 2 函数 + 2 配置常量齐 + yt-dlp 已装。"""
+    try:
+        from prisir_work import web_fetch_ytdlp as _yt
+    except Exception as e:  # noqa: BLE001
+        return f"[FAIL] import web_fetch_ytdlp: {e}"
+    if not callable(getattr(_yt, "ytdlp_meta", None)):
+        return "[FAIL] ytdlp_meta 不可调用"
+    if not callable(getattr(_yt, "ytdlp_health", None)):
+        return "[FAIL] ytdlp_health 不可调用"
+    if not isinstance(getattr(_yt, "YTDLP_TIMEOUT", 0), (int, float)):
+        return "[FAIL] YTDLP_TIMEOUT 非数字"
+    if not isinstance(getattr(_yt, "YTDLP_MAX_CHARS", 0), int):
+        return "[FAIL] YTDLP_MAX_CHARS 非 int"
+    # health 返 4 字段
+    h = _yt.ytdlp_health()
+    needed = ("ok", "version", "supported_sites_count",
+              "skip_download_by_default")
+    miss = [k for k in needed if k not in h]
+    if miss:
+        return f"[FAIL] health 缺字段 {miss}"
+    if not h["ok"]:
+        return f"[FAIL] health ok=False: {h.get('error', '?')}"
+    if h["supported_sites_count"] < 100:
+        return f"[FAIL] supported_sites_count={h['supported_sites_count']} 太低"
+    return (f"ytdlp module: 2 fns + version {h['version']} · "
+            f"{h['supported_sites_count']} sites ✓")
+
+
+def check_ytdlp_endpoints_and_registration(_ctx: VerifyCtx) -> str:
+    """P3j T21-B:2 个 /web/ytdlp/* 端点 + 2 个 capability + fetcher 注册。"""
+    from prisir_work import endpoints as ep
+    from prisir_work import capability as cap
+    expected_paths = {
+        "/web/ytdlp/meta":  ("POST", "L0"),
+        "/web/ytdlp/health": ("POST", "L0"),
+    }
+    for path, (method, risk) in expected_paths.items():
+        e = ep._REGISTRY.get(path)
+        if e is None:
+            return f"[FAIL] endpoint {path} 未注册"
+        if e["method"] != method:
+            return f"[FAIL] {path} method={e['method']},want {method}"
+        if e["risk"] != risk:
+            return f"[FAIL] {path} risk={e['risk']},want {risk}"
+    for cid in ("web.ytdlp.meta", "web.ytdlp.health"):
+        e = cap._REGISTRY.get(cid)
+        if e is None:
+            return f"[FAIL] capability {cid} 未注册"
+        if not e["endpoint"].startswith("/web/ytdlp/"):
+            return f"[FAIL] {cid} endpoint={e['endpoint']}"
+        if e["risk"] != "L0":
+            return f"[FAIL] {cid} risk={e['risk']}"
+    # ytdlp 注册为 fetcher
+    from prisir_work import web_fetch as _wf
+    if not _wf._FETCHERS:
+        _wf.fetch("about:blank", options={"no_cache": True, "timeout": 0.1})
+    if "ytdlp_meta" not in _wf._FETCHERS:
+        return "[FAIL] ytdlp_meta fetcher 未注册到 web_fetch._FETCHERS"
+    return "2 ytdlp endpoints + 2 capabilities + ytdlp_meta fetcher registered ✓"
+
+
 CHECKS: list[Check] = [
     Check("Python",                   check_python),
     Check("Git",                      check_git),
@@ -1501,6 +1629,12 @@ CHECKS: list[Check] = [
     Check("jina web_fetch_jina module (P3j T20-I)", check_jina_module),
     Check("3 jina endpoints + 3 caps + jina fetcher (P3j T20-I)", check_jina_endpoints_and_registration),
     Check("jina zero-config 免 key + 20 RPM 限流 (P3j T20-I.2)", check_jina_zero_config),
+    # P3j T21-A: feedparser 直接 fetcher
+    Check("feedparser web_fetch_feedparser module (P3j T21-A)", check_feedparser_module),
+    Check("2 feedparser endpoints + 2 caps + fetcher (P3j T21-A)", check_feedparser_endpoints_and_registration),
+    # P3j T21-B: yt-dlp provider 化
+    Check("ytdlp web_fetch_ytdlp module (P3j T21-B)", check_ytdlp_module),
+    Check("2 ytdlp endpoints + 2 caps + fetcher (P3j T21-B)", check_ytdlp_endpoints_and_registration),
 ]
 
 

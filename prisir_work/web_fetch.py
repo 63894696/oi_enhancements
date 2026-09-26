@@ -362,6 +362,23 @@ def fetch(url: str, options: dict | None = None, timeout: float = 10.0) -> dict[
             import logging as _logging
             _logging.getLogger(__name__).warning(
                 "web_fetch_jina load failed, skip: %s", e)
+        # P3j T21-A: feedparser(RSS/Atom/JSON Feed → markdown,带条件 GET)
+        # picker 第二顺位:对 feed 类 URL 比 jina/urllib 更专业
+        try:
+            from . import web_fetch_feedparser as _fp
+            register_fetcher("feedparser", _fp.feedparser_fetch)
+        except Exception as e:  # noqa: BLE001
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "web_fetch_feedparser load failed, skip: %s", e)
+        # P3j T21-B: yt-dlp 通用 fetcher(200+ 网站的 metadata + 字幕探测)
+        try:
+            from . import web_fetch_ytdlp as _yt
+            register_fetcher("ytdlp_meta", _yt.ytdlp_meta)
+        except Exception as e:  # noqa: BLE001
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "web_fetch_ytdlp load failed, skip: %s", e)
 
     # P2.5+18b:查 host 的 learned 优先级(tune.json 命中 → 只跑 learned 列表)
     learned: list[str] | None = None
@@ -438,6 +455,8 @@ def fetch(url: str, options: dict | None = None, timeout: float = 10.0) -> dict[
                 pass
 
     # 选最快成功 — P3j T20-I:jina(干净 markdown)优先于 urllib(raw HTML)
+    # P3j T21-A:feedparser(RSS/Atom/JSON Feed → markdown)也优先于 urllib
+    # P3j T21-B:yt-dlp(视频元数据 + 字幕)jina 之后兜底
     # 否则 first-wins
     chosen_name, chosen_result = None, None
     # 第一遍:优先选 jina
@@ -445,7 +464,19 @@ def fetch(url: str, options: dict | None = None, timeout: float = 10.0) -> dict[
         if n == "jina" and r and isinstance(r, dict) and r.get("content"):
             chosen_name, chosen_result = n, r
             break
-    # 第二遍:first-wins 兜底
+    # 第二遍:其次 feedparser(对 RSS/Atom feed 类 URL 比 jina 更专业)
+    if chosen_result is None:
+        for n, r in results.items():
+            if n == "feedparser" and r and isinstance(r, dict) and r.get("content"):
+                chosen_name, chosen_result = n, r
+                break
+    # 第三遍:再其次 yt-dlp(视频类 URL 的 metadata,200+ 网站)
+    if chosen_result is None:
+        for n, r in results.items():
+            if n == "ytdlp_meta" and r and isinstance(r, dict) and r.get("content"):
+                chosen_name, chosen_result = n, r
+                break
+    # 第四遍:first-wins 兜底
     if chosen_result is None:
         for n, r in results.items():
             if r and isinstance(r, dict) and r.get("content"):

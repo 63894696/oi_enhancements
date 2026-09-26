@@ -180,6 +180,54 @@ def _fetch_one(url: str, timeout: float) -> dict | None:
         return None
 
 
+# ---------------------------------------------------------------------------
+# P3j T21-A: feedparser 集成(query 里直接出现 feed URL → 抓 feed 插队)
+# ---------------------------------------------------------------------------
+
+
+def _detect_feedparser_intent(query: str) -> str | None:
+    """从 query 里挑出第一个 feed URL(没有 → None)。
+
+    单次研究只取首个(同 reach / gh)。
+    """
+    base = (query or "").strip()
+    if not base:
+        return None
+    urls = re.findall(r"https?://[^\s<>\"'\\)]+", base)
+    feed_tokens = (".xml", ".rss", "/feed", "/atom", "/rss",
+                   "?alt=rss", "?format=rss", "?output=rss",
+                   "?type=rss", "/feed.json", "/index.xml")
+    for u in urls:
+        ul = u.lower()
+        if any(tok in ul for tok in feed_tokens):
+            return u
+    return None
+
+
+def _feedparser_fetch_one(url: str, timeout: float = 15.0,
+                          max_items: int = 20) -> dict | None:
+    """调 web_fetch_feedparser.feedparser_fetch → fetch 记录(给 sources 用)。
+
+    失败返 None(同 _fetch_one)。
+    """
+    try:
+        from prisir_work import web_fetch_feedparser as _fp
+        r = _fp.feedparser_fetch(url, options={"timeout": timeout,
+                                                "max_items": max_items})
+        if not r.get("meta", {}).get("ok"):
+            log.warning("feedparser_fetch failed: %s",
+                        r.get("meta", {}).get("error"))
+            return None
+        return {
+            "content": r.get("content", ""),
+            "fetcher": "feedparser",
+            "feed_meta": r.get("meta", {}),
+        }
+    except Exception as e:  # noqa: BLE001
+        log.warning("feedparser_fetch raised %s: %s", type(e).__name__, e)
+        return None
+
+
 def _build_prompt(query: str, sources: list[dict]) -> str:
     parts = [
         "你是一个研究助手。基于以下素材回答用户问题。",
@@ -285,6 +333,41 @@ def research(query: str, *, max_steps: int = 4, max_urls: int = 8,
                 warnings.append(f"reach_empty:{plat}")
         except Exception as e:  # noqa: BLE001
             warnings.append(f"reach_failed:{plat}:{type(e).__name__}")
+
+    # ── step 2c: P3j T21-A feedparser 集成(query 里直接出现 feed URL → 抓) ──
+    feed_url = _detect_feedparser_intent(query)
+    feed_results: list[dict] = []
+    if feed_url:
+        try:
+            payload = _feedparser_fetch_one(feed_url,
+                                            timeout=min(timeout, 15.0),
+                                            max_items=20)
+            if payload:
+                feed_meta = payload.get("feed_meta", {}) or {}
+                feed_results = [{
+                    "url": feed_url,
+                    "title": (feed_meta.get("feed_title", "Feed")
+                              or "Feed"),
+                    "snippet": (payload.get("content", "")[:600]),
+                    "sources": ["feedparser"],
+                    "item_count": feed_meta.get("item_count", 0),
+                }]
+                warnings.append(f"feedparser_used:{feed_meta.get('item_count', 0)}")
+                # feed 结果插入到最前面(整条优先于 web_search 散条目)
+                merged = []
+                seen = set()
+                for r in (feed_results + search_results):
+                    u = r.get("url", "")
+                    if u and u not in seen:
+                        seen.add(u)
+                        merged.append(r)
+                    elif not u:
+                        merged.append(r)
+                search_results = merged
+            else:
+                warnings.append("feedparser_empty")
+        except Exception as e:  # noqa: BLE001
+            warnings.append(f"feedparser_failed:{type(e).__name__}")
 
     # 去重(URL)
     seen_urls, uniq_results = set(), []
