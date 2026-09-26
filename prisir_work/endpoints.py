@@ -1129,3 +1129,149 @@ def _web_hn_item(body: dict) -> tuple[dict, int]:
     except Exception as e:  # noqa: BLE001
         return ({"ok": False, "object_id": object_id,
                  "warnings": [type(e).__name__]}, 200)
+
+
+# ---------------------------------------------------------------------------
+# P3j T25: Playwright MCP 浏览器交互(7 高层 API + health)
+# click/type 是 L1 副作用(前端确认卡);其余 L0 只读。
+# 失败/未装 Node.js / MCP 握手失败 → 200 + ok=False + reason,绝不抛栈。
+# ---------------------------------------------------------------------------
+
+@register("/web/playwright/health", method="POST", risk="L0", auth=True)
+def _web_pw_health(_body: dict) -> tuple[dict, int]:
+    """查 Node.js + npx + playwright-mcp 安装 + 握手。"""
+    try:
+        from prisir_work import playwright_bridge as _pw
+        return ({"ok": True, **_pw.pw_health()}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "error": type(e).__name__}, 200)
+
+
+@register("/web/playwright/navigate", method="POST", risk="L0", auth=True)
+def _web_pw_navigate(body: dict) -> tuple[dict, int]:
+    """打开 URL。body: {url, timeout?}"""
+    body = body or {}
+    url = (body.get("url") or "").strip()
+    if not url:
+        return ({"ok": False, "error": "empty_url",
+                 "required": ["url"]}, 200)
+    timeout = float(body.get("timeout", 30.0))
+    try:
+        from prisir_work import playwright_bridge as _pw
+        r = _pw.pw_navigate(url, timeout=timeout)
+        return ({"ok": True, "url": url, **r}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "url": url,
+                 "warnings": [type(e).__name__]}, 200)
+
+
+@register("/web/playwright/snapshot", method="POST", risk="L0", auth=True)
+def _web_pw_snapshot(body: dict) -> tuple[dict, int]:
+    """取 a11y 树(LLM 用来找元素 ref)。body: {depth?, timeout?}"""
+    body = body or {}
+    depth = int(body.get("depth", 3))
+    timeout = float(body.get("timeout", 30.0))
+    try:
+        from prisir_work import playwright_bridge as _pw
+        r = _pw.pw_snapshot(depth=depth, timeout=timeout)
+        return ({"ok": True, **r}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False,
+                 "warnings": [type(e).__name__]}, 200)
+
+
+@register("/web/playwright/click", method="POST", risk="L1", auth=True)
+def _web_pw_click(body: dict) -> tuple[dict, int]:
+    """点元素(element + ref)。L1 副作用,前端弹确认卡。
+
+    body: {element, ref, timeout?}
+    """
+    body = body or {}
+    element = (body.get("element") or "").strip()
+    ref = (body.get("ref") or "").strip()
+    if not element or not ref:
+        return ({"ok": False, "error": "missing_fields",
+                 "required": ["element", "ref"]}, 200)
+    timeout = float(body.get("timeout", 30.0))
+    try:
+        from prisir_work import playwright_bridge as _pw
+        r = _pw.pw_click(element, ref, timeout=timeout)
+        return ({"ok": True, "element": element, "ref": ref, **r}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "element": element, "ref": ref,
+                 "warnings": [type(e).__name__]}, 200)
+
+
+@register("/web/playwright/type", method="POST", risk="L1", auth=True)
+def _web_pw_type(body: dict) -> tuple[dict, int]:
+    """在 ref 输入框打字(text + ref)。L1 副作用,前端弹确认卡。
+
+    body: {text, ref, submit?, slowly?, timeout?}
+    """
+    body = body or {}
+    text = body.get("text", "")
+    ref = (body.get("ref") or "").strip()
+    if not ref:
+        return ({"ok": False, "error": "missing_ref",
+                 "required": ["ref"]}, 200)
+    timeout = float(body.get("timeout", 30.0))
+    try:
+        from prisir_work import playwright_bridge as _pw
+        r = _pw.pw_type(text, ref,
+                        submit=bool(body.get("submit", False)),
+                        slowly=bool(body.get("slowly", False)),
+                        timeout=timeout)
+        return ({"ok": True, "ref": ref, **r}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "ref": ref,
+                 "warnings": [type(e).__name__]}, 200)
+
+
+@register("/web/playwright/evaluate", method="POST", risk="L0", auth=True)
+def _web_pw_evaluate(body: dict) -> tuple[dict, int]:
+    """在页面执行 JS。body: {function, timeout?}
+
+    L0 只读标签(虽然技术上能改 DOM,主要用例是「拿 cookie/拿 lazy-load 数据」
+    这类只读操作;前端默认 L0 不弹卡,但 LLM 须自律只跑只读 JS)。
+    """
+    body = body or {}
+    function = (body.get("function") or "").strip()
+    if not function:
+        return ({"ok": False, "error": "empty_function",
+                 "required": ["function"]}, 200)
+    timeout = float(body.get("timeout", 30.0))
+    try:
+        from prisir_work import playwright_bridge as _pw
+        r = _pw.pw_evaluate(function, timeout=timeout)
+        return ({"ok": True, **r}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False,
+                 "warnings": [type(e).__name__]}, 200)
+
+
+@register("/web/playwright/screenshot", method="POST", risk="L0", auth=True)
+def _web_pw_screenshot(body: dict) -> tuple[dict, int]:
+    """截图。body: {filename?, full_page?, timeout?}"""
+    body = body or {}
+    filename = (body.get("filename") or "").strip()
+    full_page = bool(body.get("full_page", False))
+    timeout = float(body.get("timeout", 30.0))
+    try:
+        from prisir_work import playwright_bridge as _pw
+        r = _pw.pw_screenshot(filename=filename,
+                              full_page=full_page,
+                              timeout=timeout)
+        return ({"ok": True, **r}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False,
+                 "warnings": [type(e).__name__]}, 200)
+
+
+@register("/web/playwright/close", method="POST", risk="L0", auth=True)
+def _web_pw_close(_body: dict) -> tuple[dict, int]:
+    """关浏览器 + 终止 playwright-mcp 子进程。"""
+    try:
+        from prisir_work import playwright_bridge as _pw
+        return ({"ok": True, **_pw.pw_close()}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "error": type(e).__name__}, 200)

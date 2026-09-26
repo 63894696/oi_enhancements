@@ -1832,6 +1832,109 @@ def check_hn_capability_keywords(_ctx: VerifyCtx) -> str:
     return "4 hn capabilities 全有 keywords ✓"
 
 
+# ---------------------------------------------------------------------------
+# P3j T25: Playwright MCP 浏览器交互(JSON-RPC over stdio 子进程桥)
+# ---------------------------------------------------------------------------
+
+def check_playwright_bridge_module(_ctx: VerifyCtx) -> str:
+    """playwright_bridge module + _JSONRPCClient + 7 公开 fns (P3j T25)。"""
+    try:
+        from prisir_work import playwright_bridge as _pw
+    except Exception as e:
+        return f"[FAIL] playwright_bridge import failed: {type(e).__name__}: {e}"
+    required = ("_JSONRPCClient", "pw_health", "pw_navigate",
+                "pw_snapshot", "pw_click", "pw_type",
+                "pw_evaluate", "pw_screenshot", "pw_close")
+    missing = [n for n in required if not hasattr(_pw, n)]
+    if missing:
+        return f"[FAIL] playwright_bridge 缺函数: {missing}"
+    # 验 _JSONRPCClient 关键方法
+    cls = _pw._JSONRPCClient
+    method_required = ("start", "_initialize", "_read_loop",
+                      "_send", "_request", "call_tool", "close")
+    missing_m = [m for m in method_required if not hasattr(cls, m)]
+    if missing_m:
+        return f"[FAIL] _JSONRPCClient 缺方法: {missing_m}"
+    return f"playwright_bridge + _JSONRPCClient({len(method_required)} methods) ✓"
+
+
+def check_playwright_endpoints(_ctx: VerifyCtx) -> str:
+    """8 playwright endpoints 在 _REGISTRY(health/navigate/snapshot/click/
+    type/evaluate/screenshot/close) (P3j T25)。"""
+    from prisir_work import endpoints as _ep
+    expected = ("/web/playwright/health", "/web/playwright/navigate",
+                "/web/playwright/snapshot", "/web/playwright/click",
+                "/web/playwright/type", "/web/playwright/evaluate",
+                "/web/playwright/screenshot", "/web/playwright/close")
+    missing = [p for p in expected if p not in _ep._REGISTRY]
+    if missing:
+        return f"[FAIL] 缺端点: {missing}"
+    # click/type 是 L1;其余 L0
+    risk_ok = True
+    for p in ("/web/playwright/click", "/web/playwright/type"):
+        e = _ep._REGISTRY[p]
+        if e["risk"] != "L1":
+            risk_ok = False
+            break
+    if not risk_ok:
+        return "[FAIL] click/type 应为 L1,实际其他"
+    for p in ("/web/playwright/health", "/web/playwright/navigate",
+              "/web/playwright/snapshot", "/web/playwright/evaluate",
+              "/web/playwright/screenshot", "/web/playwright/close"):
+        e = _ep._REGISTRY[p]
+        if e["risk"] != "L0":
+            risk_ok = False
+            break
+    if not risk_ok:
+        return "[FAIL] 其余 6 端点应为 L0,实际其他"
+    return f"8 endpoints in _REGISTRY · click/type=L1 · 6=L0 ✓"
+
+
+def check_playwright_health_modes(_ctx: VerifyCtx) -> str:
+    """pw_health 至少能返 mode=missing_node 或 missing_npx(本机 Node 未装时)。
+
+    不强求 ready — 用户机器若无 Node.js,missing_node 就是正常态。
+    """
+    from prisir_work import playwright_bridge as _pw
+    h = _pw.pw_health()
+    # 允许的 mode(不抛异常 + 含 mode 字段)
+    allowed_modes = {"missing_node", "missing_npx", "npx_timeout",
+                     "npx_failed", "not_installed", "start_failed", "ready"}
+    if "mode" not in h or h["mode"] not in allowed_modes:
+        return f"[FAIL] pw_health 返未知 mode: {h}"
+    if "hint" not in h:
+        return "[FAIL] pw_health 缺 hint 字段"
+    return f"pw_health mode={h['mode']} ok=True/False ✓ (本机可跳过 ready 探测)"
+
+
+def check_playwright_capability(_ctx: VerifyCtx) -> str:
+    """8 playwright capability + 中英 keywords + click/type 标 L1 (P3j T25)。"""
+    from prisir_work import capability as _cap
+    caps = {c["id"]: c for c in _cap.list_capabilities()}
+    expected = ("web.playwright.health", "web.playwright.navigate",
+                "web.playwright.snapshot", "web.playwright.click",
+                "web.playwright.type", "web.playwright.evaluate",
+                "web.playwright.screenshot", "web.playwright.close")
+    missing = [c for c in expected if c not in caps]
+    if missing:
+        return f"[FAIL] 缺 capability: {missing}"
+    # click/type 标 L1
+    for cid in ("web.playwright.click", "web.playwright.type"):
+        if caps[cid]["risk"] != "L1":
+            return f"[FAIL] {cid} 应为 L1,实际 {caps[cid]['risk']}"
+        if not caps[cid].get("confirm"):
+            return f"[FAIL] {cid} 缺 confirm 字符串"
+    # keywords 含中英
+    no_kw = []
+    for cid in expected:
+        kws = caps[cid].get("keywords", [])
+        if not kws:
+            no_kw.append(cid)
+    if no_kw:
+        return f"[FAIL] capability 缺 keywords: {no_kw}"
+    return f"8 playwright capabilities · 2=L1(confirm ✓)· 6=L0 ✓"
+
+
 CHECKS: list[Check] = [
     Check("Python",                   check_python),
     Check("Git",                      check_git),
@@ -1900,6 +2003,15 @@ CHECKS: list[Check] = [
     Check("4 hn endpoints + 4 caps + provider (P3j T22-B)", check_hn_endpoints_and_registration),
     Check("hn Algolia API 真探活 (P3j T22-B)", check_hn_health_live),
     Check("hn capabilities keywords (P3j T22-B)", check_hn_capability_keywords),
+    # P3j T25: Playwright MCP 浏览器交互
+    Check("playwright_bridge module + JSON-RPC client (P3j T25)",
+          check_playwright_bridge_module),
+    Check("8 playwright endpoints · click/type=L1 (P3j T25)",
+          check_playwright_endpoints),
+    Check("pw_health 3 档 mode 探活 (P3j T25)",
+          check_playwright_health_modes),
+    Check("8 playwright capabilities · 2 L1 confirm (P3j T25)",
+          check_playwright_capability),
 ]
 
 

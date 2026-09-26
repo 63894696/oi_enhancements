@@ -515,3 +515,78 @@ register_capability(
     keywords=("hn 状态", "hackernews 状态", "hn api",
               "hn 健康", "hn 探活"),
 )
+
+
+# ---------------------------------------------------------------------------
+# P3j T25: Playwright MCP 浏览器交互(7 高层 API + health)
+# click/type 是 L1 副作用(前端确认卡);其余 L0 只读。
+# 端点实现见 endpoints.py:_web_pw_*(子进程桥调 playwright-mcp via JSON-RPC)
+# 依赖:Node.js ≥ 18 + npx + @playwright/mcp(自动 npx -y 拉);首次会下载 Chromium。
+# ---------------------------------------------------------------------------
+
+register_capability(
+    "web.playwright.health",
+    title="Playwright MCP 浏览器探活(Node + npx + handshake)",
+    endpoint="/web/playwright/health", method="POST", risk="L0", auth=True,
+    keywords=("playwright 状态", "playwright 健康", "playwright 探活",
+              "playwright mcp", "浏览器 MCP 状态", "playwright 安装",
+              "playwright-mcp 安装"),
+)
+register_capability(
+    "web.playwright.navigate",
+    title="浏览器打开 URL(headless Chromium,真实浏览器渲染,拿 JS 渲染后内容)",
+    endpoint="/web/playwright/navigate", method="POST", risk="L0", auth=True,
+    keywords=("打开网页", "打开 URL", "浏览器打开", "访问", "browse",
+              "open url", "navigate", "浏览器访问", "去这个网站",
+              "playwright 打开", "playwright navigate"),
+)
+register_capability(
+    "web.playwright.snapshot",
+    title="浏览器抓 a11y 树(无障碍快照,含 eN 引用,可喂 LLM 找元素 ref)",
+    endpoint="/web/playwright/snapshot", method="POST", risk="L0", auth=True,
+    keywords=("抓 a11y 树", "拿页面结构", "页面快照", "snapshot",
+              "无障碍树", "accessibility tree", "playwright 快照",
+              "浏览器快照"),
+)
+register_capability(
+    "web.playwright.click",
+    title="浏览器点元素(element + snapshot ref)— 需 L1 确认卡",
+    endpoint="/web/playwright/click", method="POST", risk="L1", auth=True,
+    keywords=("点按钮", "点击", "click", "点这个", "点 X",
+              "playwright 点击", "浏览器点击"),
+    confirm=("L1 浏览器点击:会在真 Chromium 里点页面元素。"
+             "Playwright 子进程会保持常驻直到 close/超时;"
+             "前端已渲染 a11y 树时,ref 来自 tree 的 eN 引用。"),
+)
+register_capability(
+    "web.playwright.type",
+    title="浏览器在 ref 输入框打字(text + snapshot ref)— 需 L1 确认卡",
+    endpoint="/web/playwright/type", method="POST", risk="L1", auth=True,
+    keywords=("填表", "输入", "打字", "type", "填写",
+              "playwright 填表", "浏览器输入", "在框里输"),
+    confirm=("L1 浏览器填表:在 Chromium 里往指定 ref 输入框打字。"
+             "支持 submit(打完后按 Enter)+ slowly(逐字符慢打防反爬);"
+             "前端已渲染 a11y 树时,ref 来自 tree 的 eN 引用。"),
+)
+register_capability(
+    "web.playwright.evaluate",
+    title="浏览器里执行 JS(拿返回值,适合懒加载数据提取)",
+    endpoint="/web/playwright/evaluate", method="POST", risk="L0", auth=True,
+    keywords=("跑 JS", "执行 JS", "浏览器里执行", "evaluate",
+              "playwright 跑 JS", "浏览器跑脚本",
+              "拿 lazy load 数据", "拿 cookie", "拿 window 变量"),
+)
+register_capability(
+    "web.playwright.screenshot",
+    title="浏览器截图(可指定文件名 + 整页/可视区域)",
+    endpoint="/web/playwright/screenshot", method="POST", risk="L0", auth=True,
+    keywords=("截图", "screenshot", "截屏", "拍屏幕",
+              "playwright 截图", "浏览器截图"),
+)
+register_capability(
+    "web.playwright.close",
+    title="关浏览器 + 终止 playwright-mcp 子进程(释放 Chromium 资源)",
+    endpoint="/web/playwright/close", method="POST", risk="L0", auth=True,
+    keywords=("关浏览器", "关闭浏览器", "playwright 关闭",
+              "playwright close", "终止浏览器"),
+)
