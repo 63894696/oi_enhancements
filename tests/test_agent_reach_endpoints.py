@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """tests/test_agent_reach_endpoints.py — P3j T20-B 端点 + capability 注册测试。
 
-3 个 endpoint + 4 个 capability 的注册检查。
+3 个 endpoint + 4 个 capability 的注册检查 + handler 调通(适配真实 CLI)。
 """
 from __future__ import annotations
 
@@ -74,21 +74,29 @@ def test_endpoint_read_returns_shape(monkeypatch):
     import json as _json
     from prisir_work import endpoints as ep
 
-    payload = _json.dumps({"content": "字幕内容", "title": "B站视频",
-                           "meta": {}})
-    class _FakeProc:
-        returncode = 0
-        stdout = payload
-        stderr = ""
+    payload = _json.dumps({
+        "channel": "rss",
+        "command": "feed",
+        "items": [
+            {"title": "B站视频", "url": "https://test/1",
+             "text": "字幕内容", "author": "u", "published_at": ""}
+        ],
+    })
     monkeypatch.setattr("shutil.which", lambda x: "/fake/agent-reach")
-    monkeypatch.setattr("subprocess.run", lambda *a, **kw: _FakeProc())
+    def _ok(*a, **kw):
+        class _P:
+            returncode = 0
+            stdout = payload
+            stderr = ""
+        return _P()
+    monkeypatch.setattr("subprocess.run", _ok)
 
-    body = {"platform": "bilibili-subtitle",
-            "url": "https://www.bilibili.com/video/BV1"}
+    body = {"platform": "rss", "url": "https://hnrss.org/frontpage"}
     fn = ep._REGISTRY["/web/reach/read"]["handler"]
     payload_out, status = fn(body)
     assert payload_out["ok"] is True
-    assert payload_out["content"] == "字幕内容"
+    assert "字幕内容" in payload_out["content"]
+    assert payload_out["title"] == "B站视频"
 
 
 def test_endpoint_read_missing_fields():
@@ -99,21 +107,58 @@ def test_endpoint_read_missing_fields():
     assert r["ok"] is False
     assert r["error"] == "missing_fields"
 
-    r2, _ = fn({"platform": "xhs"})
+    r2, _ = fn({"platform": "rss"})
     assert r2["ok"] is False
 
 
 def test_endpoint_doctor_not_installed(monkeypatch):
     """_web_reach_doctor 在 agent-reach 未装时返 installed=False。"""
-    def _raise(*a, **kw):
-        raise FileNotFoundError("not found")
-    monkeypatch.setattr("subprocess.run", _raise)
+    monkeypatch.setattr("shutil.which", lambda x: None)
 
     from prisir_work import endpoints as ep
     fn = ep._REGISTRY["/web/reach/doctor"]["handler"]
     r, status = fn({})
     assert r["ok"] is True
     assert r["installed"] is False
+
+
+def test_endpoint_read_channel_not_installed(monkeypatch):
+    """_web_reach_read 在 channel 未装时返 reach_channel_not_installed + hint。"""
+    monkeypatch.setattr("shutil.which", lambda x: "/fake/agent-reach")
+    def _fail(*a, **kw):
+        class _P:
+            returncode = 1
+            stdout = ""
+            stderr = "agent-reach: no channel named 'xhs' in the index"
+        return _P()
+    monkeypatch.setattr("subprocess.run", _fail)
+
+    from prisir_work import endpoints as ep
+    fn = ep._REGISTRY["/web/reach/read"]["handler"]
+    r, status = fn({"platform": "xhs", "url": "https://test"})
+    assert r["ok"] is False
+    assert r["error"] == "reach_channel_not_installed"
+    assert "channel 未安装" in r.get("hint", "")
+
+
+# ---------------------------------------------------------------------------
+# 4. error translation 全覆盖
+# ---------------------------------------------------------------------------
+
+def test_reach_error_translations():
+    """5 条 reach 错误 → zh 翻译 + link 跳转 /extensions。"""
+    from prisir_work.agent_main_chat_hook import translate_exec_error
+    expected = [
+        ("agent_reach_not_installed",    "/extensions"),
+        ("reach_channel_not_installed",  "/extensions"),
+        ("reach_unknown_platform",       "/extensions"),
+        ("reach_missing_query",          "/extensions"),
+        ("agent_reach_timeout",          "/extensions"),
+    ]
+    for err, link in expected:
+        tr = translate_exec_error(err)
+        assert tr["zh"], f"{err} 没翻译成中文"
+        assert tr["link"] == link, f"{err} link={tr['link']},want {link}"
 
 
 # ---------------------------------------------------------------------------

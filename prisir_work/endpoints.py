@@ -723,16 +723,20 @@ def _web_reach_read(body: dict) -> tuple[dict, int]:
 
 @register("/web/reach/search", method="POST", risk="L0", auth=True)
 def _web_reach_search(body: dict) -> tuple[dict, int]:
-    """搜某平台关键词。body: {platform, query, limit?, timeout?}"""
+    """搜某平台关键词。body: {platform, query, limit?, timeout?}
+
+    注意:rss/feed 类 channel 的 query 是 feed URL,可空;
+    其他 channel query 必填,缺则返 reach_missing_query。
+    """
     body = body or {}
     platform = (body.get("platform") or "").strip()
     query = (body.get("query") or "").strip()
     limit = int(body.get("limit", 10))
     timeout = float(body.get("timeout", 30.0))
-    if not platform or not query:
+    if not platform:
         return ({"ok": False, "error": "missing_fields",
-                 "required": ["platform", "query"],
-                 "hint": "platform + query 都必填"}, 200)
+                 "required": ["platform"],
+                 "hint": "platform 必填(query 可空,如 rss)"}, 200)
     try:
         from prisir_work import agent_reach_bridge as _arb
         result = _arb.search(platform, query, limit=limit, timeout=timeout)
