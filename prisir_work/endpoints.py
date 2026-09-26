@@ -367,3 +367,386 @@ def _web_tune_flush(_body: dict) -> tuple[dict, int]:
         return ({"ok": True, "evaluated": result}, 200)
     except Exception as e:  # noqa: BLE001
         return ({"ok": False, "warnings": [type(e).__name__]}, 200)
+
+
+# ---------------------------------------------------------------------------
+# Easel 桥接(公众号扫码发布 + 数据回收)— 2026-09-24 ship
+# 失败/未就绪 → 200 + ok=False + 明确 reason,绝不抛栈。
+# 风险:发布类默认 L2(全回显,扩展侧弹确认卡);数据回收 L0(只读)。
+# ---------------------------------------------------------------------------
+
+@register("/publish/list", method="POST", risk="L0", auth=True)
+def _publish_list(_body: dict) -> tuple[dict, int]:
+    """列出所有注册的平台发布器 + ready 状态。"""
+    try:
+        from prisir_work import publisher as _pub
+        return ({"ok": True, "publishers": _pub.list_publishers()}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "publishers": [], "warnings": [type(e).__name__]}, 200)
+
+
+@register("/publish/status", method="POST", risk="L0", auth=True)
+def _publish_status(body: dict) -> tuple[dict, int]:
+    """某平台的登录态 / 桥接就绪状态。"""
+    platform = (body or {}).get("platform", "").strip()
+    if not platform:
+        return ({"ok": False, "error": "empty_platform"}, 200)
+    try:
+        from prisir_work import publisher as _pub
+        p = _pub.get(platform)
+        if p is None:
+            return ({"ok": False, "platform": platform, "error": "unknown_platform"}, 200)
+        return ({"ok": True, "platform": platform, **p.status()}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "platform": platform, "warnings": [type(e).__name__]}, 200)
+
+
+@register("/publish/html", method="POST", risk="L2", auth=True)
+def _publish_html(body: dict) -> tuple[dict, int]:
+    """发 HTML 到指定平台(目前只有 wechat-oa 真接 Easel)。
+
+    body: {platform, html_path, title, cover, [digest], [author]}
+    失败/未登录/平台未实现 → 200 + ok=False + error,绝不抛栈。
+    """
+    body = body or {}
+    platform = body.get("platform", "").strip()
+    html_path = body.get("html_path", "").strip()
+    title = body.get("title", "").strip()
+    cover = body.get("cover", "").strip()
+    digest = body.get("digest", "")
+    author = body.get("author", "")
+    if not platform or not html_path or not title or not cover:
+        return ({"ok": False,
+                 "error": "missing_fields",
+                 "required": ["platform", "html_path", "title", "cover"]}, 200)
+    try:
+        from prisir_work import publisher as _pub
+        r = _pub.publish(platform, html_path,
+                         title=title, cover=cover,
+                         digest=digest, author=author)
+        return ({"ok": True, **r.to_dict()}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "platform": platform,
+                 "title": title, "error": f"{type(e).__name__}: {e}"}, 200)
+
+
+@register("/publish/stats", method="POST", risk="L0", auth=True)
+def _publish_stats(body: dict) -> tuple[dict, int]:
+    """公众号近 N 天数据回收(发表记录 / 阅读 / 分享 / 粉丝)。
+
+    body: {platform='wechat-oa', count=30}
+    Easel stats 返的 dict 字段已含 metrics/notes/growth(自带 last/day/week/month/year)。
+    """
+    body = body or {}
+    platform = body.get("platform", "wechat-oa").strip()
+    count = int(body.get("count", 30))
+    if platform != "wechat-oa":
+        return ({"ok": False, "platform": platform,
+                 "error": "stats 目前只支持 wechat-oa"}, 200)
+    try:
+        from prisir_work import easel_bridge as _eb
+        br = _eb.easel()
+        if not br.ready:
+            return ({"ok": False, "platform": platform,
+                     "error": "Easel 桥接未就绪"}, 200)
+        r = br.stats(count=count)
+        # Easel 内部已返 {platform,loggedIn,followers,posts,metrics,notes,growth}
+        # 我们把整个 r.parsed 透传,前端按字段取
+        return ({"ok": True, "platform": platform, "count": count,
+                 "data": r.parsed,
+                 "stderr_tail": r.stderr[-300:] if r.stderr else ""}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "platform": platform,
+                 "warnings": [type(e).__name__]}, 200)
+
+
+# ---------------------------------------------------------------------------
+# P3j T14-B: 视频 + YouTube 自然语言端点(透明代理 companion wechat-publisher)
+# 全部走 port_registry.read_port("wechat_publisher_port") 找到子服务后 HTTP 调用。
+# 失败/未注册 → 200 + ok=False + reason,绝不抛栈。
+# ---------------------------------------------------------------------------
+
+# 短帮助代理:把路径前缀转给子服务
+def _proxy(name: str, method: str, sub_path: str,
+           body: dict, timeout: float) -> tuple[dict, int]:
+    """通用代理:把 body POST/GET 到 wechat-publisher 子服务。"""
+    from . import port_registry
+    if method == "GET":
+        return port_registry.proxy_get(name, sub_path, timeout=timeout), 200
+    return port_registry.proxy_post(name, sub_path, body or {}, timeout=timeout), 200
+
+
+@register("/video/list", method="POST", risk="L0", auth=True)
+def _video_list(_body: dict) -> tuple[dict, int]:
+    """列 9 个 video creator + ready — 代理 /api/video/creators。"""
+    r = _proxy("wechat_publisher_port", "GET", "/api/video/creators", {}, timeout=10)
+    return (r, 200)
+
+
+@register("/video/orchestrate", method="POST", risk="L2", auth=True)
+def _video_orchestrate(body: dict) -> tuple[dict, int]:
+    """一键出片 — 代理 /api/video/orchestrate。
+
+    body: {topic, script, output_dir?, aspect_ratio?, duration?, voice?,
+           with_subtitle?, with_images?}
+    """
+    body = body or {}
+    required = ["topic", "script"]
+    missing = [k for k in required if not (body.get(k) or "").strip()]
+    if missing:
+        return ({"ok": False, "error": "missing_fields",
+                 "required": required, "missing": missing}, 200)
+    # 默认 9:16 60s
+    body.setdefault("aspect_ratio", "9:16")
+    body.setdefault("duration", 60)
+    body.setdefault("with_subtitle", True)
+    body.setdefault("with_images", False)
+    return _proxy("wechat_publisher_port", "POST",
+                  "/api/video/orchestrate", body, timeout=900)  # 合成最长 15min
+
+
+@register("/video/tts", method="POST", risk="L1", auth=True)
+def _video_tts(body: dict) -> tuple[dict, int]:
+    """文字转语音 — 代理 /api/video/create creator=tts。"""
+    body = body or {}
+    text = (body.get("text") or "").strip()
+    file_ = (body.get("file") or "").strip()
+    output = (body.get("output") or "").strip()
+    if not text and not file_:
+        return ({"ok": False,
+                 "error": "missing_input",
+                 "hint": "传 text(直接文本)或 file(文本文件路径)"}, 200)
+    if not output:
+        return ({"ok": False, "error": "missing_output",
+                 "hint": "传 output(产物 mp3 路径)"}, 200)
+    payload = {"creator": "tts",
+               "text": text, "file": file_,
+               "output": output,
+               "voice": body.get("voice", ""),
+               "rate": body.get("rate", ""),
+               "subtitle": body.get("subtitle", "")}
+    return _proxy("wechat_publisher_port", "POST",
+                  "/api/video/create", payload, timeout=180)
+
+
+@register("/video/asr", method="POST", risk="L1", auth=True)
+def _video_asr(body: dict) -> tuple[dict, int]:
+    """音视频转字幕 — 代理 /api/video/create creator=asr。"""
+    body = body or {}
+    input_ = (body.get("input") or "").strip()
+    if not input_:
+        return ({"ok": False, "error": "missing_input",
+                 "hint": "传 input(视频/音频文件路径)"}, 200)
+    payload = {"creator": "asr",
+               "input": input_,
+               "output": body.get("output", ""),
+               "model": body.get("model", "base"),
+               "format": body.get("format", "srt"),
+               "language": body.get("language", "")}
+    model = body.get("model", "base")
+    to = 1800 if model in ("medium", "large", "large-v3") else 300
+    return _proxy("wechat_publisher_port", "POST",
+                  "/api/video/create", payload, timeout=to)
+
+
+@register("/video/cut", method="POST", risk="L1", auth=True)
+def _video_cut(body: dict) -> tuple[dict, int]:
+    """裁剪视频 — 代理 video-ops op=cut。"""
+    body = body or {}
+    input_ = (body.get("input") or "").strip()
+    output = (body.get("output") or "").strip()
+    if not input_ or not output:
+        return ({"ok": False, "error": "missing_fields",
+                 "required": ["input", "output"],
+                 "hint": "自然语言:'裁剪 C:/v.mp4 从 00:10 到 00:30 输出 C:/out.mp4'"}, 200)
+    payload = {"creator": "video-ops", "op": "cut",
+               "input": input_, "output": output}
+    # 自然语言友好别名
+    if "start" in body:
+        payload["start"] = body["start"]
+    if "end" in body:
+        payload["end"] = body["end"]
+    if "duration" in body:
+        payload["duration"] = body["duration"]
+    return _proxy("wechat_publisher_port", "POST",
+                  "/api/video/create", payload, timeout=600)
+
+
+@register("/video/bgm", method="POST", risk="L1", auth=True)
+def _video_bgm(body: dict) -> tuple[dict, int]:
+    """加背景音乐 — 代理 video-ops op=bgm。"""
+    body = body or {}
+    input_ = (body.get("input") or "").strip()
+    output = (body.get("output") or "").strip()
+    music = (body.get("music") or body.get("bgm") or "").strip()
+    if not input_ or not output or not music:
+        return ({"ok": False, "error": "missing_fields",
+                 "required": ["input", "output", "music"]}, 200)
+    payload = {"creator": "video-ops", "op": "bgm",
+               "input": input_, "output": output,
+               "music": music}
+    if "volume" in body:
+        payload["volume"] = body["volume"]
+    return _proxy("wechat_publisher_port", "POST",
+                  "/api/video/create", payload, timeout=600)
+
+
+@register("/video/burn", method="POST", risk="L1", auth=True)
+def _video_burn(body: dict) -> tuple[dict, int]:
+    """字幕烧录 — 代理 /api/video/subtitle/burn。"""
+    body = body or {}
+    input_ = (body.get("input") or body.get("video") or "").strip()
+    sub = (body.get("sub") or body.get("subtitle") or "").strip()
+    output = (body.get("output") or "").strip()
+    if not input_ or not sub or not output:
+        return ({"ok": False, "error": "missing_fields",
+                 "required": ["input", "sub", "output"],
+                 "hint": "自然语言:'把字幕 C:/a.srt 烧到 C:/v.mp4 输出 C:/v_burned.mp4'"}, 200)
+    payload = {"input": input_, "sub": sub, "output": output,
+               "soft": bool(body.get("soft", False)),
+               "lang": body.get("lang", ""),
+               "force_style": body.get("force_style", ""),
+               "font_dir": body.get("font_dir", "")}
+    return _proxy("wechat_publisher_port", "POST",
+                  "/api/video/subtitle/burn", payload, timeout=600)
+
+
+@register("/video/info", method="POST", risk="L0", auth=True)
+def _video_info(body: dict) -> tuple[dict, int]:
+    """查视频元数据 — 代理 /api/video/info。"""
+    body = body or {}
+    path = (body.get("path") or body.get("input") or "").strip()
+    if not path:
+        return ({"ok": False, "error": "missing_path",
+                 "hint": "传 path(视频文件路径)"}, 200)
+    from . import port_registry
+    r = port_registry.proxy_get("wechat_publisher_port",
+                                f"/api/video/info?path={path}", timeout=10)
+    return (r, 200)
+
+
+@register("/video/analyze", method="POST", risk="L0", auth=True)
+def _video_analyze(body: dict) -> tuple[dict, int]:
+    """发布数据分析 — 代理 /api/analytics。"""
+    body = body or {}
+    mode = (body.get("mode") or "selftest").strip()
+    from . import port_registry
+    qs = f"?mode={mode}"
+    if body.get("data"):
+        qs += f"&data={body['data']}"
+    if body.get("follower_log"):
+        qs += f"&follower_log={body['follower_log']}"
+    if body.get("profile"):
+        qs += f"&profile={body['profile']}"
+    r = port_registry.proxy_get("wechat_publisher_port",
+                                f"/api/analytics{qs}", timeout=30)
+    return (r, 200)
+
+
+@register("/youtube/status", method="POST", risk="L0", auth=True)
+def _youtube_status(_body: dict) -> tuple[dict, int]:
+    """YouTube 桥接状态 — 代理 /api/youtube/status。"""
+    r = _proxy("wechat_publisher_port", "GET", "/api/youtube/status", {}, timeout=10)
+    return (r, 200)
+
+
+@register("/youtube/upload", method="POST", risk="L3", auth=True)
+def _youtube_upload(body: dict) -> tuple[dict, int]:
+    """YouTube 上传 — 代理 /api/youtube/upload。
+
+    body: {video, title, description?, tags?, category_id?, privacy?, exec_real?}
+    """
+    body = body or {}
+    video = (body.get("video") or body.get("input") or "").strip()
+    title = (body.get("title") or "").strip()
+    if not video or not title:
+        return ({"ok": False, "error": "missing_fields",
+                 "required": ["video", "title"]}, 200)
+    payload = {"video": video, "title": title,
+               "description": body.get("description", ""),
+               "tags": body.get("tags") or [],
+               "category_id": str(body.get("category_id", "22")),
+               "privacy": body.get("privacy", "private"),
+               "exec_real": bool(body.get("exec_real", False))}
+    to = 600 if payload["exec_real"] else 30
+    return _proxy("wechat_publisher_port", "POST",
+                  "/api/youtube/upload", payload, timeout=to)
+
+
+@register("/youtube/list", method="POST", risk="L0", auth=True)
+def _youtube_list(body: dict) -> tuple[dict, int]:
+    """列我的 YouTube 视频 — 代理 /api/youtube/list。"""
+    body = body or {}
+    max_results = int(body.get("max_results", 10))
+    exec_real = bool(body.get("exec_real", False))
+    from . import port_registry
+    qs = f"?max_results={max_results}&exec_real={exec_real}"
+    r = port_registry.proxy_get("wechat_publisher_port",
+                                f"/api/youtube/list{qs}", timeout=30)
+    return (r, 200)
+
+
+# ---------------------------------------------------------------------------
+# P3j T20-B: Agent-Reach 集成(14 平台读+搜:小红书/B站字幕/GitHub/V2EX/RSS…)
+# 全部 L0 只读,失败/未安装 agent-reach → 200 + ok=False + hint,绝不抛栈。
+# ---------------------------------------------------------------------------
+
+@register("/web/reach/doctor", method="POST", risk="L0", auth=True)
+def _web_reach_doctor(_body: dict) -> tuple[dict, int]:
+    """查 agent-reach 安装 + 14 平台健康状态。"""
+    try:
+        from prisir_work import agent_reach_bridge as _arb
+        return ({"ok": True, **_arb.doctor()}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "warnings": [type(e).__name__]}, 200)
+
+
+@register("/web/reach/read", method="POST", risk="L0", auth=True)
+def _web_reach_read(body: dict) -> tuple[dict, int]:
+    """读某平台 URL。body: {platform, url, timeout?}"""
+    body = body or {}
+    platform = (body.get("platform") or "").strip()
+    url = (body.get("url") or "").strip()
+    timeout = float(body.get("timeout", 30.0))
+    if not platform or not url:
+        return ({"ok": False, "error": "missing_fields",
+                 "required": ["platform", "url"],
+                 "hint": "platform + url 都必填"}, 200)
+    try:
+        from prisir_work import agent_reach_bridge as _arb
+        result = _arb.read(platform, url, timeout=timeout)
+        return ({"ok": True, **result}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "platform": platform, "url": url,
+                 "warnings": [type(e).__name__]}, 200)
+
+
+@register("/web/reach/search", method="POST", risk="L0", auth=True)
+def _web_reach_search(body: dict) -> tuple[dict, int]:
+    """搜某平台关键词。body: {platform, query, limit?, timeout?}"""
+    body = body or {}
+    platform = (body.get("platform") or "").strip()
+    query = (body.get("query") or "").strip()
+    limit = int(body.get("limit", 10))
+    timeout = float(body.get("timeout", 30.0))
+    if not platform or not query:
+        return ({"ok": False, "error": "missing_fields",
+                 "required": ["platform", "query"],
+                 "hint": "platform + query 都必填"}, 200)
+    try:
+        from prisir_work import agent_reach_bridge as _arb
+        result = _arb.search(platform, query, limit=limit, timeout=timeout)
+        return ({"ok": True, **result}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "platform": platform, "query": query,
+                 "warnings": [type(e).__name__]}, 200)
+
+
+@register("/web/reach/platforms", method="POST", risk="L0", auth=True)
+def _web_reach_platforms(_body: dict) -> tuple[dict, int]:
+    """列 14 平台目录(静态,与安装状态无关)。"""
+    try:
+        from prisir_work import agent_reach_bridge as _arb
+        return ({"ok": True, "platforms": _arb.platforms()}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "platforms": [], "warnings": [type(e).__name__]}, 200)

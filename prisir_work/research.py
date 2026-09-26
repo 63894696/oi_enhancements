@@ -82,6 +82,63 @@ def _search_one(q: str, limit: int, timeout: float) -> list[dict]:
         return []
 
 
+# ---------------------------------------------------------------------------
+# P3j T20-D: Agent-Reach 集成(query 含 reach 类站点关键词 → 优先走 reach.search)
+# ---------------------------------------------------------------------------
+
+# 关键词 → (reach platform id, 是否作为 search provider)
+# 单次研究只取首个命中平台(避免一次研究跑 4 个平台拖慢)
+_REACH_RULES: list[tuple[str, str]] = [
+    ("小红书", "xhs"),
+    ("xhs", "xhs"),
+    ("b站", "bilibili-search"),
+    ("bilibili", "bilibili-search"),
+    ("v2ex", "v2ex"),
+    ("github", "github"),
+    ("youtube", "youtube-subtitle"),
+    ("字幕", "bilibili-subtitle"),
+    ("rss", "rss"),
+]
+
+
+def _detect_reach_intent(query: str) -> tuple[str, str] | None:
+    """从 query 里检测 reach 站点意图 → (platform, sub_query) or None。
+
+    单次研究只取首个命中(用户原话「不要一次跑多个平台拖慢响应」)。
+    """
+    base = (query or "").strip().lower()
+    if not base:
+        return None
+    for kw, plat in _REACH_RULES:
+        if kw in base:
+            sub = base.replace(kw, "").strip() or base
+            return (plat, sub)
+    return None
+
+
+def _reach_search_one(platform: str, query: str, limit: int = 5,
+                      timeout: float = 15.0) -> list[dict]:
+    """调 agent_reach_bridge.search → 统一异常。失败返 []."""
+    try:
+        from prisir_work import agent_reach_bridge as _arb
+        r = _arb.search(platform, query, limit=limit, timeout=timeout)
+        if not r.get("ok"):
+            log.warning("reach search %s failed: %s", platform, r.get("error"))
+            return []
+        out: list[dict] = []
+        for item in r.get("results", []) or []:
+            out.append({
+                "url": item.get("url", ""),
+                "title": item.get("title", ""),
+                "snippet": item.get("snippet", ""),
+                "sources": [f"reach:{platform}"],
+            })
+        return out
+    except Exception as e:  # noqa: BLE001
+        log.warning("reach search %s raised %s: %s", platform, type(e).__name__, e)
+        return []
+
+
 def _fetch_one(url: str, timeout: float) -> dict | None:
     try:
         from prisir_work import web_fetch as _wf
@@ -151,6 +208,31 @@ def research(query: str, *, max_steps: int = 4, max_urls: int = 8,
     except Exception as e:  # noqa: BLE001
         warnings.append("search_failed")
 
+    # ── step 2b: P3j T20-D reach 集成(query 含 reach 类站点 → 优先 reach.search) ──
+    reach_intent = _detect_reach_intent(query)
+    reach_results: list[dict] = []
+    if reach_intent is not None:
+        plat, sub = reach_intent
+        try:
+            reach_results = _reach_search_one(plat, sub, limit=5, timeout=min(timeout, 15.0))
+            if reach_results:
+                warnings.append(f"reach_used:{plat}")
+                # reach 结果优先插入(去重时它会盖后到的 web_search 同 URL)
+                merged = []
+                seen = set()
+                for r in (reach_results + search_results):
+                    u = r.get("url", "")
+                    if u and u not in seen:
+                        seen.add(u)
+                        merged.append(r)
+                    elif not u:
+                        merged.append(r)
+                search_results = merged
+            else:
+                warnings.append(f"reach_empty:{plat}")
+        except Exception as e:  # noqa: BLE001
+            warnings.append(f"reach_failed:{plat}:{type(e).__name__}")
+
     # 去重(URL)
     seen_urls, uniq_results = set(), []
     for r in search_results:
@@ -161,9 +243,12 @@ def research(query: str, *, max_steps: int = 4, max_urls: int = 8,
 
     # 评分排序(已在 web_search 排过,这里只截断)
     top_results = uniq_results[:max_urls]
+    reach_count = sum(1 for r in uniq_results
+                      if r.get("sources") and any(s.startswith("reach:") for s in r["sources"]))
     steps.append(_step("search", ok=True, queries=len(plan),
                        results=len(uniq_results),
                        top_kept=len(top_results),
+                       reach_hits=reach_count,
                        duration_ms=_now_ms() - t0))
 
     # ── step 3: fetch top URLs (并发) ──

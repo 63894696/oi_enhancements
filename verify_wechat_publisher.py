@@ -1206,6 +1206,147 @@ def check_probe_provider_module(_ctx: VerifyCtx) -> str:
     return f"probe_provider OK;shape={list(r.keys())}"
 
 
+# ---------------------------------------------------------------------------
+# P3j T20: Agent-Reach 14 平台接入
+# ---------------------------------------------------------------------------
+
+def check_reach_bridge_module(_ctx: VerifyCtx) -> str:
+    """P3j T20-A:agent_reach_bridge 模块 + 14 平台静态目录 + P0 默认开。"""
+    try:
+        from prisir_work import agent_reach_bridge as arb
+    except ImportError as e:
+        return f"[FAIL] import agent_reach_bridge: {e}"
+    # 14 平台
+    plats = arb.platforms()
+    if len(plats) != 14:
+        return f"[FAIL] 平台数 {len(plats)},want 14"
+    ids = {p["id"] for p in plats}
+    expected_14 = {"xhs", "bilibili-subtitle", "github", "v2ex",
+                   "youtube-subtitle", "rss", "bilibili-search",
+                   "weibo", "zhihu", "exa", "jina", "twitter",
+                   "reddit", "linkedin"}
+    miss_ids = expected_14 - ids
+    if miss_ids:
+        return f"[FAIL] 缺平台:{miss_ids}"
+    # P0 6 平台
+    p0 = {p["id"] for p in plats if p["p0"]}
+    if p0 != {"xhs", "bilibili-subtitle", "github", "v2ex",
+              "youtube-subtitle", "rss"}:
+        return f"[FAIL] P0 不匹配:{p0}"
+    # default_on == p0
+    for p in plats:
+        if p["p0"] and not p["default_on"]:
+            return f"[FAIL] P0 平台 {p['id']} default_on=False"
+        if not p["p0"] and p["default_on"]:
+            return f"[FAIL] 非 P0 平台 {p['id']} default_on=True"
+    # 必备函数
+    for fn_name in ("doctor", "read", "search", "platforms"):
+        if not callable(getattr(arb, fn_name, None)):
+            return f"[FAIL] 缺函数:{fn_name}"
+    return f"bridge OK · 14 平台 · P0=6 · fn 4/4 ✓"
+
+
+def check_reach_endpoints(_ctx: VerifyCtx) -> str:
+    """P3j T20-B:4 端点注册 + capability 注册。"""
+    from prisir_work import endpoints as ep, capability as cap
+    expected_eps = {
+        "/web/reach/doctor":   ("POST", "L0"),
+        "/web/reach/read":     ("POST", "L0"),
+        "/web/reach/search":   ("POST", "L0"),
+        "/web/reach/platforms": ("POST", "L0"),
+    }
+    miss_eps = []
+    for path, (method, risk) in expected_eps.items():
+        e = ep._REGISTRY.get(path)
+        if e is None:
+            miss_eps.append(f"{path} 未注册")
+            continue
+        if e["method"] != method:
+            miss_eps.append(f"{path} method={e['method']},want {method}")
+        if e["risk"] != risk:
+            miss_eps.append(f"{path} risk={e['risk']},want {risk}")
+    if miss_eps:
+        return f"[FAIL] endpoint: {miss_eps[:3]}"
+    expected_caps = [
+        "web.reach.doctor", "web.reach.read",
+        "web.reach.search", "web.reach.platforms",
+    ]
+    miss_caps = []
+    for cid in expected_caps:
+        if cap._REGISTRY.get(cid) is None:
+            miss_caps.append(f"{cid} 未注册")
+            continue
+        c = cap._REGISTRY[cid]
+        if c.get("risk") != "L0":
+            miss_caps.append(f"{cid} risk={c.get('risk')},want L0")
+    if miss_caps:
+        return f"[FAIL] capability: {miss_caps[:3]}"
+    # 关键字中文检查
+    read_kw = " ".join(cap._REGISTRY["web.reach.read"]["keywords"])
+    for cn in ("读小红书", "看 GitHub"):
+        if cn not in read_kw:
+            return f"[FAIL] web.reach.read 缺中文 kw '{cn}':{read_kw}"
+    return f"4 endpoint + 4 capability (L0) ✓"
+
+
+def check_reach_ui_dom(_ctx: VerifyCtx) -> str:
+    """P3j T20-C:扩展 Tab DOM 节点 + JS 函数 + 测试 URL 表。"""
+    import pathlib
+    idx = pathlib.Path(
+        "companion/prisIragent-wechat-publisher/static/index.html")
+    src = idx.read_text(encoding="utf-8")
+    needed = (
+        ('data-tab="extensions"',           "🧩 扩展 tab 按钮"),
+        ('id="tab-extensions"',             "扩展 tab pane"),
+        ('id="reach-banner"',               "状态 banner"),
+        ('id="reach-grid"',                 "14 平台 grid 容器"),
+        ("refreshReachDoctor",              "JS 探活函数"),
+        ("renderReachGrid",                 "JS 渲染函数"),
+        ("testReach",                       "JS 单平台测试"),
+        ("REACH_TEST_URLS",                 "测试 URL 表"),
+        ("saveReachEnabled",                "JS 持久化 toggle"),
+        ("agent-reach",                     "标题/描述里出现 agent-reach"),
+        ("小红书",                          "中文平台名 — 小红书"),
+        ("bilibili-subtitle",               "B站字幕 id"),
+        ("github",                          "GitHub id"),
+        ("v2ex",                            "V2EX id"),
+        ("youtube-subtitle",                "YouTube 字幕 id"),
+        ("rss",                             "RSS id"),
+    )
+    miss = [desc for token, desc in needed if token not in src]
+    if miss:
+        return f"[FAIL] 扩展 UI 缺 [{len(miss)}/{len(needed)}]: {miss[:5]}"
+    return f"extensions Tab + 14 平台 DOM + 3 JS 函数 + 测试 URL 表 16/16 ✓"
+
+
+def check_reach_css(_ctx: VerifyCtx) -> str:
+    """P3j T20-C:CSS 类(5 个 reach-* + 3 档灯颜色 + toggle 开关)。"""
+    import pathlib
+    idx = pathlib.Path(
+        "companion/prisIragent-wechat-publisher/static/index.html")
+    src = idx.read_text(encoding="utf-8")
+    needed_css = (
+        (".reach-banner",                  "reach-banner 容器"),
+        (".reach-banner.ok",               "banner ok 状态"),
+        (".reach-banner.warn",             "banner warn 状态"),
+        (".reach-banner.err",              "banner err 状态"),
+        (".reach-grid",                    "grid 布局"),
+        (".reach-card",                    "单卡"),
+        (".reach-card.p0",                 "P0 卡片左边框"),
+        (".reach-light",                   "状态灯基础"),
+        (".reach-light.ok",                "灯 ok"),
+        (".reach-light.warn",              "灯 warn"),
+        (".reach-light.err",               "灯 err"),
+        (".reach-light.unknown",           "灯 unknown"),
+        (".reach-toggle",                  "toggle 开关"),
+        (".reach-toggle:checked",          "toggle 选中态"),
+    )
+    miss = [desc for token, desc in needed_css if token not in src]
+    if miss:
+        return f"[FAIL] CSS 缺 [{len(miss)}/{len(needed_css)}]: {miss[:5]}"
+    return f"reach CSS 5 + 灯 4 + toggle 2 = 14/14 ✓"
+
+
 CHECKS: list[Check] = [
     Check("Python",                   check_python),
     Check("Git",                      check_git),
@@ -1244,6 +1385,11 @@ CHECKS: list[Check] = [
     # P3j T19: 全配置面提示 + 纯开源模式 banner
     Check("T19 full config disclosure (4 环节 + OSS 折叠)",
           check_t19_full_config_disclosure),
+    # P3j T20: Agent-Reach 14 平台接入
+    Check("agent_reach_bridge module (P3j T20-A)", check_reach_bridge_module),
+    Check("4 reach endpoints + capabilities (P3j T20-B)", check_reach_endpoints),
+    Check("extensions Tab DOM + JS (P3j T20-C)", check_reach_ui_dom),
+    Check("reach CSS 5 + 灯 4 + toggle (P3j T20-C)", check_reach_css),
 ]
 
 

@@ -127,6 +127,41 @@ input,textarea,select{padding:6px 10px;border:1px solid var(--border);
 .media-provider-row input{flex:1}
 .media-provider-row select{flex:1}
 .media-provider-save{font-size:11px;padding:4px 10px}
+
+/* P3j T20-C: Agent-Reach 信息源面板 */
+.reach-banner{padding:12px;border-radius:6px;margin-bottom:12px;font-size:14px}
+.reach-banner.ok{background:#e8f5e9;color:#2e7d32;border:1px solid #c8e6c9}
+.reach-banner.warn{background:#fff8e1;color:#ef6c00;border:1px solid #ffe0b2}
+.reach-banner.err{background:#ffebee;color:#c62828;border:1px solid #ffcdd2}
+.reach-banner.loading{background:#f5f5f5;color:#666;border:1px solid #e0e0e0}
+.reach-controls{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.reach-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.reach-empty{grid-column:1/-1;text-align:center;color:#888;padding:20px}
+.reach-card{border:1px solid #ddd;border-radius:8px;padding:12px;background:#fafafa;
+  display:flex;justify-content:space-between;align-items:center;gap:8px}
+.reach-card.p0{border-left:4px solid var(--accent,#4d6b5b);background:#fbfcfa}
+.reach-card-title{display:flex;align-items:center;gap:6px;flex:1;min-width:0}
+.reach-card-title b{font-size:14px}
+.reach-card-title .pid{color:#888;font-size:11px;font-family:monospace}
+.reach-p0-tag{font-size:10px;background:var(--accent,#4d6b5b);color:#fff;padding:2px 6px;border-radius:3px;margin-left:4px}
+.reach-detail{color:#666;font-size:11px;margin-top:4px;line-height:1.4}
+.reach-actions{display:flex;gap:6px;align-items:center;flex-shrink:0}
+.reach-actions button{padding:4px 10px;font-size:12px}
+.reach-light{width:10px;height:10px;border-radius:50%;display:inline-block;flex-shrink:0}
+.reach-light.ok{background:#4caf50;box-shadow:0 0 0 2px rgba(76,175,80,0.2)}
+.reach-light.warn{background:#ff9800;box-shadow:0 0 0 2px rgba(255,152,0,0.2)}
+.reach-light.err{background:#f44336;box-shadow:0 0 0 2px rgba(244,67,54,0.2)}
+.reach-light.unknown{background:#9e9e9e}
+.reach-card .reach-toggle{appearance:none;-webkit-appearance:none;width:36px;height:20px;
+  border-radius:10px;background:#ccc;position:relative;cursor:pointer;transition:background 0.2s;
+  border:none;padding:0;margin:0}
+.reach-card .reach-toggle:checked{background:var(--accent,#4d6b5b)}
+.reach-card .reach-toggle::after{content:'';position:absolute;
+  width:16px;height:16px;border-radius:50%;background:white;top:2px;left:2px;
+  transition:left 0.2s}
+.reach-card .reach-toggle:checked::after{left:18px}
+.reach-card.off{opacity:0.55}
+.reach-card.off .reach-card-title b{text-decoration:line-through}
 </style>
 </head>
 <body>
@@ -145,6 +180,7 @@ input,textarea,select{padding:6px 10px;border:1px solid var(--border);
     <button class="tab-btn" data-tab="analytics">📈 数据分析</button>
     <button class="tab-btn" data-tab="youtube">📺 YouTube</button>
     <button class="tab-btn" data-tab="chat">💬 一句话</button>
+    <button class="tab-btn" data-tab="extensions">🧩 扩展</button>
   </div>
 
   <!-- TAB: 发布 -->
@@ -655,6 +691,23 @@ input,textarea,select{padding:6px 10px;border:1px solid var(--border);
       <pre id="yt-list-result" class="code"></pre>
     </div>
   </div>
+
+  <!-- TAB: 扩展 (P3j T20-C Agent-Reach 14 平台信息源) -->
+  <div class="tab" id="tab-extensions">
+    <div class="card">
+      <h2>🧩 Agent-Reach 信息源(14 平台)</h2>
+      <p class="muted">Agent-Reach 给 PrisirAI 提供小红书 / B站字幕 / GitHub / V2EX / RSS 等 14 平台的「读+搜」能力,无需 API key。<b>强烈推荐安装</b>(用户拍板:不是可选)。</p>
+      <div class="reach-banner" id="reach-banner">⏳ 检测 agent-reach 安装状态...</div>
+      <div class="reach-controls">
+        <button class="primary" onclick="refreshReachDoctor()">🔬 重新检测</button>
+        <button class="ghost" onclick="window.open('https://github.com/Panniantong/Agent-Reach','_blank')">📖 安装指引</button>
+        <button class="ghost" onclick="refreshReachPlatforms()">📋 平台目录</button>
+      </div>
+      <div class="reach-grid" id="reach-grid">
+        <div class="reach-empty">⏳ 加载中...</div>
+      </div>
+    </div>
+  </div>
 </main>
 
 <div id="toast"></div>
@@ -726,8 +779,126 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     if (btn.dataset.tab === 'video') {
       refreshMediaStatus();
     }
+    // P3j T20-C: 切到扩展 Tab 时刷一次 agent-reach doctor
+    if (btn.dataset.tab === 'extensions') {
+      refreshReachDoctor();
+    }
   };
 });
+
+// ====== P3j T20-C: Agent-Reach 信息源面板 ======
+const REACH_TEST_URLS = {
+  'xhs': 'https://www.xiaohongshu.com/explore',
+  'bilibili-subtitle': 'https://www.bilibili.com/video/BV1xx411c7mD',
+  'github': 'https://github.com/anthropics/anthropic-sdk-python',
+  'v2ex': 'https://v2ex.com/?tab=hot',
+  'youtube-subtitle': 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+  'rss': 'https://news.ycombinator.com/rss',
+  'bilibili-search': '',
+  'weibo': '',
+  'zhihu': '',
+  'exa': '',
+  'jina': '',
+  'twitter': '',
+  'reddit': '',
+  'linkedin': '',
+};
+
+async function refreshReachDoctor(){
+  const banner = document.getElementById('reach-banner');
+  banner.textContent = '⏳ 检测中...';
+  banner.className = 'reach-banner loading';
+  try {
+    const r = await api('/web/reach/doctor', {method:'POST', body: '{}'});
+    const meta = await api('/web/reach/platforms', {method:'POST', body: '{}'});
+    if (!r.installed) {
+      banner.textContent = '❌ agent-reach 未安装 · pip install agent-reach';
+      banner.className = 'reach-banner err';
+    } else if (r.version) {
+      const okCount = (r.platforms || []).filter(p => p.status === 'ok').length;
+      banner.textContent = `✅ agent-reach v${r.version} · ${okCount}/14 平台就绪`;
+      banner.className = 'reach-banner ok';
+    } else {
+      banner.textContent = `⚠ agent-reach 已装但 doctor 异常:${r.error || r.hint || ''}`;
+      banner.className = 'reach-banner warn';
+    }
+    renderReachGrid(r.platforms || [], meta.platforms || []);
+  } catch (e) {
+    banner.textContent = '❌ 网络错误:' + e.message;
+    banner.className = 'reach-banner err';
+  }
+}
+
+async function refreshReachPlatforms(){
+  await refreshReachDoctor();
+}
+
+function renderReachGrid(statuses, metas){
+  const grid = document.getElementById('reach-grid');
+  if (!metas || !metas.length) {
+    grid.innerHTML = '<div class="reach-empty">⚠ agent-reach 未装,看不到 14 平台目录</div>';
+    return;
+  }
+  grid.innerHTML = '';
+  const statusMap = {};
+  statuses.forEach(s => statusMap[s.id] = s);
+  metas.forEach(p => {
+    const s = statusMap[p.id] || {status: 'unknown', hint: ''};
+    const card = document.createElement('div');
+    card.className = 'reach-card' + (p.p0 ? ' p0' : '');
+    card.dataset.pid = p.id;
+    const lightClass = s.status === 'ok' ? 'ok'
+                     : s.status === 'warn' ? 'warn'
+                     : s.status === 'err' ? 'err' : 'unknown';
+    const detail = s.detail || s.hint || (s.status === 'ok' ? '✓ 就绪' : (p.p0 ? 'P0 平台' : '可选'));
+    card.innerHTML = `
+      <div class="reach-card-title">
+        <span class="reach-light ${lightClass}" title="${s.status}"></span>
+        <div style="min-width:0;flex:1">
+          <b>${p.title}</b>
+          <span class="pid">${p.id}</span>
+          ${p.p0 ? '<span class="reach-p0-tag">P0</span>' : ''}
+          <div class="reach-detail">${detail}</div>
+        </div>
+      </div>
+      <div class="reach-actions">
+        <input type="checkbox" class="reach-toggle"
+               data-pid="${p.id}" ${p.default_on ? 'checked' : ''}
+               title="${p.default_on ? '已启用(P0 默认)' : '已禁用'}"/>
+        <button class="ghost" onclick="testReach('${p.id}')">🔬</button>
+      </div>
+    `;
+    const toggle = card.querySelector('.reach-toggle');
+    toggle.onchange = () => {
+      card.classList.toggle('off', !toggle.checked);
+      saveReachEnabled(p.id, toggle.checked);
+    };
+    if (!p.default_on) card.classList.add('off');
+    grid.appendChild(card);
+  });
+}
+
+function saveReachEnabled(pid, enabled){
+  try {
+    const cur = JSON.parse(localStorage.getItem('reach_enabled') || '{}');
+    cur[pid] = enabled;
+    localStorage.setItem('reach_enabled', JSON.stringify(cur));
+  } catch (e) { /* noop */ }
+}
+
+async function testReach(pid){
+  const url = REACH_TEST_URLS[pid];
+  if (!url) { toast(`🔬 ${pid} 暂未提供测试链接`, 'warn'); return; }
+  toast(`⏳ 测试 ${pid}...`, 'ok');
+  try {
+    const r = await api('/web/reach/read', {method:'POST',
+      body: JSON.stringify({platform: pid, url})});
+    if (r.ok && r.content) toast(`✅ ${pid}: ${r.content.length} 字符`, 'ok');
+    else toast(`❌ ${pid}: ${r.hint || r.error || '未知'}`, 'err');
+  } catch (e) {
+    toast('❌ 测试失败:' + e.message, 'err');
+  }
+}
 
 // ====== API ======
 async function api(path, opts={}){

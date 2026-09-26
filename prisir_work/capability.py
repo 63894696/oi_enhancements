@@ -153,3 +153,186 @@ register_capability(
     keywords=("tune", "flush", "落盘", "手动"),
     confirm="L1 tune flush:把累加器中已稳定(MIN_SAMPLES=3 + ok 率 ≥ 80%)的 fetcher 优先级写入 tune.json。下次同 host 直接按 learned 顺序调用。",
 )
+
+
+# ---------------------------------------------------------------------------
+# 2026-09-24: 多平台发布门面(Easel 桥接)
+# 失败/未就绪 → 降级返 ok=False + reason;不发时绝不抛栈。
+# ---------------------------------------------------------------------------
+
+register_capability(
+    "publish.list",
+    title="列出所有注册的平台发布器(微信公众号 / 小红书 / B站 / 抖音 / 知乎 / 视频号)+ ready 状态",
+    endpoint="/publish/list", method="POST", risk="L0", auth=True,
+    keywords=("发布", "平台", "publisher", "publish", "平台列表", "发到"),
+)
+register_capability(
+    "publish.status",
+    title="查某平台登录态 / 桥接就绪状态(默认 wechat-oa)",
+    endpoint="/publish/status", method="POST", risk="L0", auth=True,
+    keywords=("登录态", "扫码", "whoami", "login", "发布器状态"),
+)
+register_capability(
+    "publish.html",
+    title="把 HTML 草稿发到指定平台(微信公众号走 Easel mp 会话;其他平台 NullPublisher 占位)",
+    endpoint="/publish/html", method="POST", risk="L2", auth=True,
+    keywords=("发布", "发文", "推文", "公众号", "wechat", "publish",
+              "发到", "草稿", "发草稿", "发到公众号", "微信文章"),
+    confirm="L2 真发草稿到公众号后台(Easel 会话模式):需要 mp 已扫码登录 + 配好封面 + 标题已审。",
+)
+register_capability(
+    "publish.stats",
+    title="公众号近 N 天数据回收(发表记录 / 阅读 / 分享 / 粉丝)— Easel stats 子命令",
+    endpoint="/publish/stats", method="POST", risk="L0", auth=True,
+    keywords=("公众号数据", "数据回收", "阅读", "分享", "粉丝", "stats",
+              "分析", "公众号统计"),
+)
+
+
+# ---------------------------------------------------------------------------
+# P3j T14: 视频 + YouTube 自然语言能力(代理 companion wechat-publisher 服务)
+# 全部 L2 / L3 — 涉及外发/扣费;agent 调前需弹确认卡。
+# 端点实现见 endpoints.py:_video_* / _youtube_* / _analytics_*(透明代理)
+# ---------------------------------------------------------------------------
+
+register_capability(
+    "video.list",
+    title="查看视频创作模块已注册的 9 种能力(TTS/ASR/合成/AI 配图/视频生成/编排/视频处理/字幕/数据分析)",
+    endpoint="/video/list", method="POST", risk="L0", auth=True,
+    keywords=("视频能力", "creator", "video creator", "video list",
+              "能做什么视频"),
+)
+
+register_capability(
+    "video.create",
+    title="一句话做视频:主题 + 文案 → 配音 + 字幕 + 终片(走 Easel auto-short-video 编排,可指定画幅 9:16/16:9/1:1)",
+    endpoint="/video/orchestrate", method="POST", risk="L2", auth=True,
+    keywords=("做视频", "做个视频", "出片", "拍视频", "生成视频", "编排视频",
+              "一键视频", "short video", "短视频", "make video", "create video",
+              "auto short", "主题文案", "口播视频"),
+    confirm=("L2 一键出片:会用 AI 配音 + 字幕 + ffmpeg 合成。"
+             "默认竖屏 9:16 60 秒。扣费项已在 Web UI 弹过确认卡,这里再确认一次:"
+             "画面是默认占位图(不调 AI 配图,除非显式 with_images=true)"),
+)
+
+register_capability(
+    "video.tts",
+    title="把文字转成语音(中文男/女声,可选自动出字幕 SRT)— edge-tts 走外网代理",
+    endpoint="/video/tts", method="POST", risk="L1", auth=True,
+    keywords=("配音", "朗读", "语音合成", "文字转语音", "tts",
+              "text to speech", "念稿", "念出来", "念"),
+    confirm="L1 TTS 文字转语音:首次需联网到 edge-tts(走系统代理)。产出 mp3。",
+)
+
+register_capability(
+    "video.asr",
+    title="给视频/音频自动生成字幕文件(SRT/VTT/ASS)— faster-whisper 本地推理",
+    endpoint="/video/asr", method="POST", risk="L1", auth=True,
+    keywords=("字幕", "识别", "听写", "转写", "asr",
+              "speech to text", "字幕识别", "加字幕", "出字幕"),
+    confirm="L1 ASR 自动字幕:首次会下 Whisper 模型(base 约 150MB,选 large 约 3GB)。",
+)
+
+register_capability(
+    "video.cut",
+    title="裁剪视频片段(按起止时间,支持 HH:MM:SS 或秒数)— ffmpeg 精确裁剪",
+    endpoint="/video/cut", method="POST", risk="L1", auth=True,
+    keywords=("裁剪", "切片段", "剪视频", "截取", "cut", "trim"),
+)
+
+register_capability(
+    "video.bgm",
+    title="给视频加背景音乐(混音,自动调节音量,防盖住人声)",
+    endpoint="/video/bgm", method="POST", risk="L1", auth=True,
+    keywords=("背景音乐", "配乐", "加音乐", "bgm", "music",
+              "加歌", "添加音乐"),
+)
+
+register_capability(
+    "video.burn",
+    title="把字幕文件烧录进视频(硬字幕或软字幕)— ffmpeg + libass",
+    endpoint="/video/burn", method="POST", risk="L1", auth=True,
+    keywords=("烧字幕", "嵌入字幕", "硬字幕", "软字幕", "字幕合成",
+              "burn subtitle", "烧录"),
+)
+
+register_capability(
+    "video.info",
+    title="查视频元数据(时长 / 分辨率 / 帧率 / 码率)— ffprobe",
+    endpoint="/video/info", method="POST", risk="L0", auth=True,
+    keywords=("视频信息", "视频元数据", "时长", "分辨率", "码率",
+              "video info", "ffprobe", "查视频"),
+)
+
+register_capability(
+    "video.analyze",
+    title="分析发布数据(最佳时段 / 标签效果 / 内容类型 / 增长归因)— 确定性计算,读本地缓存",
+    endpoint="/video/analyze", method="POST", risk="L0", auth=True,
+    keywords=("数据分析", "发布分析", "最佳时段", "标签效果", "增长归因",
+              "publish analytics", "什么时间发", "标签分析"),
+)
+
+register_capability(
+    "youtube.upload",
+    title="把视频上传到 YouTube(Data API v3,可选 public/unlisted/private)— 需先授权",
+    endpoint="/youtube/upload", method="POST", risk="L3", auth=True,
+    keywords=("上传 YouTube", "发 YouTube", "YouTube 投稿", "海外发布",
+              "youtube", "youtube upload", "推到 YouTube", "youtube video"),
+    confirm=("L3 YouTube 真上传:首次需浏览器授权(OAuth,token 落 ~/.prisIrai/youtube_token.json)。"
+             "public 后任何人能搜到,不可撤回 — Web UI 弹过卡,这里再确认一次。"
+             "默认 exec_real=False 仅校验参数;勾上才真传。"),
+)
+
+register_capability(
+    "youtube.list",
+    title="列出我自己 YouTube 频道的视频(标题 / 隐私状态 / 链接)— 需 OAuth 已授权",
+    endpoint="/youtube/list", method="POST", risk="L0", auth=True,
+    keywords=("我 YouTube 视频", "我的 YouTube", "我的频道",
+              "list my youtube", "youtube videos"),
+)
+
+register_capability(
+    "youtube.status",
+    title="查 YouTube 桥接层状态(是否已装依赖 / 有无 OAuth token / 有无 client_secrets)",
+    endpoint="/youtube/status", method="POST", risk="L0", auth=True,
+    keywords=("YouTube 状态", "youtube ready", "youtube 配置",
+              "youtube 装没装", "youtube 授权没"),
+)
+
+
+# ---------------------------------------------------------------------------
+# P3j T20-B: Agent-Reach 信息源(14 平台:小红书 / B站字幕 / GitHub / V2EX / RSS …)
+# 全部 L0 只读,失败/未安装 fail-soft 返 ok=False + hint,绝不抛栈。
+# 端点实现见 endpoints.py:_web_reach_*(子进程桥调 agent-reach CLI)
+# ---------------------------------------------------------------------------
+
+register_capability(
+    "web.reach.doctor",
+    title="查 agent-reach 安装 + 14 平台健康(L0 探活,无需 key)",
+    endpoint="/web/reach/doctor", method="POST", risk="L0", auth=True,
+    keywords=("agent-reach", "reach", "平台健康", "reach doctor",
+              "信息源健康", "14 平台", "reach 安装"),
+)
+register_capability(
+    "web.reach.read",
+    title="读某平台 URL(B站字幕 / 小红书 / GitHub / V2EX / RSS)— 调 agent-reach 子进程",
+    endpoint="/web/reach/read", method="POST", risk="L0", auth=True,
+    keywords=("读小红书", "读 B站", "看视频字幕", "看帖子", "看 GitHub",
+              "看 V2EX", "看 RSS", "fetch post", "read post",
+              "bilibili 字幕", "xhs", "v2ex post", "读 reach"),
+)
+register_capability(
+    "web.reach.search",
+    title="搜某平台关键词(小红书 / B站 / V2EX / RSS)— 调 agent-reach 子进程",
+    endpoint="/web/reach/search", method="POST", risk="L0", auth=True,
+    keywords=("搜小红书", "搜 B站", "搜 V2EX", "搜 RSS",
+              "xhs search", "v2ex search", "bilibili search",
+              "reach 搜", "reach search"),
+)
+register_capability(
+    "web.reach.platforms",
+    title="列 14 平台目录 + P0 默认开标记",
+    endpoint="/web/reach/platforms", method="POST", risk="L0", auth=True,
+    keywords=("reach 平台", "agent-reach platforms", "信息源列表",
+              "14 平台列表"),
+)
