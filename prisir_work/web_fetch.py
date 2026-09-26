@@ -349,10 +349,19 @@ def fetch(url: str, options: dict | None = None, timeout: float = 10.0) -> dict[
 
     # 3. 并发跑所有 fetcher
     if not _FETCHERS:
-        # 没人注册 → 自动装默认三个
+        # 没人注册 → 自动装默认几个
         register_fetcher("http_urllib", http_urllib)
         register_fetcher("a11y", a11y_provider)
         register_fetcher("browser_use_cli", browser_use_cli_provider)
+        # P3j T20-I: jina reader(URL→markdown 干净,LLM 友好)
+        # 注册后由 picker loop 优先选;jina 拿不到 / 超时时 urllib 兜底
+        try:
+            from . import web_fetch_jina as _jina
+            register_fetcher("jina", _jina.jina_fetch)
+        except Exception as e:  # noqa: BLE001
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "web_fetch_jina load failed, skip: %s", e)
 
     # P2.5+18b:查 host 的 learned 优先级(tune.json 命中 → 只跑 learned 列表)
     learned: list[str] | None = None
@@ -428,12 +437,20 @@ def fetch(url: str, options: dict | None = None, timeout: float = 10.0) -> dict[
             except Exception:
                 pass
 
-    # 选最快成功
+    # 选最快成功 — P3j T20-I:jina(干净 markdown)优先于 urllib(raw HTML)
+    # 否则 first-wins
     chosen_name, chosen_result = None, None
+    # 第一遍:优先选 jina
     for n, r in results.items():
-        if r and isinstance(r, dict) and r.get("content"):
-            if chosen_result is None:
+        if n == "jina" and r and isinstance(r, dict) and r.get("content"):
+            chosen_name, chosen_result = n, r
+            break
+    # 第二遍:first-wins 兜底
+    if chosen_result is None:
+        for n, r in results.items():
+            if r and isinstance(r, dict) and r.get("content"):
                 chosen_name, chosen_result = n, r
+                break
 
     if not chosen_result:
         # 全失败降级

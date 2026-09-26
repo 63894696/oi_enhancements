@@ -1347,6 +1347,65 @@ def check_reach_css(_ctx: VerifyCtx) -> str:
     return f"reach CSS 5 + 灯 4 + toggle 2 = 14/14 ✓"
 
 
+# ---------------------------------------------------------------------------
+# P3j T20-I: jina-ai/reader 复现 — 模块 + endpoints + provider 注册
+# ---------------------------------------------------------------------------
+
+def check_jina_module(_ctx: VerifyCtx) -> str:
+    """web_fetch_jina 模块:jina_fetch / jina_search / jina_health 三函数齐。"""
+    try:
+        from prisir_work import web_fetch_jina as _jina
+    except Exception as e:  # noqa: BLE001
+        return f"[FAIL] import web_fetch_jina: {e}"
+    if not callable(getattr(_jina, "jina_fetch", None)):
+        return "[FAIL] jina_fetch 不可调用"
+    if not callable(getattr(_jina, "jina_search", None)):
+        return "[FAIL] jina_search 不可调用"
+    if not callable(getattr(_jina, "jina_health", None)):
+        return "[FAIL] jina_health 不可调用"
+    # 默认 hosted 端点常量
+    if not getattr(_jina, "JINA_READER_HOSTED", "").startswith("https://"):
+        return f"[FAIL] JINA_READER_HOSTED={_jina.JINA_READER_HOSTED!r}"
+    if not getattr(_jina, "JINA_SEARCH_HOSTED", "").startswith("https://"):
+        return f"[FAIL] JINA_SEARCH_HOSTED={_jina.JINA_SEARCH_HOSTED!r}"
+    return f"jina module: 3 fns + 2 hosted URLs ✓"
+
+
+def check_jina_endpoints_and_registration(_ctx: VerifyCtx) -> str:
+    """P3j T20-I-B/I-C:3 个 /web/jina/* 端点 + 3 个 capability + jina 注册为 fetcher/provider。"""
+    from prisir_work import endpoints as ep
+    from prisir_work import capability as cap
+    expected_paths = {
+        "/web/jina/health": ("POST", "L0"),
+        "/web/jina/fetch":  ("POST", "L0"),
+        "/web/jina/search": ("POST", "L0"),
+    }
+    for path, (method, risk) in expected_paths.items():
+        e = ep._REGISTRY.get(path)
+        if e is None:
+            return f"[FAIL] endpoint {path} 未注册"
+        if e["method"] != method:
+            return f"[FAIL] {path} method={e['method']},want {method}"
+        if e["risk"] != risk:
+            return f"[FAIL] {path} risk={e['risk']},want {risk}"
+    for cid in ("web.jina.health", "web.jina.fetch", "web.jina.search"):
+        e = cap._REGISTRY.get(cid)
+        if e is None:
+            return f"[FAIL] capability {cid} 未注册"
+        if not e["endpoint"].startswith("/web/jina/"):
+            return f"[FAIL] {cid} endpoint={e['endpoint']}"
+        if e["risk"] != "L0":
+            return f"[FAIL] {cid} risk={e['risk']}"
+    # jina 注册为 fetcher + provider(web_fetch 默认 lazy 注册)
+    from prisir_work import web_fetch as _wf
+    if not _wf._FETCHERS:
+        # 触发 lazy 默认注册
+        _wf.fetch("about:blank", options={"no_cache": True, "timeout": 0.1})
+    if "jina" not in _wf._FETCHERS:
+        return "[FAIL] jina fetcher 未注册到 web_fetch._FETCHERS"
+    return "3 jina endpoints + 3 capabilities + jina fetcher registered ✓"
+
+
 CHECKS: list[Check] = [
     Check("Python",                   check_python),
     Check("Git",                      check_git),
@@ -1390,6 +1449,9 @@ CHECKS: list[Check] = [
     Check("4 reach endpoints + capabilities (P3j T20-B)", check_reach_endpoints),
     Check("extensions Tab DOM + JS (P3j T20-C)", check_reach_ui_dom),
     Check("reach CSS 5 + 灯 4 + toggle (P3j T20-C)", check_reach_css),
+    # P3j T20-I: jina-ai/reader 复现
+    Check("jina web_fetch_jina module (P3j T20-I)", check_jina_module),
+    Check("3 jina endpoints + 3 caps + jina fetcher (P3j T20-I)", check_jina_endpoints_and_registration),
 ]
 
 

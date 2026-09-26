@@ -754,3 +754,63 @@ def _web_reach_platforms(_body: dict) -> tuple[dict, int]:
         return ({"ok": True, "platforms": _arb.platforms()}, 200)
     except Exception as e:  # noqa: BLE001
         return ({"ok": False, "platforms": [], "warnings": [type(e).__name__]}, 200)
+
+
+# ---------------------------------------------------------------------------
+# P3j T20-I: Jina reader/search 端点
+# ---------------------------------------------------------------------------
+
+@register("/web/jina/health", method="POST", risk="L0", auth=True)
+def _web_jina_health(_body: dict) -> tuple[dict, int]:
+    """查 jina reader/search 部署状态(hosted / 自部署)。"""
+    try:
+        from prisir_work import web_fetch_jina as _jina
+        return ({"ok": True, **_jina.jina_health()}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "warnings": [type(e).__name__]}, 200)
+
+
+@register("/web/jina/fetch", method="POST", risk="L0", auth=True)
+def _web_jina_fetch(body: dict) -> tuple[dict, int]:
+    """URL → markdown(显式调 jina reader,不走 web_fetch 路由)。
+
+    body: {url, timeout?, max_chars?}
+    """
+    body = body or {}
+    url = (body.get("url") or "").strip()
+    if not url:
+        return ({"ok": False, "error": "missing_fields",
+                 "required": ["url"]}, 200)
+    timeout = float(body.get("timeout", 30.0))
+    max_chars = int(body.get("max_chars", 50000))
+    try:
+        from prisir_work import web_fetch_jina as _jina
+        result = _jina.jina_fetch(url, {"timeout": timeout, "max_chars": max_chars})
+        return ({"ok": True, **result}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "url": url, "warnings": [type(e).__name__]}, 200)
+
+
+@register("/web/jina/search", method="POST", risk="L0", auth=True)
+def _web_jina_search(body: dict) -> tuple[dict, int]:
+    """关键词 → top N 结果 + 全文 markdown。
+
+    body: {query, limit?, timeout?, max_chars?}
+    """
+    body = body or {}
+    query = (body.get("query") or "").strip()
+    if not query:
+        return ({"ok": False, "error": "missing_fields",
+                 "required": ["query"]}, 200)
+    limit = int(body.get("limit", 5))
+    timeout = float(body.get("timeout", 30.0))
+    max_chars = int(body.get("max_chars", 50000))
+    try:
+        from prisir_work import web_fetch_jina as _jina
+        results = _jina.jina_search(query, limit=limit,
+                                     options={"timeout": timeout,
+                                              "max_chars": max_chars})
+        return ({"ok": True, "query": query, "results": results,
+                 "sources": ["jina_search"] * len(results)}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "query": query, "warnings": [type(e).__name__]}, 200)

@@ -557,6 +557,18 @@ if os.environ.get("TAVILY_API_KEY", "").strip():
 if os.environ.get("SERPER_API_KEY", "").strip():
     register_provider("serper", serper)
 
+# P3j T20-I: jina search — URL→markdown 的姐妹端点 s.jina.ai
+# 当 JINA_API_KEY 或 JINA_SEARCH_URL 存在时挂上(高质全文,query→top N)
+if os.environ.get("JINA_API_KEY", "").strip() or \
+   os.environ.get("JINA_SEARCH_URL", "").strip():
+    def jina_search_provider(query: str, limit: int = 10) -> list[dict[str, Any]]:
+        from prisir_work import web_fetch_jina as _jina
+        items = _jina.jina_search(query, limit=limit)
+        return [{"url": it["url"], "title": it["title"],
+                 "snippet": it.get("snippet", "")[:300]}
+                for it in items if it.get("url")]
+    register_provider("jina_search", jina_search_provider)
+
 
 # ---------------------------------------------------------------------------
 # CLI

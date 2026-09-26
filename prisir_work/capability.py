@@ -336,3 +336,34 @@ register_capability(
     keywords=("reach 平台", "agent-reach platforms", "信息源列表",
               "14 平台列表"),
 )
+
+
+# ---------------------------------------------------------------------------
+# P3j T20-I: jina-ai/reader 复现 — URL → LLM-friendly markdown + 全文搜索
+# 端点实现见 endpoints.py:_web_jina_* + 底层 web_fetch_jina.py
+# 无 API key 也可用 hosted(r.jina.ai 返 cached snapshot),
+# 自部署 Docker = 零外部依赖(JINA_READER_URL=http://localhost:8081)
+# ---------------------------------------------------------------------------
+
+register_capability(
+    "web.jina.health",
+    title="查 jina reader/search 部署状态(hosted / 自部署 / api_key 是否有)",
+    endpoint="/web/jina/health", method="POST", risk="L0", auth=True,
+    keywords=("jina 状态", "jina health", "jina reader 健康",
+              "jina search 健康", "r.jina.ai 健康"),
+)
+register_capability(
+    "web.jina.fetch",
+    title="URL → markdown(jina reader;显式调,不依赖 web_fetch 路由)",
+    endpoint="/web/jina/fetch", method="POST", risk="L0", auth=True,
+    keywords=("jina 抓", "jina fetch", "jina reader",
+              "url 转 markdown", "url 转 md",
+              "r.jina.ai", "jina 读"),
+)
+register_capability(
+    "web.jina.search",
+    title="关键词 → top N URL + 全文 markdown(jina search;全文搜索 provider)",
+    endpoint="/web/jina/search", method="POST", risk="L0", auth=True,
+    keywords=("jina 搜", "jina search", "jina 全文搜索",
+              "s.jina.ai", "jina 搜索"),
+)

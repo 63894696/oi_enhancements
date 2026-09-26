@@ -139,6 +139,35 @@ def _reach_search_one(platform: str, query: str, limit: int = 5,
         return []
 
 
+def _jina_search_one(query: str, limit: int = 5,
+                     timeout: float = 15.0) -> list[dict]:
+    """P3j T20-I: 用 jina s.jina.ai 全文搜索(高质,query→top N)。失败返 []."""
+    import os
+    # 只在用户配了 JINA_API_KEY 或自部署 URL 时启用
+    if not (os.environ.get("JINA_API_KEY", "").strip()
+            or os.environ.get("JINA_SEARCH_URL", "").strip()):
+        return []
+    try:
+        from prisir_work import web_fetch_jina as _jina
+        items = _jina.jina_search(query, limit=limit,
+                                  options={"timeout": timeout})
+        out: list[dict] = []
+        for it in items or []:
+            url = it.get("url", "")
+            if not url:
+                continue
+            out.append({
+                "url": url,
+                "title": it.get("title", "") or url,
+                "snippet": (it.get("snippet") or it.get("content", "")[:300]),
+                "sources": ["jina_search"],
+            })
+        return out
+    except Exception as e:  # noqa: BLE001
+        log.warning("jina_search failed for %r: %s", query, e)
+        return []
+
+
 def _fetch_one(url: str, timeout: float) -> dict | None:
     try:
         from prisir_work import web_fetch as _wf
@@ -207,6 +236,30 @@ def research(query: str, *, max_steps: int = 4, max_urls: int = 8,
                     search_results.append(r)
     except Exception as e:  # noqa: BLE001
         warnings.append("search_failed")
+
+    # ── step 2a: P3j T20-I jina 全文搜索(JINA_API_KEY / JINA_SEARCH_URL 配了才生效) ──
+    # 每个 plan query 并发跑一遍 jina,前面插队(去重时它会盖后到的 web_search 同 URL)
+    jina_results: list[dict] = []
+    try:
+        with ThreadPoolExecutor(max_workers=min(4, len(plan))) as pool:
+            futures = {pool.submit(_jina_search_one, q, 5, timeout): q for q in plan}
+            for fut in as_completed(futures, timeout=timeout):
+                for r in fut.result() or []:
+                    jina_results.append(r)
+        if jina_results:
+            warnings.append(f"jina_used:{len(jina_results)}")
+            merged = []
+            seen = set()
+            for r in (jina_results + search_results):
+                u = r.get("url", "")
+                if u and u not in seen:
+                    seen.add(u)
+                    merged.append(r)
+                elif not u:
+                    merged.append(r)
+            search_results = merged
+    except Exception as e:  # noqa: BLE001
+        warnings.append(f"jina_failed:{type(e).__name__}")
 
     # ── step 2b: P3j T20-D reach 集成(query 含 reach 类站点 → 优先 reach.search) ──
     reach_intent = _detect_reach_intent(query)
