@@ -608,6 +608,31 @@ except Exception:  # noqa: BLE001
 
 
 # ---------------------------------------------------------------------------
+# P3j T22-B: HackerNews(Algolia API 免 key,始终注册)
+# ---------------------------------------------------------------------------
+
+def hn_search_provider(query: str, limit: int = 10) -> list[dict[str, Any]]:
+    """HN search_by_date → 标准 search result list。"""
+    try:
+        from prisir_work import hn_bridge as _hn
+        r = _hn.hn_search(query, sort="by_date",
+                         limit=min(max(limit, 1), 30),
+                         min_points=5,           # 过滤低分帖子
+                         timeout=10.0)
+        if not r.get("ok"):
+            return []
+        return [{"url": it["url"], "title": it["title"],
+                 "snippet": (it.get("snippet", "")
+                             or f"{it.get('points', 0)}pt · "
+                                f"{it.get('num_comments', 0)}cmt")}
+                for it in r.get("results", []) if it.get("url")]
+    except Exception:  # noqa: BLE001
+        return []
+
+register_provider("hn_search", hn_search_provider)
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 

@@ -1054,3 +1054,78 @@ def _web_exa_answer(body: dict) -> tuple[dict, int]:
     except Exception as e:  # noqa: BLE001
         return ({"ok": False, "query": query,
                  "warnings": [type(e).__name__]}, 200)
+
+
+# ---------------------------------------------------------------------------
+# P3j T22-B: HackerNews Algolia API 集成(免 key)
+# ---------------------------------------------------------------------------
+
+@register("/web/hn/health", method="POST", risk="L0", auth=True)
+def _web_hn_health(_body: dict) -> tuple[dict, int]:
+    """HN 健康 + 探活(GET search_by_date 1 hit 验证 API 可达)。"""
+    try:
+        from prisir_work import hn_bridge as _hn
+        return ({"ok": True, **_hn.hn_health()}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "error": type(e).__name__}, 200)
+
+
+@register("/web/hn/search", method="POST", risk="L0", auth=True)
+def _web_hn_search(body: dict) -> tuple[dict, int]:
+    """HN 搜索。body: {query, sort?, limit?, min_points?, tags?, timeout?}"""
+    body = body or {}
+    query = (body.get("query") or "").strip()
+    if not query:
+        return ({"ok": False, "error": "empty_query",
+                 "required": ["query"]}, 200)
+    try:
+        from prisir_work import hn_bridge as _hn
+        r = _hn.hn_search(
+            query,
+            sort=str(body.get("sort", "by_date")),
+            limit=int(body.get("limit", 10)),
+            min_points=int(body.get("min_points", 0)),
+            tags=str(body.get("tags", "story")),
+            timeout=float(body.get("timeout", 15.0)),
+        )
+        return ({"ok": True, **r}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "query": query,
+                 "warnings": [type(e).__name__]}, 200)
+
+
+@register("/web/hn/top", method="POST", risk="L0", auth=True)
+def _web_hn_top(body: dict) -> tuple[dict, int]:
+    """HN 热门帖子(按分数排序)。body: {limit?, tags?, min_points?, timeout?}"""
+    body = body or {}
+    try:
+        from prisir_work import hn_bridge as _hn
+        r = _hn.hn_top_stories(
+            limit=int(body.get("limit", 10)),
+            tags=str(body.get("tags", "story")),
+            min_points=int(body.get("min_points", 0)),
+            timeout=float(body.get("timeout", 15.0)),
+        )
+        return ({"ok": True, **r}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "warnings": [type(e).__name__]}, 200)
+
+
+@register("/web/hn/item", method="POST", risk="L0", auth=True)
+def _web_hn_item(body: dict) -> tuple[dict, int]:
+    """HN 单 item 详情。body: {object_id, timeout?}"""
+    body = body or {}
+    object_id = (body.get("object_id") or "").strip()
+    if not object_id:
+        return ({"ok": False, "error": "empty_object_id",
+                 "required": ["object_id"]}, 200)
+    try:
+        from prisir_work import hn_bridge as _hn
+        r = _hn.hn_get_item(
+            object_id,
+            timeout=float(body.get("timeout", 15.0)),
+        )
+        return ({"ok": True, **r}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "object_id": object_id,
+                 "warnings": [type(e).__name__]}, 200)

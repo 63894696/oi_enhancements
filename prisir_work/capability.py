@@ -479,3 +479,39 @@ register_capability(
     keywords=("exa 答案", "exa answer", "exa 问答",
               "带引用搜索", "citation search", "research answer"),
 )
+
+
+# ---------------------------------------------------------------------------
+# P3j T22-B: HackerNews Algolia API 集成(免 key,L0 只读)
+# ---------------------------------------------------------------------------
+
+register_capability(
+    "web.hn.search",
+    title="HackerNews 搜索(Algolia API,免 key,全文 + 排序 + 评论数)",
+    endpoint="/web/hn/search", method="POST", risk="L0", auth=True,
+    keywords=("hackernews", "hn 搜索", "hn 搜", "hn search",
+              "hacker news", "y combinator", "yc 讨论",
+              "技术讨论", "show hn", "ask hn"),
+)
+register_capability(
+    "web.hn.top",
+    title="HN 热门帖子(按分数排序,免 key)",
+    endpoint="/web/hn/top", method="POST", risk="L0", auth=True,
+    keywords=("hn 热门", "hn top", "hackernews 热门",
+              "show hn 顶", "ask hn 顶",
+              "hn 趋势", "技术热门"),
+)
+register_capability(
+    "web.hn.item",
+    title="HN 单帖详情(标题 + 文本 + 评论)",
+    endpoint="/web/hn/item", method="POST", risk="L0", auth=True,
+    keywords=("hn 帖子", "hackernews 帖子", "hn 详情",
+              "hn 评论", "读 hn", "读 hn 帖子"),
+)
+register_capability(
+    "web.hn.health",
+    title="HN Algolia API 探活(无需 key)",
+    endpoint="/web/hn/health", method="POST", risk="L0", auth=True,
+    keywords=("hn 状态", "hackernews 状态", "hn api",
+              "hn 健康", "hn 探活"),
+)

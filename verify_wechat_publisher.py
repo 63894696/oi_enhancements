@@ -1764,6 +1764,74 @@ def check_exa_capability_keywords(_ctx: VerifyCtx) -> str:
     return "4 exa capabilities 全有 keywords ✓"
 
 
+# ---------------------------------------------------------------------------
+# P3j T22-B: HackerNews Algolia API 直接整合(免 key)
+# ---------------------------------------------------------------------------
+
+def check_hn_bridge_module(_ctx: VerifyCtx) -> str:
+    """hn_bridge module + 4 public fns (P3j T22-B)。"""
+    try:
+        from prisir_work import hn_bridge as _hn
+    except Exception as e:
+        return f"[FAIL] hn_bridge import failed: {type(e).__name__}: {e}"
+    required = ("hn_health", "hn_search", "hn_top_stories", "hn_get_item",
+                "_http_get")
+    missing = [n for n in required if not hasattr(_hn, n)]
+    if missing:
+        return f"[FAIL] hn_bridge 缺函数: {missing}"
+    return "hn_bridge module + 4 fns ✓"
+
+
+def check_hn_endpoints_and_registration(_ctx: VerifyCtx) -> str:
+    """4 hn endpoints + 4 caps + provider(始终注册) (P3j T22-B)。"""
+    from prisir_work import endpoints as _ep
+    expected_paths = ("/web/hn/health", "/web/hn/search",
+                      "/web/hn/top", "/web/hn/item")
+    missing_paths = [p for p in expected_paths if p not in _ep._REGISTRY]
+    if missing_paths:
+        return f"[FAIL] 缺端点: {missing_paths}"
+    from prisir_work import capability as _cap
+    caps = {c["id"] for c in _cap.list_capabilities()}
+    expected_caps = ("web.hn.health", "web.hn.search",
+                     "web.hn.top", "web.hn.item")
+    missing_caps = [c for c in expected_caps if c not in caps]
+    if missing_caps:
+        return f"[FAIL] 缺 capability: {missing_caps}"
+    # provider 始终注册
+    from prisir_work import web_search as _ws
+    if "hn_search" not in _ws._PROVIDERS:
+        return "[FAIL] hn_search provider 未注册"
+    return "4 hn endpoints + 4 caps + hn_search provider ✓"
+
+
+def check_hn_health_live(_ctx: VerifyCtx) -> str:
+    """hn_health() 实际探活 algolia API(返回 hits 即 OK)。"""
+    from prisir_work import hn_bridge as _hn
+    h = _hn.hn_health()
+    if not h["ok"]:
+        return f"[FAIL] hn_health ok=False: {h}"
+    return f"hn Algolia API live · mode={h['source']} · key_required={h['key_required']} ✓"
+
+
+def check_hn_capability_keywords(_ctx: VerifyCtx) -> str:
+    """hn capability keywords 含中英关键词(LLM 命中用)。"""
+    from prisir_work import capability as _cap
+    caps = {c["id"]: c for c in _cap.list_capabilities()}
+    hn_caps = ("web.hn.health", "web.hn.search",
+               "web.hn.top", "web.hn.item")
+    missing = []
+    for cid in hn_caps:
+        if cid not in caps:
+            missing.append(cid)
+            continue
+        kws = caps[cid].get("keywords", [])
+        if not kws:
+            missing.append(f"{cid}_no_keywords")
+    if missing:
+        return f"[FAIL] hn capability 字段缺失: {missing}"
+    return "4 hn capabilities 全有 keywords ✓"
+
+
 CHECKS: list[Check] = [
     Check("Python",                   check_python),
     Check("Git",                      check_git),
@@ -1827,6 +1895,11 @@ CHECKS: list[Check] = [
     Check("4 exa endpoints + 4 caps + provider (P3j T22-A)", check_exa_endpoints_and_registration),
     Check("exa_health 3 mode 识别 (P3j T22-A)", check_exa_health_mode),
     Check("exa capabilities keywords (P3j T22-A)", check_exa_capability_keywords),
+    # P3j T22-B: HackerNews Algolia API(免 key)
+    Check("hn_bridge module + 4 fns (P3j T22-B)", check_hn_bridge_module),
+    Check("4 hn endpoints + 4 caps + provider (P3j T22-B)", check_hn_endpoints_and_registration),
+    Check("hn Algolia API 真探活 (P3j T22-B)", check_hn_health_live),
+    Check("hn capabilities keywords (P3j T22-B)", check_hn_capability_keywords),
 ]
 
 
