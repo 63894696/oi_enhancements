@@ -445,3 +445,37 @@ register_capability(
     keywords=("github 搜索", "gh search", "搜 github",
               "搜仓库", "搜 issue", "搜 pr", "搜代码"),
 )
+
+# ---------------------------------------------------------------------------
+# P3j T22-A: web.exa.{health,search,find_similar,answer} — Exa MCP 语义搜索
+# ---------------------------------------------------------------------------
+
+register_capability(
+    "web.exa.health",
+    title="查 Exa MCP 安装 + key 状态(需要 EXA_API_KEY env)",
+    endpoint="/web/exa/health", method="POST", risk="L0", auth=True,
+    keywords=("exa 状态", "exa 健康", "exa key", "exa mcp",
+              "exa 探活", "exa api"),
+)
+register_capability(
+    "web.exa.search",
+    title="Exa 语义搜索(embedding + LLM 重排序,$0.005/次,适合研究 / 调研)",
+    endpoint="/web/exa/search", method="POST", risk="L0", auth=True,
+    keywords=("exa 搜索", "exa search", "exa 搜", "语义搜索",
+              "semantic search", "exa 调研", "exa 研究",
+              "高质量搜索", "neural search"),
+)
+register_capability(
+    "web.exa.find_similar",
+    title="Exa find_similar(URL → 类似内容)",
+    endpoint="/web/exa/find_similar", method="POST", risk="L0", auth=True,
+    keywords=("exa 找类似", "exa find similar", "类似内容",
+              "类似网页", "find similar", "related urls"),
+)
+register_capability(
+    "web.exa.answer",
+    title="Exa answer(带引用的高质量答案,适合问答)",
+    endpoint="/web/exa/answer", method="POST", risk="L0", auth=True,
+    keywords=("exa 答案", "exa answer", "exa 问答",
+              "带引用搜索", "citation search", "research answer"),
+)

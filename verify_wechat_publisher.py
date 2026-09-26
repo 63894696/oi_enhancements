@@ -1676,6 +1676,94 @@ def check_gh_capability_keywords(_ctx: VerifyCtx) -> str:
     return f"4 gh capabilities 全有 keywords ✓"
 
 
+# ---------------------------------------------------------------------------
+# P3j T22-A: Exa MCP 集成(语义搜索 provider)
+# ---------------------------------------------------------------------------
+
+def check_exa_bridge_module(_ctx: VerifyCtx) -> str:
+    """exa_bridge module + 4 public fns (P3j T22-A)。"""
+    try:
+        from prisir_work import exa_bridge as _ex
+    except Exception as e:
+        return f"[FAIL] exa_bridge import failed: {type(e).__name__}: {e}"
+    required = ("exa_health", "exa_search", "exa_find_similar", "exa_answer",
+                "_http_post")
+    missing = [n for n in required if not hasattr(_ex, n)]
+    if missing:
+        return f"[FAIL] exa_bridge 缺函数: {missing}"
+    # 必须能从 env 读 EXA_API_KEY
+    import os as _os
+    key = _os.environ.get("EXA_API_KEY", "").strip()
+    return (f"exa_bridge module + 4 fns ✓ · "
+            f"EXA_API_KEY={'set(' + key[:8] + '...)' if key else 'not_set'}")
+
+
+def check_exa_endpoints_and_registration(_ctx: VerifyCtx) -> str:
+    """4 exa endpoints + 4 caps + provider(env 触发) (P3j T22-A)。"""
+    from prisir_work import endpoints as _ep
+    expected_paths = ("/web/exa/health", "/web/exa/search",
+                      "/web/exa/find_similar", "/web/exa/answer")
+    missing_paths = [p for p in expected_paths
+                     if p not in _ep._REGISTRY]
+    if missing_paths:
+        return f"[FAIL] 缺端点: {missing_paths}"
+    # capability
+    from prisir_work import capability as _cap
+    caps = {c["id"] for c in _cap.list_capabilities()}
+    expected_caps = ("web.exa.health", "web.exa.search",
+                     "web.exa.find_similar", "web.exa.answer")
+    missing_caps = [c for c in expected_caps if c not in caps]
+    if missing_caps:
+        return f"[FAIL] 缺 capability: {missing_caps}"
+    # provider 注册(若 env 在)
+    import os as _os
+    if _os.environ.get("EXA_API_KEY", "").strip():
+        # 触发懒加载
+        from prisir_work import web_search as _ws
+        if "exa_search" not in _ws._PROVIDERS:
+            return ("[FAIL] EXA_API_KEY env 在但 exa_search provider 未注册")
+    return "4 exa endpoints + 4 caps + provider(env 触发) ✓"
+
+
+def check_exa_health_mode(_ctx: VerifyCtx) -> str:
+    """exa_health() 返 mode=missing_key / live / key_invalid (P3j T22-A)。"""
+    import os as _os
+    from prisir_work import exa_bridge as _ex
+    saved = _os.environ.pop("EXA_API_KEY", None)
+    try:
+        # 1. 无 key
+        h = _ex.exa_health()
+        if h["mode"] != "missing_key":
+            return f"[FAIL] 无 key 应 mode=missing_key,实际={h['mode']}"
+        if h["installed"] is not False:
+            return f"[FAIL] 无 key 应 installed=False"
+        if "EXA_API_KEY" not in h.get("hint", ""):
+            return "[FAIL] hint 应提 EXA_API_KEY"
+    finally:
+        if saved:
+            _os.environ["EXA_API_KEY"] = saved
+    return f"exa_health 3 mode 全识别 ✓ · 无 key → {h['mode']}"
+
+
+def check_exa_capability_keywords(_ctx: VerifyCtx) -> str:
+    """exa capability keywords 含中英关键词(LLM 命中用)。"""
+    from prisir_work import capability as _cap
+    caps = {c["id"]: c for c in _cap.list_capabilities()}
+    exa_caps = ("web.exa.health", "web.exa.search",
+                "web.exa.find_similar", "web.exa.answer")
+    missing = []
+    for cid in exa_caps:
+        if cid not in caps:
+            missing.append(cid)
+            continue
+        kws = caps[cid].get("keywords", [])
+        if not kws:
+            missing.append(f"{cid}_no_keywords")
+    if missing:
+        return f"[FAIL] exa capability 字段缺失: {missing}"
+    return "4 exa capabilities 全有 keywords ✓"
+
+
 CHECKS: list[Check] = [
     Check("Python",                   check_python),
     Check("Git",                      check_git),
@@ -1734,6 +1822,11 @@ CHECKS: list[Check] = [
     Check("gh_api_provider URL 识别 (P3j T21-C)", check_gh_api_provider),
     Check("4 gh endpoints + 4 caps + fetcher/provider (P3j T21-C)", check_gh_endpoints_and_registration),
     Check("gh capabilities keywords (P3j T21-C)", check_gh_capability_keywords),
+    # P3j T22-A: Exa MCP 集成(语义搜索 provider)
+    Check("exa_bridge module + 4 fns (P3j T22-A)", check_exa_bridge_module),
+    Check("4 exa endpoints + 4 caps + provider (P3j T22-A)", check_exa_endpoints_and_registration),
+    Check("exa_health 3 mode 识别 (P3j T22-A)", check_exa_health_mode),
+    Check("exa capabilities keywords (P3j T22-A)", check_exa_capability_keywords),
 ]
 
 

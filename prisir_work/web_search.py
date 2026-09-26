@@ -585,6 +585,27 @@ try:
 except Exception:  # noqa: BLE001
     pass  # gh CLI 不在,跳过注册
 
+# P3j T22-A: exa_search provider — 只在 EXA_API_KEY env 在时注册
+# Exa 语义搜索,embedding + LLM 重排序,$0.005/次 适合研究
+try:
+    if os.environ.get("EXA_API_KEY", "").strip():
+        def exa_search_provider(query: str, limit: int = 10) -> list[dict[str, Any]]:
+            """Exa 语义搜索。失败返 []。"""
+            try:
+                from prisir_work import exa_bridge as _ex
+                r = _ex.exa_search(query, num_results=min(max(limit, 1), 30),
+                                   max_chars=2000)
+                if not r.get("ok"):
+                    return []
+                return [{"url": it["url"], "title": it["title"],
+                         "snippet": it.get("snippet", "")[:300]}
+                        for it in r.get("results", []) if it.get("url")]
+            except Exception:  # noqa: BLE001
+                return []
+        register_provider("exa_search", exa_search_provider)
+except Exception:  # noqa: BLE001
+    pass  # Exa key 不在,跳过注册
+
 
 # ---------------------------------------------------------------------------
 # CLI

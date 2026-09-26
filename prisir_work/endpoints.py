@@ -966,3 +966,91 @@ def _web_gh_search(body: dict) -> tuple[dict, int]:
     except Exception as e:  # noqa: BLE001
         return ({"ok": False, "query": query, "kind": kind,
                  "warnings": [type(e).__name__]}, 200)
+
+
+# ---------------------------------------------------------------------------
+# P3j T22-A: web.exa.{health,search,find_similar,answer} — Exa MCP 语义搜索
+# ---------------------------------------------------------------------------
+
+@register("/web/exa/health", method="POST", risk="L0", auth=True)
+def _web_exa_health(_body: dict) -> tuple[dict, int]:
+    """Exa MCP 健康 + key 状态(无需调用,但会 ping 一次确认 key 有效)。"""
+    try:
+        from prisir_work import exa_bridge as _ex
+        return ({"ok": True, **_ex.exa_health()}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "error": type(e).__name__}, 200)
+
+
+@register("/web/exa/search", method="POST", risk="L0", auth=True)
+def _web_exa_search(body: dict) -> tuple[dict, int]:
+    """Exa 语义搜索。body: {query, num_results?, type?, category?,
+    include_domains?, exclude_domains?, max_chars?, timeout?}"""
+    body = body or {}
+    query = (body.get("query") or "").strip()
+    if not query:
+        return ({"ok": False, "error": "empty_query",
+                 "required": ["query"]}, 200)
+    try:
+        from prisir_work import exa_bridge as _ex
+        r = _ex.exa_search(
+            query,
+            num_results=int(body.get("num_results", 10)),
+            search_type=str(body.get("type", "auto")),
+            category=str(body.get("category", "")),
+            include_domains=body.get("include_domains"),
+            exclude_domains=body.get("exclude_domains"),
+            text=bool(body.get("text", True)),
+            max_chars=int(body.get("max_chars", 3000)),
+            highlights=bool(body.get("highlights", True)),
+            timeout=float(body.get("timeout", 30.0)),
+        )
+        return ({"ok": True, **r}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "query": query,
+                 "warnings": [type(e).__name__]}, 200)
+
+
+@register("/web/exa/find_similar", method="POST", risk="L0", auth=True)
+def _web_exa_find_similar(body: dict) -> tuple[dict, int]:
+    """Exa find_similar(URL → 类似内容)。body: {url, num_results?, timeout?}"""
+    body = body or {}
+    url = (body.get("url") or "").strip()
+    if not url:
+        return ({"ok": False, "error": "empty_url",
+                 "required": ["url"]}, 200)
+    try:
+        from prisir_work import exa_bridge as _ex
+        r = _ex.exa_find_similar(
+            url,
+            num_results=int(body.get("num_results", 10)),
+            text=bool(body.get("text", True)),
+            max_chars=int(body.get("max_chars", 3000)),
+            timeout=float(body.get("timeout", 30.0)),
+        )
+        return ({"ok": True, **r}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "url": url,
+                 "warnings": [type(e).__name__]}, 200)
+
+
+@register("/web/exa/answer", method="POST", risk="L0", auth=True)
+def _web_exa_answer(body: dict) -> tuple[dict, int]:
+    """Exa answer(问答 + 引用)。body: {query, max_chars?, timeout?}"""
+    body = body or {}
+    query = (body.get("query") or "").strip()
+    if not query:
+        return ({"ok": False, "error": "empty_query",
+                 "required": ["query"]}, 200)
+    try:
+        from prisir_work import exa_bridge as _ex
+        r = _ex.exa_answer(
+            query,
+            text=bool(body.get("text", False)),
+            max_chars=int(body.get("max_chars", 500)),
+            timeout=float(body.get("timeout", 30.0)),
+        )
+        return ({"ok": True, **r}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "query": query,
+                 "warnings": [type(e).__name__]}, 200)
