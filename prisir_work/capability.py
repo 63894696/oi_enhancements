@@ -590,3 +590,82 @@ register_capability(
     keywords=("关浏览器", "关闭浏览器", "playwright 关闭",
               "playwright close", "终止浏览器"),
 )
+
+
+# ---------------------------------------------------------------------------
+# P3j T26: vercel-labs/agent-browser(token 高效浏览器,Rust CLI 子进程桥)
+# click/fill 是 L1 副作用(前端确认卡);其余 L0 只读。
+# 端点实现见 endpoints.py:_web_ab_*(复用 gh_bridge._run 的 subprocess.run 模式)
+# 依赖:npm + agent-browser(Native Rust binary,无需 Rust 工具链)
+#      + Chrome for Testing(~150MB,首次 `agent-browser install` 下载)
+# 优势 vs T25 playwright-mcp:~93% token 削减(@e1/@e2 refs 稳定跨 snapshot)。
+# ---------------------------------------------------------------------------
+
+register_capability(
+    "web.agent-browser.health",
+    title="agent-browser 浏览器探活(3 档:missing_cli / not_installed / ready)",
+    endpoint="/web/agent-browser/health", method="POST", risk="L0", auth=True,
+    keywords=("agent-browser 状态", "agent-browser 健康", "agent-browser 探活",
+              "agent browser 安装", "agent-browser mcp"),
+)
+register_capability(
+    "web.agent-browser.open",
+    title="agent-browser 打开 URL(headless Chrome for Testing,Rust daemon IPC)",
+    endpoint="/web/agent-browser/open", method="POST", risk="L0", auth=True,
+    keywords=("打开网页", "打开 URL", "浏览器打开", "访问", "browse",
+              "open url", "agent-browser 打开", "agent-browser navigate",
+              "用 agent-browser 打开"),
+)
+register_capability(
+    "web.agent-browser.snapshot",
+    title="agent-browser 抓 a11y 树 + @refs(@e1/@e2 跨 snapshot 稳定,~93% token 削减)",
+    endpoint="/web/agent-browser/snapshot", method="POST", risk="L0", auth=True,
+    keywords=("抓 a11y 树", "拿页面结构", "页面快照", "snapshot",
+              "无障碍树", "accessibility tree",
+              "agent-browser 快照", "拿 refs", "@e1 @e2",
+              "token 高效 snapshot"),
+)
+register_capability(
+    "web.agent-browser.click",
+    title="agent-browser 点 @ref 元素(形如 @e1)— 需 L1 确认卡",
+    endpoint="/web/agent-browser/click", method="POST", risk="L1", auth=True,
+    keywords=("点按钮", "点击", "click", "点这个", "点 X",
+              "agent-browser 点击", "用 agent-browser 点",
+              "@e1 点", "@e2 点击"),
+    confirm=("L1 浏览器点击:agent-browser 会在 Rust daemon 控制的 Chrome 里点 @ref 元素。"
+             "ref 来自最近一次 snapshot;若 DOM 变了 ref 失效会返 ab_invalid_ref,需重 snapshot。"
+             "agent-browser 跨 snapshot refs 稳定(对比 playwright-mcp 每次重新标号)。"),
+)
+register_capability(
+    "web.agent-browser.fill",
+    title="agent-browser 在 @ref 输入框填 text(submit/slowly)— 需 L1 确认卡",
+    endpoint="/web/agent-browser/fill", method="POST", risk="L1", auth=True,
+    keywords=("填表", "输入", "填输入框", "fill", "type", "填写",
+              "agent-browser 填表", "用 agent-browser 填",
+              "@e1 填", "@e2 填"),
+    confirm=("L1 浏览器填表:agent-browser 在指定 @ref 输入框填 text。"
+             "submit=true 会打完后按 Enter;slowly=true 逐字符慢打(防反爬)。"
+             "ref 来自最近一次 snapshot,失效时返 ab_invalid_ref。"),
+)
+register_capability(
+    "web.agent-browser.eval",
+    title="agent-browser 在浏览器里执行 JS 函数体(拿返回值,适合懒加载数据)",
+    endpoint="/web/agent-browser/eval", method="POST", risk="L0", auth=True,
+    keywords=("跑 JS", "执行 JS", "浏览器里执行", "eval",
+              "agent-browser 跑 JS", "拿 lazy load 数据",
+              "拿 cookie", "拿 window 变量"),
+)
+register_capability(
+    "web.agent-browser.screenshot",
+    title="agent-browser 截图(可指定文件名 + 整页/可视区域)",
+    endpoint="/web/agent-browser/screenshot", method="POST", risk="L0", auth=True,
+    keywords=("截图", "screenshot", "截屏", "拍屏幕",
+              "agent-browser 截图", "用 agent-browser 截图"),
+)
+register_capability(
+    "web.agent-browser.close",
+    title="关 agent-browser 浏览器 + 停 Rust daemon(下次 call 自动重启)",
+    endpoint="/web/agent-browser/close", method="POST", risk="L0", auth=True,
+    keywords=("关浏览器", "关闭浏览器", "agent-browser 关闭",
+              "agent-browser close", "终止 agent-browser"),
+)

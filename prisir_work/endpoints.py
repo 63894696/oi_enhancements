@@ -1275,3 +1275,151 @@ def _web_pw_close(_body: dict) -> tuple[dict, int]:
         return ({"ok": True, **_pw.pw_close()}, 200)
     except Exception as e:  # noqa: BLE001
         return ({"ok": False, "error": type(e).__name__}, 200)
+
+
+# ---------------------------------------------------------------------------
+# P3j T26: vercel-labs/agent-browser 集成(token 高效浏览器,Rust CLI 子进程桥)
+# click/fill 是 L1 副作用(前端确认卡);其余 L0 只读。
+# 失败/未装 agent-browser / Chrome for Testing 未下载 → 200 + ok=False + reason。
+# 跟 T25 playwright-mcp 互补:T26 主线(token 高效,refs 稳定);T25 备用(长连)。
+# ---------------------------------------------------------------------------
+
+@register("/web/agent-browser/health", method="POST", risk="L0", auth=True)
+def _web_ab_health(_body: dict) -> tuple[dict, int]:
+    """查 agent-browser 安装 + 引擎探活(3 档 mode:missing_cli/not_installed/ready)。"""
+    try:
+        from prisir_work import agent_browser_bridge as _ab
+        return ({"ok": True, **_ab.ab_health()}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "error": type(e).__name__}, 200)
+
+
+@register("/web/agent-browser/open", method="POST", risk="L0", auth=True)
+def _web_ab_open(body: dict) -> tuple[dict, int]:
+    """打开 URL。body: {url, timeout?}"""
+    body = body or {}
+    url = (body.get("url") or "").strip()
+    if not url:
+        return ({"ok": False, "error": "empty_url",
+                 "required": ["url"]}, 200)
+    timeout = float(body.get("timeout", 30.0))
+    try:
+        from prisir_work import agent_browser_bridge as _ab
+        r = _ab.ab_open(url, timeout=timeout)
+        return ({"ok": True, "url": url, **r}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "url": url,
+                 "warnings": [type(e).__name__]}, 200)
+
+
+@register("/web/agent-browser/snapshot", method="POST", risk="L0", auth=True)
+def _web_ab_snapshot(body: dict) -> tuple[dict, int]:
+    """取 a11y 树 + refs(@e1/@e2 跨 snapshot 稳定)。body: {depth?, interactive_only?, timeout?}"""
+    body = body or {}
+    depth = int(body.get("depth", 3))
+    interactive_only = bool(body.get("interactive_only", False))
+    timeout = float(body.get("timeout", 30.0))
+    try:
+        from prisir_work import agent_browser_bridge as _ab
+        r = _ab.ab_snapshot(depth=depth, interactive_only=interactive_only,
+                            timeout=timeout)
+        return ({"ok": True, **r}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False,
+                 "warnings": [type(e).__name__]}, 200)
+
+
+@register("/web/agent-browser/click", method="POST", risk="L1", auth=True)
+def _web_ab_click(body: dict) -> tuple[dict, int]:
+    """点 @ref 元素(形如 @e1/@e2/...)。L1 副作用,前端弹确认卡。
+
+    body: {ref, timeout?}
+    """
+    body = body or {}
+    ref = (body.get("ref") or "").strip()
+    if not ref:
+        return ({"ok": False, "error": "missing_ref",
+                 "required": ["ref"],
+                 "hint": "ref 必须形如 @e1/@e2/...;先 snapshot 拿最新 refs"}, 200)
+    timeout = float(body.get("timeout", 30.0))
+    try:
+        from prisir_work import agent_browser_bridge as _ab
+        r = _ab.ab_click(ref, timeout=timeout)
+        return ({"ok": True, "ref": ref, **r}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "ref": ref,
+                 "warnings": [type(e).__name__]}, 200)
+
+
+@register("/web/agent-browser/fill", method="POST", risk="L1", auth=True)
+def _web_ab_fill(body: dict) -> tuple[dict, int]:
+    """在 @ref 输入框填 text。L1 副作用,前端弹确认卡。
+
+    body: {ref, text, submit?, slowly?, timeout?}
+    """
+    body = body or {}
+    ref = (body.get("ref") or "").strip()
+    text = body.get("text", "")
+    if not ref:
+        return ({"ok": False, "error": "missing_ref",
+                 "required": ["ref"]}, 200)
+    timeout = float(body.get("timeout", 30.0))
+    try:
+        from prisir_work import agent_browser_bridge as _ab
+        r = _ab.ab_fill(ref, text,
+                        submit=bool(body.get("submit", False)),
+                        slowly=bool(body.get("slowly", False)),
+                        timeout=timeout)
+        return ({"ok": True, "ref": ref, "text": text, **r}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "ref": ref,
+                 "warnings": [type(e).__name__]}, 200)
+
+
+@register("/web/agent-browser/eval", method="POST", risk="L0", auth=True)
+def _web_ab_eval(body: dict) -> tuple[dict, int]:
+    """在浏览器执行 JS(必须是函数体,如 '() => document.title')。
+
+    L0 只读标签(虽然技术上能改 DOM;LLM 须自律只跑只读 JS)。
+    body: {js, timeout?}
+    """
+    body = body or {}
+    js = (body.get("js") or "").strip()
+    if not js:
+        return ({"ok": False, "error": "empty_js",
+                 "required": ["js"]}, 200)
+    timeout = float(body.get("timeout", 30.0))
+    try:
+        from prisir_work import agent_browser_bridge as _ab
+        r = _ab.ab_eval(js, timeout=timeout)
+        return ({"ok": True, **r}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False,
+                 "warnings": [type(e).__name__]}, 200)
+
+
+@register("/web/agent-browser/screenshot", method="POST", risk="L0", auth=True)
+def _web_ab_screenshot(body: dict) -> tuple[dict, int]:
+    """截图。body: {filename?, full_page?, timeout?}"""
+    body = body or {}
+    filename = (body.get("filename") or "").strip()
+    full_page = bool(body.get("full_page", False))
+    timeout = float(body.get("timeout", 30.0))
+    try:
+        from prisir_work import agent_browser_bridge as _ab
+        r = _ab.ab_screenshot(filename=filename, full_page=full_page,
+                              timeout=timeout)
+        return ({"ok": True, **r}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False,
+                 "warnings": [type(e).__name__]}, 200)
+
+
+@register("/web/agent-browser/close", method="POST", risk="L0", auth=True)
+def _web_ab_close(_body: dict) -> tuple[dict, int]:
+    """关浏览器 + 停 Rust daemon(下次 call 自动重启)。"""
+    try:
+        from prisir_work import agent_browser_bridge as _ab
+        return ({"ok": True, **_ab.ab_close()}, 200)
+    except Exception as e:  # noqa: BLE001
+        return ({"ok": False, "error": type(e).__name__}, 200)

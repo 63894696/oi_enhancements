@@ -138,6 +138,25 @@ _TRANSLATIONS: list[tuple[str, str, str]] = [
     ("playwright_npx_not_found",
      "npx 命令找不到(Node.js 未装或 PATH 不对)",
      "https://nodejs.org/"),
+    # P3j T26: vercel-labs/agent-browser 浏览器交互错误
+    ("ab_cli_not_found",
+     "agent-browser 未装(跑 `npm install -g agent-browser && agent-browser install`)",
+     "https://www.npmjs.com/package/agent-browser"),
+    ("ab_install_failed",
+     "Chrome for Testing 安装失败(检查 npm 镜像 / 网络;约 150MB)",
+     "/extensions"),
+    ("ab_daemon_failed",
+     "agent-browser Rust daemon 启动失败(可能端口占用或权限问题)",
+     "/extensions"),
+    ("ab_timeout",
+     "agent-browser 操作 30s 超时(网络慢或页面重,可重试)",
+     "/extensions"),
+    ("ab_invalid_ref",
+     "@ref 无效(DOM 已变或未 snapshot;重 snapshot 拿最新 refs)",
+     ""),
+    ("ab_unsupported_engine",
+     "agent-browser 不支持该浏览器引擎(默认 chrome-for-testing)",
+     "/extensions"),
 ]
 
 

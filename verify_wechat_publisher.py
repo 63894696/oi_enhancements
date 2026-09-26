@@ -1935,6 +1935,111 @@ def check_playwright_capability(_ctx: VerifyCtx) -> str:
     return f"8 playwright capabilities · 2=L1(confirm ✓)· 6=L0 ✓"
 
 
+# ---------------------------------------------------------------------------
+# P3j T26: vercel-labs/agent-browser 集成(token 高效浏览器,Rust CLI 子进程桥)
+# ---------------------------------------------------------------------------
+
+def check_agent_browser_bridge_module(_ctx: VerifyCtx) -> str:
+    """agent_browser_bridge module + 8 公开 fns (P3j T26)。
+
+    复用 gh_bridge._run 模式(subprocess.run + JSON 解析),无需常驻子进程。
+    """
+    try:
+        from prisir_work import agent_browser_bridge as _ab
+    except Exception as e:
+        return f"[FAIL] agent_browser_bridge import failed: {type(e).__name__}: {e}"
+    required = ("_run", "_extract_refs", "ab_health",
+                "ab_open", "ab_snapshot", "ab_click",
+                "ab_fill", "ab_eval", "ab_screenshot", "ab_close")
+    missing = [n for n in required if not hasattr(_ab, n)]
+    if missing:
+        return f"[FAIL] agent_browser_bridge 缺函数: {missing}"
+    # 验常量
+    if not hasattr(_ab, "AB_BIN"):
+        return "[FAIL] 缺 AB_BIN 常量"
+    if not hasattr(_ab, "_INSTALL_HINT"):
+        return "[FAIL] 缺 _INSTALL_HINT 安装提示"
+    return f"agent_browser_bridge + {len(required)-2} public APIs ✓"
+
+
+def check_agent_browser_endpoints(_ctx: VerifyCtx) -> str:
+    """8 agent-browser endpoints 在 _REGISTRY(health/open/snapshot/click/
+    fill/eval/screenshot/close) (P3j T26)。"""
+    from prisir_work import endpoints as _ep
+    expected = ("/web/agent-browser/health", "/web/agent-browser/open",
+                "/web/agent-browser/snapshot", "/web/agent-browser/click",
+                "/web/agent-browser/fill", "/web/agent-browser/eval",
+                "/web/agent-browser/screenshot", "/web/agent-browser/close")
+    missing = [p for p in expected if p not in _ep._REGISTRY]
+    if missing:
+        return f"[FAIL] 缺端点: {missing}"
+    # click/fill 是 L1;其余 L0
+    risk_ok = True
+    for p in ("/web/agent-browser/click", "/web/agent-browser/fill"):
+        e = _ep._REGISTRY[p]
+        if e["risk"] != "L1":
+            risk_ok = False
+            break
+    if not risk_ok:
+        return "[FAIL] click/fill 应为 L1,实际其他"
+    for p in ("/web/agent-browser/health", "/web/agent-browser/open",
+              "/web/agent-browser/snapshot", "/web/agent-browser/eval",
+              "/web/agent-browser/screenshot", "/web/agent-browser/close"):
+        e = _ep._REGISTRY[p]
+        if e["risk"] != "L0":
+            risk_ok = False
+            break
+    if not risk_ok:
+        return "[FAIL] 其余 6 端点应为 L0,实际其他"
+    # 跟 playwright 命名空间不冲突
+    pw_paths = [p for p in _ep._REGISTRY if "playwright" in p]
+    if len(pw_paths) != 8:
+        return f"[FAIL] playwright 应有 8 端点,实际 {len(pw_paths)}"
+    return f"8 endpoints in _REGISTRY · click/fill=L1 · 6=L0 ✓"
+
+
+def check_agent_browser_health_modes(_ctx: VerifyCtx) -> str:
+    """ab_health 至少能返 mode=missing_cli / not_installed / ready 之一。
+    不强求 ready(用户机器若无 npm/agent-browser,missing_cli 是正常态)。
+    """
+    from prisir_work import agent_browser_bridge as _ab
+    h = _ab.ab_health()
+    allowed_modes = {"missing_cli", "not_installed", "ready"}
+    if "mode" not in h or h["mode"] not in allowed_modes:
+        return f"[FAIL] ab_health 返未知 mode: {h.get('mode')}"
+    if "hint" not in h:
+        return "[FAIL] ab_health 缺 hint 字段"
+    return f"ab_health mode={h['mode']} ✓ (本机可跳过 ready 探测)"
+
+
+def check_agent_browser_capability(_ctx: VerifyCtx) -> str:
+    """8 agent-browser capability + 中英 keywords + click/fill 标 L1 (P3j T26)。"""
+    from prisir_work import capability as _cap
+    caps = {c["id"]: c for c in _cap.list_capabilities()}
+    expected = ("web.agent-browser.health", "web.agent-browser.open",
+                "web.agent-browser.snapshot", "web.agent-browser.click",
+                "web.agent-browser.fill", "web.agent-browser.eval",
+                "web.agent-browser.screenshot", "web.agent-browser.close")
+    missing = [c for c in expected if c not in caps]
+    if missing:
+        return f"[FAIL] 缺 capability: {missing}"
+    # click/fill 标 L1 + confirm
+    for cid in ("web.agent-browser.click", "web.agent-browser.fill"):
+        if caps[cid]["risk"] != "L1":
+            return f"[FAIL] {cid} 应为 L1,实际 {caps[cid]['risk']}"
+        if not caps[cid].get("confirm"):
+            return f"[FAIL] {cid} 缺 confirm 字符串"
+    # keywords 含中英
+    no_kw = []
+    for cid in expected:
+        kws = caps[cid].get("keywords", [])
+        if not kws:
+            no_kw.append(cid)
+    if no_kw:
+        return f"[FAIL] capability 缺 keywords: {no_kw}"
+    return f"8 agent-browser capabilities · 2=L1(confirm ✓)· 6=L0 ✓"
+
+
 CHECKS: list[Check] = [
     Check("Python",                   check_python),
     Check("Git",                      check_git),
@@ -2012,6 +2117,15 @@ CHECKS: list[Check] = [
           check_playwright_health_modes),
     Check("8 playwright capabilities · 2 L1 confirm (P3j T25)",
           check_playwright_capability),
+    # P3j T26: vercel-labs/agent-browser(token 高效浏览器)
+    Check("agent_browser_bridge module + 8 APIs (P3j T26)",
+          check_agent_browser_bridge_module),
+    Check("8 agent-browser endpoints · click/fill=L1 (P3j T26)",
+          check_agent_browser_endpoints),
+    Check("ab_health 3 档 mode 探活 (P3j T26)",
+          check_agent_browser_health_modes),
+    Check("8 agent-browser capabilities · 2 L1 confirm (P3j T26)",
+          check_agent_browser_capability),
 ]
 
 
