@@ -44,6 +44,20 @@ from aiohttp import web, WSMsgType
 
 from companion_asr import BailianAsrSession
 from companion_llm import stream_chat  # M3.6
+from companion_jev import (  # M3.45 P0-2 护栏(2026-09-22)
+    try_jev as _jev_try,
+    ask_intent as _jev_ask_intent,
+    intent_to_zh,
+    eval_stage_outcome as _jev_eval_stage,   # M3.45 P1-4 阶段成果评估(2026-09-22)
+    risk_index,
+    decide_block,
+)
+# 共享 P1-4 入库核心(陪聊 + Claude Code Stop hook 共用)
+from p14_ingest import (  # noqa: E402
+    evaluate_and_ingest as _p14_evaluate_and_ingest_shared,
+    load_index as _p14_load_index,
+    stats as _p14_stats,
+)
 from companion_asr_providers import (
     PROVIDERS, create_session, list_providers as _list_providers_raw,
     load_settings, save_settings, resolve_provider_cfg, public_settings,
@@ -329,6 +343,27 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 log = logging.getLogger("prisiragent-companion")
+
+# P3j Phase C(2026-09-27)ext-handraw-style-prompter → 主对话能力注册
+# 让 companion 进程启动即注册 3 个 poster capability(import 副作用)
+try:
+    from prisir_work import poster_capabilities  # noqa: F401
+except Exception:  # noqa: BLE001
+    log.exception("Phase C: import poster_capabilities failed; poster EXEC will be disabled")
+
+# P3j Phase D(2026-09-27)poster 卡片 → image-gen t2i 闭环
+# 让 companion 进程启动即注册 image-gen.from_poster_prompt(import 副作用)
+try:
+    from prisir_work import poster_to_image_capability  # noqa: F401
+except Exception:  # noqa: BLE001
+    log.exception("Phase D: import poster_to_image_capability failed; image-gen.from_poster_prompt will be disabled")
+
+# P3j free-for-dev Phase C(2026-09-27)ext-free-for-dev-promo → 主对话能力注册
+# 4 capability 全 L0(本地只读免费资源库,无副作用)
+try:
+    from prisir_work import free_for_dev_capabilities  # noqa: F401
+except Exception:  # noqa: BLE001
+    log.exception("Phase C free-for-dev: import free_for_dev_capabilities failed; free EXEC will be disabled")
 
 # ============================================================
 # 留痕:jsonl append-only(2026-09-16 M3.8 占位,M3.1 已先跑通文件层)
@@ -645,6 +680,31 @@ _FCONTEXT_DEFAULTS = {
     "screen_max_depth": 4,         # a11y tree 深度上限(避免太大撑爆 context)
     "knowledge_top_k": 3,          # 知识库返回 snippet 数
     "context_timeout_sec": 1.5,    # a11y + fcontent 总耗时硬上限
+    # M3.45 P0-2 护栏(2026-09-22)— TypeSafe Jev 前置安全评估
+    # 默认关:隐私零侵入;用户在 settings UI 显式开启
+    "jev_enabled": False,
+    "jev_risk_threshold": "medium",     # safe/low 直通;medium+ 弹 confirm
+    "jev_jailbreak_threshold": 0.7,     # 越狱概率 ≥ 此值 → 硬拦(不弹 confirm)
+    "jev_timeout_sec": 1.5,             # 双通道总超时(主+备)
+    "jev_fail_open": True,              # 双通道全挂时 → 放行,不恶化现状
+    # M3.45 P0-1 意图分发(2026-09-22)— Jev Choice primitive 给消息打标签
+    # 独立开关(不依赖 jev_enabled):用户可单独开 intent,但不开 guard
+    "intent_enabled": True,             # 默认开(轻量级,只读 message 文本)
+    "intent_timeout_sec": 1.0,          # intent 单独超时(比 guard 短 — 不阻塞)
+    "intent_min_confidence": 0.55,      # 低于此置信度 → 视作 "unknown",不路由
+    "intent_routing": True,             # 是否按 intent 自动调整 system prompt
+    # M3.45 P1-4 阶段成果增量入库(2026-09-22)— ai_done 后 Jev 评估 → 入 Obsidian
+    "p14_enabled": True,                # 默认开
+    "p14_min_value": 2,                 # value_score ≥ 此值才入库(0-3)
+    "p14_min_has_prob": 0.5,            # has_outcome prob ≥ 此才入库
+    "p14_timeout_sec": 1.2,             # 阶段成果评估超时(不阻塞主对话)
+    "p14_dir_name": "_incremental",     # 写入 fcontent_root 下子目录
+    "p14_topic_strategy": "auto",       # auto=从 user 文本首 12 字;manual=用 intent;off=用日期
+    # P3j T29-c Skills 工作台索引(2026-09-27)— 单段 JSON 索引替换 5 处 intent_summary
+    # 默认关:暂不影响主对话行为;开启后 5 处老 intent_summary 改 1 处 skills_index 紧凑 JSON
+    # 实测 5 处累计 ~8000+ 字符 → skills_index ~13000 但覆盖全部 69 skill(老 5 处只覆盖 12 个)
+    "skills_index_enabled": False,
+    "skills_index_fallback_intent": True,  # True 时:失败/未开时仍走老 5 处;False 时仅走新索引
 }
 
 
@@ -798,9 +858,160 @@ async def _empty() -> str:
     return ""
 
 
+# ============================================================
+# M3.45 P1-4 — 阶段成果增量入库(2026-09-22)
+# 设计:
+#   - ai_done 后调 _p14_evaluate_and_ingest
+#   - 用 Jev Noul(has_outcome)+ Score(value_score) 评估
+#   - value_index ≥ p14_min_value → 抽段 → 段级 sha256 去重 → 写入 _incremental/
+#   - 索引文件 _p14_index.json 存 {hash: path} 在 fcontent_root 下
+#   - 主题策略:auto/manual/off 三档
+# ============================================================
+# P1-4 共享入口 — 复用 p14_ingest 模块,陪聊 + Claude Code hook 共用
+# (sync helper: safe_filename / load_index / save_index / extract_segments /
+#  derive_topic 都直接 import 自 p14_ingest,_p14_ 前缀保持旧引用兼容)
+
+
+async def _p14_evaluate_and_ingest(sess: "CallSession",
+                                   user_text: str,
+                                   assistant_text: str,
+                                   cfg: dict) -> dict:
+    """P1-4 薄包装:从 sess 取 intent + 累加 p14_added,然后调共享模块。
+
+    Returns: {triggered, value, value_index, has_prob, added_count,
+              skipped_count, path, fallback_used, reason}
+    """
+    intent = (getattr(sess, "jev_intent", {}) or {}).get("intent", "unknown")
+    res = await _p14_evaluate_and_ingest_shared(
+        user_text, assistant_text, cfg,
+        intent=intent,
+        history_len=len(getattr(sess, "history", []) or []),
+    )
+    if res.get("triggered"):
+        # 累计到 sess(给前端徽标)
+        try:
+            added_n = int(res.get("added_count", 0))
+            if added_n > 0:
+                sess.p14_added = getattr(sess, "p14_added", 0) + added_n
+        except Exception:
+            pass
+    return res
+
+
+async def _p14_bg_task(sess: "CallSession",
+                       user_text: str,
+                       assistant_text: str) -> None:
+    """ai_done 后台跑 P1-4 评估 + 入库,推 ws 通知前端。
+    不抛异常,不阻塞流。
+    """
+    try:
+        cfg = _load_fcontext_cfg()
+        if not cfg.get("p14_enabled", True):
+            return
+        # 简单 intent 过滤:tool_call/roleplay/无 intent 跳过
+        intent = (getattr(sess, "jev_intent", {}) or {}).get("intent", "")
+        if intent in ("tool_call", "roleplay", "unknown", ""):
+            return
+        res = await _p14_evaluate_and_ingest(sess, user_text, assistant_text, cfg)
+        if res.get("triggered"):
+            try:
+                await sess.ws.send_json({
+                    "type": "incremental_added",
+                    "value": res.get("value", "archivable"),
+                    "value_zh": _jev_value_to_zh(res.get("value_index", 2)),
+                    "value_index": res.get("value_index", 2),
+                    "added_count": res.get("added_count", 0),
+                    "skipped_count": res.get("skipped_count", 0),
+                    "path": res.get("path"),
+                    "has_prob": res.get("has_prob", 0),
+                    "total_added": getattr(sess, "p14_added", 0),
+                    "reason": res.get("reason"),
+                })
+            except Exception:  # noqa: BLE001
+                pass
+        elif res.get("reason") not in ("value_too_low", "no_outcome",
+                                        "disabled", "empty_text", "skipped",
+                                        "fail_soft", "no_fcontent_root",
+                                        "no_segments", "all_duplicates"):
+            # 异常情况也通知前端(便于调试)
+            try:
+                await sess.ws.send_json({
+                    "type": "incremental_skipped",
+                    "reason": res.get("reason"),
+                    "has_prob": res.get("has_prob", 0),
+                    "value": res.get("value", "none"),
+                })
+            except Exception:  # noqa: BLE001
+                pass
+    except Exception as e:  # noqa: BLE001
+        log.warning("[p14-bg] outer err: %s: %s",
+                    type(e).__name__, str(e)[:120])
+
+
 async def build_messages(sess: CallSession, current_user_text: str) -> list[dict]:
     """组装 LLM 输入 messages:system + (M3.23 上下文段) + 最近 N 轮历史。"""
     msgs: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    # P3j T29-c(2026-09-27): Skills 工作台索引(渐进披露)—
+    # 单段 JSON 索引替换 N 处 intent_summary。配置项 skills_index_enabled 切换。
+    # 失败/未开启 → fallback 老 5 处(skills_index_fallback_intent=True)。
+    fcfg = _load_fcontext_cfg()
+    use_skills_idx = bool(fcfg.get("skills_index_enabled"))
+    fallback_intent = bool(fcfg.get("skills_index_fallback_intent", True))
+    if use_skills_idx:
+        try:
+            from prisir_work.skills import describe_registry_compact
+            skills_idx = describe_registry_compact()
+            msgs.append({"role": "system", "content": (
+                "【工作台 skill 索引】下表 JSON 是当前可用的全部 skill 列表。"
+                "每项含 id / name / emoji / risk / tags。"
+                "需要执行某个 skill 时,在回复末尾追加 EXEC 标记:\n"
+                "  [[EXEC: <skill_id> k1=\"v1\" k2=\"v2\" ...]]\n"
+                "参数必须是字符串字面量。L2/L3 风险能力用户会单独确认一次,无需你提醒。"
+                "只在索引中明确列出的任务上输出 EXEC,其它不输出。\n\n"
+                f"```json\n{skills_idx}\n```"
+            )})
+        except Exception:  # noqa: BLE001
+            log.exception("T29-c: inject skills_index failed; fall back to legacy intent_summary")
+            use_skills_idx = False  # 强制 fallback
+    if not use_skills_idx and not fallback_intent:
+        # 配置显式要求只用新索引,但注入失败 → 报错给运维
+        log.error("T29-c: skills_index_enabled=true but injection failed AND fallback disabled")
+    # P3j T16-B: 注入视频/YouTube 能力清单 — LLM 才知道能输出 [[EXEC: ...]]
+    if not use_skills_idx:
+        try:
+            from prisir_work.agent_natural_video import intent_summary
+            msgs.append({"role": "system", "content": intent_summary()})
+            # 提示格式(EXEC 标记协议)
+            msgs.append({"role": "system", "content": (
+                "当用户的需求命中上面的能力,且你能拿到所需参数时,"
+                "在回复末尾追加一行:\n"
+                "  [[EXEC: <capability_id> k1=\"v1\" k2=\"v2\" ...]]\n"
+                "参数必须是字符串字面量。L2/L3 能力(做视频 / 上传 YouTube)用户会单独"
+                "确认一次,无需你提醒。只在能力清单明确列出的任务上输出 EXEC,其它不输出。"
+            )})
+        except Exception:  # noqa: BLE001
+            log.exception("T16-B: inject intent_summary failed; fall back to plain system")
+    # P3j Phase C(2026-09-27): 注入手绘海报能力 — ext-handraw-style-prompter 3 capability
+    if not use_skills_idx:
+        try:
+            from prisir_work.poster_capabilities import intent_summary as poster_intent_summary
+            msgs.append({"role": "system", "content": poster_intent_summary()})
+        except Exception:  # noqa: BLE001
+            log.exception("Phase C: inject poster intent_summary failed; fall back to no-poster mode")
+    # P3j Phase D(2026-09-27): 注入 poster 卡片 → image-gen 出图闭环提示(下游动作)
+    if not use_skills_idx:
+        try:
+            from prisir_work.poster_to_image_capability import intent_summary as poster2img_intent_summary
+            msgs.append({"role": "system", "content": poster2img_intent_summary()})
+        except Exception:  # noqa: BLE001
+            log.exception("Phase D: inject poster2img intent_summary failed; fall back to no-image-gen-from-poster mode")
+    # P3j free-for-dev Phase C(2026-09-27): 注入免费资源能力清单
+    if not use_skills_idx:
+        try:
+            from prisir_work.free_for_dev_capabilities import intent_summary as free_intent_summary
+            msgs.append({"role": "system", "content": free_intent_summary()})
+        except Exception:  # noqa: BLE001
+            log.exception("Phase C free-for-dev: inject free intent_summary failed; fall back to no-free-resource mode")
     # M3.25:清空上一轮的 knowledge hits,本轮重新填(M3.27.1:前端一轮一清,避免误把上一轮的 hits 挂到这轮 ai 气泡上)
     # M3.27.1:累积 hits 由 _DISPATCH_HITS 全局字典记录,派发时从那里取
     if sess is not None:
@@ -836,8 +1047,204 @@ async def build_messages(sess: CallSession, current_user_text: str) -> list[dict
             msgs.append({"role": "user", "content": text})
         elif role == "assistant":
             msgs.append({"role": "assistant", "content": text})
+    # M3.45 P0-1 意图分发路由:把本轮 intent 加的 system 段插到 user 之前
+    intent_inj = ""
+    if sess is not None:
+        try:
+            intent_inj = getattr(sess, "jev_intent_system_inject", "") or ""
+        except Exception:
+            intent_inj = ""
+    if intent_inj:
+        msgs.append({"role": "system", "content": intent_inj})
     msgs.append({"role": "user", "content": current_user_text})
     return msgs
+
+
+async def _jev_guard(sess: CallSession, user_text: str) -> dict:
+    """M3.45 P0-2 护栏:用户消息进 LLM 前先 Jev 一次。
+
+    返回 decision(dict):{
+      "pass": bool,                # True = 直通,调 LLM;False = 不调
+      "need_confirm": bool,        # True = 需前端 confirm 后才调 LLM
+      "reason": str,               # "jailbreak"|"risk_threshold"|"pass"|"jev_unavailable"|"already_confirmed"
+      "risk": str,                 # "low"|"medium"|...
+      "jailbreak_prob": float,
+      "fallback_used": bool,       # True = 双通道全挂,fail-open 放行
+      "judgments": dict|None,      # 原始 Jev 回答(给前端 / 日志用)
+    }
+    不抛异常 — 任何失败都 fail-open 放行(与无护栏现状一致,不恶化)。
+    """
+    try:
+        cfg = _load_fcontext_cfg()
+        if not cfg.get("jev_enabled"):
+            return {"pass": True, "need_confirm": False,
+                    "reason": "disabled", "risk": "unknown",
+                    "jailbreak_prob": 0.0, "fallback_used": False,
+                    "judgments": None}
+
+        # 已 confirm 过(同一 sess 在 confirm 后短时间内不再弹)
+        if getattr(sess, "jev_confirmed", False):
+            return {"pass": True, "need_confirm": False,
+                    "reason": "already_confirmed", "risk": "unknown",
+                    "jailbreak_prob": 0.0, "fallback_used": False,
+                    "judgments": None}
+
+        timeout_s = float(cfg.get("jev_timeout_sec", 1.5))
+        state = _jev_build_state(
+            user_text,
+            history_len=len(getattr(sess, "history", []) or []),
+            user_tier="free",
+        )
+        try:
+            judgments = await asyncio.wait_for(
+                _jev_try(state, _JEV_GUARD_QUESTIONS, timeout_s=timeout_s),
+                timeout=timeout_s + 0.3,  # 再给个 wrapper buffer
+            )
+        except asyncio.TimeoutError:
+            log.warning("[jev-guard] wait_for 超时,fail-open")
+            judgments = None
+        except Exception as e:  # noqa: BLE001
+            log.warning("[jev-guard] err: %s: %s", type(e).__name__, str(e)[:120])
+            judgments = None
+
+        decision = _jev_decide(judgments, cfg)
+        # 决策翻译成业务语义
+        return {
+            "pass": not decision["block"] and not decision["need_confirm"],
+            "need_confirm": decision["need_confirm"],
+            "reason": decision["reason"],
+            "risk": decision["risk"],
+            "jailbreak_prob": decision["jailbreak_prob"],
+            "fallback_used": decision["fallback_used"],
+            "judgments": judgments,
+        }
+    except Exception as e:  # noqa: BLE001
+        log.warning("[jev-guard] outer err: %s: %s", type(e).__name__, str(e)[:120])
+        return {"pass": True, "need_confirm": False,
+                "reason": "outer_err", "risk": "unknown",
+                "jailbreak_prob": 0.0, "fallback_used": True,
+                "judgments": None}
+
+
+# ------------------------------------------------------------
+# M3.45 P0-1 意图分发(2026-09-22)— 用户消息进 LLM 前先 Jev Choice
+# ------------------------------------------------------------
+INTENT_ROUTE_SYSTEM: dict[str, str] = {
+    "chat":      "",  # 走默认(陪聊人设)
+    "code":      (
+        "\n\n[模式:技术问答] 用户在问编程/技术问题。"
+        "回答要点:简洁准确,直接给代码或步骤;"
+        "避免长段情感铺垫,除非用户明确要求解释概念。"
+    ),
+    "search":    (
+        "\n\n[模式:事实查询] 用户在查事实/定义/历史/新闻。"
+        "回答要点:简洁直给,优先 1-3 句;"
+        "不确定就明说不要编,必要时建议用户核对。"
+    ),
+    "tool_call": (
+        "\n\n[模式:操作请求] 用户希望 AI 执行某操作。"
+        "回答要点:当前会话没有工具/插件权限,"
+        "礼貌告知用户该走 PrisirAI 主面板(托盘菜单可派发),"
+        "不要假装能执行。"
+    ),
+    "roleplay":  (
+        "\n\n[模式:角色扮演] 用户想进入角色/讲故事/游戏剧情。"
+        "回答要点:跟着用户设定的世界观走,保持角色一致性,"
+        "但仍守住安全底线(不演反派教坏人)。"
+    ),
+}
+
+
+async def _intents_guard(sess: CallSession, user_text: str) -> dict:
+    """M3.45 P0-1:问 Jev 一次,给用户消息打 intent 标签 + 路由信息。
+
+    Returns (不抛异常,任何失败都返 {"intent":"unknown",...}):
+        {
+          "intent": "chat"|"code"|"search"|"tool_call"|"roleplay"|"unknown",
+          "intent_zh": "闲聊"|"技术"|...,   # 给前端显示
+          "confidence": 0.0-1.0,
+          "probabilities": {"chat":0.85,...},
+          "system_inject": str,           # 按 intent 加的 system 段(空 = 不加)
+          "route_applied": bool,          # 是否真的应用了路由(intent_routing)
+          "fallback_used": bool,          # Jev 双通道都挂
+          "elapsed_ms": int,
+        }
+    """
+    empty = {
+        "intent": "unknown", "intent_zh": "未识别",
+        "confidence": 0.0, "probabilities": {},
+        "system_inject": "", "route_applied": False,
+        "fallback_used": True, "elapsed_ms": 0,
+    }
+    try:
+        cfg = _load_fcontext_cfg()
+        if not cfg.get("intent_enabled", True):
+            return {**empty, "fallback_used": False}
+        timeout_s = float(cfg.get("intent_timeout_sec", 1.0))
+        t0 = time.time()
+        try:
+            intent = await asyncio.wait_for(
+                _jev_ask_intent(
+                    user_text,
+                    history_len=len(getattr(sess, "history", []) or []),
+                    user_tier="free",
+                    timeout_s=timeout_s,
+                ),
+                timeout=timeout_s + 0.3,
+            )
+        except asyncio.TimeoutError:
+            log.warning("[jev-intent] wait_for 超时,fail to unknown")
+            return {**empty, "elapsed_ms": int((time.time()-t0)*1000)}
+        except Exception as e:  # noqa: BLE001
+            log.warning("[jev-intent] err: %s: %s",
+                        type(e).__name__, str(e)[:120])
+            return {**empty, "elapsed_ms": int((time.time()-t0)*1000)}
+        elapsed_ms = int((time.time() - t0) * 1000)
+
+        if not intent:
+            return {**empty, "elapsed_ms": elapsed_ms}
+
+        choice = intent.get("choice", "unknown")
+        conf = float(intent.get("confidence", 0.0))
+        probs = intent.get("probabilities") or {}
+        min_conf = float(cfg.get("intent_min_confidence", 0.55))
+        # 置信度低 → 视作 unknown(不路由)
+        if conf < min_conf or choice == "unknown":
+            choice_out = "unknown"
+            sys_inj = ""
+            route_applied = False
+        else:
+            choice_out = choice
+            sys_inj = INTENT_ROUTE_SYSTEM.get(choice, "")
+            route_applied = bool(cfg.get("intent_routing", True)) and bool(sys_inj)
+        # 写到 sess 备用(前端 / 日志可读)
+        try:
+            sess.jev_intent = {
+                "intent": choice_out,
+                "intent_zh": _jev_intent_to_zh(choice_out),
+                "confidence": conf,
+                "probabilities": probs,
+                "elapsed_ms": elapsed_ms,
+            }
+            # M3.45 P0-1:路由段写到独立字段,build_messages 读
+            # 清掉上轮,避免污染本轮(意图是 per-message 的)
+            sess.jev_intent_system_inject = sys_inj if route_applied else ""
+        except Exception:
+            pass
+        return {
+            "intent": choice_out,
+            "intent_zh": _jev_intent_to_zh(choice_out),
+            "confidence": conf,
+            "probabilities": probs,
+            "system_inject": sys_inj,
+            "route_applied": route_applied,
+            "fallback_used": False,
+            "elapsed_ms": elapsed_ms,
+        }
+    except Exception as e:  # noqa: BLE001
+        log.warning("[jev-intent] outer err: %s: %s",
+                    type(e).__name__, str(e)[:120])
+        return empty
 
 
 async def real_llm_stream(sess: CallSession, user_text: str):
@@ -910,6 +1317,9 @@ class CallSession:
         # M3.25:本轮 ASR/text 命中的知识库片段(给前端展示「📎 来源 N」)
         # build_messages 在 enrich 时写,前端渲染 ai_done 时按此显示
         self.knowledge_hits: list[dict] = []
+        # M3.45:本轮 Jev 风险判定缓存(供前端 confirm 卡显示)+ 一次性 confirm 标记
+        self.jev_last_decision: dict = {}
+        self.jev_confirmed: bool = False
 
     def touch(self) -> None:
         """任何用户/AI 活动都打一下戳。"""
@@ -1044,6 +1454,34 @@ async def handle_msg(sess: CallSession, data: dict) -> None:
         sess.barge_in = False
         sess.abort = False
         sess.last_meta = {}
+        # M3.45 P0-2 护栏:Jev 前置安全评估
+        guard = await _jev_guard(sess, text)
+        if not guard["pass"]:
+            await sess.ws.send_json({
+                "type": "guard_block",
+                "reason": guard["reason"],
+                "risk": guard["risk"],
+                "jailbreak_prob": guard["jailbreak_prob"],
+                "need_confirm": guard["need_confirm"],
+            })
+            # 仍落 user_echo(用户看得到自己的输入),但不调 LLM
+            append_turn(sess.sid, "user", text, src=data.get("src", "text"))
+            await sess.ws.send_json({"type": "user_echo", "text": text})
+            return
+        # M3.45 P0-1 意图分发:Jev Choice 拿本轮 intent,可能改 system prompt
+        intent_info = await _intents_guard(sess, text)
+        try:
+            await sess.ws.send_json({
+                "type": "intent",
+                "intent": intent_info["intent"],
+                "intent_zh": intent_info["intent_zh"],
+                "confidence": intent_info["confidence"],
+                "probabilities": intent_info["probabilities"],
+                "route_applied": intent_info["route_applied"],
+                "elapsed_ms": intent_info["elapsed_ms"],
+            })
+        except Exception:
+            pass
         # M3.27.1:触发词检测 → 弹确认卡 → 后端派发
         # (前端 app.js 也要检,这里给后端兜底 + 让 asr 路径也能触发)
         dispatch_auto = _should_dispatch(text)
@@ -1073,10 +1511,54 @@ async def handle_msg(sess: CallSession, data: dict) -> None:
                                        "elapsed": sess.elapsed_str(),
                                        "platform": meta.get("platform", ""),
                                        "model": meta.get("model", "")})
+            # M3.45 P1-4 阶段成果增量入库(后台跑,不阻塞流)
+            asyncio.create_task(_p14_bg_task(sess, text, ai_text))
+            # P3j T16-A: 主对话后处理 — 扫 [[EXEC: ...]] 标记 → 推 ws 事件
+            # L0 直接跑;L1/L2/L3 推 capability_confirm_request 给前端弹卡
+            try:
+                from prisir_work import agent_main_chat_hook as _hook
+                hook_events = _hook.scan_and_exec(ai_text)
+                for ev in hook_events:
+                    try:
+                        await sess.ws.send_json(ev)
+                    except Exception:
+                        log.exception("hook_event send failed")
+            except Exception:
+                # 钩子模块不可用 / 解析崩溃 — 主对话流程不能受影响
+                log.exception("agent_main_chat_hook scan_and_exec failed")
     elif t == "barge_in":
         # 全双工打断(M3.5 占位):用户开说即停 echo 流
         sess.abort = True
         await sess.ws.send_json({"type": "barge_ack"})
+    elif t == "jev_confirm":
+        # M3.45 P0-2 护栏:前端弹 confirm 后用户点"我同意继续"
+        # 标记 sess 后续短时间不再弹同一类风险(简单实现:本次会话永久)
+        # 严格做可加 ttl,但护栏默认低频,简化即可
+        sess.jev_confirmed = True
+        await sess.ws.send_json({"type": "jev_confirm_ack"})
+    elif t == "capability_confirm":
+        # P3j T16-C:前端确认 capability 执行
+        # data: {capability: "video.create", args: {...}, approved: bool}
+        approved = bool(data.get("approved", False))
+        capability_id = data.get("capability", "")
+        args = data.get("args") or {}
+        # 构造一个 EXEC 标记,然后走 scan_and_exec 的 confirm_callback 路径
+        marker_text = f"[[EXEC: {capability_id} " + " ".join(
+            f'{k}="{v}"' for k, v in args.items()) + "]]"
+        try:
+            from prisir_work import agent_main_chat_hook as _hook
+            cb = (lambda m: approved) if approved else (lambda m: False)
+            events = _hook.scan_and_exec(marker_text, confirm_callback=cb)
+            for ev in events:
+                await sess.ws.send_json(ev)
+            await sess.ws.send_json({
+                "type": "capability_confirm_ack",
+                "capability": capability_id,
+                "approved": approved,
+                "event_count": len(events),
+            })
+        except Exception:
+            log.exception("capability_confirm handler failed")
     elif t == "hangup":
         sess.abort = True
         await sess.ws.send_json({"type": "bye", "sid": sess.sid,
@@ -1211,6 +1693,31 @@ def _make_asr_cb(sess: CallSession, kind: str):
                         model="paraformer-realtime-v2")
             await sess.ws.send_json({"type": "user_echo", "text": text,
                                        "src": "asr"})
+            # M3.45 P0-2 护栏(ASR 路径同样要前置)
+            guard = await _jev_guard(sess, text)
+            if not guard["pass"]:
+                await sess.ws.send_json({
+                    "type": "guard_block",
+                    "reason": guard["reason"],
+                    "risk": guard["risk"],
+                    "jailbreak_prob": guard["jailbreak_prob"],
+                    "need_confirm": guard["need_confirm"],
+                })
+                return
+            # M3.45 P0-1 意图分发(ASR 路径)
+            intent_info = await _intents_guard(sess, text)
+            try:
+                await sess.ws.send_json({
+                    "type": "intent",
+                    "intent": intent_info["intent"],
+                    "intent_zh": intent_info["intent_zh"],
+                    "confidence": intent_info["confidence"],
+                    "probabilities": intent_info["probabilities"],
+                    "route_applied": intent_info["route_applied"],
+                    "elapsed_ms": intent_info["elapsed_ms"],
+                })
+            except Exception:
+                pass
             # M3.6:触发 LLM 流式回答(real_llm_stream 内部会推 knowledge_refs)
             sess.last_meta = {}
             full: list[str] = []
@@ -1236,6 +1743,8 @@ def _make_asr_cb(sess: CallSession, kind: str):
                                            "elapsed": sess.elapsed_str(),
                                            "platform": meta.get("platform", ""),
                                            "model": meta.get("model", "")})
+                # M3.45 P1-4 阶段成果增量入库(asr 路径同样挂)
+                asyncio.create_task(_p14_bg_task(sess, text, ai_text))
         elif kind == "finished":
             await sess.ws.send_json({"type": "asr_finished",
                                        "final": sess.asr_final_text})
@@ -1584,6 +2093,259 @@ async def handle_m323_fcontent_rebuild(request: web.Request) -> web.Response:
                                   status=400)
     asyncio.create_task(_fcontent_enable_background(root))
     return web.json_response({"ok": True, "queued": root})
+
+
+# ============================================================
+# M3.45 — Jev 护栏(2026-09-22)— settings + confirm
+# ============================================================
+_JEV_KEYS = ("jev_enabled", "jev_risk_threshold", "jev_jailbreak_threshold",
+             "jev_timeout_sec", "jev_fail_open")
+
+# M3.45 P0-1 意图分发(2026-09-22)— settings keys
+_INTENT_KEYS = ("intent_enabled", "intent_timeout_sec",
+                "intent_min_confidence", "intent_routing")
+
+# M3.45 P1-4 阶段成果入库(2026-09-22)— settings keys
+_P14_KEYS = ("p14_enabled", "p14_min_value", "p14_min_has_prob",
+             "p14_timeout_sec", "p14_dir_name", "p14_topic_strategy")
+
+
+async def handle_m345_jev_cfg_get(request: web.Request) -> web.Response:
+    """GET /api/m345/jev/cfg → 返当前 jev_* + intent_* + p14_* 配置段。"""
+    cfg = _load_fcontext_cfg()
+    jev_cfg = {k: cfg.get(k, _FCONTEXT_DEFAULTS.get(k)) for k in _JEV_KEYS}
+    intent_cfg = {k: cfg.get(k, _FCONTEXT_DEFAULTS.get(k)) for k in _INTENT_KEYS}
+    p14_cfg = {k: cfg.get(k, _FCONTEXT_DEFAULTS.get(k)) for k in _P14_KEYS}
+    return web.json_response({"ok": True,
+                              "cfg": jev_cfg,
+                              "intent_cfg": intent_cfg,
+                              "p14_cfg": p14_cfg})
+
+
+async def handle_m345_jev_cfg_post(request: web.Request) -> web.Response:
+    """POST /api/m345/jev/cfg {jev_enabled, jev_risk_threshold, ...} → 落盘。"""
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return web.json_response({"ok": False, "err": "bad json"}, status=400)
+    cfg = _load_fcontext_cfg()
+    # jev_enabled 转 bool,其它做类型 coerce
+    if "jev_enabled" in body:
+        cfg["jev_enabled"] = bool(body["jev_enabled"])
+    if "jev_risk_threshold" in body:
+        s = str(body["jev_risk_threshold"]).strip().lower()
+        if s in ("safe", "low", "medium", "high", "critical"):
+            cfg["jev_risk_threshold"] = s
+    if "jev_jailbreak_threshold" in body:
+        try:
+            v = float(body["jev_jailbreak_threshold"])
+            cfg["jev_jailbreak_threshold"] = max(0.0, min(1.0, v))
+        except (TypeError, ValueError):
+            pass
+    if "jev_timeout_sec" in body:
+        try:
+            v = float(body["jev_timeout_sec"])
+            cfg["jev_timeout_sec"] = max(0.5, min(10.0, v))
+        except (TypeError, ValueError):
+            pass
+    if "jev_fail_open" in body:
+        cfg["jev_fail_open"] = bool(body["jev_fail_open"])
+    # M3.45 P0-1 意图分发配置
+    if "intent_enabled" in body:
+        cfg["intent_enabled"] = bool(body["intent_enabled"])
+    if "intent_timeout_sec" in body:
+        try:
+            v = float(body["intent_timeout_sec"])
+            cfg["intent_timeout_sec"] = max(0.3, min(5.0, v))
+        except (TypeError, ValueError):
+            pass
+    if "intent_min_confidence" in body:
+        try:
+            v = float(body["intent_min_confidence"])
+            cfg["intent_min_confidence"] = max(0.0, min(1.0, v))
+        except (TypeError, ValueError):
+            pass
+    if "intent_routing" in body:
+        cfg["intent_routing"] = bool(body["intent_routing"])
+    # M3.45 P1-4 阶段成果入库配置
+    if "p14_enabled" in body:
+        cfg["p14_enabled"] = bool(body["p14_enabled"])
+    if "p14_min_value" in body:
+        try:
+            v = int(body["p14_min_value"])
+            cfg["p14_min_value"] = max(0, min(3, v))
+        except (TypeError, ValueError):
+            pass
+    if "p14_min_has_prob" in body:
+        try:
+            v = float(body["p14_min_has_prob"])
+            cfg["p14_min_has_prob"] = max(0.0, min(1.0, v))
+        except (TypeError, ValueError):
+            pass
+    if "p14_timeout_sec" in body:
+        try:
+            v = float(body["p14_timeout_sec"])
+            cfg["p14_timeout_sec"] = max(0.3, min(5.0, v))
+        except (TypeError, ValueError):
+            pass
+    if "p14_dir_name" in body:
+        s = str(body["p14_dir_name"]).strip() or "_incremental"
+        # 防路径穿越
+        s = s.replace("..", "_").replace("/", "_").replace("\\", "_")
+        cfg["p14_dir_name"] = s
+    if "p14_topic_strategy" in body:
+        s = str(body["p14_topic_strategy"]).strip().lower()
+        if s in ("auto", "manual", "off"):
+            cfg["p14_topic_strategy"] = s
+    try:
+        _FCONTEXT_CFG.write_text(
+            json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception as e:  # noqa: BLE001
+        return web.json_response({"ok": False, "err": f"write fail: {e}"},
+                                  status=500)
+    return web.json_response({"ok": True,
+                              "cfg": {
+                                  k: cfg.get(k, _FCONTEXT_DEFAULTS.get(k))
+                                  for k in _JEV_KEYS
+                              },
+                              "intent_cfg": {
+                                  k: cfg.get(k, _FCONTEXT_DEFAULTS.get(k))
+                                  for k in _INTENT_KEYS
+                              },
+                              "p14_cfg": {
+                                  k: cfg.get(k, _FCONTEXT_DEFAULTS.get(k))
+                                  for k in _P14_KEYS
+                              }})
+
+
+async def handle_m345_jev_test(request: web.Request) -> web.Response:
+    """POST /api/m345/jev/test {text} → 跑一次真 Jev,返 judgments(给前端展示)。
+    不写盘、不触发 guard,纯调试用。"""
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return web.json_response({"ok": False, "err": "bad json"}, status=400)
+    text = (body.get("text") or "").strip()
+    if not text:
+        return web.json_response({"ok": False, "err": "empty text"},
+                                  status=400)
+    cfg = _load_fcontext_cfg()
+    state = _jev_build_state(text, history_len=0, user_tier="free")
+    try:
+        judgments = await asyncio.wait_for(
+            _jev_try(state, _JEV_GUARD_QUESTIONS,
+                     timeout_s=float(cfg.get("jev_timeout_sec", 1.5))),
+            timeout=float(cfg.get("jev_timeout_sec", 1.5)) + 1.0,
+        )
+    except asyncio.TimeoutError:
+        return web.json_response({"ok": False, "err": "timeout"}, status=504)
+    except Exception as e:  # noqa: BLE001
+        return web.json_response({"ok": False,
+                                   "err": f"{type(e).__name__}: {e}"},
+                                  status=500)
+    if judgments is None:
+        return web.json_response({"ok": False,
+                                   "err": "双通道均失败(fail-open)"}, status=502)
+    decision = _jev_decide(judgments, cfg)
+    return web.json_response({"ok": True, "judgments": judgments,
+                               "decision": decision})
+
+
+# ------------------------------------------------------------
+# M3.45 P0-1 意图分发 endpoint(2026-09-22)
+# ------------------------------------------------------------
+async def handle_m345_intent_test(request: web.Request) -> web.Response:
+    """POST /api/m345/intent/test {text} → 跑一次 ask_intent,返 intent(给前端展示)。
+    不写盘、不影响主路径,纯调试用。"""
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return web.json_response({"ok": False, "err": "bad json"}, status=400)
+    text = (body.get("text") or "").strip()
+    if not text:
+        return web.json_response({"ok": False, "err": "empty text"},
+                                  status=400)
+    cfg = _load_fcontext_cfg()
+    timeout_s = float(cfg.get("intent_timeout_sec", 1.0))
+    t0 = time.time()
+    try:
+        intent = await asyncio.wait_for(
+            _jev_ask_intent(text, history_len=0, user_tier="free",
+                            timeout_s=timeout_s),
+            timeout=timeout_s + 0.5,
+        )
+    except asyncio.TimeoutError:
+        return web.json_response({"ok": False, "err": "timeout"}, status=504)
+    except Exception as e:  # noqa: BLE001
+        return web.json_response({"ok": False,
+                                   "err": f"{type(e).__name__}: {e}"},
+                                  status=500)
+    elapsed_ms = int((time.time() - t0) * 1000)
+    if intent is None:
+        return web.json_response({"ok": False,
+                                   "err": "双通道均失败(fail to unknown)"},
+                                  status=502)
+    return web.json_response({"ok": True, "intent": intent,
+                               "elapsed_ms": elapsed_ms})
+
+
+# ------------------------------------------------------------
+# M3.45 P1-4 阶段成果入库 endpoint(2026-09-22)
+# ------------------------------------------------------------
+async def handle_m345_p14_test(request: web.Request) -> web.Response:
+    """POST /api/m345/p14/test {user_text, assistant_text} → 评估 + 真实入库。
+    给前端 settings 测试按钮 + 调试用。
+    """
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return web.json_response({"ok": False, "err": "bad json"}, status=400)
+    user_text = (body.get("user_text") or "").strip()
+    assistant_text = (body.get("assistant_text") or "").strip()
+    if not user_text or not assistant_text:
+        return web.json_response(
+            {"ok": False, "err": "user_text / assistant_text 必填"}, status=400)
+    cfg = _load_fcontext_cfg()
+
+    class _DummySess:
+        pass
+
+    sess = _DummySess()
+    sess.history = []
+    sess.jev_intent = {"intent": body.get("intent", "unknown")}
+    t0 = time.time()
+    res = await _p14_evaluate_and_ingest(sess, user_text, assistant_text, cfg)
+    elapsed_ms = int((time.time() - t0) * 1000)
+    # 测试模式:即使有重复段也强制测试 = 不强制入,直接返回 evaluate 即可;
+    # 真实入库逻辑在 _p14_evaluate_and_ingest 内部跑
+    if not res.get("triggered") and res.get("reason") in (
+            "eval_timeout", "fail_soft", "eval_err"):
+        # 把评估原始值也返(给前端调试)— 让 eval 自己管 timeout
+        timeout_s = float(cfg.get("p14_timeout_sec", 1.2))
+        try:
+            raw_eval = await _jev_eval_stage(user_text, assistant_text,
+                                             timeout_s=timeout_s)
+            res["raw_eval"] = raw_eval
+        except Exception:  # noqa: BLE001
+            pass
+    res["elapsed_ms"] = elapsed_ms
+    return web.json_response({"ok": True, "result": res})
+
+
+async def handle_m345_p14_stats(request: web.Request) -> web.Response:
+    """GET /api/m345/p14/stats → 返索引统计(段数 / 文件数)。"""
+    cfg = _load_fcontext_cfg()
+    root = (cfg.get("fcontent_root") or "").strip()
+    if not root:
+        return web.json_response({"ok": True, "n_segments": 0, "n_files": 0,
+                                   "root": ""})
+    idx = _p14_load_index(root)
+    files = set(idx.values())
+    return web.json_response({"ok": True,
+                              "n_segments": len(idx),
+                              "n_files": len(files),
+                              "root": root,
+                              "dir_name": cfg.get("p14_dir_name", "_incremental")})
 
 
 # ============================================================
@@ -2329,6 +3091,15 @@ def make_app() -> web.Application:
     app.router.add_get("/api/m323/cfg", handle_m323_cfg_get)
     app.router.add_post("/api/m323/cfg", handle_m323_cfg_post)
     app.router.add_post("/api/m323/fcontent/rebuild", handle_m323_fcontent_rebuild)
+    # M3.45 Jev 护栏(2026-09-22)— settings + 真探测端点
+    app.router.add_get("/api/m345/jev/cfg", handle_m345_jev_cfg_get)
+    app.router.add_post("/api/m345/jev/cfg", handle_m345_jev_cfg_post)
+    app.router.add_post("/api/m345/jev/test", handle_m345_jev_test)
+    # M3.45 P0-1 意图分发
+    app.router.add_post("/api/m345/intent/test", handle_m345_intent_test)
+    # M3.45 P1-4 阶段成果入库
+    app.router.add_post("/api/m345/p14/test", handle_m345_p14_test)
+    app.router.add_get("/api/m345/p14/stats", handle_m345_p14_stats)
     # M3.27 派发到 PrisirAI
     app.router.add_post("/api/dispatch", api_dispatch)
     app.router.add_get("/api/dispatch/buffer", api_dispatch_buffer)
