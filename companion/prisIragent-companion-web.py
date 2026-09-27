@@ -365,6 +365,13 @@ try:
 except Exception:  # noqa: BLE001
     log.exception("Phase C free-for-dev: import free_for_dev_capabilities failed; free EXEC will be disabled")
 
+# P3j Phase 1.6(2026-09-28)agency-roles 264 角色查询能力注册
+# 3 capability 全 L0(本地 JSON 只读,无子进程无外网)
+try:
+    from prisir_work import agency_capabilities  # noqa: F401
+except Exception:  # noqa: BLE001
+    log.exception("Phase 1.6: import agency_capabilities failed; agency EXEC will be disabled")
+
 # ============================================================
 # 留痕:jsonl append-only(2026-09-16 M3.8 占位,M3.1 已先跑通文件层)
 # ============================================================
