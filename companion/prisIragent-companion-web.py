@@ -718,6 +718,9 @@ _FCONTEXT_DEFAULTS = {
     "skills_replan_enabled": False,
     "skills_replan_auto_l1_threshold": 2,  # L1+ ≤ 阈值自动执行,> 阈值才弹卡
     "skills_replan_timeout_sec": 8.0,      # replan LLM 超时秒数(fail-open)
+    # P3j T29 Phase 4 — EXEC ↔ tool_use 兼容 + 灰度切换(2026-09-28,commit 待 ship):
+    # mode=both 兼容两种协议;mode=exec 强制老;mode=tool_use 强制新
+    "skills_exec_mode": "both",  # "exec" / "tool_use" / "both"
 }
 
 
@@ -1640,19 +1643,48 @@ async def handle_msg(sess: CallSession, data: dict) -> None:
             # ai_done 后异步旁路问 LLM「用户这条想调哪些 skill」,
             # L1+ > 阈值推 skill_plan_request 给前端弹规划卡(默认关,需配置项开)
             asyncio.create_task(_maybe_skill_plan_replan(sess, text, ai_text))
-            # P3j T16-A: 主对话后处理 — 扫 [[EXEC: ...]] 标记 → 推 ws 事件
-            # L0 直接跑;L1/L2/L3 推 capability_confirm_request 给前端弹卡
+            # P3j T29 Phase 4(2026-09-28):EXEC ↔ tool_use 兼容 + 灰度切换 —
+            # 按配置项 skills_exec_mode 路由(默认 both:EXEC 优先 + tool_use 兜底)
+            fcfg_e = _load_fcontext_cfg()
+            exec_mode = str(fcfg_e.get("skills_exec_mode", "both"))
             try:
-                from prisir_work import agent_main_chat_hook as _hook
-                hook_events = _hook.scan_and_exec(ai_text)
-                for ev in hook_events:
-                    try:
-                        await sess.ws.send_json(ev)
-                    except Exception:
-                        log.exception("hook_event send failed")
+                from prisir_work.skills.exec_compat import route_exec as _route_exec
+                routed = _route_exec(ai_text, mode=exec_mode)
+                calls = routed.get("calls") or []
+                source = routed.get("source", "empty")
+                if source == "empty" or not calls:
+                    pass  # 空 plan,啥也不发
+                elif source == "exec":
+                    # EXEC 标记 → 走老 scan_and_exec 推 ws 事件(兼容老前端)
+                    from prisir_work import agent_main_chat_hook as _hook
+                    hook_events = _hook.scan_and_exec(ai_text)
+                    for ev in hook_events:
+                        try:
+                            await sess.ws.send_json(ev)
+                        except Exception:
+                            log.exception("hook_event send failed")
+                else:
+                    # tool_use 路径:把 SkillCall 走老钩子 emit confirm_request 形态
+                    # (复用 agent_main_chat_hook.build_confirm_request 兼容)
+                    from prisir_work import agent_main_chat_hook as _hook
+                    from prisir_work.skills.exec_compat import (
+                        exec_marker_to_skill_call,
+                    )
+                    for c in calls:
+                        # 构造 ExecMarker 用老 ws 事件模板(老前端不感知协议差异)
+                        em = _hook.ExecMarker(
+                            capability=c.skill_id,
+                            args={k: str(v) for k, v in (c.args or {}).items()},
+                            raw=c.raw or "",
+                        )
+                        ev = _hook.build_confirm_request(em)
+                        try:
+                            await sess.ws.send_json(ev)
+                        except Exception:
+                            log.exception("tool_use→EXEC ws send failed")
             except Exception:
                 # 钩子模块不可用 / 解析崩溃 — 主对话流程不能受影响
-                log.exception("agent_main_chat_hook scan_and_exec failed")
+                log.exception("Phase 4 route_exec failed")
     elif t == "barge_in":
         # 全双工打断(M3.5 占位):用户开说即停 echo 流
         sess.abort = True
