@@ -1,0 +1,130 @@
+{
+  "divisions": [
+    {
+      "name": "academic",
+      "label": "Academic",
+      "icon": "GraduationCap",
+      "color": "#8B5CF6",
+      "n_roles": 6
+    },
+    {
+      "name": "design",
+      "label": "Design",
+      "icon": "PenTool",
+      "color": "#EC4899",
+      "n_roles": 10
+    },
+    {
+      "name": "engineering",
+      "label": "Engineering",
+      "icon": "Code",
+      "color": "#3B82F6",
+      "n_roles": 64
+    },
+    {
+      "name": "finance",
+      "label": "Finance",
+      "icon": "DollarSign",
+      "color": "#22C55E",
+      "n_roles": 5
+    },
+    {
+      "name": "game-development",
+      "label": "Game Development",
+      "icon": "Gamepad2",
+      "color": "#A855F7",
+      "n_roles": 6
+    },
+    {
+      "name": "gis",
+      "label": "GIS",
+      "icon": "Map",
+      "color": "#14B8A6",
+      "n_roles": 13
+    },
+    {
+      "name": "healthcare",
+      "label": "Healthcare",
+      "icon": "Stethoscope",
+      "color": "#0D9488",
+      "n_roles": 3
+    },
+    {
+      "name": "marketing",
+      "label": "Marketing",
+      "icon": "Megaphone",
+      "color": "#F97316",
+      "n_roles": 36
+    },
+    {
+      "name": "paid-media",
+      "label": "Paid Media",
+      "icon": "Target",
+      "color": "#EAB308",
+      "n_roles": 7
+    },
+    {
+      "name": "product",
+      "label": "Product",
+      "icon": "Box",
+      "color": "#D946EF",
+      "n_roles": 5
+    },
+    {
+      "name": "project-management",
+      "label": "Project Management",
+      "icon": "ClipboardList",
+      "color": "#0EA5E9",
+      "n_roles": 7
+    },
+    {
+      "name": "research",
+      "label": "Research",
+      "icon": "Search",
+      "color": "#7C3AED",
+      "n_roles": 1
+    },
+    {
+      "name": "sales",
+      "label": "Sales",
+      "icon": "TrendingUp",
+      "color": "#10B981",
+      "n_roles": 9
+    },
+    {
+      "name": "security",
+      "label": "Security",
+      "icon": "ShieldCheck",
+      "color": "#EF4444",
+      "n_roles": 12
+    },
+    {
+      "name": "spatial-computing",
+      "label": "Spatial Computing",
+      "icon": "Boxes",
+      "color": "#06B6D4",
+      "n_roles": 6
+    },
+    {
+      "name": "specialized",
+      "label": "Specialized",
+      "icon": "Sparkles",
+      "color": "#6366F1",
+      "n_roles": 59
+    },
+    {
+      "name": "support",
+      "label": "Support",
+      "icon": "LifeBuoy",
+      "color": "#84CC16",
+      "n_roles": 6
+    },
+    {
+      "name": "testing",
+      "label": "Testing",
+      "icon": "FlaskConical",
+      "color": "#F59E0B",
+      "n_roles": 9
+    }
+  ]
+}

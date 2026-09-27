@@ -1,0 +1,42 @@
+{
+  "source": "https://github.com/msitarzewski/agency-agents",
+  "snapshot_date": "2026-09-27",
+  "snapshot_iso": "2026-09-27T15:10:42+00:00",
+  "total_divisions": 18,
+  "total_roles": 264,
+  "roles_by_division": {
+    "academic": 6,
+    "design": 10,
+    "engineering": 64,
+    "finance": 5,
+    "game-development": 6,
+    "gis": 13,
+    "healthcare": 3,
+    "marketing": 36,
+    "paid-media": 7,
+    "product": 5,
+    "project-management": 7,
+    "research": 1,
+    "sales": 9,
+    "security": 12,
+    "spatial-computing": 6,
+    "specialized": 59,
+    "support": 6,
+    "testing": 9
+  },
+  "lang_split": {
+    "en": 264,
+    "zh": 0
+  },
+  "snapshot_method": "git clone --depth 1",
+  "license": "MIT",
+  "extension_fork": false,
+  "sync_command": "git -C scripts/_cache/agency-agents pull --ff-only",
+  "non_division_dirs": [
+    "examples",
+    "integrations",
+    "scripts",
+    "strategy"
+  ],
+  "extraction_script": "scripts/extract_agency_agents.py"
+}
