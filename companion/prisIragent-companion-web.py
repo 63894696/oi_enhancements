@@ -712,6 +712,12 @@ _FCONTEXT_DEFAULTS = {
     # 实测 5 处累计 ~8000+ 字符 → skills_index ~13000 但覆盖全部 69 skill(老 5 处只覆盖 12 个)
     "skills_index_enabled": False,
     "skills_index_fallback_intent": True,  # True 时:失败/未开时仍走老 5 处;False 时仅走新索引
+    # P3j T29 Phase 3.5 — 两阶段 replan 闸门(2026-09-28,commit 58e8902):
+    # ai_done 后异步旁路问 LLM「用户这条想调哪些 skill」,L1+ > 阈值推 skill_plan_request 弹卡
+    # 默认关:开启后每个用户任务多 1 次 LLM 调,延迟 +1s,成本 +$0.001
+    "skills_replan_enabled": False,
+    "skills_replan_auto_l1_threshold": 2,  # L1+ ≤ 阈值自动执行,> 阈值才弹卡
+    "skills_replan_timeout_sec": 8.0,      # replan LLM 超时秒数(fail-open)
 }
 
 
@@ -1254,6 +1260,116 @@ async def _intents_guard(sess: CallSession, user_text: str) -> dict:
         return empty
 
 
+async def _replan_llm_call(messages: list[dict]) -> str:
+    """replan LLM 二次调用:复用 stream_chat,收集完整文本。
+
+    P3j T29 Phase 3.5(2026-09-28):轻量 adapter,把流式 delta 拼成全文。
+    失败 / 超时 → 抛 RuntimeError(给 plan_skill_calls fail-open 接住)。
+    """
+    from .companion_llm import stream_chat
+    buf: list[str] = []
+    try:
+        async for evt, data in stream_chat(
+            messages, strategy="smart", temperature=0.0, max_tokens=512,
+        ):
+            if evt == "delta":
+                buf.append(data)
+            # 'meta' / 'err' / 'done' 忽略
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(f"replan stream_chat: {exc}") from exc
+    return "".join(buf).strip()
+
+
+async def _maybe_skill_plan_replan(
+    sess: CallSession, user_text: str, ai_text: str,
+) -> None:
+    """P3j T29 Phase 3.5:ai_done 后异步旁路问 LLM 该调哪些 skill。
+
+    流程:
+      1) 配置项 skills_replan_enabled=False → 直接返回
+      2) plan_skill_calls 二次调 LLM(fail-open:任何失败返 [],主对话不受影响)
+      3) need_replan=True → emit skill_plan_request ws 事件给前端弹规划卡
+      4) need_replan=False 但 auto_executed → emit skill_plan_auto_executed 事件
+
+    不阻塞主对话流(asyncio.create_task 调用)。
+    """
+    fcfg = _load_fcontext_cfg()
+    if not fcfg.get("skills_replan_enabled"):
+        return
+    # ai_text 太短 / 显然没有 skill 调用意图 → 跳过,降噪
+    if not user_text or len(user_text.strip()) < 2:
+        return
+    if ai_text.count("EXEC:") >= 1:
+        # 主对话 LLM 已经写了 EXEC,replan 冗余 → 跳过
+        return
+    threshold = int(fcfg.get("skills_replan_auto_l1_threshold", 2))
+    timeout_s = float(fcfg.get("skills_replan_timeout_sec", 8.0))
+
+    from prisir_work.skills.replan import maybe_replan_and_execute
+
+    async def _plan_llm(messages: list[dict]) -> str:
+        return await asyncio.wait_for(
+            _replan_llm_call(messages), timeout=timeout_s,
+        )
+
+    try:
+        out = await maybe_replan_and_execute(
+            user_text, _plan_llm,
+            replan_enabled=True,
+            auto_execute_l1_threshold=threshold,
+        )
+    except Exception:  # noqa: BLE001
+        log.exception("replan_and_execute failed (non-fatal)")
+        return
+
+    calls = out.get("calls") or []
+    if not calls:
+        return  # empty_plan / 无 skill 命中
+
+    if out.get("need_replan"):
+        # 弹规划卡:前端复用 capability_confirm_request 卡片
+        try:
+            await sess.ws.send_json({
+                "type": "skill_plan_request",
+                "reason": out.get("reason", ""),
+                "calls": [
+                    {
+                        "skill_id": c.skill_id,
+                        "args": dict(c.args or {}),
+                        "risk": c.risk,
+                    }
+                    for c in calls
+                ],
+                "source": "replan",
+            })
+        except Exception:  # noqa: BLE001
+            log.exception("skill_plan_request send failed")
+        return
+
+    # auto_executed 路径:把结果也推一份给前端(只展示,前端不强确认)
+    try:
+        results = out.get("executed") or []
+        await sess.ws.send_json({
+            "type": "skill_plan_auto_executed",
+            "reason": out.get("reason", ""),
+            "calls": [
+                {
+                    "skill_id": c.skill_id,
+                    "args": dict(c.args or {}),
+                    "risk": c.risk,
+                }
+                for c in calls
+            ],
+            "results": [
+                {"skill_id": r.skill_id, "ok": r.ok,
+                 "payload": r.payload, "error": r.error}
+                for r in results
+            ],
+        })
+    except Exception:  # noqa: BLE001
+        log.exception("skill_plan_auto_executed send failed")
+
+
 async def real_llm_stream(sess: CallSession, user_text: str):
     """M3.6:调云端 LLM 流式 → 推 ai_delta/ai_done。
     故障转移中的 err 事件 → 静默不外抛(只在 sys msg 提示一次,避免污染流式气泡)。
@@ -1520,6 +1636,10 @@ async def handle_msg(sess: CallSession, data: dict) -> None:
                                        "model": meta.get("model", "")})
             # M3.45 P1-4 阶段成果增量入库(后台跑,不阻塞流)
             asyncio.create_task(_p14_bg_task(sess, text, ai_text))
+            # P3j T29 Phase 3.5(2026-09-28):两阶段 replan 闸门—
+            # ai_done 后异步旁路问 LLM「用户这条想调哪些 skill」,
+            # L1+ > 阈值推 skill_plan_request 给前端弹规划卡(默认关,需配置项开)
+            asyncio.create_task(_maybe_skill_plan_replan(sess, text, ai_text))
             # P3j T16-A: 主对话后处理 — 扫 [[EXEC: ...]] 标记 → 推 ws 事件
             # L0 直接跑;L1/L2/L3 推 capability_confirm_request 给前端弹卡
             try:
