@@ -707,15 +707,17 @@ _FCONTEXT_DEFAULTS = {
     "p14_timeout_sec": 1.2,             # 阶段成果评估超时(不阻塞主对话)
     "p14_dir_name": "_incremental",     # 写入 fcontent_root 下子目录
     "p14_topic_strategy": "auto",       # auto=从 user 文本首 12 字;manual=用 intent;off=用日期
-    # P3j T29-c Skills 工作台索引(2026-09-27)— 单段 JSON 索引替换 5 处 intent_summary
-    # 默认关:暂不影响主对话行为;开启后 5 处老 intent_summary 改 1 处 skills_index 紧凑 JSON
-    # 实测 5 处累计 ~8000+ 字符 → skills_index ~13000 但覆盖全部 69 skill(老 5 处只覆盖 12 个)
-    "skills_index_enabled": False,
+    # P3j T29-c Skills 工作台索引(2026-09-27)+Phase 7(2026-09-28)— 单段 JSON 索引替换 5 处 intent_summary
+    # 用户决策"全 skill 给 LLM 看 + 接受成本",默认开;Phase 7 紧凑化后 ~7993c(-38%)
+    # 5 处老 intent_summary 仍 fallback(覆盖度 < 全量);实测老 5 处 ~8000+ 字符只覆盖 12 个能力,
+    # 新 skills_index 覆盖全部 69 skill。
+    "skills_index_enabled": True,
     "skills_index_fallback_intent": True,  # True 时:失败/未开时仍走老 5 处;False 时仅走新索引
-    # P3j T29 Phase 3.5 — 两阶段 replan 闸门(2026-09-28,commit 58e8902):
-    # ai_done 后异步旁路问 LLM「用户这条想调哪些 skill」,L1+ > 阈值推 skill_plan_request 弹卡
-    # 默认关:开启后每个用户任务多 1 次 LLM 调,延迟 +1s,成本 +$0.001
-    "skills_replan_enabled": False,
+    # P3j T29 Phase 3.5 — 两阶段 replan 闸门(2026-09-28,commit 58e8902)+Phase 7:
+    # 用户决策"接受 replan 等待时间和成本,确保任务质量降低返工概率",默认开。
+    # ai_done 后异步旁路问 LLM「用户这条想调哪些 skill」,L1+ > 阈值推 skill_plan_request 弹卡。
+    # 开启后每个用户任务多 1 次 LLM 调,延迟 +1s,成本 +$0.001,但命中率显著提高。
+    "skills_replan_enabled": True,
     "skills_replan_auto_l1_threshold": 2,  # L1+ ≤ 阈值自动执行,> 阈值才弹卡
     "skills_replan_timeout_sec": 8.0,      # replan LLM 超时秒数(fail-open)
     # P3j T29 Phase 4 — EXEC ↔ tool_use 兼容 + 灰度切换(2026-09-28,commit 待 ship):

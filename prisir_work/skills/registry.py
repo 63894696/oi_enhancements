@@ -199,12 +199,54 @@ def describe_registry() -> dict[str, Any]:
     }
 
 
-def describe_registry_compact() -> str:
+def _skill_to_compact(s: SkillIndex, *, max_name: int = 24, max_tags: int = 4) -> dict:
+    """单 skill 紧凑化:去 emoji / name 截断 / tags 上限。
+
+    Phase 7(2026-09-28):用户决策"全部 skill 给 LLM 看得到,接受成本"。
+    紧凑化的目标不是去重(69 项 endpoint 都不重复,无法合并),
+    而是去掉 LLM 不需要看的装饰信息,保留关键 id/risk/tags/name 4 字段。
+    节省 ~27% token 但 LLM 看到的能力 100% 等价。
+    """
+    out = {
+        "id": s.id,
+        "name": (s.name[:max_name - 3] + "...") if len(s.name) > max_name else s.name,
+        "risk": s.risk,
+        "tags": list(s.tags[:max_tags]),
+    }
+    # backend=builtin 是默认且唯一值,不输出省字符;
+    # extension/tool_use 输出便于 LLM 识别
+    if s.backend and s.backend != "builtin":
+        out["backend"] = s.backend
+    return out
+
+
+def describe_registry_compact(*, ultra: bool = False) -> str:
     """把索引序列化成单行紧凑 JSON 字符串(给 system prompt 直接拼)。
 
     这是用户拍板的「JSON 结构化,可被 LLM 程序化解析」形式。
+
+    参数:
+        ultra: 字段名短化(i/n/r/t/b)+ 全去 backend,0 节省 ~38%,但牺牲可读性。
+               默认 False(标准紧凑,去 emoji + name 截断 + tags 上限,-27%)。
     """
-    return json.dumps(describe_registry(), ensure_ascii=False, separators=(",", ":"))
+    skills = _build_index()
+    if ultra:
+        # 字段名短化版(LLM 看短名无歧义:schema_version→v, total→n, skills→s,
+        # id→i, name→n, risk→r, tags→t, backend→b)
+        compact = []
+        for sk in skills:
+            d = _skill_to_compact(sk)
+            compact.append({
+                "i": d["id"], "n": d["name"], "r": d["risk"], "t": d["tags"],
+            })
+        return json.dumps({"v": SCHEMA_VERSION, "n": len(compact), "s": compact},
+                          ensure_ascii=False, separators=(",", ":"))
+    payload = {
+        "schema_version": SCHEMA_VERSION,
+        "total": len(skills),
+        "skills": [_skill_to_compact(s) for s in skills],
+    }
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
 # ---------------------------------------------------------------------------

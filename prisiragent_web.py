@@ -1407,8 +1407,9 @@ def _shell_system_prompt(user_text: str, sid: str = "") -> str:
             parts.append("\n".join(_mlines))
     except Exception:  # noqa: BLE001
         pass
-    # Phase 6(2026-09-28):Skills 工作台索引注入。让 LLM 看得到 80 skill 名(JSON 结构化),
-    # 按需 describe/execute。配置项 skills_index_enabled(默认开)。失败静默(import/空都返 "")。
+    # Phase 6(2026-09-28)+Phase 7(2026-09-28):Skills 工作台索引注入。
+    # 用户决策"全 skill 给 LLM 看得到"+ Phase 7 紧凑化(-38% token,7993c),
+    # 默认开启。设 PRISIRAI_SKILLS_INDEX=0 可关。失败静默(import/空都返 "")。
     try:
         if os.environ.get("PRISIRAI_SKILLS_INDEX", "1") != "0":
             from prisIr_work.skills.integration import skills_index_block  # noqa: PLC0415
@@ -3484,9 +3485,11 @@ def _run_chat_thread(sid: str, user_text: str, strategy: str, model: str, workdi
                 if use_router else []
 
         add_message(sid, "assistant", answer, followups)
-        # Phase 6(2026-09-28):Skills 工作台 replan 钩子。chat_done 之前调,异步旁路,不阻塞答复。
-        # 配置项 PRISIRAI_SKILLS_REPLAN(默认 0=关)控制;开启时按两阶段:LLM 二次 → 弹规划卡 → 用户确认。
-        if os.environ.get("PRISIRAI_SKILLS_REPLAN", "0") == "1" and use_router:
+        # Phase 6(2026-09-28)+Phase 7(2026-09-28):Skills 工作台 replan 钩子。
+        # 用户决策"全 skill 给 LLM 看 + 接受 replan 等待时间和成本,确保任务质量降低返工概率",
+        # 默认从 0 → 1(自动开)。设 PRISIRAI_SKILLS_REPLAN=0 可关。
+        # chat_done 之前调,异步旁路 asyncio.create_task,不阻塞答复。
+        if os.environ.get("PRISIRAI_SKILLS_REPLAN", "1") == "1" and use_router:
             try:
                 import asyncio as _asyncio_sk
                 from prisIr_work.skills.integration import maybe_skill_plan_replan  # noqa: PLC0415

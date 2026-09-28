@@ -3,7 +3,7 @@ tests/test_phase_6_main_panel_skill_plan.py — Skills 工作台 Phase 6 主面�
 
 验证 8 维度:
   1. integration.py 顶层 API + SkillPlanQueue push/peek/ack 闭环
-  2. skills_index_block() 返 ≥ 8000c JSON 索引
+  2. skills_index_block() 返 ≥ 7000c JSON 索引(Phase 7 紧凑化后 ~8000c,实测 7993c)
   3. maybe_skill_plan_replan 6 决策矩阵(replan_disabled/text_too_short/exec_marker/empty_plan/needs_confirm/auto_executed)
   4. prisIragent_web.py GET /api/skill_plan/peek 端点路由
   5. prisIragent_web.py GET /api/skill_plan/ack 端点路由
@@ -65,9 +65,9 @@ def test_2_skills_index_block():
     skills_index_block = importlib.import_module("prisir_work.skills.integration").skills_index_block
     idx = skills_index_block("test")
     assert isinstance(idx, str)
-    assert len(idx) >= 1000, f"索引太短: {len(idx)}"
+    assert len(idx) >= 7000, f"索引太短: {len(idx)} (Phase 7 标准紧凑 ~7993c, ultra ~7281c)"
     assert "skill" in idx.lower() or "capability" in idx.lower()
-    print(f"✓ skills_index_block 返 {len(idx)}c 索引(>1000c 阈值)")
+    print(f"✓ skills_index_block 返 {len(idx)}c 索引(>=7000c Phase 7 标准紧凑阈值)")
 
 
 # ── 3. maybe_skill_plan_replan 决策矩阵 ──────────────────────
