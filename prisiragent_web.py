@@ -1407,6 +1407,16 @@ def _shell_system_prompt(user_text: str, sid: str = "") -> str:
             parts.append("\n".join(_mlines))
     except Exception:  # noqa: BLE001
         pass
+    # Phase 6(2026-09-28):Skills 工作台索引注入。让 LLM 看得到 80 skill 名(JSON 结构化),
+    # 按需 describe/execute。配置项 skills_index_enabled(默认开)。失败静默(import/空都返 "")。
+    try:
+        if os.environ.get("PRISIRAI_SKILLS_INDEX", "1") != "0":
+            from prisIr_work.skills.integration import skills_index_block  # noqa: PLC0415
+            _sib = skills_index_block(user_text)
+            if _sib:
+                parts.append(_sib)
+    except Exception:  # noqa: BLE001
+        pass
     return "\n\n".join(parts)
 
 
@@ -3474,6 +3484,31 @@ def _run_chat_thread(sid: str, user_text: str, strategy: str, model: str, workdi
                 if use_router else []
 
         add_message(sid, "assistant", answer, followups)
+        # Phase 6(2026-09-28):Skills 工作台 replan 钩子。chat_done 之前调,异步旁路,不阻塞答复。
+        # 配置项 PRISIRAI_SKILLS_REPLAN(默认 0=关)控制;开启时按两阶段:LLM 二次 → 弹规划卡 → 用户确认。
+        if os.environ.get("PRISIRAI_SKILLS_REPLAN", "0") == "1" and use_router:
+            try:
+                import asyncio as _asyncio_sk
+                from prisIr_work.skills.integration import maybe_skill_plan_replan  # noqa: PLC0415
+                _router_planner = _router  # 复用同 router 做 replan LLM 调用
+                async def _replan_llm(messages):
+                    return await _router_planner.stream_chat(
+                        messages, strategy=strategy, temperature=0.0)
+
+                async def _run_replan():
+                    try:
+                        await maybe_skill_plan_replan(
+                            user_text=user_text,
+                            answer=answer,
+                            session_id=sid,
+                            plan_llm_call=_replan_llm,
+                            skills_replan_enabled=True,
+                        )
+                    except Exception as _re:  # noqa: BLE001
+                        pass
+                _asyncio_sk.create_task(_run_replan())
+            except Exception:  # noqa: BLE001
+                pass
         # P2 SSE 推流:最终答复推给已配对移动端。
         _sse_broadcast({"type": "chat_done", "session_id": sid, "answer": answer,
                         "model": used, "rc": res["rc"]})
@@ -5469,6 +5504,39 @@ window.__PRISIR_FORUM_URL__ = "__PRISIR_FORUM_URL_PLACEHOLDER__";
     border-radius:4px; padding:1px 7px; margin-bottom:8px; }
   .case-card .case-body { color:var(--gh-ink); font-size:14px; line-height:1.8; white-space:pre-wrap;
     word-break:break-word; }
+  /* Phase 6(2026-09-28):Skills 工作台规划卡 CSS。
+     设计:复用 .cap-confirm 视觉(主面板已有同款 class 时直接继承),
+     主面板若无 .cap-confirm 则用最小化 fallback(独立 mask/box/risk 配色)。
+     配色 L1 绿 #6b8e7f / L2 金 #c79a3a / L3 红 #b65c5c。 */
+  .skill-plan-card { position:fixed; inset:0; z-index:9999; display:flex;
+    align-items:center; justify-content:center; background:rgba(20,30,28,0.55); }
+  .skill-plan-box { background:var(--gh-paper,#fbf8f3); border-radius:12px;
+    padding:18px 20px; min-width:340px; max-width:560px; max-height:80vh; overflow:auto;
+    box-shadow:0 10px 40px rgba(0,0,0,.30); font-size:14px; color:var(--gh-ink,#2f3a34); }
+  .skill-plan-title { font-weight:700; font-size:15px; margin-bottom:8px; }
+  .skill-plan-meta { display:flex; gap:8px; margin-bottom:10px; font-size:12px; }
+  .skill-plan-count { background:rgba(0,0,0,.06); padding:2px 8px; border-radius:4px; }
+  .skill-plan-risk { padding:2px 8px; border-radius:4px; color:#fff; font-weight:700; }
+  .skill-plan-risk[data-risk="L0"]{ background:#9aa0a6; }
+  .skill-plan-risk[data-risk="L1"]{ background:#6b8e7f; }
+  .skill-plan-risk[data-risk="L2"]{ background:#c79a3a; }
+  .skill-plan-risk[data-risk="L3"]{ background:#b65c5c; }
+  .skill-plan-row { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px;
+    padding:6px 4px; border-bottom:1px dashed rgba(0,0,0,.10); font-size:13px; }
+  .skill-plan-idx { font-weight:700; min-width:24px; }
+  .skill-plan-sid { font-weight:600; color:var(--acc,#2f6f4f); flex:1 1 auto; min-width:120px;
+    word-break:break-all; }
+  .skill-plan-args { flex-basis:100%; padding:2px 0 4px 32px; font-size:11px;
+    color:var(--dim,#6e7e76); white-space:pre-wrap; word-break:break-word; }
+  .skill-plan-buttons { display:flex; gap:10px; justify-content:flex-end; margin-top:12px; }
+  .skill-plan-buttons button { padding:6px 14px; border-radius:6px; border:1px solid #888;
+    background:#fff; cursor:pointer; font-size:13px; }
+  .skill-plan-buttons button.primary { background:var(--acc,#2f6f4f); color:#fff; border-color:var(--acc,#2f6f4f); }
+  .skill-plan-auto-msg { display:inline-block; padding:6px 12px; margin:8px 0;
+    border-radius:8px; background:rgba(47,111,79,.10); color:var(--gh-ink,#2f3a34);
+    font-size:13px; }
+  .skill-plan-auto-msg .ok{color:#2f6f4f;font-weight:700;}
+  .skill-plan-auto-msg .fail{color:#b65c5c;font-weight:700;}
 </style>
 <!-- 壳三件套②③:md 标准渲染 + XSS 防护(版本钉死)。仅渲染 assistant 正文;user 保持纯文本。 -->
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
@@ -10182,6 +10250,145 @@ window.addEventListener("beforeunload", function(e) {
       .catch(function(){});
   }, 900);
 })();
+
+// Phase 6(2026-09-28):Skills 工作台事件轮询 + 渲染。
+// 沿用 external_inject polling 范式 — 主面板前端没 SSE,每 900ms 拉 /api/skill_plan/peek。
+// 处理三类事件:skill_plan_request(弹规划卡)、skill_plan_auto_executed(sys 卡片)、skill_plan_confirm_ack(系统提示)。
+// 按钮 click 调 /api/skill_plan/confirm 后端顺序执行,完成 ack 回队列,前端再次 polling 拿到后展示。
+(function _setupSkillPlanPolling(){
+  if (window.__skillPlanStarted) return;
+  window.__skillPlanStarted = true;
+  var seenIds = new Set();
+  var pending = null;  // 当前弹出的 plan: {evtId, calls, maxRisk}
+
+  function escHtml(s){
+    return String(s == null ? "" : s)
+      .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+      .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+  }
+  function maxRiskOf(calls){
+    var order = {L0:0,L1:1,L2:2,L3:3};
+    var top = "L0";
+    (calls || []).forEach(function(c){
+      var r = (c && c.risk) || "L1";
+      if (order[r] != null && order[r] > order[top]) top = r;
+    });
+    return top;
+  }
+  function closeCard(){
+    var el = document.getElementById("skillPlanCard");
+    if (el) el.remove();
+    pending = null;
+  }
+  function showPlanCard(evtId, calls){
+    var maxR = maxRiskOf(calls);
+    var rows = "";
+    (calls || []).forEach(function(c, i){
+      var sid = escHtml(c.skill_id || "?");
+      var risk = escHtml(c.risk || "L1");
+      var argsJson = "";
+      try {
+        var a = c.args || {};
+        var pairs = [];
+        for (var k in a) {
+          if (Object.prototype.hasOwnProperty.call(a, k)) {
+            pairs.push(k + "=" + String(a[k]).slice(0, 80));
+          }
+        }
+        argsJson = pairs.join("  ") || "(无参数)";
+      } catch(e){ argsJson = "(解析失败)"; }
+      rows += '<div class="skill-plan-row">'
+        + '<span class="skill-plan-idx">' + (i+1) + '.</span>'
+        + '<span class="skill-plan-sid">' + sid + '</span>'
+        + '<span class="skill-plan-risk" data-risk="' + risk + '">' + risk + '</span>'
+        + '<div class="skill-plan-args">' + escHtml(argsJson) + '</div>'
+        + '</div>';
+    });
+    var html = ''
+      + '<div class="skill-plan-card" id="skillPlanCard">'
+      +   '<div class="skill-plan-box">'
+      +     '<div class="skill-plan-title">🧩 Skills 工作台规划卡</div>'
+      +     '<div class="skill-plan-meta">'
+      +       '<span class="skill-plan-count">' + (calls||[]).length + ' 项</span>'
+      +       '<span class="skill-plan-risk" data-risk="' + escHtml(maxR) + '">' + escHtml(maxR) + '</span>'
+      +     '</div>'
+      +     '<div>' + rows + '</div>'
+      +     '<div class="skill-plan-buttons">'
+      +       '<button id="skillPlanCancel">取消</button>'
+      +       '<button class="primary" id="skillPlanOk">我确认,顺序执行</button>'
+      +     '</div>'
+      +   '</div>'
+      + '</div>';
+    document.body.insertAdjacentHTML("beforeend", html);
+    pending = {evtId: evtId, calls: calls};
+    var okBtn = document.getElementById("skillPlanOk");
+    var cancelBtn = document.getElementById("skillPlanCancel");
+    if (okBtn) okBtn.addEventListener("click", function(){
+      var c = pending;
+      closeCard();
+      if (!c) return;
+      fetch("/prisiragent/api/skill_plan/confirm", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({approved: true, calls: c.calls, ack_event_id: c.evtId})
+      }).catch(function(){});
+    });
+    if (cancelBtn) cancelBtn.addEventListener("click", function(){
+      var c = pending;
+      closeCard();
+      if (!c) return;
+      fetch("/prisiragent/api/skill_plan/confirm", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({approved: false, calls: c.calls || [], ack_event_id: c.evtId})
+      }).catch(function(){});
+    });
+  }
+  function renderAutoExec(item){
+    var ok = item.ok_count || 0, total = item.total || 0;
+    var html = '<div class="skill-plan-auto-msg">🧩 Skills 自动执行:'
+      + '<span class="ok">' + ok + '</span>/' + total + ' 成功</div>';
+    var box = document.getElementById("messages");
+    if (box) box.insertAdjacentHTML("beforeend", html);
+  }
+  function renderAck(item){
+    var msg;
+    if (item.approved) {
+      msg = '🧩 Skills 规划已执行:' + (item.executed || 0) + '/' + (item.total || 0) + ' 成功';
+    } else {
+      msg = '🧩 Skills 规划已取消' + (item.reason ? '(' + item.reason + ')' : '');
+    }
+    var box = document.getElementById("messages");
+    if (box) box.insertAdjacentHTML("beforeend", '<div class="skill-plan-auto-msg">' + escHtml(msg) + '</div>');
+  }
+  function handleItem(item){
+    if (!item || !item.id || seenIds.has(item.id)) return;
+    seenIds.add(item.id);
+    try {
+      if (item.type === "skill_plan_request") {
+        showPlanCard(item.id, item.calls || []);
+      } else if (item.type === "skill_plan_auto_executed") {
+        renderAutoExec(item);
+      } else if (item.type === "skill_plan_confirm_ack") {
+        renderAck(item);
+      }
+    } catch (err) { console.error("skill_plan handler", err); }
+    // ack 移除(避免重连重复处理)
+    fetch("/prisiragent/api/skill_plan/ack?id=" + encodeURIComponent(item.id))
+      .catch(function(){});
+  }
+  setInterval(function(){
+    var sid = (typeof sessionId !== "undefined" && sessionId) ? sessionId : "";
+    var url = "/prisiragent/api/skill_plan/peek";
+    if (sid) url += "?session_id=" + encodeURIComponent(sid);
+    fetch(url)
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        (d.items || []).forEach(handleItem);
+      })
+      .catch(function(){});
+  }, 900);
+})();
 </script>
 </body>
 </html>
@@ -12703,6 +12910,28 @@ class Handler(BaseHTTPRequestHandler):
                 _INJECT_QUEUE[:] = [x for x in _INJECT_QUEUE if x.get("id") != inj_id]
                 removed = before - len(_INJECT_QUEUE)
             self._json({"ok": True, "removed": removed})
+        elif path == "/prisiragent/api/skill_plan/peek":
+            # Phase 6(2026-09-28):Skills 工作台事件队列 peek(沿用 external_inject polling 范式)。
+            # 前端每 900ms 拉一次;按 session_id 过滤;返未 ack 事件。
+            try:
+                from prisIr_work.skills.integration import get_skill_plan_queue  # noqa: PLC0415
+                _sid = (qs.get("session_id") or [""])[0] or None
+                items = get_skill_plan_queue().peek(session_id=_sid)
+                self._json({"ok": True, "items": items, "count": len(items)})
+            except Exception as _e:  # noqa: BLE001
+                self._json({"ok": False, "err": f"{type(_e).__name__}: {_e}"}, 500)
+        elif path == "/prisiragent/api/skill_plan/ack":
+            # Phase 6:前端处理完事件后调,按 id 从队列移除。
+            evt_id = (qs.get("id") or [""])[0]
+            if not evt_id:
+                self._json({"ok": False, "err": "id 必填"}, 400)
+                return
+            try:
+                from prisIr_work.skills.integration import get_skill_plan_queue  # noqa: PLC0415
+                removed = get_skill_plan_queue().ack(evt_id)
+                self._json({"ok": True, "removed": bool(removed)})
+            except Exception as _e:  # noqa: BLE001
+                self._json({"ok": False, "err": f"{type(_e).__name__}: {_e}"}, 500)
         elif path == "/prisiragent/api/registry_recent":
             wd = _WORKDIR.get("path", "") if hasattr(_WORKDIR, "get") else (_WORKDIR or "")
             limit = int((qs.get("limit") or ["200"])[0])
@@ -13043,6 +13272,67 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:  # noqa: BLE001  SSE 失败不影响主流程
                 pass
             self._json({"ok": True, "id": item["id"], "queue_size": len(_INJECT_QUEUE)})
+        elif path == "/prisiragent/api/skill_plan/confirm":
+            # Phase 6(2026-09-28):用户在前端规划卡点「执行/取消」后调。
+            # approved=True → 顺序 execute_skill → emit capability_exec_result + ack
+            # approved=False → emit ack{reason: user_cancelled}
+            approved = bool(body.get("approved", False)) if isinstance(body, dict) else False
+            calls = body.get("calls") if isinstance(body, dict) else None
+            ack_evt_id = body.get("ack_event_id", "") if isinstance(body, dict) else ""
+            if not isinstance(calls, list):
+                self._json({"ok": False, "err": "calls 必须为 list"}, 400)
+                return
+            try:
+                from prisIr_work.skills.integration import (  # noqa: PLC0415
+                    execute_skill, get_skill_plan_queue,
+                    push_skill_plan_confirm_ack,
+                )
+            except Exception as _e:  # noqa: BLE001
+                self._json({"ok": False, "err": f"import 失败: {_e}"}, 500)
+                return
+            executed = 0
+            results: list[dict] = []
+            if approved and calls:
+                for c in calls:
+                    sid = str((c or {}).get("skill_id") or "")
+                    args = (c or {}).get("args") or {}
+                    if not sid:
+                        results.append({"skill_id": "", "ok": False, "error": "no skill_id"})
+                        continue
+                    try:
+                        r = execute_skill(sid, dict(args), force=True)
+                        results.append({
+                            "skill_id": r.skill_id,
+                            "ok": r.ok,
+                            "error": r.error or "",
+                            "result": r.payload or {},
+                        })
+                        if r.ok:
+                            executed += 1
+                    except Exception as _e:  # noqa: BLE001
+                        results.append({"skill_id": sid, "ok": False, "error": str(_e)})
+            # ack 推回队列(前端 polling 拉到)
+            ack_id = push_skill_plan_confirm_ack(
+                ack_evt_id.split(":", 1)[0] if ack_evt_id else "",
+                approved=approved,
+                executed=executed,
+                total=len(calls) if calls else 0,
+                reason="" if approved else "user_cancelled",
+            )
+            # 移除原 skill_plan_request 事件(若有 ack_event_id)
+            if ack_evt_id:
+                try:
+                    get_skill_plan_queue().ack(ack_evt_id)
+                except Exception:  # noqa: BLE001
+                    pass
+            self._json({
+                "ok": True,
+                "approved": approved,
+                "executed": executed,
+                "total": len(calls) if calls else 0,
+                "results": results,
+                "ack_event_id": ack_id,
+            })
         elif path == "/prisiragent/api/skill_install":
             # M3.33(2026-09-16):从本地路径或 git URL 装 skill(简化版 — 本期只支持本地路径)
             # 安全边界:不允许任意 URL 下载,只允许白名单路径或 git clone 已有本地 repo

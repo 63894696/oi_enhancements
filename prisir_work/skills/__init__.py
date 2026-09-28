@@ -37,6 +37,19 @@ from .schema import (
     SkillCall,
     SkillResult,
 )
+from .integration import (  # noqa: F401  Phase 6 主面板集成层
+    DEFAULT_SKILLS_INDEX_ENABLED,
+    DEFAULT_SKILLS_REPLAN_ENABLED,
+    DEFAULT_SKILLS_REPLAN_TIMEOUT,
+    DEFAULT_AUTO_EXECUTE_L1_THRESHOLD,
+    skills_index_block,
+    SkillPlanQueue,
+    get_queue as get_skill_plan_queue,
+    push_skill_plan_request,
+    push_skill_plan_auto_executed,
+    push_skill_plan_confirm_ack,
+    maybe_skill_plan_replan,
+)
 
 __all__ = [
     # 顶层 API
@@ -54,4 +67,16 @@ __all__ = [
     "SkillDescribe",
     "SkillCall",
     "SkillResult",
+    # 主面板集成层(Phase 6)
+    "DEFAULT_SKILLS_INDEX_ENABLED",
+    "DEFAULT_SKILLS_REPLAN_ENABLED",
+    "DEFAULT_SKILLS_REPLAN_TIMEOUT",
+    "DEFAULT_AUTO_EXECUTE_L1_THRESHOLD",
+    "skills_index_block",
+    "SkillPlanQueue",
+    "get_skill_plan_queue",
+    "push_skill_plan_request",
+    "push_skill_plan_auto_executed",
+    "push_skill_plan_confirm_ack",
+    "maybe_skill_plan_replan",
 ]
