@@ -15,3 +15,4 @@
 - [PrisirAI Skills 工作台 文档 ship](prisIr-skills-workbench-docs.md) — 2026-09-28;config.md 11 开关 × 2 入口 + 4 档风险门 + fail-open 6 点 + token 经济性表;shipped.md 8 阶段 12 commit + 148 测试
 - [PrisirAI Skills 工作台 Phase 8 tier 分层字段 ship](prisIr-skills-workbench-phase-8.md) — 2026-09-28 commit 04ce490;69 skill 标 hot=3/warm=56/cold=10/archive=0;不动能力只分层;capability `_tier` override 启发式;未来留口子按 tier 分层注入
 - [OpenMontage 调研 + 借鉴决策](prisIr-openmontage-recon.md) — 2026-09-28;C(借鉴不嵌入)+ 免费资源;5 设计模式(checkpoint/scoring/pre-compose/post-render/budget);5 phase ship 路径估 1-2 周;单集 60 秒稳定后能力 vs 现状对比
+- [Phase 9 OM-P1 + MA-P1 双线 ship](prisIr-phase-9-om-p1-and-ma-p1.md) — 2026-09-28 commit 8653940;video_checkpoint + agent_handoff + workflow 集成 + 14/14 测绿;最小 agent 团队示例(Triage→Creative→Art)链式 handoff;累计测试 170
