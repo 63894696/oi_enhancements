@@ -1,7 +1,8 @@
 """
 prisir_work/video_budget.py — 视频 workflow 预算估算 + pre-compose 校验(Phase 11 OM-P3, 2026-09-28)。
 
-承接 [[prisIr-phase-10-om-p2-scoring]] + 用户「免费优先,单集 ≤ $0.10」拍板。
+承接 [[prisIr-phase-10-om-p2-scoring]] + 用户「免费优先,单集 ≤ $0.10」拍板
++ 2026-09-28 二次拍板:「国内短剧成本很高,预算应按 ¥100/集 顶级档 ≈ $14/集」。
 
 ## 定位
 在 workflow 真正执行前,**预先估算成本**并拦截超预算方案:
@@ -9,9 +10,13 @@ prisir_work/video_budget.py — 视频 workflow 预算估算 + pre-compose 校�
 - 同 tag 降级建议(付费 → 同 tag 免费)
 - 弹卡路径:超预算 → fail-fast 返 need_confirm,前端让用户选「降级 / 加预算 / 取消」
 
-## 默认预算常量
-  DEFAULT_BUDGET_PER_EPISODE = $0.10 (用户拍板:免费优先)
-  DEFAULT_COST_PER_STEP_HARD_CAP = $0.014 (7 步 ÷ 预算)
+## 默认预算常量(用户 2026-09-28 二次拍板:¥100/集 顶级档)
+  DEFAULT_BUDGET_PER_EPISODE = $14.00 (¥100/集 ≈ $14)
+  DEFAULT_COST_PER_STEP_HARD_CAP = $2.00 (7 步 ÷ 预算)
+  DEFAULT_STEPS_PER_EPISODE = 7 (60s 短剧典型步数)
+
+## 货币换算(承接 OM-P2 video_provider_scoring 的 CNY_TO_USD=0.139)
+  所有国内 provider 的 cost_per_call 已自动转 USD(注册时 * CNY_TO_USD)
 
 ## 关键 API
   - estimate_step_cost(step, provider_map) → float
@@ -44,8 +49,11 @@ log = logging.getLogger("prisir_work.video_budget")
 # 默认预算常量(用户 2026-09-28 拍板:免费优先)
 # ---------------------------------------------------------------------------
 
-DEFAULT_BUDGET_PER_EPISODE: float = 0.10      # $0.10/集
-DEFAULT_COST_PER_STEP_HARD_CAP: float = 0.014  # $0.014/步(7 步 × 7 = $0.10)
+# 用户 2026-09-28 二次拍板:国内顶级短剧 ¥100/集 ≈ $14/集
+# (OM-P3 ship 时默认 $0.10 是基于「免费优先」假设,
+#  用户补充真实场景后:国内短剧成本很高,预算应按顶级档 ¥100 拍板)
+DEFAULT_BUDGET_PER_EPISODE: float = 14.00      # $14.00/集(¥100)
+DEFAULT_COST_PER_STEP_HARD_CAP: float = 2.00   # $2.00/步(14 ÷ 7 步)
 DEFAULT_STEPS_PER_EPISODE: int = 7             # 60s 短剧典型步数(image2video+tts+bgm+image+assemble)
 
 
@@ -160,8 +168,8 @@ def suggest_replacements(provider_name: str, tag: str | None = None) -> list[str
     if not meta:
         return []
 
-    # 已是免费(cost=1.0)→ 无需替代
-    if float(meta.get("cost", 1.0)) >= 1.0:
+    # 已是免费(cost_per_call=0)→ 无需替代
+    if float(meta.get("cost_per_call", 0.0)) <= 0.0:
         return []
 
     actual_tag = tag or meta.get("tag", "")
@@ -171,8 +179,8 @@ def suggest_replacements(provider_name: str, tag: str | None = None) -> list[str
             continue
         if m.get("tag") != actual_tag:
             continue
-        if float(m.get("cost", 1.0)) < 1.0:
-            continue  # 只推免费替代
+        if float(m.get("cost_per_call", 1.0)) > 0.0:
+            continue  # 只推免费替代(cost_per_call=0)
         # 选 quality 最高的免费 provider
         candidates.append((name, float(m.get("quality", 0.5))))
 

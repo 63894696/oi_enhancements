@@ -68,6 +68,17 @@ DEFAULT_WEIGHTS: dict[str, float] = {
 
 
 # ---------------------------------------------------------------------------
+# 货币 / 汇率(2026-09-28 用户拍板:全转 USD 统一预算)
+# ---------------------------------------------------------------------------
+
+CNY_TO_USD: float = 0.139  # 1 CNY ≈ 0.139 USD(汇率 7.2)
+USD_TO_CNY: float = 7.20    # 1 USD ≈ 7.2 CNY
+
+# 用户 2026-09-28 拍板的真实场景预算(国内顶级短剧 ¥100/集 ≈ $14/集)
+USER_DEFAULT_BUDGET_USD: float = 14.00  # ¥100 顶级短剧
+
+
+# ---------------------------------------------------------------------------
 # 数据类
 # ---------------------------------------------------------------------------
 
@@ -243,6 +254,67 @@ def _ensure_defaults() -> None:
         "quality": 0.65, "speed": 0.60, "cost": 1.0,
         "availability": 0.85, "quota": 0.95,
         "description": "Archive.org 历史素材(无 key)",
+    })
+
+    # 国内视频生成 provider(2026-09-28 用户「国内短剧成本高」决策后 ship)
+    # 注:cost_per_call 字段统一为 USD(已 CNY×CNY_TO_USD 换算)
+    # kling_cn:可灵国内版 1.5(快手),5 秒视频 ¥1.0 ≈ $0.139
+    register_provider("kling_cn", {
+        "tag": "image2video", "currency": "CNY",
+        "cost_per_call": round(1.0 * CNY_TO_USD, 4),
+        "cost_per_call_original": 1.0,
+        "requires_key": True,
+        "quality": 0.90, "speed": 0.55, "cost": 0.4,
+        "availability": 1.0, "quota": 0.7,
+        "description": "可灵 1.5 国内版 5秒视频 ¥1.0($0.139),中文场景最佳",
+    })
+    # jimeng:即梦/Dreamina 火山,5 秒视频 ¥0.5 ≈ $0.0695
+    register_provider("jimeng", {
+        "tag": "image2video", "currency": "CNY",
+        "cost_per_call": round(0.5 * CNY_TO_USD, 4),
+        "cost_per_call_original": 0.5,
+        "requires_key": True,
+        "quality": 0.85, "speed": 0.65, "cost": 0.5,
+        "availability": 1.0, "quota": 0.8,
+        "description": "即梦 Dreamina 5秒视频 ¥0.5($0.07),性价比高",
+    })
+    # vidu:生数科技 Vidu 5 秒视频 ¥0.5 ≈ $0.0695
+    register_provider("vidu", {
+        "tag": "image2video", "currency": "CNY",
+        "cost_per_call": round(0.5 * CNY_TO_USD, 4),
+        "cost_per_call_original": 0.5,
+        "requires_key": True,
+        "quality": 0.82, "speed": 0.60, "cost": 0.5,
+        "availability": 1.0, "quota": 0.75,
+        "description": "Vidu 5 秒视频 ¥0.5($0.07),角色一致性较好",
+    })
+    # cogvideox:智谱 CogVideoX 开源,5 秒视频 ¥0.3 ≈ $0.0417
+    register_provider("cogvideox", {
+        "tag": "image2video", "currency": "CNY",
+        "cost_per_call": round(0.3 * CNY_TO_USD, 4),
+        "cost_per_call_original": 0.3,
+        "requires_key": True,
+        "quality": 0.78, "speed": 0.55, "cost": 0.6,
+        "availability": 1.0, "quota": 0.85,
+        "description": "智谱 CogVideoX 5秒视频 ¥0.3($0.04),开源可本地部署",
+    })
+    # hailuo:海螺/MiniMax Video 5 秒视频 ¥0.8 ≈ $0.111
+    register_provider("hailuo", {
+        "tag": "image2video", "currency": "CNY",
+        "cost_per_call": round(0.8 * CNY_TO_USD, 4),
+        "cost_per_call_original": 0.8,
+        "requires_key": True,
+        "quality": 0.88, "speed": 0.60, "cost": 0.45,
+        "availability": 1.0, "quota": 0.8,
+        "description": "海螺 AI 5秒视频 ¥0.8($0.11),中文指令理解好",
+    })
+    # wan2.1_local:阿里 WAN 2.1 开源,本地部署,免费($0)
+    register_provider("wan2.1_local", {
+        "tag": "image2video", "currency": "USD",
+        "cost_per_call": 0.0, "requires_key": False,
+        "quality": 0.75, "speed": 0.45, "cost": 1.0,
+        "availability": 0.75, "quota": 1.0,
+        "description": "阿里 WAN 2.1 本地开源,需 GPU,免费",
     })
 
     _DEFAULT_PROVIDERS_LOADED = True

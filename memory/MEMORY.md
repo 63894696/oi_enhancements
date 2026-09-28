@@ -18,3 +18,4 @@
 - [Phase 9 OM-P1 + MA-P1 双线 ship](prisIr-phase-9-om-p1-and-ma-p1.md) — 2026-09-28 commit 8653940;video_checkpoint + agent_handoff + workflow 集成 + 14/14 测绿;最小 agent 团队示例(Triage→Creative→Art)链式 handoff;累计测试 170
 - [Phase 10 OM-P2 Provider 7 维度评分 ship](prisIr-phase-10-om-p2-scoring.md) — 2026-09-28 commit 721184d;video_provider_scoring.py + 16 provider + pick_best + video_creator.pick_provider_for_creator hook;用户「spawn on-demand 架构」决策(provider 不绑单一,跟最小 agent 团队一致);13/13 测绿;累计测试 183
 - [Phase 11 OM-P3 Pre-compose 预算校验 ship](prisIr-phase-11-om-p3-pre-compose.md) — 2026-09-28;用户「免费优先,单集 ≤ $0.10」拍板;video_budget.py + check_budget + suggest_replacements + run_workflow pre_compose hook;14/14 测绿;累计测试 197
+- [Phase 11-H 国内 CNY provider + ¥100/集预算 ship](prisIr-phase-11h-cny-budget-update.md) — 2026-09-28;用户「国内短剧成本很高」拍板;6 国内 provider + 全转 USD(CNY×0.139)+ 预算改 $14;真实国内 11 步编排 $0.54 < $14;suggest_replacements bug 修复;14/14 原 + 8/8 H 测试全绿;累计测试 211
