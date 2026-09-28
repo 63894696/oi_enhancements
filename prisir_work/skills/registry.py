@@ -105,6 +105,107 @@ def _tags_for(cap_id: str, keywords: tuple[str, ...]) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# tier 启发式 — Phase 8(2026-09-28)
+#
+# 用户决策:"长尾低频但关键的技能不能被频次去重干掉"(如季度报告 / 年度报税 /
+# 平台 publish 等)。tier 字段只做**分层标记**,不做删除;未来真有压缩需求
+# 时可按 tier 分层注入(hot 始终在, warm 默认在, cold 按需注入)。
+#
+# 启发规则(只覆盖命名空间 + 风险模式,具体 capability 可在 capability.py
+# override `_tier` 字段):
+#   · **hot** — 日常高频(查询类、信息类、生成类)
+#   · **warm** — 常规(月/周频次的写操作、平台 publish、文件操作)
+#   · **cold** — 低频但关键(年度/按需、审计、合规、报告)
+# ---------------------------------------------------------------------------
+
+# 命名空间启发 → tier(短前缀匹配)
+_NS_TIER: dict[str, str] = {
+    "video.info": "hot",       # 视频元数据查询
+    "video.asr": "warm",       # 字幕提取
+    "video.bgm": "warm",       # 加背景乐
+    "video.tts": "warm",       # 语音合成
+    "video.cut": "warm",       # 剪辑
+    "video.burn": "warm",      # 烧字幕
+    "video.orchestrate": "warm",  # 编排(中等频次)
+    "video.create": "warm",    # 创作(中等频次)
+    "video.analyze": "warm",   # 分析
+
+    "web.search": "hot",       # 搜索
+    "web.fetch": "hot",        # 抓 URL
+    "web.research": "warm",    # 多步研究
+    "web.extract": "warm",     # 抽取
+    "web.screenshot": "warm",  # 截图
+    "web.playwright": "warm",  # 浏览器交互
+    "web.agent-browser": "warm",  # 浏览器交互
+    "web.feedparser": "warm",  # RSS
+    "web.ytdlp": "cold",       # 视频元数据(批量场景用,日常少)
+    "web.tune": "cold",        # 调参(开发用)
+    "web.reach": "cold",       # 14 平台(用户主用某几个,其余冷)
+
+    "poster.gen": "warm",      # 海报 prompt
+    "poster.random": "warm",
+    "image-gen.from_poster_prompt": "warm",
+    "image-gen.from_text": "warm",
+
+    "agency.list_divisions": "warm",  # 列表
+    "agency.search": "warm",         # 搜索
+    "agency.detail": "cold",         # 详细(低频)
+
+    "free_for_dev.search": "warm",   # 搜索
+    "free_for_dev.detail": "cold",   # 详情
+
+    "publish.wechat": "warm",       # 公众号
+    "publish.xiaohongshu": "warm",  # 小红书
+    "publish.bilibili": "warm",     # B 站
+    "publish.youtube": "warm",      # YouTube
+
+    "calendar.create": "warm",      # 日历
+    "calendar.list": "hot",         # 列事件(查)
+    "calendar.update": "warm",
+    "calendar.delete": "cold",      # 删事件(低频)
+    "calendar.search": "warm",
+
+    "youtube.upload": "warm",       # 上传(常规)
+    "youtube.analytics": "cold",    # 数据(按需)
+
+    "music.compose": "warm",        # 作曲
+    "music.lyrics": "warm",
+
+    "git.commit": "warm",
+    "git.push": "warm",
+    "git.pr_create": "cold",        # PR(按需)
+    "git.tag": "cold",              # tag(按需)
+
+    "audit.report": "cold",         # 审计报告(用户原话场景:季度/年度)
+    "audit.compliance": "cold",     # 合规检查(用户原话场景:年度)
+    "tax.file": "cold",             # 报税(用户原话场景:年度)
+    "yearly.summary": "cold",       # 年终总结(用户原话场景:年度)
+    "quarterly.report": "cold",     # 季度报告(用户原话场景:季度)
+}
+
+
+def _tier_for(skill_id: str, risk: str) -> str:
+    """启发式取 tier。规则:
+      1. 命名空间 + 完整 id 命中 → 该 tier
+      2. 命名空间段(前 2 段)命中 → 该 tier
+      3. 都没命中 + L0 → 'warm'
+      4. 都没命中 + L1+ → 'cold'(写操作默认冷,日常少用但关键)
+    """
+    if skill_id in _NS_TIER:
+        return _NS_TIER[skill_id]
+    if "." in skill_id:
+        ns2 = ".".join(skill_id.split(".")[:2])
+        if ns2 in _NS_TIER:
+            return _NS_TIER[ns2]
+    # 兜底:命名空间段(第一段)
+    head = skill_id.split(".")[0]
+    if head in _NS_TIER:
+        return _NS_TIER[head]
+    # L0 默认 warm,L1+ 默认 cold(写操作日常少)
+    return "cold" if risk in ("L1", "L2", "L3") else "warm"
+
+
+# ---------------------------------------------------------------------------
 # index 缓存
 # ---------------------------------------------------------------------------
 
@@ -137,6 +238,8 @@ def _build_index() -> list[SkillIndex]:
                 name = name[:77] + "..."
             risk = entry.get("risk", "L0")
             keywords = tuple(entry.get("keywords", []) or [])
+            # Phase 8:优先读 capability 显式 `_tier`,没设走启发式
+            tier = entry.get("_tier") or _tier_for(cap_id, risk)
             out.append(SkillIndex(
                 id=cap_id,
                 name=name,
@@ -144,6 +247,7 @@ def _build_index() -> list[SkillIndex]:
                 risk=risk,
                 tags=_tags_for(cap_id, keywords),
                 backend="builtin",
+                tier=tier,
             ))
         except Exception as exc:  # noqa: BLE001
             log.warning("skills.registry: skip bad entry %s: %s",
@@ -186,6 +290,40 @@ def search_skills(query: str) -> list[SkillIndex]:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Phase 8 — tier 分组 API(只分层,不删东西)
+# ---------------------------------------------------------------------------
+
+def list_skills_by_tier(tier: str) -> list[SkillIndex]:
+    """返指定 tier 的 skill 列表。tier ∈ {"hot", "warm", "cold", "archive"}。
+    空字符串或未知 tier → 返空列表。
+    """
+    if not tier:
+        return []
+    return [s for s in _build_index() if s.tier == tier]
+
+
+def count_by_tier() -> dict[str, int]:
+    """返 tier → 数量映射,例如 {"hot": 8, "warm": 45, "cold": 16, "archive": 0}。
+    永远包含 hot/warm/cold/archive 4 个 key(0 也输出),便于 UI 稳定渲染。
+    """
+    out = {"hot": 0, "warm": 0, "cold": 0, "archive": 0}
+    for s in _build_index():
+        if s.tier in out:
+            out[s.tier] += 1
+    return out
+
+
+def tiers_summary() -> str:
+    """返 1 行人话摘要,给 debug / 日志用。"""
+    c = count_by_tier()
+    total = sum(c.values())
+    return (
+        f"tiers: hot={c['hot']} warm={c['warm']} cold={c['cold']} "
+        f"archive={c['archive']} (total={total})"
+    )
+
+
 def describe_registry() -> dict[str, Any]:
     """返 JSON 结构化索引(直接给 system prompt 用)。
 
@@ -206,12 +344,16 @@ def _skill_to_compact(s: SkillIndex, *, max_name: int = 24, max_tags: int = 4) -
     紧凑化的目标不是去重(69 项 endpoint 都不重复,无法合并),
     而是去掉 LLM 不需要看的装饰信息,保留关键 id/risk/tags/name 4 字段。
     节省 ~27% token 但 LLM 看到的能力 100% 等价。
+
+    Phase 8(2026-09-28):保留 tier 字段(hot/warm/cold/archive),用于未来按 tier
+    分层注入,本阶段 system prompt 不变(全量 69 仍输出)。
     """
     out = {
         "id": s.id,
         "name": (s.name[:max_name - 3] + "...") if len(s.name) > max_name else s.name,
         "risk": s.risk,
         "tags": list(s.tags[:max_tags]),
+        "tier": s.tier,
     }
     # backend=builtin 是默认且唯一值,不输出省字符;
     # extension/tool_use 输出便于 LLM 识别
@@ -226,18 +368,22 @@ def describe_registry_compact(*, ultra: bool = False) -> str:
     这是用户拍板的「JSON 结构化,可被 LLM 程序化解析」形式。
 
     参数:
-        ultra: 字段名短化(i/n/r/t/b)+ 全去 backend,0 节省 ~38%,但牺牲可读性。
+        ultra: 字段名短化(i/n/r/t/b/t)+ 全去 backend,0 节省 ~38%,但牺牲可读性。
                默认 False(标准紧凑,去 emoji + name 截断 + tags 上限,-27%)。
+
+    Phase 8:tier 字段保留在每项里;system prompt 不变(全量 69 + tier 字段)。
+    后续若启用按 tier 分层注入,可改 `skills_index_block(only_tiers=...)` 参数。
     """
     skills = _build_index()
     if ultra:
         # 字段名短化版(LLM 看短名无歧义:schema_version→v, total→n, skills→s,
-        # id→i, name→n, risk→r, tags→t, backend→b)
+        # id→i, name→n, risk→r, tags→t, backend→b, tier→tir)
         compact = []
         for sk in skills:
             d = _skill_to_compact(sk)
             compact.append({
-                "i": d["id"], "n": d["name"], "r": d["risk"], "t": d["tags"],
+                "i": d["id"], "n": d["name"], "r": d["risk"],
+                "t": d["tags"], "tir": d["tier"],
             })
         return json.dumps({"v": SCHEMA_VERSION, "n": len(compact), "s": compact},
                           ensure_ascii=False, separators=(",", ":"))
@@ -409,5 +555,8 @@ __all__ = [
     "list_skills",
     "search_skills",
     "count_skills",
+    "list_skills_by_tier",
+    "count_by_tier",
+    "tiers_summary",
     "invalidate_cache",
 ]

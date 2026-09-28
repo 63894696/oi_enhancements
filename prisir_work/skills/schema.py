@@ -38,6 +38,10 @@ class SkillIndex:
     risk: str = "L0"    # L0 / L1 / L2 / L3
     tags: list[str] = field(default_factory=list)
     backend: str = "builtin"  # "builtin" | "extension" | "tool_use"
+    # 频次档:hot(常用)/ warm(常规)/ cold(低频但关键,季度年度用)/ archive(已废弃)
+    # Phase 8(2026-09-28):用户决策"长尾低频关键技能不能去重",加 tier 字段分层兜底,
+    # 未来可按 tier 分层注入,本阶段不动 system prompt。
+    tier: str = "warm"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -47,6 +51,7 @@ class SkillIndex:
             "risk": self.risk,
             "tags": list(self.tags),
             "backend": self.backend,
+            "tier": self.tier,
         }
 
     def approx_chars(self) -> int:
