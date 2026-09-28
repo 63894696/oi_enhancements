@@ -81,6 +81,7 @@ class WorkflowResult:
     steps: dict[str, dict[str, Any]] = field(default_factory=dict)  # step_id → {ok, result, args_used}
     failed_step: str = ""
     error: str = ""
+    artifact: dict[str, Any] = field(default_factory=dict)  # 额外元数据(budget_check / metrics 等)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -222,19 +223,28 @@ def _execute_step(step: WorkflowStep, ctx: dict[str, dict[str, Any]],
 
 def run_workflow(dsl: dict[str, Any], *, stop_on_error: bool = True,
                 workflow_id: Optional[str] = None,
-                resume: bool = False) -> WorkflowResult:
+                resume: bool = False,
+                budget: Optional[float] = None,
+                pre_compose_check: bool = True) -> WorkflowResult:
     """执行工作流。
 
     dsl 形态:
       {"steps": [{"id": "...", "capability": "...", "args": {...}, "depends_on": [...]}],
        "stop_on_error": True,
        "workflow_id": "...",  # 可选
-       "resume": False}        # 可选
+       "resume": False,       # 可选
+       "budget": 0.10}        # 可选,OM-P3 pre-compose 校验
 
     Phase 9 OM-P1 增量:
       · workflow_id: 显式传则每个 step 落 checkpoint(JSON 到 ~/.prisIrai/checkpoints/wf_<id>/)
       · resume=True: 跳过 status=='ok' 的 step,从失败的 step 续跑
       · 不传 workflow_id → 旧行为(无 checkpoint),向后兼容
+
+    Phase 11 OM-P3 增量:
+      · budget: 单集预算(默认 None = 用 video_budget.DEFAULT_BUDGET_PER_EPISODE)
+      · pre_compose_check: 是否预算预检(默认 True);False 跳过预算检查,旧行为
+      · 超预算 → 返 ok=False, error='budget_exceeded', artifact 里含 check_budget 结果
+        + replace_plan(给前端弹卡用)
     """
     steps_raw = dsl.get("steps") or []
     if not steps_raw:
@@ -246,6 +256,23 @@ def run_workflow(dsl: dict[str, Any], *, stop_on_error: bool = True,
     wf_id = workflow_id or dsl.get("workflow_id")
     resume = resume or bool(dsl.get("resume"))
     cm = _get_checkpoint_manager() if wf_id else None
+
+    # Phase 11 OM-P3:pre-compose 预算校验(可选)
+    budget_val = budget if budget is not None else dsl.get("budget")
+    pre_compose = pre_compose_check and dsl.get("pre_compose_check", True)
+    if pre_compose:
+        try:
+            from .video_budget import check_budget_for_steps, DEFAULT_BUDGET_PER_EPISODE
+            budget_to_use = budget_val if budget_val is not None else DEFAULT_BUDGET_PER_EPISODE
+            check = check_budget_for_steps(steps_raw, budget=float(budget_to_use))
+            if not check.ok:
+                return WorkflowResult(
+                    ok=False,
+                    error=f"budget_exceeded:{check.message}",
+                    artifact={"budget_check": check.to_dict()},
+                )
+        except ImportError:
+            pass  # video_budget 未装,降级不拦截
 
     try:
         steps = parse_dependencies(steps_raw)
