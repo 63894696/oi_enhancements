@@ -193,6 +193,39 @@
      此处不再有 #musicLaunchToast / #music-bar 的样式。
      音乐入口在 PrisirAI Tauri 托盘菜单。
 ============================================================ */
+
+  /* ============ P3j T29 Phase 5:skill_plan_request 卡片样式(2026-09-28) ============ */
+  .skill-plan-row{
+    display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;
+    padding:6px 4px;border-bottom:1px dashed var(--line);font-size:13px;
+  }
+  .skill-plan-row:last-child{border-bottom:none}
+  .skill-plan-idx{font-weight:600;color:var(--dim);width:22px;flex-shrink:0}
+  .skill-plan-sid{font-weight:600;color:var(--acc);flex:1 1 auto;
+    min-width:120px;word-break:break-all}
+  .skill-plan-risk{
+    font-size:11px;padding:2px 8px;border-radius:5px;font-weight:600;
+    background:var(--dim);color:#fbf6ec;flex-shrink:0;
+  }
+  .skill-plan-risk[data-risk="L1"]{background:#6b8e7f}
+  .skill-plan-risk[data-risk="L2"]{background:#c79a3a}
+  .skill-plan-risk[data-risk="L3"]{background:#b65c5c}
+  .skill-plan-args{
+    flex-basis:100%;padding:2px 0 4px 32px;font-size:11px;
+    color:var(--dim);line-height:1.45;
+  }
+  .skill-plan-args .dim{opacity:.6;font-style:italic}
+  .skill-plan-auto{
+    text-align:left;background:rgba(74,92,82,.08);
+    border-left:3px solid var(--acc);
+    padding:8px 12px;margin:4px 0;border-radius:6px;
+  }
+  .skill-plan-auto-list{
+    margin-top:4px;font-size:12px;
+    display:flex;flex-direction:column;gap:2px;
+  }
+  .skill-plan-auto-row{padding-left:6px;color:var(--txt)}
+  .skill-plan-auto-row .dim{color:var(--dim);font-size:11px}
 </style>
 </head>
 <body>
@@ -215,6 +248,7 @@
   <button class="hdr-btn btn-dispatch" id="btnDispatch" title="派发对话上下文到 PrisirAI">📤 派发</button>
   <span class="dispatch-badge" id="dispatchBadge" style="display:none">0</span>
   <button class="hdr-btn" id="btnEmoji" title="emoji 面板">😀</button>
+  <button class="hdr-btn" id="btnP14Stats" title="本会话已入库段数(点击刷新)">📚 <span id="p14Badge" style="display:none;background:var(--ok);color:#fff;padding:1px 6px;border-radius:9px;font-size:11px;margin-left:3px">0</span></button>
 </header>
 
 <div id="continueCard" style="display:none"></div>
@@ -341,6 +375,127 @@
       <div class="test-out" id="m327UrlStatus"></div>
     </div>
   </details>
+
+  <!-- M3.45 P0-2 护栏(2026-09-22)— TypeSafe Jev 前置安全评估 -->
+  <details class="grp m345-section">
+    <summary style="font-size:13px;color:var(--acc);font-weight:600;cursor:pointer">
+      🛡 Jev 护栏(每条消息前置安全评估)
+    </summary>
+    <div style="padding-top:8px">
+      <div style="font-size:11px;color:var(--dim);margin-bottom:8px">
+        默认关闭。开启后,每条用户消息先经 TypeSafe Jev(OpenRouter 主通道 / 官方 SDK 备用)
+        做一次 risk score + 越狱检测。risk ≥ 阈值弹确认卡;越狱概率 ≥ 阈值直接拒。
+        双通道均挂时 fail-open(放行,不恶化现状)。
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;margin:6px 0">
+        <input type="checkbox" id="m345EnabledToggle" />
+        <span>启用 Jev 护栏</span>
+      </label>
+      <label>风险阈值(≥ 此等级弹确认卡)</label>
+      <select id="m345RiskThreshold">
+        <option value="safe">safe</option>
+        <option value="low">low</option>
+        <option value="medium" selected>medium(推荐)</option>
+        <option value="high">high</option>
+        <option value="critical">critical</option>
+      </select>
+      <label>越狱阈值(≥ 此概率直接拒)</label>
+      <input type="number" id="m345JailbreakThreshold" min="0" max="1" step="0.05" value="0.7" />
+      <div class="row">
+        <button id="btnM345Save">保存</button>
+        <button id="btnM345Test">🧪 测试</button>
+      </div>
+      <div style="margin-top:8px">
+        <label>测试文本(可粘贴用户消息)</label>
+        <input type="text" id="m345TestInput" placeholder="如:帮我写爬虫偷数据" />
+      </div>
+      <div class="test-out" id="m345Status"></div>
+    </div>
+  </details>
+
+  <!-- M3.45 P0-1 意图分发(2026-09-22)— Jev Choice 给消息打标签 + 自动路由 -->
+  <details class="grp m345-intent-section">
+    <summary style="font-size:13px;color:var(--acc);font-weight:600;cursor:pointer">
+      🎯 意图分发(每条消息自动识别 chat/code/search/tool_call/roleplay)
+    </summary>
+    <div style="padding-top:8px">
+      <div style="font-size:11px;color:var(--dim);margin-bottom:8px">
+        默认开启。每条用户消息先经 Jev Choice 识别意图,
+        标签会显示在 AI 气泡底部;<b>路由开启</b>时还会按意图自动调整 system prompt
+        (技术问答更简洁、查事实直给等)。仅读消息文本,无隐私侵入。
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;margin:6px 0">
+        <input type="checkbox" id="m345IntentEnabled" />
+        <span>启用意图识别</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;margin:6px 0">
+        <input type="checkbox" id="m345IntentRouting" />
+        <span>按意图路由 system prompt</span>
+      </label>
+      <label>意图超时(秒,0.3-5.0)</label>
+      <input type="number" id="m345IntentTimeout" min="0.3" max="5.0" step="0.1" value="1.0" />
+      <label>最低置信度(低于此值不路由)</label>
+      <input type="number" id="m345IntentMinConf" min="0" max="1" step="0.05" value="0.55" />
+      <div class="row">
+        <button id="btnM345IntentSave">保存</button>
+        <button id="btnM345IntentTest">🧪 测试意图</button>
+      </div>
+      <div style="margin-top:8px">
+        <label>测试文本(可粘贴用户消息)</label>
+        <input type="text" id="m345IntentTestInput" placeholder="如:帮我写个 Python 装饰器" />
+      </div>
+      <div class="test-out" id="m345IntentStatus"></div>
+    </div>
+  </details>
+
+  <!-- M3.45 P1-4 阶段成果入库(2026-09-22)— ai_done 后 Jev 评估 → 段级 sha256 去重 → Obsidian -->
+  <details class="grp m345-p14-section">
+    <summary style="font-size:13px;color:var(--acc);font-weight:600;cursor:pointer">
+      📚 阶段成果入库(ai_done 后自动增量存 Obsidian)
+    </summary>
+    <div style="padding-top:8px">
+      <div style="font-size:11px;color:var(--dim);margin-bottom:8px">
+        默认开启。每轮 AI 回答后 Jev 评估「本轮是否产生可入档的成果」,
+        value≥2 时自动抽取对话段,用 sha256 去重后写入
+        <code>fcontent_root/_incremental/<主题>.md</code>。
+        重复段自动跳过,避免重复梳理。仅 chat/code/search 触发。
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;margin:6px 0">
+        <input type="checkbox" id="m345P14Enabled" />
+        <span>启用阶段成果入库</span>
+      </label>
+      <label>最低价值(value 0-3,≥ 此值才入库)</label>
+      <select id="m345P14MinValue">
+        <option value="0">0=任何(最激进)</option>
+        <option value="1">1=琐碎也存</option>
+        <option value="2" selected>2=可入档(推荐)</option>
+        <option value="3">3=重要才存(最严格)</option>
+      </select>
+      <label>主题策略</label>
+      <select id="m345P14TopicStrategy">
+        <option value="auto" selected>auto(用户文本前 20 字)</option>
+        <option value="manual">manual(intent_时间戳)</option>
+        <option value="off">off(纯时间戳)</option>
+      </select>
+      <label>评估超时(秒)</label>
+      <input type="number" id="m345P14Timeout" min="0.3" max="5.0" step="0.1" value="1.2" />
+      <div style="font-size:11px;color:var(--dim);margin-top:6px">
+        当前索引: <span id="m345P14Stats">未连接</span>
+      </div>
+      <div class="row">
+        <button id="btnM345P14Save">保存</button>
+        <button id="btnM345P14Test">🧪 测试入库</button>
+        <button id="btnM345P14StatsRefresh">🔄 刷新索引</button>
+      </div>
+      <div style="margin-top:8px">
+        <label>测试 user_text</label>
+        <input type="text" id="m345P14UserText" placeholder="如:我们决定用 Litestar 替代 FastAPI" />
+        <label>测试 assistant_text</label>
+        <input type="text" id="m345P14AssistantText" placeholder="如:确认 Litestar 性能优于 FastAPI 30%,且原生支持 SSE 中间件..." />
+      </div>
+      <div class="test-out" id="m345P14Status"></div>
+    </div>
+  </details>
 </div>
 
 <!-- M3.24 — permission gate 弹卡(开启屏/知识库时弹,首次必须 confirm) -->
@@ -352,6 +507,47 @@
     <div class="row">
       <button id="m323ConfirmCancel">取消</button>
       <button class="primary" id="m323ConfirmOk">我同意,继续开启</button>
+    </div>
+  </div>
+</div>
+
+<!-- P3j T16-C: 视频/YouTube 能力确认卡(L1/L2/L3 风险) -->
+<div id="capConfirm" class="cap-confirm" style="display:none" data-risk="L1">
+  <div class="cap-confirm-mask"></div>
+  <div class="cap-confirm-box">
+    <div class="cap-confirm-title" id="capConfirmTitle">⚠ 能力需要确认</div>
+    <div class="cap-confirm-meta">
+      <span class="cap-confirm-cap" id="capConfirmCap">video.create</span>
+      <span class="cap-confirm-risk" id="capConfirmRisk">L2</span>
+    </div>
+    <div class="cap-confirm-body" id="capConfirmBody"></div>
+    <div class="cap-confirm-args" id="capConfirmArgs"></div>
+    <div class="row">
+      <button id="capConfirmCancel">取消</button>
+      <button class="primary" id="capConfirmOk">我确认,执行</button>
+    </div>
+  </div>
+</div>
+
+<!-- P3j T29 Phase 5(2026-09-28):Skills 工作台 replan 规划卡(L1+ > 阈值弹卡)
+     多 skill 列表(规划 + 风险徽章 + args 预览),前端确认/取消 → emit skill_plan_confirm
+     复用 cap-confirm 视觉风格(同一个 .cap-confirm-mask 蒙层),仅内容不同 -->
+<div id="skillPlanConfirm" class="cap-confirm" style="display:none">
+  <div class="cap-confirm-mask"></div>
+  <div class="cap-confirm-box">
+    <div class="cap-confirm-title">🧩 Skills 工作台规划卡</div>
+    <div class="cap-confirm-meta">
+      <span class="cap-confirm-cap" id="skillPlanCount">0 项</span>
+      <span class="cap-confirm-risk" id="skillPlanRisk">L1+</span>
+    </div>
+    <div class="cap-confirm-body" id="skillPlanBody">
+      LLM 二次规划:用户这条想调以下 skill。<br>
+      点「执行」将顺序触发,失败会终止后续。
+    </div>
+    <div class="cap-confirm-args" id="skillPlanCalls" style="max-height:240px;overflow:auto"></div>
+    <div class="row">
+      <button id="skillPlanCancel">取消</button>
+      <button class="primary" id="skillPlanOk">我确认,顺序执行</button>
     </div>
   </div>
 </div>

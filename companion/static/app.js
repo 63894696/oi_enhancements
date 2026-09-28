@@ -55,6 +55,14 @@ const capConfirmBody = $("capConfirmBody");
 const capConfirmArgs = $("capConfirmArgs");
 const capConfirmOk = $("capConfirmOk");
 const capConfirmCancel = $("capConfirmCancel");
+// P3j T29 Phase 5(2026-09-28):Skills 工作台 replan 规划卡 — 多 skill 列表 + 确认
+const skillPlanConfirm = $("skillPlanConfirm");
+const skillPlanCount = $("skillPlanCount");
+const skillPlanRisk = $("skillPlanRisk");
+const skillPlanBody = $("skillPlanBody");
+const skillPlanCalls = $("skillPlanCalls");
+const skillPlanOk = $("skillPlanOk");
+const skillPlanCancel = $("skillPlanCancel");
 
 // ---- 常量 -------------------------------------------------------------------
 const EMOJI_GROUPS = [
@@ -73,6 +81,7 @@ const st = {
     wsRetry: 0,
     wsTimer: null,
     pendingCapConfirm: null,  // P3j T16-C: 待确认 capability
+    pendingSkillPlan: null,   // P3j T29 Phase 5: 待确认 skill_plan_request
     // 会话生命周期:不启动则不计时;M3.29.8 用户反馈「点开就开始计费」误解
     running: false,
     sessionStart: 0,
@@ -349,6 +358,16 @@ function handleWsMsg(m) {
     } else if (t === "capability_confirm_request") {
         // P3j T16-C: 弹确认卡(L1/L2/L3 风险)
         showCapConfirm(m);
+    } else if (t === "skill_plan_request") {
+        // P3j T29 Phase 5(2026-09-28):replan 弹多 skill 规划卡
+        showSkillPlanConfirm(m);
+    } else if (t === "skill_plan_auto_executed") {
+        // P3j T29 Phase 5:replan 自动执行结果 — 在对话流里嵌一条 sys 卡片
+        renderSkillPlanAutoExec(m);
+    } else if (t === "skill_plan_confirm_ack") {
+        // 后端 ack,纯提示
+        renderSys("🧩 Skills 规划:" + (m.approved ? "已执行" : "已取消") +
+                  " (" + (m.executed || 0) + "/" + (m.total || 0) + ")");
     } else if (t === "capability_exec_result") {
         // P3j T16-C: 真发结果(主对话流中嵌的能力执行)
         renderCapExecResult(m);
@@ -801,6 +820,31 @@ function renderM323Panel(cfg, fcontent) {
             }));
         }
     });
+    // P3j T29 Phase 5:replan 规划卡按钮
+    skillPlanOk.addEventListener("click", () => {
+        const pending = st.pendingSkillPlan;
+        skillPlanConfirm.style.display = "none";
+        st.pendingSkillPlan = null;
+        if (pending && st.ws && st.ws.readyState === 1) {
+            st.ws.send(JSON.stringify({
+                type: "skill_plan_confirm",
+                calls: pending.calls,
+                approved: true,
+            }));
+        }
+    });
+    skillPlanCancel.addEventListener("click", () => {
+        const pending = st.pendingSkillPlan;
+        skillPlanConfirm.style.display = "none";
+        st.pendingSkillPlan = null;
+        if (pending && st.ws && st.ws.readyState === 1) {
+            st.ws.send(JSON.stringify({
+                type: "skill_plan_confirm",
+                calls: pending.calls,
+                approved: false,
+            }));
+        }
+    });
 }
 
 // P3j T16-C: 弹视频能力确认卡
@@ -822,6 +866,79 @@ function showCapConfirm(m) {
         capConfirm.style.display = "flex";
     }
     st.pendingCapConfirm = { capability: cap, args: args };
+}
+
+// P3j T29 Phase 5(2026-09-28):弹 replan 多 skill 规划卡
+// m = {reason, calls: [{skill_id, args, risk}], source}
+function showSkillPlanConfirm(m) {
+    const calls = Array.isArray(m.calls) ? m.calls : [];
+    if (!calls.length) return;
+    // 风险徽章取最大风险等级(L3 > L2 > L1 > L0)
+    const rank = { L0: 0, L1: 1, L2: 2, L3: 3 };
+    let topRisk = "L0";
+    let topRank = 0;
+    for (const c of calls) {
+        const r = c.risk || "L1";
+        if ((rank[r] || 0) > topRank) { topRisk = r; topRank = rank[r] || 0; }
+    }
+    if (skillPlanCount) skillPlanCount.textContent = calls.length + " 项 skill";
+    if (skillPlanRisk) skillPlanRisk.textContent = topRisk;
+    if (skillPlanBody) {
+        const reasonZh = {
+            l1_count_exceeds_threshold: "L1+ 风险数量超过自动执行阈值",
+            auto_executed: "已自动执行",
+            empty_plan: "无 skill 命中",
+        }[m.reason] || (m.reason || "");
+        skillPlanBody.innerHTML =
+            "LLM 二次规划用户请求,准备调用以下 skill:<br>" +
+            (reasonZh ? ("<b>" + escHtml(reasonZh) + "</b><br>") : "") +
+            "按列表顺序执行,失败将终止后续。";
+    }
+    if (skillPlanCalls) {
+        // 每个 call 一行:sid(风险徽章) + args key=value
+        const html = calls.map((c, idx) => {
+            const sid = escHtml(c.skill_id || "?");
+            const risk = escHtml(c.risk || "L1");
+            const args = c.args || {};
+            const argLines = Object.keys(args).map(k =>
+                `<div class="cap-confirm-arg-row">${escHtml(k)} = ${escHtml(String(args[k]))}</div>`
+            ).join("");
+            return `<div class="skill-plan-row" data-risk="${risk}">
+              <span class="skill-plan-idx">${idx + 1}.</span>
+              <span class="skill-plan-sid">${sid}</span>
+              <span class="skill-plan-risk" data-risk="${risk}">${risk}</span>
+              <div class="skill-plan-args">${argLines || '<span class="dim">(无参数)</span>'}</div>
+            </div>`;
+        }).join("");
+        skillPlanCalls.innerHTML = html;
+    }
+    if (skillPlanConfirm) {
+        skillPlanConfirm.setAttribute("data-risk", topRisk);
+        skillPlanConfirm.style.display = "flex";
+    }
+    st.pendingSkillPlan = { calls: calls };
+}
+
+// P3j T29 Phase 5:replan 自动执行结果 — 嵌一条 sys 卡片
+// m = {reason, calls: [...], results: [{skill_id, ok, payload, error}]}
+function renderSkillPlanAutoExec(m) {
+    const calls = Array.isArray(m.calls) ? m.calls : [];
+    const results = Array.isArray(m.results) ? m.results : [];
+    const okCount = results.filter(r => r.ok).length;
+    const div = document.createElement("div");
+    div.className = "sys skill-plan-auto";
+    const sym = okCount === results.length && results.length > 0 ? "✅" : "⚙";
+    div.innerHTML = `${sym} <b>Skills 自动执行</b> · ${okCount}/${results.length || calls.length} 成功`
+        + `<div class="skill-plan-auto-list">`
+        + calls.map(c => {
+            const r = results.find(x => x.skill_id === c.skill_id) || {};
+            const tag = r.ok === true ? "✓" : (r.ok === false ? "✗" : "·");
+            const err = r.error ? ` <span class="dim">(${escHtml(String(r.error).slice(0, 60))})</span>` : "";
+            return `<div class="skill-plan-auto-row">${tag} ${escHtml(c.skill_id || "?")}${err}</div>`;
+        }).join("")
+        + `</div>`;
+    msgsEl.appendChild(div);
+    msgsEl.scrollTop = msgsEl.scrollHeight;
 }
 
 // P3j T16-C: 渲染真发结果(主对话流)

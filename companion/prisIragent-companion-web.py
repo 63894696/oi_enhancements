@@ -1718,6 +1718,55 @@ async def handle_msg(sess: CallSession, data: dict) -> None:
             })
         except Exception:
             log.exception("capability_confirm handler failed")
+    elif t == "skill_plan_confirm":
+        # P3j T29 Phase 5(2026-09-28):前端确认 skill_plan_request —
+        # 顺序 execute_skill → emit capability_exec_result 复用老 UI
+        # data: {calls: [{skill_id, args, risk}, ...], approved: bool}
+        approved = bool(data.get("approved", False))
+        calls = data.get("calls") or []
+        if not approved or not calls:
+            await sess.ws.send_json({
+                "type": "skill_plan_confirm_ack",
+                "approved": approved,
+                "executed": 0,
+                "reason": "user_cancelled" if not approved else "no_calls",
+            })
+        else:
+            try:
+                from prisir_work.skills.loader import execute_skill
+                from prisir_work.skills.schema import SkillResult
+                executed = 0
+                for c in calls:
+                    sid = str(c.get("skill_id") or "")
+                    args = c.get("args") or {}
+                    if not sid:
+                        continue
+                    try:
+                        r = execute_skill(sid, dict(args), force=True)
+                    except Exception as exc:  # noqa: BLE001
+                        r = SkillResult(skill_id=sid, ok=False,
+                                        error=f"plan_exec:{type(exc).__name__}:{exc}")
+                    # 复用 capability_exec_result ws 事件(前端 0 改动)
+                    try:
+                        await sess.ws.send_json({
+                            "type": "capability_exec_result",
+                            "capability": r.skill_id,
+                            "ok": r.ok,
+                            "error": r.error or "",
+                            "result": r.payload or {},
+                        })
+                    except Exception:
+                        log.exception("plan_exec_result send failed")
+                    if r.ok:
+                        executed += 1
+                await sess.ws.send_json({
+                    "type": "skill_plan_confirm_ack",
+                    "approved": True,
+                    "executed": executed,
+                    "total": len(calls),
+                })
+            except Exception:
+                log.exception("skill_plan_confirm handler failed")
     elif t == "hangup":
         sess.abort = True
         await sess.ws.send_json({"type": "bye", "sid": sess.sid,
