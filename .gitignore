@@ -308,3 +308,7 @@ companion/lx_runtime/juhe.js
 companion/lx_runtime/ikun.js
 
 */__pycache__/
+
+# SQLite WAL/SHM 文件(防本地训练数据快照泄露)
+prisirmp/prisirmp.db-shm
+prisirmp/prisirmp.db-wal

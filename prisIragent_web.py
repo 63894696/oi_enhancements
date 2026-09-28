@@ -18,6 +18,7 @@ import base64
 import html
 import json
 import os
+import random  # P2.5+B-2(2026-09-21)_ext_rpc_call 用 random.randrange 生成 req_id(B-0 漏)
 import re
 import secrets
 import sqlite3
@@ -29,6 +30,7 @@ import time
 import uuid
 import shutil
 import logging
+import prisIrai_config  # P2.5+15(2026-09-22)YAML 三端对齐(端口/品牌/论坛 URL)
 from urllib.parse import urlparse, parse_qs
 
 # 2026-09-08 #102 增量补丁:在任何项目模块 import 前,把可写补丁目录插到 sys.path[0],
@@ -178,6 +180,15 @@ import lan_pair  # noqa: E402
 
 WEB_HOST = "127.0.0.1"
 WEB_PORT = int(os.environ.get("PRISIRAGENT_WEB_PORT", os.environ.get("OIAGENT_WEB_PORT", "18802")))
+# M3.34(2026-09-19)端口真实值追踪:启动时与配置值可能不同(args.port=0 OS 分配,或被占 fallback),
+# /api/port_status 把这一对返给前端,前端用 sessionStorage 弹一次性 toast。
+_CONFIGURED_PORT: int = WEB_PORT
+_REAL_PORT: int = WEB_PORT
+# P2.5+14(2026-09-22)日历端口同款追踪:同进程双端口 listen,日历端口也走 configured/actual 双轨。
+# /api/port_status 增 calendar 字段,前端 toast 跟 web 端口行为对齐。
+# 默认值在 port_config.DEFAULT_CALENDAR_PORT 拿(18803);这里写死 0 是占位,main() 启动时覆盖。
+_CONFIGURED_CALENDAR_PORT: int = 0
+_REAL_CALENDAR_PORT: int = 0
 
 
 def _lan_ip() -> str:
@@ -193,6 +204,591 @@ def _lan_ip() -> str:
 DEFAULT_MODEL = os.environ.get("PRISIRAGENT_MODEL", os.environ.get("OIAGENT_MODEL", "dashscope/qwen3-coder-plus-2025-09-23"))
 DEFAULT_WORKDIR = os.environ.get("PRISIRAGENT_WORKDIR", os.environ.get("OIAGENT_WORKDIR", os.getcwd()))
 DEFAULT_STRATEGY = os.environ.get("PRISIR_STRATEGY", "smart")
+
+# ============================================================
+# M3.35(2026-09-20)项目切换器状态层
+#   持久化到 ~/.prisir/projects.json;启动 cwd 自动作默认项目。
+#   _PROJECTS_LOCK 用 RLock 允许同线程重入(upsert 内部调 save 不死锁)。
+# ============================================================
+import threading as _threading  # noqa: E402  # 紧跟 stdlib 段
+_PROJECTS_FILE = os.path.join(os.path.expanduser("~"), ".prisir", "projects.json")
+_PROJECTS_LOCK = _threading.RLock()
+_PROJECTS = {
+    "active": DEFAULT_WORKDIR,
+    "items": [
+        {"path": DEFAULT_WORKDIR,
+         "name": os.path.basename(DEFAULT_WORKDIR) or "(default)",
+         "pinned": True, "added_at": int(time.time())},
+    ],
+}
+
+
+def _projects_load():
+    """启动时从 JSON 读一次覆盖默认值;文件缺失/坏 → 默认值兜底(后续 _projects_save 写盘)。"""
+    global _PROJECTS
+    try:
+        with open(_PROJECTS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict) or "items" not in data:
+            return
+        with _PROJECTS_LOCK:
+            items = list(data.get("items") or [])
+            # 兜底:启动 cwd 必须在 items
+            if not any(it.get("path") == DEFAULT_WORKDIR for it in items):
+                items.insert(0, {
+                    "path": DEFAULT_WORKDIR,
+                    "name": os.path.basename(DEFAULT_WORKDIR) or "(default)",
+                    "pinned": True, "added_at": int(time.time()),
+                })
+            active = data.get("active") or DEFAULT_WORKDIR
+            # 兜底:active 必须在 items
+            if active not in [it.get("path") for it in items]:
+                active = DEFAULT_WORKDIR
+            _PROJECTS = {"active": active, "items": items}
+    except (OSError, ValueError):
+        pass
+
+
+# ============================================================
+# P2.5+B-0(2026-09-21)ext RPC bridge — Python ↔ Node 子进程 NDJSON 双向
+#   Phase B-1 commit msg 说「主进程转发层 ship」实际只 ship 了 SDK + 扩展注册表,
+#   Python 主进程与 Node 子进程的桥全部缺失。本次 ship:
+#     - _EXT_BRIDGE_LOCK + _EXT_PROCS 全局
+#     - _ext_spawn / _ext_kill / _ext_reader_loop 进程生命周期
+#     - _ext_rpc_call 同步 RPC(NDJSON over stdin/stdout)
+#     - _ext_proxy_dispatch 跨扩展转发(SDK invokeExt 协议)
+#     - 启用钩子(ext 启用时 spawn,禁用时 kill)
+#     - 现有 3 处调用点包 try/except + error 码兜底
+#   进程模型:一进程一 ext(隔离 HOME = ~/.prisir/ext/<ext_id>/);崩了指数退避自动 restart。
+# ============================================================
+_EXT_BRIDGE_LOCK = _threading.RLock()
+_EXT_PROCS = {}            # ext_id -> {"proc": Popen, "home": str, "pending": {req_id: (event, box)}, "last_alive_at": float, "crash_count": int, "reader_thread": Thread, "enabled": bool}
+_EXT_LOG_HOOKS = {}        # ext_id -> list[callable](主进程日志钩子,留接口)
+_EXT_INJECT_QUEUE = []     # ui.inject notification 缓冲(主进程同步消费)
+# P2.5+B-3(2026-09-21)run 进度内存队列:run_id → list[payload](按到达顺序 append,带自增 seq)。
+#   reader_loop 收到 task.run.progress notification → append;wfmodal 长轮询 peek → 自判增量。
+#   单主进程模型下不需要分布式锁,_EXT_BRIDGE_LOCK 简单保护一下即可。
+_WF_PROGRESS_QUEUE = {}    # run_id → {"seq": int, "items": [payload]}
+_WF_PROGRESS_LOCK = _threading.RLock()
+
+
+def _ext_home(ext_id: str) -> str:
+    """每个 ext 一个隔离 HOME,放 state.db / log / tmp。
+       Node 端 extensions/task-runner/index.js:48 已读 process.env.PRISIR_EXT_HOME。"""
+    p = os.path.join(os.path.expanduser("~"), ".prisir", "ext", ext_id)
+    os.makedirs(p, exist_ok=True)
+    return p
+
+
+def _ext_node_exec() -> str:
+    """node 可执行解析:env 注入 → sys.executable sibling → shutil.which → 'node' 兜底。"""
+    for cand in (
+        os.environ.get("PRISIR_NODE_EXEC"),
+        os.path.join(os.path.dirname(sys.executable), "node.exe" if os.name == "nt" else "node"),
+        shutil.which("node") if shutil else None,
+        "node",
+    ):
+        if not cand:
+            continue
+        if os.path.isabs(cand) and os.path.exists(cand):
+            return cand
+        if not os.path.isabs(cand):
+            try:
+                resolved = shutil.which(cand) if shutil else None
+                if resolved:
+                    return resolved
+            except Exception:
+                pass
+    return "node"
+
+
+def _ext_entry(ext_id: str) -> str:
+    """解析 ext 入口 index.js。cwd 优先,失败回退绝对路径。"""
+    candidates = [
+        os.path.join("extensions", ext_id, "index.js"),
+        os.path.abspath(os.path.join("extensions", ext_id, "index.js")),
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+    return candidates[-1]  # 兜底返绝对路径(让 Popen 报错更清晰)
+
+
+def _ext_spawn(ext_id: str):
+    """enable 时 spawn。已 running → 跳过。崩了由 reader_thread 重启,这里只处理主动启用。"""
+    with _EXT_BRIDGE_LOCK:
+        st = _EXT_PROCS.get(ext_id)
+        if st and st.get("proc") and st["proc"].poll() is None:
+            return  # 已在跑
+        entry = _ext_entry(ext_id)
+        home = _ext_home(ext_id)
+        env = {**os.environ, "PRISIR_EXT_HOME": home}
+        try:
+            proc = subprocess.Popen(
+                [_ext_node_exec(), entry],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                env=env, bufsize=0,
+            )
+        except (OSError, FileNotFoundError) as e:
+            try:
+                _LOGGER.warning("[ext-bridge] spawn %s failed: %s", ext_id, e)
+            except Exception:
+                pass
+            return
+        st_new = {
+            "proc": proc, "home": home, "pending": {},
+            "last_alive_at": time.time(), "crash_count": 0,
+            "reader_thread": None, "enabled": True,
+        }
+        _EXT_PROCS[ext_id] = st_new
+        t = _threading.Thread(target=_ext_reader_loop, args=(ext_id,), daemon=True,
+                              name=f"ext-reader-{ext_id}")
+        t.start()
+        st_new["reader_thread"] = t
+        try:
+            _LOGGER.info("[ext-bridge] spawn %s pid=%s entry=%s", ext_id, proc.pid, entry)
+        except Exception:
+            pass
+
+
+def _ext_kill(ext_id: str, grace_sec: float = 5.0):
+    """禁用时 graceful kill。SIGTERM → grace_sec → SIGKILL。"""
+    with _EXT_BRIDGE_LOCK:
+        st = _EXT_PROCS.pop(ext_id, None)
+    if not st:
+        return
+    proc = st.get("proc")
+    if not proc or proc.poll() is not None:
+        return
+    try:
+        proc.terminate()
+    except Exception:
+        pass
+    deadline = time.time() + grace_sec
+    while proc.poll() is None and time.time() < deadline:
+        time.sleep(0.05)
+    if proc.poll() is None:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+    # 残留 pending 全部 reject(防调用方永久 wait)
+    for rid, pend in list(st.get("pending", {}).items()):
+        ev, box = pend
+        box["error"] = "ext killed"
+        ev.set()
+
+
+def _ext_reader_loop(ext_id: str):
+    """daemon 线程,逐行读 stdout 的 NDJSON,路由到 pending 或 invoke 转发通道。
+       EOF → 标记崩溃 → 失败 pending reject → 指数退避自动 respawn(上限 3 次)。"""
+    st = _EXT_PROCS.get(ext_id)
+    if not st:
+        return
+    proc = st["proc"]
+    try:
+        for line in iter(proc.stdout.readline, b""):
+            try:
+                msg = json.loads(line.decode("utf-8", errors="replace"))
+            except Exception:
+                continue
+            st["last_alive_at"] = time.time()
+            # 路由:id=reply(result/error),method=notification
+            if "id" in msg and ("result" in msg or "error" in msg):
+                with _EXT_BRIDGE_LOCK:
+                    pend = st["pending"].pop(msg["id"], None)
+                if pend:
+                    ev, box = pend
+                    if "error" in msg:
+                        err = msg["error"]
+                        box["error"] = err.get("message") if isinstance(err, dict) else str(err)
+                    else:
+                        box["result"] = msg.get("result")
+                    ev.set()
+            elif msg.get("method") == "extension.invoke_request":
+                _ext_proxy_dispatch(ext_id, msg.get("params") or {})
+            elif msg.get("method") == "log":
+                params = msg.get("params") or {}
+                _ext_log(ext_id, params.get("level", "info"), params.get("msg", ""))
+            elif msg.get("method") == "ui.inject":
+                _ext_inject_card(ext_id, msg.get("params") or {})
+            elif msg.get("method") == "task.run.progress":
+                # P2.5+B-3(2026-09-21)task-runner 主动推节点进度 → 写到内存队列,
+                # wfmodal 长轮询拉。零依赖不引 SSE。
+                _ext_run_progress(ext_id, msg.get("params") or {})
+            # 其他 notification 静默忽略
+    except Exception as e:
+        try:
+            _LOGGER.warning("[ext-bridge] reader %s err: %s", ext_id, e)
+        except Exception:
+            pass
+    # EOF:进程退出 → 收尾
+    with _EXT_BRIDGE_LOCK:
+        st2 = _EXT_PROCS.get(ext_id)
+        if not st2 or st2.get("proc") is not proc:
+            return  # 已被外部 _ext_kill 清理
+        st2["crash_count"] += 1
+        for rid, pend in list(st2["pending"].items()):
+            ev, box = pend
+            box["error"] = "ext exited"
+            ev.set()
+            st2["pending"].pop(rid, None)
+        if st2["crash_count"] <= 3 and st2.get("enabled", True):
+            delay = min(2 ** st2["crash_count"], 30)
+            _threading.Timer(delay, _ext_spawn, args=[ext_id]).start()
+            try:
+                _LOGGER.info("[ext-bridge] %s exited, auto-respawn in %ss", ext_id, delay)
+            except Exception:
+                pass
+
+
+def _ext_rpc_call(ext_id: str, method: str, params=None, timeout: float = 5.0) -> dict:
+    """Python → Node ext 同步 RPC。返 dict(键 'result' 或 'error')。超时/未跑 = 显式 error。"""
+    params = params if params is not None else {}
+    box: dict = {}
+    with _EXT_BRIDGE_LOCK:
+        st = _EXT_PROCS.get(ext_id)
+        if not st or not st.get("proc") or st["proc"].poll() is not None:
+            return {"error": f"ext_not_running: {ext_id}"}
+        req_id = f"py_{int(time.time() * 1000)}_{random.randrange(1 << 16):04x}"
+        ev = _threading.Event()
+        st["pending"][req_id] = (ev, box)
+        try:
+            payload = (json.dumps({"jsonrpc": "2.0", "id": req_id,
+                                   "method": f"command.{method}",
+                                   "params": params}, ensure_ascii=False) + "\n").encode("utf-8")
+            st["proc"].stdin.write(payload)
+            st["proc"].stdin.flush()
+        except (BrokenPipeError, OSError) as e:
+            st["pending"].pop(req_id, None)
+            return {"error": f"ext_stdin_broken: {ext_id}: {e}"}
+    if not ev.wait(timeout=timeout + 1.0):
+        with _EXT_BRIDGE_LOCK:
+            st2 = _EXT_PROCS.get(ext_id)
+            if st2:
+                st2["pending"].pop(req_id, None)
+        return {"error": f"timeout: {ext_id}.{method} after {timeout}s"}
+    return box
+
+
+def _ext_proxy_dispatch(source_ext_id: str, params: dict):
+    """SDK extension.invoke_request 路由:Python 转发到目标 ext,结果以
+       extension.invoke_response notification 推回 source。"""
+    req_id = params.get("req_id")
+    target = params.get("target_ext_id")
+    method = params.get("method")
+    inner_params = params.get("params") or {}
+    if not (req_id and target and method):
+        return
+    sub = _ext_rpc_call(target, method, inner_params, timeout=4.0)
+    src_st = _EXT_PROCS.get(source_ext_id)
+    if not src_st or not src_st.get("proc") or src_st["proc"].poll() is not None:
+        return
+    response = {"jsonrpc": "2.0", "method": "extension.invoke_response",
+                "params": {"req_id": req_id}}
+    if "error" in sub:
+        response["params"]["error"] = sub["error"]
+    else:
+        response["params"]["result"] = sub.get("result")
+    try:
+        src_st["proc"].stdin.write((json.dumps(response, ensure_ascii=False) + "\n").encode("utf-8"))
+        src_st["proc"].stdin.flush()
+    except (BrokenPipeError, OSError):
+        pass
+
+
+# P2.5+B-3(2026-09-21)task.run.progress 路由:写入 _WF_PROGRESS_QUEUE 供 wfmodal 长轮询。
+# payload 期望含 {run_id, node_id, status, attempts, ms, active, total, event, error?}
+def _ext_run_progress(ext_id: str, params: dict) -> None:
+    rid = params.get("run_id")
+    if not rid:
+        return
+    with _WF_PROGRESS_LOCK:
+        q = _WF_PROGRESS_QUEUE.setdefault(rid, {"seq": 0, "items": []})
+        q["seq"] += 1
+        item = dict(params)
+        item["seq"] = q["seq"]
+        item["ext_id"] = ext_id
+        item["at"] = int(time.time() * 1000)
+        q["items"].append(item)
+        # 队列上限 200,防止异常 push 撑爆内存(正常 run 一个 node 就 2 条)
+        if len(q["items"]) > 200:
+            q["items"] = q["items"][-200:]
+    # P2.5+B-4(2026-09-21):AI agent 派单后,run_task handler 走 /api/ext/rpc 触发
+    # task.run,web 端 _run_chat_thread 在 tool trace 入库时抓 run_id 注册到
+    # _TASK_RUN_TO_SID。这里把 progress 事件推到对应 sid 的 chat 历史,前端
+    # pollResult 拉历史时直接展示节点级进度,无需新 SSE 通道。
+    try:
+        _task_run_push_progress(rid, params)
+    except Exception:  # noqa: BLE001 — push 失败不能影响主路径
+        pass
+
+
+# ─── P2.5+B-4(2026-09-21)AI agent 派单 → chat 进度桥 ────────────────────
+# cli 端 run_task handler 走 HTTP 调 /api/ext/rpc(task.upsert + task.run)拿到 run_id;
+# 它不直接知道 sid(sid 在 web 进程),而 web 端 _run_chat_thread 在 tool trace 入库时
+# (line ~3287) 正则抓 run_id + 调 _task_run_register 注册到这里。
+# 注册时同时起 daemon 线程轮询 task.runs 直到终态 → 落完结消息。
+_TASK_RUN_TO_SID: dict = {}     # run_id → session_id
+_TASK_RUN_TO_TASK: dict = {}    # run_id → task_id(完结消息带 display)
+_TASK_RUN_LOCK = _threading.RLock()
+
+
+def _task_run_register(run_id: str, sid: str, task_id: str = "") -> None:
+    """P2.5+B-4:注册 run_id → sid 映射 + 启 daemon 线程监听 run 完成,落完结消息。"""
+    with _TASK_RUN_LOCK:
+        _TASK_RUN_TO_SID[run_id] = sid
+        _TASK_RUN_TO_TASK[run_id] = task_id
+    try:
+        _threading.Thread(target=_task_run_poll_done,
+                          args=(run_id, sid, task_id),
+                          daemon=True).start()
+    except Exception:
+        pass
+
+
+def _task_run_push_progress(run_id: str, payload: dict) -> None:
+    """P2.5+B-4:task.run.progress 推送 → 对应 sid chat 历史工具轨迹。
+
+    payload 来自 _ext_run_progress:含 {run_id, node_id, status, attempts, ms, error?, event}。
+    若 run_id 没注册(用户手动 ▶ 或 wfmodal 触发),静默跳过(wfmodal 自己走自己的 hook)。
+    """
+    sid = _TASK_RUN_TO_SID.get(run_id)
+    if not sid:
+        return
+    nid = payload.get("node_id") or "?"
+    status = payload.get("status") or "?"
+    attempts = payload.get("attempts") or 0
+    ms = payload.get("ms") or 0
+    err = payload.get("error") or ""
+    line = f"[🔀 task-runner] {nid} {status}"
+    if attempts:
+        line += f" attempts={attempts}"
+    if ms:
+        line += f" ms={ms}"
+    if err:
+        line += f" err={str(err)[:80]}"
+    try:
+        add_message(sid, "tool", line)
+    except Exception:
+        pass
+
+
+def _task_run_poll_done(run_id: str, sid: str, task_id: str) -> None:
+    """P2.5+B-4:每 2s 查 task.runs 直到 status 终态,落 add_message 完结消息。
+
+    限制:最长 1h(1800 次 × 2s)。失败静默(连接挂了不致命,run 在 task-runner 进程继续跑)。
+    """
+    import time as _t
+    import urllib.request as _ur
+    base_port = 0
+    try:
+        base_port = int(os.environ.get("PRISIRAGENT_PORT") or "0") or 18899
+    except Exception:
+        base_port = 18899
+    try:
+        for _ in range(1800):
+            try:
+                _t.sleep(2)
+                body = json.dumps({"ext_id": "task-runner", "method": "task.runs",
+                                   "params": {"task_id": task_id, "limit": 1},
+                                   "timeout": 3}).encode("utf-8")
+                req = _ur.Request(
+                    f"http://127.0.0.1:{base_port}/prisiragent/api/ext/rpc",
+                    data=body, headers={"Content-Type": "application/json"})
+                with _ur.urlopen(req, timeout=5) as r:
+                    resp = json.loads(r.read().decode("utf-8"))
+                if not resp.get("ok"):
+                    continue
+                runs = ((resp.get("result") or {}).get("runs")) or []
+                run = next((x for x in runs if x.get("id") == run_id), None)
+                if not run:
+                    continue
+                if run.get("status") in ("ok", "failed", "canceled"):
+                    line = f"[🔀 task-runner] run {run_id} finished status={run.get('status')}"
+                    if run.get("ms"):
+                        line += f" ms={run['ms']}"
+                    if run.get("error"):
+                        line += f" err={str(run['error'])[:120]}"
+                    try:
+                        add_message(sid, "tool", line)
+                    except Exception:
+                        pass
+                    break
+            except Exception:
+                # 静默继续,1h 后自然过期
+                continue
+    finally:
+        with _TASK_RUN_LOCK:
+            _TASK_RUN_TO_SID.pop(run_id, None)
+            _TASK_RUN_TO_TASK.pop(run_id, None)
+
+
+def _ext_log(ext_id: str, level: str, msg: str) -> None:
+    """主进程收集 ext 日志。_EXT_LOG_HOOKS 留给后续 UI 日志面板订阅。"""
+    try:
+        lvl_map = {"error": _LOGGER.error, "warn": _LOGGER.warning,
+                   "info": _LOGGER.info, "debug": _LOGGER.debug}
+        fn = lvl_map.get(str(level).lower(), _LOGGER.info)
+        fn("[ext:%s] %s", ext_id, msg)
+    except Exception:
+        pass
+
+
+def _ext_inject_card(ext_id: str, params: dict) -> None:
+    """ui.inject notification:ext 想往当前 session 塞卡片(主进程后续任务接 SSE)。"""
+    _EXT_INJECT_QUEUE.append({"ext_id": ext_id, "params": params,
+                              "ts": time.time()})
+    if len(_EXT_INJECT_QUEUE) > 100:
+        del _EXT_INJECT_QUEUE[:len(_EXT_INJECT_QUEUE) - 100]
+
+
+# installed.json 路径(扩展注册表持久化文件,任务 #17 ship 的目标文件)
+_EXT_INSTALLED_FILE = os.path.join(os.path.expanduser("~"), ".prisir", "installed.json")
+
+
+def _ext_autostart_from_installed() -> None:
+    """启动时读 ~/.prisir/installed.json,把 enabled=true 的 ext spawn 起来。
+       文件不存在/坏/为空 → 静默跳过,等价于「用户没装任何 ext」。
+       installed.json schema(任务 #17 ship 时承诺的格式):
+         {
+           "extensions": [
+             {"id": "task-runner", "enabled": true, "version": "0.1.0", ...},
+             ...
+           ]
+         }
+       本任务不强 schema 校验,只挑 enabled=true 那些 spawn。
+    """
+    if not os.path.exists(_EXT_INSTALLED_FILE):
+        return
+    try:
+        with open(_EXT_INSTALLED_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return
+    exts = data.get("extensions") if isinstance(data, dict) else None
+    if not isinstance(exts, list):
+        return
+    started = 0
+    for it in exts:
+        if not isinstance(it, dict):
+            continue
+        ext_id = str(it.get("id") or "").strip()
+        enabled = bool(it.get("enabled"))
+        if not ext_id or not enabled:
+            continue
+        # 入口必须存在(spawn 失败也 graceful 跳过,不影响其他 ext)
+        entry = _ext_entry(ext_id)
+        if not os.path.exists(entry):
+            try:
+                _LOGGER.info("[ext-bridge] autostart skip %s: entry not found (%s)",
+                             ext_id, entry)
+            except Exception:
+                pass
+            continue
+        _ext_spawn(ext_id)
+        started += 1
+    if started:
+        try:
+            _LOGGER.info("[ext-bridge] autostart spawned %d extensions", started)
+        except Exception:
+            pass
+
+
+# 启用钩子:扩展 store 写 enabled=true 时被调用。留接口供 Phase 1.x 接 UI。
+def _ext_on_enabled(ext_id: str):
+    _ext_spawn(ext_id)
+
+
+def _ext_on_disabled(ext_id: str):
+    _ext_kill(ext_id)
+
+
+# P2.5+B-2(2026-09-21)工作流编排 UI 模板兜底(task-runner 不可用时返这份)。
+_WF_FALLBACK_TEMPLATES = [
+    {"id": "simple_echo", "name": "简单回声(单节点)",
+     "description": "调 todo.add 加一条带 demo tag 的任务",
+     "dag": {"n1": {"ext": "todo", "method": "todo.add",
+                    "params": {"title": "echo: {{input}}", "tags": ["demo"]}}}},
+    {"id": "daily_summary", "name": "每日摘要(每天 09:00)",
+     "description": "调度器模板,每天 09:00 拉取 tag=summary 的 todo",
+     "dag": {"n1": {"ext": "todo", "method": "todo.list",
+                    "params": {"limit": 20, "tag": "summary"}}},
+     "trigger": "schedule", "schedule": "daily 09:00"},
+    {"id": "three_step_demo", "name": "三节点串行(演示依赖)",
+     "description": "n1 → n2 → n3,展示 needs 跨节点连线",
+     "dag": {
+         "n1": {"ext": "todo", "method": "todo.add", "params": {"title": "step 1"}},
+         "n2": {"ext": "todo", "method": "todo.add", "params": {"title": "step 2"}, "needs": ["n1"]},
+         "n3": {"ext": "todo", "method": "todo.add", "params": {"title": "step 3"}, "needs": ["n2"]},
+     }},
+]
+
+
+def _projects_save():
+    """原子写盘:tmp + os.replace 防止半截 JSON。"""
+    os.makedirs(os.path.dirname(_PROJECTS_FILE), exist_ok=True)
+    tmp = _PROJECTS_FILE + ".tmp"
+    with _PROJECTS_LOCK:
+        payload = json.dumps(_PROJECTS, ensure_ascii=False, indent=2)
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(payload)
+    os.replace(tmp, _PROJECTS_FILE)
+
+
+def _projects_upsert(path: str, name: str | None = None, pinned: bool | None = None) -> None:
+    """path 已存在 → 更新 name/pinned;不存在 → 追加。"""
+    path = os.path.abspath(path)
+    with _PROJECTS_LOCK:
+        for it in _PROJECTS["items"]:
+            if it.get("path") == path:
+                if name is not None and name != "":
+                    it["name"] = name
+                if pinned is not None:
+                    it["pinned"] = bool(pinned)
+                return
+        _PROJECTS["items"].append({
+            "path": path,
+            "name": (name or os.path.basename(path) or path),
+            "pinned": bool(pinned) if pinned is not None else False,
+            "added_at": int(time.time()),
+        })
+
+
+def _projects_remove(path: str) -> None:
+    """从列表删;若 active == path → active 改 DEFAULT_WORKDIR;
+       删完若 active 不在 items → 自动加 active 那条兜底。"""
+    path = os.path.abspath(path)
+    with _PROJECTS_LOCK:
+        _PROJECTS["items"] = [it for it in _PROJECTS["items"] if it.get("path") != path]
+        if _PROJECTS["active"] == path:
+            _PROJECTS["active"] = DEFAULT_WORKDIR
+        if _PROJECTS["active"] not in [it.get("path") for it in _PROJECTS["items"]]:
+            _PROJECTS["items"].insert(0, {
+                "path": _PROJECTS["active"],
+                "name": os.path.basename(_PROJECTS["active"]) or "(default)",
+                "pinned": True, "added_at": int(time.time()),
+            })
+
+
+def _projects_activate(path: str) -> bool:
+    """切 active + 真改 _WORKDIR + rebind perm_gate;不在列表自动加一条。"""
+    if not path or not os.path.isdir(path):
+        return False
+    p = os.path.abspath(path)
+    with _PROJECTS_LOCK:
+        if p not in [it.get("path") for it in _PROJECTS["items"]]:
+            _PROJECTS["items"].append({
+                "path": p, "name": os.path.basename(p) or p,
+                "pinned": False, "added_at": int(time.time()),
+            })
+        _PROJECTS["active"] = p
+    _WORKDIR["path"] = p
+    try:
+        perm_gate.rebind_workdir(p)  # 模块名空间访问,运行时才解析
+    except Exception:
+        pass
+    return True
 
 # 2026-08-25 版本号(About 页用)。单点真源在 installer/prisirai.nsi !define APP_VERSION,
 # 此处保持同值即可(About 显示);不由此驱动装包。
@@ -754,6 +1350,72 @@ def _shell_system_prompt(user_text: str, sid: str = "") -> str:
         sb = _skill_block_for_prompt(user_text)
         if sb:
             parts.append(sb)
+    except Exception:  # noqa: BLE001
+        pass
+    # P2.5+B-4.B(2026-09-21):已存 workflow 简表注入 system prompt,让 LLM 知道有哪些
+    # 可跑的 workflow 可用 task_name 重跑(task-runner 没启 / 没 task / 调用失败一律
+    # 静默不注入;timeout=2s 快速失败,不拖对话启动)。
+    try:
+        _tlst = _ext_rpc_call("task-runner", "task.list", {"limit": 100}, timeout=2.0)
+        _ttasks = (_tlst.get("result") or {}).get("tasks") if isinstance(_tlst, dict) else None
+        if _ttasks:
+            _tlines = ["【已存 workflow(可跑)】通过 run_task({task_name:\"...\"}) 重跑,不复传 dag。",
+                       "| name | id | 节点数 | trigger |"]
+            for _t in _ttasks[:50]:
+                _dag = _t.get("dag") or {}
+                _trig = _t.get("trigger") or "manual"
+                _tlines.append(f"| {_t.get('name','?')} | `{_t.get('id','?')}` | {len(_dag)} | {_trig} |")
+            if len(_ttasks) > 50:
+                _tlines.append(f"\n(共 {len(_ttasks)} 个,只列前 50)")
+            parts.append("\n".join(_tlines))
+    except Exception:  # noqa: BLE001
+        pass
+    # P2.5+B-4.D(2026-09-21):已落盘 workflow 文件清单注入,让 LLM 知道有哪些
+    # workflow 文件可读可改(tasks vs files 区别:tasks 是 SQLite 运行时,
+    # files 是 workflows/*.json 源代码;LLM 用 new_workflow 写文件 / read_file 读文件)。
+    try:
+        _flst = _ext_rpc_call("task-runner", "task.files.list", {}, timeout=2.0)
+        _ffiles = (_flst.get("result") or {}).get("files") if isinstance(_flst, dict) else None
+        if _ffiles:
+            _flines = ["【已落盘 workflow 文件(workflows/*.json)】用 new_workflow({name, dag}) 写入,"
+                       "用 task.files.read 读。写完不入库不跑,需显式 run_task({name, dag}) 才会跑。",
+                       "| name | path | nodes | trigger |"]
+            for _f in _ffiles[:50]:
+                _flines.append(f"| {_f.get('name','?')} | `{_f.get('path','?')}` "
+                               f"| {_f.get('node_count',0)} | {_f.get('trigger','manual')} |")
+            if len(_ffiles) > 50:
+                _flines.append(f"\n(共 {len(_ffiles)} 个,只列前 50)")
+            parts.append("\n".join(_flines))
+    except Exception:  # noqa: BLE001
+        pass
+    # P2.5+B-4.F(2026-09-21):远端 workflow 简表注入 system prompt,让 LLM 知道
+    # 论坛 PrisirAI 对话 子版有哪些可下工作流。marketplace 没启 / RPC 失败 /
+    # 0 帖 一律静默不注入(timeout=3s,失败快速返回,不拖对话启动)。
+    try:
+        _mlst = _ext_rpc_call("marketplace", "market.list", {}, timeout=3.0)
+        _mposts = (_mlst.get("result") or {}).get("posts") if isinstance(_mlst, dict) else None
+        if _mposts:
+            _mlines = ["【远端 workflow 镜像(论坛 PrisirAI 对话 子版)】",
+                       "用 workflow_market_fetch({post_id:\"...\"}) 下载附件 → 自动 batch import。",
+                       "| title | post_id | 作者 fp | workflow 数 | 大小 |"]
+            for _m in _mposts[:20]:
+                _mlines.append(f"| {(_m.get('title','?'))[:30]} | `{(_m.get('post_id','?'))[:16]}` | "
+                              f"`{(_m.get('author_fp','?'))[:8]}` | {_m.get('workflow_count','?')} | "
+                              f"{((_m.get('bundle_size') or 0)/1024):.1f} KB |")
+            if len(_mposts) > 20:
+                _mlines.append(f"\n(共 {len(_mposts)} 个,只列前 20)")
+            parts.append("\n".join(_mlines))
+    except Exception:  # noqa: BLE001
+        pass
+    # Phase 6(2026-09-28)+Phase 7(2026-09-28):Skills 工作台索引注入。
+    # 用户决策"全 skill 给 LLM 看得到"+ Phase 7 紧凑化(-38% token,7993c),
+    # 默认开启。设 PRISIRAI_SKILLS_INDEX=0 可关。失败静默(import/空都返 "")。
+    try:
+        if os.environ.get("PRISIRAI_SKILLS_INDEX", "1") != "0":
+            from prisIr_work.skills.integration import skills_index_block  # noqa: PLC0415
+            _sib = skills_index_block(user_text)
+            if _sib:
+                parts.append(_sib)
     except Exception:  # noqa: BLE001
         pass
     return "\n\n".join(parts)
@@ -1985,8 +2647,245 @@ def _save_settings():
         pass
 
 
+def _user_settings_get(key: str, default=None):
+    """从 settings.json 读单个键(供 P2.5+8 schedule consent 等持久化用)。"""
+    try:
+        if not _USER_SETTINGS_PATH.exists():
+            return default
+        raw = json.loads(_USER_SETTINGS_PATH.read_text(encoding="utf-8"))
+        if isinstance(raw, dict) and key in raw:
+            return raw[key]
+    except Exception:  # noqa: BLE001
+        pass
+    return default
+
+
+def _user_settings_set(key: str, value) -> bool:
+    """往 settings.json 写单个键(供 P2.5+8 schedule consent 等持久化用)。
+    保留其他键不动。返 True=成功。"""
+    try:
+        _USER_SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        existing = {}
+        if _USER_SETTINGS_PATH.exists():
+            try:
+                existing = json.loads(_USER_SETTINGS_PATH.read_text(encoding="utf-8"))
+                if not isinstance(existing, dict):
+                    existing = {}
+            except Exception:
+                existing = {}
+        existing[key] = value
+        _USER_SETTINGS_PATH.write_text(json.dumps(existing, ensure_ascii=False, indent=2), encoding="utf-8")
+        return True
+    except Exception as e:  # noqa: BLE001
+        try:
+            _LOGGER.warning("[user_settings] set %s failed: %s", key, e)
+        except Exception:
+            pass
+        return False
+
+
 # 启动时加载设置
 _load_settings()
+
+
+# ─── P2.5+8(2026-09-20):日历+todo+番茄钟 AI 主动编排 ──────────────
+# 设计:对话提到时间+事件 → LLM 提炼 → 后台线程自动建日历事件/todo/番茄钟建议。
+# 权限:首次启用走 _schedule_extractor_consent_card 弹卡明细(同扩展启权闸),
+# 用户批准后所有写入自动跑(默认批,首次明细)。console 记 _SCHEDULE_TRIGGERS_HISTORY 可随时清除。
+# 全静默:失败仅 log.warning,不阻塞对话。
+
+_SCHEDULE_AUTO_ENABLED = False     # 用户首次明细批准后才置 True
+_SCHEDULE_CONSENT_FLAG = "_schedule_extractor_consented"  # settings.json 持久化键
+_SCHEDULE_TRIGGERS_HISTORY: list[dict] = []   # 最近 200 条写入(供 console 查看)
+_SCHEDULE_HISTORY_MAX = 200
+
+
+def get_calendar_store():
+    """P2.5+8(2026-09-20):schedule_extractor 后台线程调日历写入,无 self 上下文。
+    复用 Handler._get_calendar_store 单例,作 module 入口。"""
+    return Handler._get_calendar_store()
+
+
+def schedule_extractor_enabled() -> bool:
+    """已批准才返 True(供钩子直接判断是否跑写入)。"""
+    return _SCHEDULE_AUTO_ENABLED
+
+
+def schedule_extractor_consent_required() -> bool:
+    """首次启用要弹卡明细。"""
+    return not _SCHEDULE_AUTO_ENABLED
+
+
+def schedule_extractor_consent_grant() -> None:
+    """用户批准后置 True,持久化 user_settings。"""
+    global _SCHEDULE_AUTO_ENABLED
+    _SCHEDULE_AUTO_ENABLED = True
+    try:
+        _user_settings_set(_SCHEDULE_CONSENT_FLAG, True)
+    except Exception as e:  # noqa: BLE001
+        try:
+            _LOGGER.warning("[schedule] persist consent failed: %s", e)
+        except Exception:
+            pass
+
+
+def schedule_extractor_consent_revoke() -> None:
+    """重置(供一键清除后回退 + 重新要权限闸)。"""
+    global _SCHEDULE_AUTO_ENABLED
+    _SCHEDULE_AUTO_ENABLED = False
+    try:
+        _user_settings_set(_SCHEDULE_CONSENT_FLAG, False)
+    except Exception:
+        pass
+
+
+def _schedule_extractor_load_consent() -> None:
+    """启动时从 user_settings 加载 _SCHEDULE_AUTO_ENABLED(持久化状态)。
+    复用 _user_settings_get,在 _load_settings() 后立即跑。"""
+    global _SCHEDULE_AUTO_ENABLED
+    try:
+        v = _user_settings_get(_SCHEDULE_CONSENT_FLAG, False)
+        _SCHEDULE_AUTO_ENABLED = bool(v)
+    except Exception:
+        _SCHEDULE_AUTO_ENABLED = False
+
+
+_schedule_extractor_load_consent()
+
+
+def schedule_extractor_history(limit: int = 50) -> list[dict]:
+    """返最近 N 条历史(append only)。"""
+    if limit <= 0 or limit > _SCHEDULE_HISTORY_MAX:
+        limit = 50
+    return list(_SCHEDULE_TRIGGERS_HISTORY[-limit:])
+
+
+def _schedule_extractor_record(entries: list[dict]) -> None:
+    """内部:追加 history + 限长裁剪(供 schedule_writer 调)。"""
+    if not entries:
+        return
+    import time as _t
+    for e in entries:
+        e2 = dict(e)
+        e2.setdefault("ts", _t.time())
+        _SCHEDULE_TRIGGERS_HISTORY.append(e2)
+    if len(_SCHEDULE_TRIGGERS_HISTORY) > _SCHEDULE_HISTORY_MAX:
+        del _SCHEDULE_TRIGGERS_HISTORY[:-_SCHEDULE_HISTORY_MAX]
+
+
+def _schedule_extractor_clear_all() -> dict:
+    """一键清空:历史 + source='ai_extracted' 的 events + ai 建的 todos。
+    重置权限开关(下轮对话再次走首次弹卡)。
+    """
+    stats = {"events_dismissed": 0, "todos_removed": 0, "history_cleared": 0}
+    # 1) 清历史
+    stats["history_cleared"] = len(_SCHEDULE_TRIGGERS_HISTORY)
+    _SCHEDULE_TRIGGERS_HISTORY.clear()
+    # 2) dismiss ai 建的事件
+    try:
+        store = get_calendar_store()
+        if store is not None:
+            from datetime import datetime, timezone, timedelta
+            now = datetime.now(timezone.utc)
+            end = now + timedelta(days=365)
+            evs = store.list_events(now.isoformat(), end.isoformat()) or []
+            for ev in evs:
+                try:
+                    if getattr(ev, "source", None) == "ai_extracted":
+                        store.dismiss_event(ev.event_id, reason="user cleared ai history")
+                        stats["events_dismissed"] += 1
+                except Exception:
+                    pass
+    except Exception as e:  # noqa: BLE001
+        try:
+            _LOGGER.warning("[schedule] clear events err: %s", e)
+        except Exception:
+            pass
+    # 3) 删 ai 建的 todos(tag 含 ai_extracted)
+    try:
+        lst = _ext_rpc_call("todo", "todo.list", {"limit": 100}, timeout=5)
+        # P2.5+B-0(2026-09-21)_ext_rpc_call 新契约:{result: {...}} | {error: ...}
+        # todo.list 在 result 里返 {items: [...], total: N}
+        items = []
+        if lst and not lst.get("error") and isinstance(lst.get("result"), dict):
+            items = lst["result"].get("items") or []
+        for it in items:
+            tags = it.get("tags") or []
+            if "ai_extracted" in tags:
+                rr = _ext_rpc_call("todo", "todo.remove", {"id": it.get("id")}, timeout=3)
+                if not (rr and rr.get("error")):
+                    stats["todos_removed"] += 1
+    except Exception as e:  # noqa: BLE001
+        try:
+            _LOGGER.warning("[schedule] clear todos err: %s", e)
+        except Exception:
+            pass
+    # 4) 重置权限
+    schedule_extractor_consent_revoke()
+    return stats
+
+
+def _schedule_extractor_run(user_text: str, answer: str) -> None:
+    """后台 daemon thread 跑提炼 + 写日历/todo/pomo。
+    不阻塞对话线程,不抛异常。"""
+    try:
+        from schedule_extractor import should_trigger, distill_schedule_sync
+        from schedule_writer import write_all, record_history
+        if not should_trigger(user_text):
+            return
+        router = globals().get("_router")
+        if router is None:
+            return
+        extracted = distill_schedule_sync(router, user_text, answer)
+        if not extracted:
+            return
+        import asyncio as _aio
+        result = _aio.run(write_all(extracted))
+        # 写 history
+        hist = []
+        if result.get("events"):
+            hist.append({"kind": "events", "count": result["events"]})
+        if result.get("todos"):
+            hist.append({"kind": "todos", "count": result["todos"]})
+        if result.get("pomo_suggest"):
+            hist.append({"kind": "pomo_suggest", "count": result["pomo_suggest"]})
+        if hist:
+            record_history(hist)
+            try:
+                _LOGGER.info("[schedule] wrote %s", result)
+            except Exception:
+                pass
+    except Exception as e:  # noqa: BLE001
+        try:
+            _LOGGER.warning("[schedule] run err: %s", e)
+        except Exception:
+            pass
+
+
+def _schedule_extractor_push_consent_card() -> None:
+    """首次启用:通过 SSE 推「需弹卡明细」事件给前端,前端弹卡 + 用户批准后
+    调 /api/schedule/consent grant。后台运行,不阻塞对话。"""
+    try:
+        _sse_broadcast({
+            "type": "schedule_consent_required",
+            "title": "AI 日程主动编排",
+            "summary": "本对话可能提到时间/事件/任务,PrisirAI 将自动建日历事件、todo 任务,"
+                       "并建议番茄钟时段。",
+            "details": [
+                "可写入:本地 SQLite 日历事件(可导出 ICS)",
+                "可写入:todo 扩展 JSON 文件(可在 todo 抽屉查看/删除)",
+                "可记录:番茄钟建议时段(只控制台记录,不主动开始计时)",
+                "不会:发送任何数据到云端",
+                "不会:删除/修改你已存在的事件或任务",
+                "随时可在设置页取消或一键清除 AI 编排记录",
+            ],
+        })
+    except Exception as e:  # noqa: BLE001
+        try:
+            _LOGGER.warning("[schedule] push consent card err: %s", e)
+        except Exception:
+            pass
+
 
 # M3.31:启动 git import 后台 worker(daemon 线程,进程退出自动结束)
 _start_git_import_worker_once()
@@ -2303,7 +3202,11 @@ def _db():
     c.execute("""CREATE TABLE IF NOT EXISTS sessions(
         id TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT '新会话',
         pinned INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL DEFAULT 0,
-        updated INTEGER NOT NULL DEFAULT 0)""")
+        updated INTEGER NOT NULL DEFAULT 0, workdir TEXT NOT NULL DEFAULT '')""")
+    # 兼容旧库:没 workdir 列就加(2026-09-20 M3.35)
+    cols = [r[1] for r in c.execute("PRAGMA table_info(sessions)").fetchall()]
+    if 'workdir' not in cols:
+        c.execute("ALTER TABLE sessions ADD COLUMN workdir TEXT NOT NULL DEFAULT ''")
     c.execute("""CREATE TABLE IF NOT EXISTS messages(
         id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL,
         role TEXT NOT NULL, content TEXT NOT NULL, followups TEXT NOT NULL DEFAULT '[]',
@@ -2318,22 +3221,41 @@ def _now() -> int:
 
 def create_session(title: str = "新会话") -> str:
     sid = uuid.uuid4().hex[:12]
+    wd = _WORKDIR.get("path", "") if isinstance(_WORKDIR, dict) else (_WORKDIR or "")
     with _db() as c:
-        c.execute("INSERT INTO sessions(id,title,pinned,created,updated) VALUES(?,?,?,?,?)",
-                  (sid, title, 0, _now(), _now()))
+        c.execute("INSERT INTO sessions(id,title,pinned,created,updated,workdir) VALUES(?,?,?,?,?,?)",
+                  (sid, title, 0, _now(), _now(), wd))
     return sid
 
 
 def get_session(sid: str):
     with _db() as c:
-        return c.execute("SELECT id,title,pinned,created,updated FROM sessions WHERE id=?", (sid,)).fetchone()
+        return c.execute("SELECT id,title,pinned,created,updated,workdir FROM sessions WHERE id=?", (sid,)).fetchone()
 
 
-def list_sessions():
+def list_sessions(scope: str = "current"):
+    """M3.35:scope='current'(本项目会话 + 历史默认项目会话)、'all'、'orphans'(其他项目的)。
+       空 workdir 的会话算「默认项目的」,切到非默认项目时也算 orphans 可见。"""
+    cur_wd = _WORKDIR.get("path", "") if isinstance(_WORKDIR, dict) else (_WORKDIR or "")
     with _db() as c:
-        rows = c.execute(
-            "SELECT id,title,pinned,created,updated FROM sessions ORDER BY pinned DESC, updated DESC").fetchall()
-    return [{"id": r[0], "title": r[1], "pinned": bool(r[2]), "created": r[3], "updated": r[4]} for r in rows]
+        if scope == "all":
+            rows = c.execute(
+                "SELECT id,title,pinned,created,updated,workdir FROM sessions "
+                "ORDER BY pinned DESC, updated DESC").fetchall()
+        elif scope == "orphans":
+            rows = c.execute(
+                "SELECT id,title,pinned,created,updated,workdir FROM sessions "
+                "WHERE workdir!='' AND workdir!=? "
+                "ORDER BY pinned DESC, updated DESC",
+                (cur_wd,)).fetchall()
+        else:  # current(默认):本项目 + 历史默认项目(空 workdir)
+            rows = c.execute(
+                "SELECT id,title,pinned,created,updated,workdir FROM sessions "
+                "WHERE workdir=? OR workdir='' "
+                "ORDER BY pinned DESC, updated DESC",
+                (cur_wd,)).fetchall()
+    return [{"id": r[0], "title": r[1], "pinned": bool(r[2]),
+             "created": r[3], "updated": r[4], "workdir": r[5]} for r in rows]
 
 
 def add_message(sid: str, role: str, content: str, followups=None) -> None:
@@ -2542,7 +3464,20 @@ def _run_chat_thread(sid: str, user_text: str, strategy: str, model: str, workdi
         for step in (res.get("trace") or []):
             if step.get("role") == "tool":
                 nm = step.get("name") or "tool"
-                add_message(sid, "tool", f"[🔧 {nm}]\n{step.get('content','')}")
+                tool_content = step.get("content", "")
+                add_message(sid, "tool", f"[🔧 {nm}]\n{tool_content}")
+                # P2.5+B-4(2026-09-21)AI agent 派单:cli handler run_task 返的 JSON
+                # 含 run_id,从这里正则抓 + 注册到 _TASK_RUN_TO_SID,后续 task.run.progress
+                # 会自动通过 _task_run_push_progress 推到本 sid 的 chat 流。
+                if nm == "run_task":
+                    try:
+                        _rm = re.search(r'"run_id"\s*:\s*"([^"]+)"', tool_content or "")
+                        _tm = re.search(r'"task_id"\s*:\s*"([^"]+)"', tool_content or "")
+                        if _rm:
+                            _task_run_register(_rm.group(1), sid,
+                                                _tm.group(1) if _tm else "")
+                    except Exception:
+                        pass
 
         followups = []
         if len(answer) < 6000:  # 对话太长到底就不再推荐
@@ -2550,6 +3485,33 @@ def _run_chat_thread(sid: str, user_text: str, strategy: str, model: str, workdi
                 if use_router else []
 
         add_message(sid, "assistant", answer, followups)
+        # Phase 6(2026-09-28)+Phase 7(2026-09-28):Skills 工作台 replan 钩子。
+        # 用户决策"全 skill 给 LLM 看 + 接受 replan 等待时间和成本,确保任务质量降低返工概率",
+        # 默认从 0 → 1(自动开)。设 PRISIRAI_SKILLS_REPLAN=0 可关。
+        # chat_done 之前调,异步旁路 asyncio.create_task,不阻塞答复。
+        if os.environ.get("PRISIRAI_SKILLS_REPLAN", "1") == "1" and use_router:
+            try:
+                import asyncio as _asyncio_sk
+                from prisIr_work.skills.integration import maybe_skill_plan_replan  # noqa: PLC0415
+                _router_planner = _router  # 复用同 router 做 replan LLM 调用
+                async def _replan_llm(messages):
+                    return await _router_planner.stream_chat(
+                        messages, strategy=strategy, temperature=0.0)
+
+                async def _run_replan():
+                    try:
+                        await maybe_skill_plan_replan(
+                            user_text=user_text,
+                            answer=answer,
+                            session_id=sid,
+                            plan_llm_call=_replan_llm,
+                            skills_replan_enabled=True,
+                        )
+                    except Exception as _re:  # noqa: BLE001
+                        pass
+                _asyncio_sk.create_task(_run_replan())
+            except Exception:  # noqa: BLE001
+                pass
         # P2 SSE 推流:最终答复推给已配对移动端。
         _sse_broadcast({"type": "chat_done", "session_id": sid, "answer": answer,
                         "model": used, "rc": res["rc"]})
@@ -2583,6 +3545,20 @@ def _run_chat_thread(sid: str, user_text: str, strategy: str, model: str, workdi
                 if _sig["failed"]:
                     threading.Thread(target=pitfalls_learner.learn_pitfall_sync,
                                      args=(_router, user_text, answer, _sig), daemon=True).start()
+            except Exception:  # noqa: BLE001
+                pass
+        # P2.5+8(2026-09-20):日历+todo+番茄钟 AI 主动编排。
+        # 设计:首次走权限闸 → 批准后自动跑;触发关键词过滤后调 LLM 提炼 → 后台写日历/todo/pomo。
+        # 与 user_profile / solutions_learner / pitfalls_learner 同模式:daemon thread,不阻塞对话。
+        if use_router and answer:
+            try:
+                if schedule_extractor_consent_required():
+                    # 首次推权限闸明细卡(SSE 推前端,前端弹卡 + 用户批准后调 /api/schedule/consent grant)
+                    _schedule_extractor_push_consent_card()
+                else:
+                    # 已批准,直接跑提炼 + 写入(daemon)
+                    threading.Thread(target=_schedule_extractor_run,
+                                     args=(user_text, answer), daemon=True).start()
             except Exception:  # noqa: BLE001
                 pass
         # 改后检测暂存(2026-08-24):本轮 write_file 真改了哪些文件 → 落盘校验(exists)
@@ -3557,6 +4533,11 @@ _PAGE = r"""<!DOCTYPE html>
 })();
 </script>
 <script>
+// P2.5+15(2026-09-22):后端注入论坛 URL(YAML 三端对齐)。
+// 由 main() 在渲染 HTML 前调 prisIrai_config.forum_url/board/hint 拼好;缺省时 JS fallback。
+window.__PRISIR_FORUM_URL__ = "__PRISIR_FORUM_URL_PLACEHOLDER__";
+</script>
+<script>
 // 2026-08-25 局域网遥控器授权兜底:配对手机经 iframe 打开 /?token=xxx,后端会 Set-Cookie,
 // 但 Android WebView 的 iframe 第三方 cookie 持久化各版本不一;App 重开后若 cookie 丢失,
 // 页面内相对 fetch('/prisiragent/api/...') 会 401(会话/模型/图标全空,用户实测「重开 App 又没了」)。
@@ -3600,6 +4581,139 @@ _PAGE = r"""<!DOCTYPE html>
     else { fixImgs(); }
     setTimeout(fixImgs, 800); setTimeout(fixImgs, 2500);
   }catch(e){}
+})();
+</script>
+<script>
+// M3.34(2026-09-19)端口冲突一次性 toast:启动后 fetch /api/port_status,
+// 若 changed=true 且本会话还没弹过这个端口组合 → 弹顶部一次性 toast,标记 sessionStorage 后不再骚扰。
+// 设计意图:用户不需要「端口设置 UI」,但偶尔的 fallback(端口冲突 / OS 分配)要让用户知道在用哪个端口,
+// 以便排查「我的 mobile 端怎么连不上」之类问题。
+(function(){
+  try{
+    var TOAST_KEY="prisir_port_toast";
+    function _shown(key){ try{ return sessionStorage.getItem(TOAST_KEY)===key; }catch(e){ return false; } }
+    function _mark(key){ try{ sessionStorage.setItem(TOAST_KEY, key); }catch(e){} }
+    function _show(msg){
+      var d=document.createElement("div");
+      d.textContent=msg;
+      d.style.cssText="position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:99999;"+
+        "background:var(--gh-paper-3,#efe8da);color:var(--gh-ink,#2f3a34);"+
+        "padding:10px 16px;border-radius:8px;border:1px solid var(--gh-line,#d8cfbc);"+
+        "box-shadow:0 2px 8px rgba(0,0,0,.12);font:13px/1.4 var(--gh-font,system-ui,sans-serif);"+
+        "max-width:560px;text-align:center;cursor:pointer";
+      d.title="点击关闭";
+      d.onclick=function(){ d.remove(); };
+      document.body.appendChild(d);
+      setTimeout(function(){ if(d.parentNode) d.remove(); }, 8000);
+    }
+    fetch("/prisiragent/api/port_status").then(function(r){return r.json();}).then(function(d){
+      if(!d||!d.web) return;
+      var w=d.web, c=w.configured, a=w.actual;
+      if(!w.changed) return;
+      // 同一对 (configured, actual) 已弹过 → 不再骚扰
+      var key=c+"->"+a;
+      if(_shown(key)) return;
+      _mark(key);
+      var msg;
+      if(w.reason==="os_allocated"){
+        msg=(navigator.language||"").toLowerCase().indexOf("zh")===0
+          ? "本实例未指定端口,系统分配了端口 "+a+"。后续启动仍使用 OS 分配。"
+          : "No port specified; system allocated "+a+". Subsequent boots will use OS-assigned ports.";
+      } else if(w.reason==="conflict_fallback"){
+        msg=(navigator.language||"").toLowerCase().indexOf("zh")===0
+          ? "端口 "+c+" 被占用,已自动切换到 "+a+"。后续启动将使用新端口。"
+          : "Port "+c+" was in use; switched to "+a+". Subsequent boots will use the new port.";
+      } else {
+        return;
+      }
+      _show(msg);
+    }).catch(function(){});
+  }catch(e){}
+})();
+</script>
+<script>
+// P2.5+8(2026-09-20):日历+todo+番茄钟 AI 主动编排 — 首次明细弹卡 + 控制台入口。
+// 设计:首次启动(或 revoke 后)→ 弹顶部持久 banner,用户点「同意」调 grant → 后台跑提炼写入。
+// 已批准 → banner 隐藏,console 「🧹 清空 AI 编排记录」按钮可用(调 history clear)。
+// 与端口 toast 不同的样式:持续显示直到用户批准(不自动 8s 消失)。
+(function(){
+  if (window.__scheduleConsentStarted) return;
+  window.__scheduleConsentStarted = true;
+  var KEY = "prisir_schedule_consent_banner_shown";
+  function _hasShown(){
+    try { return sessionStorage.getItem(KEY)==="1"; }catch(e){ return false; }
+  }
+  function _markShown(){
+    try { sessionStorage.setItem(KEY, "1"); }catch(e){}
+  }
+  function _showBanner(title, summary, details){
+    if (document.getElementById("schedule-consent-banner")) return;
+    var d = document.createElement("div");
+    d.id = "schedule-consent-banner";
+    d.style.cssText = "position:fixed;top:14px;right:14px;z-index:99998;width:340px;max-width:calc(100vw - 28px);"
+      + "background:var(--gh-paper-3,#efe8da);color:var(--gh-ink,#2f3a34);"
+      + "border:1px solid var(--gh-line,#d8cfbc);border-radius:10px;"
+      + "box-shadow:0 4px 14px rgba(0,0,0,.16);padding:14px 16px;"
+      + "font:13px/1.5 var(--gh-font,system-ui,sans-serif);";
+    var html = "<div style='font-size:14px;font-weight:600;margin-bottom:6px;color:var(--gh-green-deep,#4a5c52);'>"
+      + (title||"AI 日程主动编排") + "</div>";
+    html += "<div style='margin-bottom:8px;color:var(--gh-ink-soft,#5b6a61);'>"
+      + (summary||"") + "</div>";
+    if (details && details.length){
+      html += "<ul style='margin:0 0 10px 18px;color:var(--gh-ink-faint,#8a968e);font-size:12px;'>";
+      for (var i=0;i<details.length;i++){
+        html += "<li>" + details[i] + "</li>";
+      }
+      html += "</ul>";
+    }
+    html += "<div style='display:flex;gap:8px;justify-content:flex-end;'>"
+      + "<button id='sc-deny' style='padding:5px 12px;border-radius:6px;border:1px solid var(--gh-line,#d8cfbc);"
+      + "background:var(--gh-surface,#fbf8f1);color:var(--gh-ink-soft,#5b6a61);font-size:12px;cursor:pointer;'>稍后</button>"
+      + "<button id='sc-grant' style='padding:5px 14px;border-radius:6px;border:1px solid var(--gh-green-deep,#4a5c52);"
+      + "background:var(--gh-green-deep,#4a5c52);color:#fbf8f1;font-size:12px;cursor:pointer;font-weight:600;'>同意启用</button>"
+      + "</div>";
+    d.innerHTML = html;
+    document.body.appendChild(d);
+    document.getElementById("sc-grant").onclick = function(){
+      fetch("/prisiragent/api/schedule/consent", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({action: "grant"})
+      }).then(function(r){return r.json();}).then(function(){
+        d.remove();
+        _markShown();
+      }).catch(function(){ d.remove(); });
+    };
+    document.getElementById("sc-deny").onclick = function(){
+      fetch("/prisiragent/api/schedule/consent", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({action: "revoke"})
+      }).then(function(){ d.remove(); _markShown(); }).catch(function(){ d.remove(); });
+    };
+  }
+  function _check(){
+    fetch("/prisiragent/api/schedule/consent").then(function(r){return r.json();}).then(function(d){
+      if (!d) return;
+      if (d.consent_required && !_hasShown()){
+        _markShown();
+        _showBanner(
+          "AI 日程主动编排",
+          "本对话提到时间/事件/任务时,PrisirAI 会自动建日历事件与 todo 任务,并建议番茄钟时段。",
+          [
+            "可写入:本地 SQLite 日历事件(可在 📅 日历入口查看)",
+            "可写入:todo 扩展 JSON 文件(可在 todo 抽屉查看/删除)",
+            "可记录:番茄钟建议(只控制台记录,不主动开始计时)",
+            "不会:发送任何数据到云端",
+            "不会:删除或修改你已存在的事件/任务",
+            "随时可在 console 「🧹 清空 AI 编排记录」一键清除并重新弹卡"
+          ]
+        );
+      }
+    }).catch(function(){});
+  }
+  // 启动后稍延迟检查(等其它 toast 弹完)
+  setTimeout(_check, 1500);
 })();
 </script>
 <style>
@@ -3792,25 +4906,36 @@ _PAGE = r"""<!DOCTYPE html>
   .fu:hover { background:var(--gh-paper-2); border-color:var(--gh-focus); }
 
   #composer { padding:16px 28px 20px; }
-  #composer .box { display:flex; gap:10px; align-items:flex-start; background:var(--gh-surface);
+  /* P2.5+9(task #40, 2026-09-20):chat input 工具栏下排一行,学 VS Code Chat
+     (Roo Code / Cline / Continue)。textarea 在上,工具栏在下一行;
+     工具栏内 flex row,左 [附件/思考/⌘K/🎤] 右 [停止/发送] 用 space-between 分开。 */
+  #composer .box { display:flex; flex-direction:column; gap:6px; background:var(--gh-surface);
     border:1px solid var(--gh-line); border-radius:var(--gh-radius-lg); padding:10px 12px; box-shadow:var(--gh-shadow); }
   #composer .box:focus-within { border-color:var(--gh-focus); }
-  /* M3.31.12(2026-09-16):输入框自适应多行 — max-height 由 JS 计算 viewport 控制,
-     默认 textarea 行为超 max-height 就滚动是糟糕 UX,改成 JS 监听 input 动态调 rows=1..8,
-     超过 8 行才出滚动条。min-height 保留 44px 给单行足够视觉。 */
-  #input { flex:1; border:none; outline:none; resize:none; background:transparent;
+  /* M3.31.12(2026-09-16)+P2.5+9(2026-09-20):输入框自适应多行 — JS 监听 input 动态调 rows=2..12,
+     超过 12 行才出滚动条。min-height 保留 44px 给单行足够视觉。 */
+  #input { width:100%; border:none; outline:none; resize:none; background:transparent;
     color:var(--gh-ink); font-size:14.5px; font-family:var(--gh-font); line-height:1.5;
-    min-height:44px; max-height:none; overflow-y:auto; }
+    min-height:44px; max-height:none; overflow-y:auto; box-sizing:border-box; }
   #send { padding:9px 18px; border-radius:9px; border:none; background:var(--gh-green-deep);
     color:#fbf6ec; font-size:14px; cursor:pointer; }
   #send:hover { background:var(--gh-green); }
   #send:disabled { background:var(--gh-paper-3); color:var(--gh-ink-faint); cursor:not-allowed; }
-  .composer-bar { display:flex; flex-direction:column; gap:6px; align-items:stretch; padding-top:2px; }
+  /* P2.5+9(2026-09-20):工具栏改水平一行,顶端分隔线区分输入区。 */
+  .composer-bar { display:flex; flex-direction:row; justify-content:space-between; align-items:center;
+    padding-top:8px; margin-top:2px; border-top:1px solid var(--gh-line); gap:8px; }
+  .composer-left { display:flex; gap:6px; align-items:center; flex-wrap:wrap; min-width:0; }
+  .composer-right { display:flex; gap:6px; align-items:center; flex:0 0 auto; }
   #think-level { padding:6px 8px; border-radius:8px; border:1px solid var(--gh-line);
     background:var(--gh-surface); color:var(--gh-ink); font-size:12px; cursor:pointer; }
-  #attach-btn { padding:6px 10px; border-radius:8px; border:1px solid var(--gh-line);
-    background:var(--gh-surface); color:var(--gh-ink); font-size:14px; cursor:pointer; }
-  #attach-btn:hover { border-color:var(--gh-green-deep); }
+  #attach-btn, #cmd-k-btn, #voice-btn { padding:6px 10px; border-radius:8px; border:1px solid var(--gh-line);
+    background:var(--gh-surface); color:var(--gh-ink); font-size:14px; cursor:pointer; line-height:1; }
+  #attach-btn:hover, #cmd-k-btn:hover, #voice-btn:hover { border-color:var(--gh-green-deep); }
+  /* 窄屏(<600px)工具栏按钮 icon-only,文字隐藏 */
+  @media (max-width: 600px) {
+    #think-level { font-size:0; padding:6px 8px; }
+    #think-level option { font-size:12px; }
+  }
   /* estop 停止按钮:运行中的「中断」信号。印章红描边 + 停止块呼吸脉动,
      与发送键(墨绿实心)主次分明,又和 attach(中性描边)区分出危险语义。 */
   #estop-btn { display:inline-flex; align-items:center; gap:6px; padding:6px 13px;
@@ -3896,6 +5021,179 @@ _PAGE = r"""<!DOCTYPE html>
     border-radius:8px; font-size:12px; color:var(--gh-ink); }
   #fbmodal .status code { font-family:monospace; color:var(--gh-green-deep); word-break:break-all; }
   #fbmodal .row { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; flex-wrap:wrap; }
+
+  /* M3.35 项目切换弹层 */
+  #projmodal { position:fixed; inset:0; background:rgba(47,58,52,.4); display:none; z-index:111;
+    align-items:center; justify-content:center; }
+  #projmodal.open { display:flex; }
+  #projmodal .card { background:var(--gh-paper); border-radius:14px; padding:22px; width:560px; max-width:92vw;
+    max-height:88vh; overflow-y:auto; box-shadow:0 12px 40px rgba(0,0,0,.25); }
+  #projmodal h3 { font-size:16px; color:var(--gh-green-deep); margin-bottom:4px; }
+  #projmodal .sub { font-size:12px; color:var(--gh-ink-faint); margin-bottom:14px; line-height:1.6; }
+  #projmodal #proj-list { border:1px solid var(--gh-line); border-radius:8px;
+    max-height:300px; overflow-y:auto; margin-bottom:12px; background:var(--gh-surface); }
+  #projmodal .proj-item { display:flex; align-items:center; gap:8px; padding:8px 10px;
+    border-bottom:1px solid var(--gh-line); cursor:pointer; transition:background .12s; }
+  #projmodal .proj-item:last-child { border-bottom:none; }
+  #projmodal .proj-item:hover { background:var(--gh-paper-2); }
+  #projmodal .proj-item.active { background:var(--gh-paper-2); border-left:3px solid var(--gh-green-deep); }
+  #projmodal .proj-item .pin { color:var(--gh-amber); font-size:13px; width:14px; text-align:center; }
+  #projmodal .proj-item .nopin { width:14px; display:inline-block; }
+  #projmodal .proj-item .name { flex:0 0 auto; font-weight:600; font-size:13px; min-width:60px; max-width:140px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #projmodal .proj-item .path { flex:1; font-size:11px; color:var(--gh-ink-faint);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #projmodal .proj-item .acts { display:flex; gap:3px; }
+  #projmodal .proj-item .acts button { font-size:11px; padding:2px 7px; cursor:pointer; }
+  #projmodal .proj-add { display:flex; gap:6px; margin-top:10px; }
+  #projmodal .proj-add input { flex:1; padding:6px 10px; border:1px solid var(--gh-line);
+    border-radius:6px; background:var(--gh-surface); color:var(--gh-ink); font-size:12px;
+    font-family:monospace; }
+  #projmodal .proj-add input:focus { outline:none; border-color:var(--gh-focus); }
+  #projmodal .proj-rename-row { display:flex; gap:6px; margin-top:8px; }
+  #projmodal .proj-rename-row input { flex:1; padding:6px 10px; border:1px solid var(--gh-line);
+    border-radius:6px; background:var(--gh-surface); color:var(--gh-ink); font-size:12px; }
+  #projmodal .row { display:flex; gap:10px; justify-content:flex-end; margin-top:14px; }
+
+  /* P2.5+B-2(2026-09-21)工作流编排 modal:全屏布局 + DAG 画布 + SVG 连线 */
+  #wfmodal { position:fixed; inset:0; background:var(--gh-paper); display:none; z-index:113;
+    flex-direction:column; }
+  #wfmodal.open { display:flex; }
+  #wf-header { display:flex; align-items:center; justify-content:space-between;
+    padding:8px 14px; border-bottom:1px solid var(--gh-line); background:var(--gh-paper-2); }
+  #wf-header h2 { font-size:15px; color:var(--gh-green-deep); margin:0; display:flex; gap:10px; align-items:center; }
+  #wf-status { font-size:12px; color:var(--gh-ink-faint); font-weight:normal; }
+  #wf-status .wf-ok { color:var(--gh-green-deep); }
+  #wf-status .wf-failed { color:#c0392b; }
+  #wf-status .wf-running { color:var(--gh-amber); }
+  #wf-tools { display:flex; gap:6px; align-items:center; }
+  .wf-tools-sep { color:var(--gh-line); margin:0 4px; user-select:none; }
+  #wf-body { flex:1; display:flex; min-height:0; }
+  #wf-side { width:220px; flex-shrink:0; border-right:1px solid var(--gh-line);
+    overflow-y:auto; padding:8px 6px; background:var(--gh-paper-2); }
+  #wf-side h3 { font-size:13px; color:var(--gh-green-deep); margin:4px 8px 8px; }
+  #wf-task-list .wf-task { display:flex; align-items:center; gap:4px; padding:6px 8px;
+    border-radius:6px; font-size:12px; cursor:pointer; border:1px solid transparent; }
+  #wf-task-list .wf-task:hover { background:var(--gh-paper); border-color:var(--gh-line); }
+  #wf-task-list .wf-task-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #wf-task-list .wf-task-trigger { font-size:11px; color:var(--gh-ink-faint); }
+  #wf-task-list .wf-task-acts { display:flex; gap:2px; }
+  #wf-task-list .wf-task-acts button { font-size:11px; padding:1px 5px; cursor:pointer;
+    background:transparent; border:1px solid var(--gh-line); border-radius:4px; }
+  /* P2.5+B-4.E(2026-09-21)bundle 聚合操作条 + 任务列表 checkbox */
+  .wf-bundle-bar { display:flex; gap:4px; padding:4px 6px;
+    border-bottom:1px solid var(--gh-line); background:var(--gh-paper); }
+  .topbtn.small { font-size:11px; padding:3px 7px; line-height:1.4;
+    border:1px solid var(--gh-line); border-radius:4px; background:var(--gh-paper);
+    cursor:pointer; color:var(--gh-ink); }
+  .topbtn.small:hover:not(:disabled) { background:var(--gh-paper-2); border-color:var(--gh-green-deep); }
+  .topbtn.small.primary { background:var(--gh-green-deep); color:#fff; border-color:var(--gh-green-deep); }
+  .topbtn.small.primary:disabled { opacity:.4; cursor:not-allowed; }
+  .topbtn.small:disabled { opacity:.45; cursor:not-allowed; }
+  #wf-task-list .wf-task-check { margin:0 4px 0 0; cursor:pointer;
+    accent-color:var(--gh-green-deep); flex-shrink:0; }
+  #wf-bundle-modal .wf-nm-card { min-width:420px; }
+  #wf-canvas-wrap { flex:1; display:flex; flex-direction:column; min-width:0; }
+  #wf-toolbox { display:flex; align-items:center; gap:10px; padding:6px 12px;
+    border-bottom:1px solid var(--gh-line); background:var(--gh-paper-2); }
+  .wf-node-template { padding:4px 12px; border:1px dashed var(--gh-green-deep);
+    border-radius:6px; cursor:grab; font-size:12px; color:var(--gh-green-deep);
+    background:var(--gh-paper); user-select:none; }
+  .wf-node-template:active { cursor:grabbing; }
+  .wf-meta { font-size:11px; color:var(--gh-ink-faint); }
+  #wf-canvas { flex:1; position:relative; overflow:auto;
+    background-image:radial-gradient(circle, var(--gh-line) 1px, transparent 1px);
+    background-size:18px 18px; background-position:0 0; }
+  #wf-svg { position:absolute; top:0; left:0; pointer-events:none; }
+  #wf-nodes { position:absolute; top:0; left:0; width:100%; height:100%; }
+  .wf-node { position:absolute; width:180px; padding:8px 10px; background:var(--gh-paper);
+    border:2px solid var(--gh-line); border-radius:8px; cursor:move; font-size:12px;
+    box-shadow:0 1px 3px rgba(0,0,0,.08); user-select:none; }
+  .wf-node.running { border-color:var(--gh-amber); box-shadow:0 0 0 2px rgba(255,193,7,.2); }
+  .wf-node.ok { border-color:var(--gh-green-deep); }
+  .wf-node.failed { border-color:#c0392b; box-shadow:0 0 0 2px rgba(192,57,43,.15); }
+  .wf-node-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; }
+  .wf-node-id { font-weight:600; color:var(--gh-green-deep); font-size:11px; }
+  .wf-node-acts button { font-size:10px; padding:0 4px; cursor:pointer;
+    background:transparent; border:1px solid var(--gh-line); border-radius:3px; margin-left:2px; }
+  .wf-node-body { color:var(--gh-ink); font-family:monospace; font-size:11px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .wf-node-foot { font-size:10px; color:var(--gh-ink-faint); margin-top:4px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #wf-runs { border-top:1px solid var(--gh-line); background:var(--gh-paper-2);
+    max-height:220px; display:flex; flex-direction:column; }
+  #wf-runs-head { padding:6px 14px; font-size:12px; font-weight:600; color:var(--gh-green-deep);
+    cursor:pointer; display:flex; align-items:center; justify-content:space-between;
+    border-bottom:1px solid var(--gh-line); user-select:none; }
+  #wf-runs-head #wf-runs-clean-btn { font-size:11px; padding:2px 8px; margin-left:auto; }
+  #wf-runs-head #wf-runs-clean-btn:hover { background:#c0392b; color:var(--gh-paper); border-color:#c0392b; }
+  #wf-runs-body { overflow-y:auto; padding:4px 8px; }
+  #wf-runs-body .wf-run { display:flex; gap:10px; padding:4px 8px; font-size:11px;
+    border-bottom:1px solid var(--gh-line); cursor:pointer; }
+  #wf-runs-body .wf-run:hover { background:var(--gh-paper); }
+  .wf-run-id { font-family:monospace; color:var(--gh-ink-faint); width:120px; overflow:hidden; text-overflow:ellipsis; }
+  .wf-run-task { font-family:monospace; color:var(--gh-ink); flex:1; overflow:hidden; text-overflow:ellipsis; }
+  .wf-run-status { font-weight:600; width:60px; }
+  .wf-run.wf-ok .wf-run-status { color:var(--gh-green-deep); }
+  .wf-run.wf-failed .wf-run-status { color:#c0392b; }
+  .wf-run.wf-running .wf-run-status { color:var(--gh-amber); }
+  .wf-run-time { color:var(--gh-ink-faint); width:130px; }
+  .wf-run-dur { color:var(--gh-ink-faint); width:50px; text-align:right; }
+  .wf-run-err { color:#c0392b; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #wf-sched-btn.on { background:var(--gh-green-deep); color:var(--gh-paper); border-color:var(--gh-green-deep); }
+  .wf-runs-err { color:#c0392b; font-size:12px; padding:8px; }
+
+  /* P2.5+B-3(2026-09-21)顶部 progress bar + 取消按钮 */
+  #wf-progress { display:flex; align-items:center; gap:10px;
+    padding:6px 14px; background:var(--gh-paper); border-bottom:1px solid var(--gh-line); }
+  #wf-progress-bar { flex:1; height:6px; background:var(--gh-line);
+    border-radius:3px; overflow:hidden; }
+  #wf-progress-bar-fill { height:100%; width:0%; background:var(--gh-green-deep);
+    transition:width 200ms ease; }
+  #wf-progress-bar-fill.running { background:var(--gh-amber); }
+  #wf-progress-bar-fill.canceled { background:#c0392b; }
+  #wf-progress-text { font-size:11px; color:var(--gh-ink-faint); min-width:60px; }
+  #wf-cancel-btn { font-size:11px; padding:3px 10px; border-color:#c0392b; color:#c0392b; }
+  #wf-cancel-btn:hover { background:#c0392b; color:var(--gh-paper); }
+  .wf-node.canceled { border-color:#c0392b; opacity:.7; text-decoration:line-through; }
+  #wf-status .wf-canceled { color:#c0392b; }
+
+  /* 节点配置弹层 / 模板选择弹层(在 wfmodal 内绝对定位) */
+  #wf-node-modal, #wf-tpl-modal, #wf-import-modal { position:fixed; inset:0; background:rgba(47,58,52,.4);
+    display:none; align-items:center; justify-content:center; z-index:114; }
+  #wf-node-modal.open, #wf-tpl-modal.open, #wf-import-modal.open { display:flex; }
+  /* P2.5+B-4.D(2026-09-21)workflow import 弹层 */
+  .wf-import-hint { font-size:11px; color:var(--gh-ink-faint);
+    margin:0 0 12px; line-height:1.45; }
+  .wf-import-row { display:flex; flex-direction:column; gap:4px;
+    font-size:11px; color:var(--gh-ink-faint); margin:10px 0; font-weight:600; }
+  .wf-import-row input[type="file"] { font-size:11px; }
+  #wf-import-paste { font-family:monospace; min-height:120px; }
+  .wf-nm-card { background:var(--gh-paper); border-radius:12px; padding:18px;
+    width:480px; max-width:92vw; max-height:90vh; overflow-y:auto;
+    box-shadow:0 8px 24px rgba(0,0,0,.18); }
+  .wf-nm-card h3 { font-size:15px; color:var(--gh-green-deep); margin:0 0 12px; }
+  .wf-nm-card label { display:block; font-size:11px; color:var(--gh-ink-faint);
+    margin:8px 0 3px; font-weight:600; }
+  .wf-nm-card input[type="text"], .wf-nm-card input[type="number"], .wf-nm-card select,
+  .wf-nm-card textarea { width:100%; padding:6px 10px; border:1px solid var(--gh-line);
+    border-radius:6px; background:var(--gh-surface); color:var(--gh-ink); font-size:12px;
+    font-family:inherit; box-sizing:border-box; }
+  .wf-nm-card textarea { font-family:monospace; resize:vertical; min-height:80px; }
+  .wf-nm-card input:focus, .wf-nm-card select:focus, .wf-nm-card textarea:focus {
+    outline:none; border-color:var(--gh-focus); }
+  .wf-nm-fs { border:1px solid var(--gh-line); border-radius:6px; padding:8px 12px;
+    margin-top:10px; }
+  .wf-nm-fs legend { font-size:11px; color:var(--gh-ink-faint); font-weight:600;
+    padding:0 6px; }
+  .wf-nm-fs label { display:inline-flex; align-items:center; gap:4px; margin-right:12px; }
+  .wf-nm-fs input[type="number"] { width:80px; }
+  .wf-nm-row { display:flex; gap:8px; justify-content:flex-end; margin-top:14px; }
+  .wf-tpl-row { display:flex; align-items:center; gap:8px; padding:8px 4px;
+    border-bottom:1px solid var(--gh-line); }
+  .wf-tpl-name { font-weight:600; font-size:13px; color:var(--gh-green-deep); width:140px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .wf-tpl-desc { flex:1; font-size:11px; color:var(--gh-ink-faint); }
 
   /* #102 补丁卡(复用 fbmodal 结构) */
   #patchmodal { position:fixed; inset:0; background:rgba(47,58,52,.4); display:none; z-index:112;
@@ -3991,6 +5289,33 @@ _PAGE = r"""<!DOCTYPE html>
   #doc-diff-body .meta { font-size:11.5px; color:var(--gh-ink-soft); margin-bottom:8px; }
   #doc-diff-body pre { margin:0; white-space:pre-wrap; word-break:break-all; }
   .hljs-addition { background:#e6ffec; color:#1a7f37; display:block; }
+  /* P2.5+9:doc-panel diff 左右分栏(A 版本 | B 版本,Monaco 风格降级) */
+  .diff-split { display:grid; grid-template-columns:1fr 12px 1fr; gap:0;
+    border:1px solid var(--gh-line); border-radius:6px; overflow:hidden; min-height:0; }
+  .diff-pane { display:flex; flex-direction:column; min-height:0; background:var(--gh-paper); }
+  .diff-pane-head { padding:4px 10px; font-size:11px; font-weight:600; color:var(--gh-ink-soft);
+    background:var(--gh-surface); border-bottom:1px solid var(--gh-line);
+    font-family:monospace; letter-spacing:.5px; }
+  .diff-pane-left .diff-pane-head { color:#b31d28; }
+  .diff-pane-right .diff-pane-head { color:#1a7f37; }
+  .diff-pane-body { flex:1; overflow:auto; font-family:monospace; font-size:12px; line-height:1.55; }
+  .diff-row { display:flex; align-items:flex-start; gap:6px; padding:0 8px;
+    white-space:pre; min-height:1.55em; }
+  .diff-row .diff-marker { flex:0 0 14px; text-align:center; color:var(--gh-ink-faint);
+    user-select:none; font-weight:600; }
+  .diff-row .diff-text { flex:1; }
+  .diff-row.diff-add { background:#e6ffec; }
+  .diff-row.diff-add .diff-marker { color:#22863a; }
+  .diff-row.diff-del { background:#ffeef0; }
+  .diff-row.diff-del .diff-marker { color:#b31d28; }
+  .diff-row.diff-meta { background:var(--gh-surface); color:var(--gh-ink-soft);
+    font-size:11px; padding:2px 8px; }
+  .diff-row.diff-meta .diff-marker { color:var(--gh-ink-faint); }
+  /* 大 diff 自动折叠(.diff-collapse details/summary) */
+  .diff-collapse { margin:6px 0; }
+  .diff-collapse > summary { cursor:pointer; font-size:12px;
+    color:var(--gh-ink-faint); padding:2px 0; user-select:none; }
+  .diff-collapse > summary:hover { color:var(--gh-ink-soft); }
   /* M3.33 #65:skill 面板卡片样式(参考 doc-timeline 列表) */
   #doc-skills-view { display:flex; flex-direction:column; flex:1; overflow:hidden; }
   #doc-skills-head { display:flex; align-items:center; gap:8px; padding:8px 14px; border-bottom:1px solid var(--gh-line); background:var(--gh-paper); font-size:12px; color:var(--gh-ink-soft); }
@@ -4182,6 +5507,39 @@ _PAGE = r"""<!DOCTYPE html>
     border-radius:4px; padding:1px 7px; margin-bottom:8px; }
   .case-card .case-body { color:var(--gh-ink); font-size:14px; line-height:1.8; white-space:pre-wrap;
     word-break:break-word; }
+  /* Phase 6(2026-09-28):Skills 工作台规划卡 CSS。
+     设计:复用 .cap-confirm 视觉(主面板已有同款 class 时直接继承),
+     主面板若无 .cap-confirm 则用最小化 fallback(独立 mask/box/risk 配色)。
+     配色 L1 绿 #6b8e7f / L2 金 #c79a3a / L3 红 #b65c5c。 */
+  .skill-plan-card { position:fixed; inset:0; z-index:9999; display:flex;
+    align-items:center; justify-content:center; background:rgba(20,30,28,0.55); }
+  .skill-plan-box { background:var(--gh-paper,#fbf8f3); border-radius:12px;
+    padding:18px 20px; min-width:340px; max-width:560px; max-height:80vh; overflow:auto;
+    box-shadow:0 10px 40px rgba(0,0,0,.30); font-size:14px; color:var(--gh-ink,#2f3a34); }
+  .skill-plan-title { font-weight:700; font-size:15px; margin-bottom:8px; }
+  .skill-plan-meta { display:flex; gap:8px; margin-bottom:10px; font-size:12px; }
+  .skill-plan-count { background:rgba(0,0,0,.06); padding:2px 8px; border-radius:4px; }
+  .skill-plan-risk { padding:2px 8px; border-radius:4px; color:#fff; font-weight:700; }
+  .skill-plan-risk[data-risk="L0"]{ background:#9aa0a6; }
+  .skill-plan-risk[data-risk="L1"]{ background:#6b8e7f; }
+  .skill-plan-risk[data-risk="L2"]{ background:#c79a3a; }
+  .skill-plan-risk[data-risk="L3"]{ background:#b65c5c; }
+  .skill-plan-row { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px;
+    padding:6px 4px; border-bottom:1px dashed rgba(0,0,0,.10); font-size:13px; }
+  .skill-plan-idx { font-weight:700; min-width:24px; }
+  .skill-plan-sid { font-weight:600; color:var(--acc,#2f6f4f); flex:1 1 auto; min-width:120px;
+    word-break:break-all; }
+  .skill-plan-args { flex-basis:100%; padding:2px 0 4px 32px; font-size:11px;
+    color:var(--dim,#6e7e76); white-space:pre-wrap; word-break:break-word; }
+  .skill-plan-buttons { display:flex; gap:10px; justify-content:flex-end; margin-top:12px; }
+  .skill-plan-buttons button { padding:6px 14px; border-radius:6px; border:1px solid #888;
+    background:#fff; cursor:pointer; font-size:13px; }
+  .skill-plan-buttons button.primary { background:var(--acc,#2f6f4f); color:#fff; border-color:var(--acc,#2f6f4f); }
+  .skill-plan-auto-msg { display:inline-block; padding:6px 12px; margin:8px 0;
+    border-radius:8px; background:rgba(47,111,79,.10); color:var(--gh-ink,#2f3a34);
+    font-size:13px; }
+  .skill-plan-auto-msg .ok{color:#2f6f4f;font-weight:700;}
+  .skill-plan-auto-msg .fail{color:#b65c5c;font-weight:700;}
 </style>
 <!-- 壳三件套②③:md 标准渲染 + XSS 防护(版本钉死)。仅渲染 assistant 正文;user 保持纯文本。 -->
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
@@ -4212,8 +5570,185 @@ _PAGE = r"""<!DOCTYPE html>
   window.__mermaid = mermaid;
   window.__mermaidReady = true;
 </script>
+<style>
+/* M3.36.C (2026-09-28):colibri 三选一引导卡 — 主对话窗口 */
+#onboardingCard {
+  display: none;
+  margin: 14px 16px 0;
+  padding: 14px 16px;
+  background: linear-gradient(180deg, #fbf8f1 0%, #f6f1e7 100%);
+  border: 1px solid var(--gh-gold, #d6b26c);
+  border-radius: var(--gh-radius, 10px);
+  box-shadow: 0 2px 8px rgba(60, 50, 30, 0.06);
+  position: relative;
+}
+#onboardingCard.shown {
+  display: block;
+}
+.onb-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--gh-ink, #2f3a34);
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.onb-subtitle {
+  font-size: 12px;
+  color: var(--gh-ink-soft, #5b6a61);
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+.onb-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+.onb-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--gh-line, #d8cfbc);
+  border-radius: 8px;
+  background: var(--gh-surface, #fbf8f1);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.onb-choice:hover {
+  border-color: var(--gh-green-deep, #4a5c52);
+  background: #fff;
+  transform: translateY(-1px);
+}
+.onb-choice-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+.onb-choice-body {
+  flex: 1;
+}
+.onb-choice-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gh-ink, #2f3a34);
+  margin-bottom: 2px;
+}
+.onb-choice-desc {
+  font-size: 11.5px;
+  color: var(--gh-ink-soft, #5b6a61);
+  line-height: 1.4;
+}
+.onb-warn {
+  margin-top: 6px;
+  padding: 6px 10px;
+  background: #fff8c5;
+  border: 1px solid #d4a72c;
+  border-radius: 6px;
+  font-size: 11.5px;
+  color: #5a4400;
+  line-height: 1.5;
+}
+.onb-warn b {
+  color: #6b3a00;
+}
+.onb-progress {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--gh-paper-2, #efe8da);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--gh-ink, #2f3a34);
+}
+.onb-progress-bar {
+  width: 100%;
+  height: 6px;
+  background: var(--gh-paper-3, #e7dfce);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+.onb-progress-fill {
+  height: 100%;
+  background: var(--gh-green-deep, #4a5c52);
+  width: 0%;
+  transition: width 0.3s ease;
+}
+.onb-close {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  background: transparent;
+  border: none;
+  font-size: 16px;
+  color: var(--gh-ink-faint, #8a968e);
+  cursor: pointer;
+  padding: 2px 6px;
+}
+.onb-close:hover {
+  color: var(--gh-seal-deep, #b23a30);
+}
+@media (max-width: 600px) {
+  .onb-choices { gap: 6px; }
+  .onb-choice { padding: 8px 10px; }
+}
+</style>
 </head>
 <body>
+
+<!-- M3.36.C (2026-09-28):colibri 三选一引导卡(主对话窗口)
+     首次启动无云端 key 时弹;用户三选一:
+       no_key  → 下载本地 OLMoE 模型(一次性 ~7 GB,纯 CPU 可跑)
+       has_key → 关闭引导,日常走云端(去设置填 key / 自动读 env)
+       skip    → 暂时跳过(下次启动还弹) -->
+<div id="onboardingCard">
+  <button class="onb-close" id="onbClose" title="关闭引导">✕</button>
+  <div class="onb-title">🎉 欢迎使用 PrisirAI</div>
+  <div class="onb-subtitle">
+    在开始之前,请选一种方式完成首次配置。完成后,以后每次启动不再弹此引导。
+  </div>
+  <div class="onb-choices" id="onbChoices">
+    <div class="onb-choice" data-choice="no_key">
+      <div class="onb-choice-icon">📥</div>
+      <div class="onb-choice-body">
+        <div class="onb-choice-title">完全不懂 API / key(零配置起步)</div>
+        <div class="onb-choice-desc">
+          下载一个本地小模型 <b>OLMoE-7B</b>(~7 GB,一次性),无需任何 API key、无需联网对话,装机即可开始聊天。
+        </div>
+        <div class="onb-warn">
+          ⚠️ <b>空间:</b>预留 ~7 GB 磁盘; <b>内存:</b>至少 8 GB RAM;
+          <b>速度:</b>纯 CPU 跑对话较慢(每秒 1-2 字),首字输出需等 10-30 秒。
+          <br>📌 这是<b>一次性配置</b>:下载完成后可正常对话,日常使用建议切换云端 LLM(更快更强)。
+        </div>
+      </div>
+    </div>
+    <div class="onb-choice" data-choice="has_key">
+      <div class="onb-choice-icon">🔑</div>
+      <div class="onb-choice-body">
+        <div class="onb-choice-title">我会配置 API key / 已经有 key</div>
+        <div class="onb-choice-desc">
+          关闭引导,直接进入主界面。请到「⚙ 设置」页填写 OpenAI / Anthropic / DeepSeek / 通义千问等任一平台的 API key。
+          <br>📌 PrisirAI 会<b>自动读取</b>你环境变量里的 key(若有);云端 LLM 速度更快、质量更强。
+        </div>
+      </div>
+    </div>
+    <div class="onb-choice" data-choice="skip">
+      <div class="onb-choice-icon">⏭️</div>
+      <div class="onb-choice-body">
+        <div class="onb-choice-title">暂时跳过,以后再说</div>
+        <div class="onb-choice-desc">
+          不下载、不配置,以后手动到设置页再决定。下次启动还会再弹一次。
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="onb-progress" id="onbProgress" style="display:none">
+    <div id="onbProgressText">📥 正在下载 OLMoE 模型…</div>
+    <div class="onb-progress-bar"><div class="onb-progress-fill" id="onbProgressFill"></div></div>
+  </div>
+</div>
 <div id="topbar">
   <div id="brand">
     <img src="/prisiragent/assets/prisir-flame-48.png" alt="icon">
@@ -4222,11 +5757,13 @@ _PAGE = r"""<!DOCTYPE html>
   <div class="spacer"></div>
   <span id="strategy-label"></span>
   <button class="topbtn" id="replay-btn" onclick="toggleReplay()" data-i18n="replay_panel" data-i18n-title="replay_title">⏵ 回放</button>
+  <button class="topbtn" id="topbtnProject" onclick="openProject()" data-i18n-title="project_title" title="切换项目"><span id="topbtnProjectName">📂 …</span></button>
   <button class="topbtn" id="files-btn" onclick="toggleFiles()" data-i18n="files" data-i18n-title="files_title">📁 文件</button>
   <button class="topbtn" id="doc-btn" onclick="toggleDocPanel()" data-i18n="doc_panel" data-i18n-title="doc_panel_title">📑 文档</button>
   <button class="topbtn" onclick="openKeys()" data-i18n="model_key">🔑 模型 Key</button>
   <button class="topbtn" onclick="openFeedback()" data-i18n-title="feedback_title"><span data-i18n="feedback">⚙ 反馈问题</span></button>
   <button class="topbtn" id="topbtnCompanion" onclick="openCompanion()" data-i18n-title="companion_title" title="陪聊(语音/文字轻量对话,可派发到主面板)">📞 陪聊</button>
+  <button class="topbtn" id="topbtnWorkflow" onclick="openWorkflow()" data-i18n-title="workflow_title" title="工作流编排(拖拽 DAG + 重试 + 运行历史)">🔀 工作流</button>
   <button class="topbtn" onclick="newSession()" data-i18n="new_session">+ 新会话</button>
 </div>
 <div id="main">
@@ -4301,17 +5838,23 @@ _PAGE = r"""<!DOCTYPE html>
       <div class="box">
         <textarea id="input" rows="2" data-i18n-ph="input_ph" placeholder="问点什么… (Enter 发送,Shift+Enter 换行)"></textarea>
         <div class="composer-bar">
-          <select id="think-level" data-i18n-title="think_title">
-            <option value="" data-i18n="think_default">思考:默认</option>
-            <option value="off" data-i18n="think_off">思考:关闭</option>
-            <option value="low" data-i18n="think_low">思考:低</option>
-            <option value="medium" data-i18n="think_medium">思考:中</option>
-            <option value="high" data-i18n="think_high">思考:高</option>
-          </select>
-          <button id="attach-btn" type="button" data-i18n-title="attach_title">📎</button>
-          <input id="attach-input" type="file" multiple style="display:none">
-          <button id="estop-btn" type="button" data-i18n="stop" data-i18n-title="estop_title" style="display:none" onclick="estopNow()"><span class="stopdot"></span>停止</button>
-          <button id="send" onclick="sendMessage()" data-i18n="send">发送</button>
+          <div class="composer-left">
+            <button id="attach-btn" type="button" data-i18n-title="attach_title" title="添加附件">📎</button>
+            <input id="attach-input" type="file" multiple style="display:none">
+            <select id="think-level" data-i18n-title="think_title" title="思考深度">
+              <option value="" data-i18n="think_default">思考:默认</option>
+              <option value="off" data-i18n="think_off">思考:关闭</option>
+              <option value="low" data-i18n="think_low">思考:低</option>
+              <option value="medium" data-i18n="think_medium">思考:中</option>
+              <option value="high" data-i18n="think_high">思考:高</option>
+            </select>
+            <button id="cmd-k-btn" type="button" title="命令面板 (⌘K)" data-i18n-title="cmd_k_title" style="display:none">⌘K</button>
+            <button id="voice-btn" type="button" title="语音输入" data-i18n-title="voice_title" style="display:none">🎤</button>
+          </div>
+          <div class="composer-right">
+            <button id="estop-btn" type="button" data-i18n="stop" data-i18n-title="estop_title" style="display:none" onclick="estopNow()"><span class="stopdot"></span>停止</button>
+            <button id="send" onclick="sendMessage()" data-i18n="send">发送</button>
+          </div>
         </div>
       </div>
     </div>
@@ -4451,15 +5994,7 @@ _PAGE = r"""<!DOCTYPE html>
       <div id="k-platform-note" style="font-size:11px;color:var(--gh-ink-faint);margin-top:6px"></div>
       <div id="k-model-hint" style="font-size:11px;color:var(--gh-ink-faint);margin-top:4px"></div>
     </div>
-    <div class="kf">
-      <label data-i18n="workdir">工作目录</label>
-      <div class="hint" data-i18n="workdir_hint">PrisirAI 读写文件/跑命令的基准目录(影响 read_file/run_shell 相对路径)</div>
-      <div style="display:flex;gap:6px">
-        <input id="k-workdir" type="text" data-i18n-ph="workdir_ph" placeholder="如 C:\path\to\project" style="flex:1">
-        <button class="topbtn" type="button" onclick="saveWorkdir()" data-i18n="apply">应用</button>
-      </div>
-      <div id="k-workdir-hint" style="font-size:11px;color:var(--gh-ink-faint);margin-top:4px"></div>
-    </div>
+    <!-- M3.35:工作目录已迁到顶栏 📂 项目切换器管理,keymodal 不再单独入口 -->
     <div class="row">
       <button class="topbtn" onclick="saveKeys()" data-i18n="save">保存</button>
       <button class="topbtn" onclick="resetRouter()" data-i18n="reset_router" title="清除指定平台,恢复智能路由">恢复路由</button>
@@ -4507,6 +6042,279 @@ _PAGE = r"""<!DOCTYPE html>
       <button class="topbtn" onclick="feedbackPackOnly()" data-i18n="fb_pack" title="只打 zip 到桌面,你自己决定怎么发">仅打包到桌面</button>
       <button class="topbtn primary" onclick="feedbackPackAndOpen()" data-i18n="fb_publish">发布到反馈论坛</button>
     </div>
+  </div>
+</div>
+
+<!-- M3.35:项目切换器弹层。点击顶栏 📂 按钮打开;列项目 + 添加/重命名/置顶/移除。 -->
+<div id="projmodal">
+  <div class="card">
+    <h3 data-i18n="project_title">📂 项目</h3>
+    <div class="sub" data-i18n="project_sub">切换当前工作目录;每个项目独立的文件树、文档栏和会话分组</div>
+    <div id="proj-list"></div>
+    <div class="proj-add">
+      <input id="proj-path" type="text" data-i18n-ph="project_path_ph" placeholder="C:\path\to\project 或 /home/user/proj" style="flex:1">
+      <button class="topbtn" type="button" onclick="projectBrowse()" data-i18n="project_browse">📂 浏览</button>
+      <button class="topbtn primary" type="button" onclick="projectAddFromInput()" data-i18n="project_add">添加</button>
+    </div>
+    <div class="proj-rename-row" id="proj-rename-row" style="display:none">
+      <input id="proj-rename-input" type="text" data-i18n-ph="project_name_ph" placeholder="项目别名(可空,默认用目录名)" style="flex:1">
+      <button class="topbtn" type="button" onclick="projectRenameSave()" data-i18n="save">保存</button>
+    </div>
+    <div class="row">
+      <button class="topbtn" onclick="closeProject()" data-i18n="close">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- P2.5+B-2(2026-09-21)工作流编排 modal:左侧任务列表 + 右侧 DAG 画布 + 底部运行历史 -->
+<div id="wfmodal">
+  <div id="wf-header">
+    <h2><span data-i18n="workflow">🔀 工作流</span>
+        <span id="wf-status" class="wf-status"></span></h2>
+    <div class="wf-tools">
+      <button class="topbtn" onclick="wfNew()" data-i18n="wf_new">+ 新建</button>
+      <button class="topbtn" onclick="wfTemplates()" data-i18n="wf_templates">📋 模板</button>
+      <button class="topbtn" onclick="wfValidate()" data-i18n="wf_validate">✓ 校验</button>
+      <button class="topbtn primary" onclick="wfSave()" data-i18n="save">💾 保存</button>
+      <button class="topbtn primary" onclick="wfRun()" data-i18n="wf_run">▶ 运行</button>
+      <button class="topbtn" onclick="wfToggleSchedule()" id="wf-sched-btn">⏰ 调度: 关</button>
+      <span class="wf-tools-sep">|</span>
+      <button class="topbtn" onclick="wfExportCurrent()" data-i18n="wf_export">📤 导出</button>
+      <button class="topbtn" onclick="wfOpenImport()" data-i18n="wf_import">📥 导入</button>
+      <button class="topbtn" onclick="closeWorkflow()" data-i18n="close">关闭</button>
+    </div>
+  </div>
+  <!-- P2.5+B-3(2026-09-21)顶部 progress bar:实时显示当前 run 完成度 ok/total;
+       wfRun 启动后由 wfOnProgress 更新;cancel 按钮 拉 _wfCurrentRunId -->
+  <div id="wf-progress">
+    <div id="wf-progress-bar"><div id="wf-progress-bar-fill"></div></div>
+    <span id="wf-progress-text">—</span>
+    <button class="topbtn" id="wf-cancel-btn" onclick="wfCancelRun()" style="display:none"
+            data-i18n="wf_cancel">⏹ 取消</button>
+  </div>
+  <div id="wf-body">
+    <div id="wf-side">
+      <h3 data-i18n="wf_tasks">任务列表</h3>
+      <!-- P2.5+B-4.E(2026-09-21)bundle 聚合操作:全选 + 导出选中 + 导入 bundle。
+           多选 + 跨机器分享走这里(跟顶部单文件 📤/📥 互不冲突)。 -->
+      <div class="wf-bundle-bar">
+        <button class="topbtn small" id="wf-bundle-all-btn" onclick="wfBundleSelectAll()"
+                data-i18n="wf_bundle_all">📦 全部</button>
+        <button class="topbtn small primary" id="wf-bundle-export-btn" onclick="wfBundleExport()"
+                data-i18n="wf_bundle_export" disabled>📦 导出选中(0)</button>
+        <button class="topbtn small" id="wf-bundle-import-btn" onclick="wfBundleOpenImport()"
+                data-i18n="wf_bundle_import">📥 导入 bundle</button>
+      </div>
+      <!-- P2.5+B-4.F(2026-09-21)marketplace 远端镜像:浏览远端论坛帖子 + 发布到论坛
+           「PrisirAI 对话」子版(browser/shell)。走 marketplace ext 命令。 -->
+      <div class="wf-bundle-bar">
+        <button class="topbtn small" id="wf-market-list-btn" onclick="wfMarketList()"
+                data-i18n="wf_market_list">🌐 浏览远端</button>
+        <button class="topbtn small primary" id="wf-market-publish-btn" onclick="wfMarketPublish()"
+                data-i18n="wf_market_publish">📤 发布到论坛</button>
+      </div>
+      <div id="wf-task-list"></div>
+    </div>
+    <div id="wf-canvas-wrap">
+      <div id="wf-toolbox">
+        <span class="wf-node-template" id="wf-new-node-template" draggable="true"
+              data-i18n="wf_new_node">+ 节点</span>
+        <span class="wf-meta" data-i18n="wf_canvas_hint">拖到画布添加节点;双击节点编辑;拖动节点移动</span>
+      </div>
+      <div id="wf-canvas">
+        <svg id="wf-svg" width="100%" height="100%">
+          <defs>
+            <marker id="wf-arrow" viewBox="0 0 10 10" refX="9" refY="5"
+                    markerWidth="6" markerHeight="6" orient="auto">
+              <path d="M0,0 L10,5 L0,10 z" fill="var(--gh-ink-soft)"></path>
+            </marker>
+          </defs>
+          <g id="wf-edges"></g>
+        </svg>
+        <div id="wf-nodes"></div>
+      </div>
+    </div>
+  </div>
+  <div id="wf-runs">
+    <div id="wf-runs-head" onclick="wfToggleRuns()">
+      <span data-i18n="wf_runs">运行历史</span>
+      <span id="wf-runs-toggle">▾</span>
+      <button class="topbtn" id="wf-runs-clean-btn" onclick="event.stopPropagation();wfClearRuns()"
+              data-i18n="wf_runs_clear" title="清空所有运行历史">🧹 清空</button>
+    </div>
+    <div id="wf-runs-body"></div>
+  </div>
+</div>
+
+<!-- 节点配置弹层(在 wfmodal 内绝对定位) -->
+<div id="wf-node-modal" style="display:none">
+  <div class="wf-nm-card">
+    <h3 data-i18n="wf_node_title">节点配置</h3>
+    <label data-i18n="wf_node_id">ID</label>
+    <input id="wf-nm-id" type="text" placeholder="n1">
+    <label>Ext</label>
+    <input id="wf-nm-ext" type="text" placeholder="todo" list="wf-ext-list">
+    <datalist id="wf-ext-list">
+      <option value="todo"><option value="task-runner"><option value="system-watchdog">
+      <option value="process-scan"><option value="file-write"><option value="schedule-writer">
+    </datalist>
+    <label>Method</label>
+    <input id="wf-nm-method" type="text" placeholder="todo.add">
+    <label>Params (JSON)</label>
+    <textarea id="wf-nm-params" rows="5" placeholder='{"title": "..."}'></textarea>
+    <label data-i18n="wf_node_needs">Needs (逗号分隔)</label>
+    <input id="wf-nm-needs" type="text" placeholder="n1, n2">
+    <fieldset class="wf-nm-fs">
+      <legend data-i18n="wf_node_retry">重试</legend>
+      <label>max_retries
+        <input id="wf-nm-retries" type="number" min="0" max="5" value="0"></label>
+      <label>backoff
+        <select id="wf-nm-backoff">
+          <option>exponential</option><option>linear</option><option>constant</option>
+        </select></label>
+      <label>timeout_sec
+        <input id="wf-nm-timeout" type="number" min="1" max="600" value="30"></label>
+    </fieldset>
+    <div class="wf-nm-row">
+      <button class="topbtn" onclick="wfNodeCancel()" data-i18n="cancel">取消</button>
+      <button class="topbtn primary" onclick="wfNodeSave()" data-i18n="save">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 模板选择弹层 -->
+<div id="wf-tpl-modal" style="display:none">
+  <div class="wf-nm-card">
+    <h3 data-i18n="wf_templates_title">选个模板开搭</h3>
+    <div id="wf-tpl-list"></div>
+    <div class="wf-nm-row">
+      <button class="topbtn" onclick="wfTplCancel()" data-i18n="close">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- P2.5+B-4.D(2026-09-21)workflow import 弹层:选文件 / 粘贴 JSON -->
+<div id="wf-import-modal" style="display:none">
+  <div class="wf-nm-card">
+    <h3 data-i18n="wf_import_title">📥 导入 workflow</h3>
+    <div class="wf-import-hint" data-i18n="wf_import_hint">选 .json 文件,或直接粘贴 JSON。校验后落到 task-runner,可立即 ▶ 跑。</div>
+    <label class="wf-import-row">
+      <span data-i18n="wf_import_file">📂 选文件</span>
+      <input type="file" id="wf-import-file" accept=".json">
+    </label>
+    <label class="wf-import-row">
+      <span data-i18n="wf_import_paste">📋 或粘贴</span>
+      <textarea id="wf-import-paste" rows="6" placeholder='{"name":"daily_summary","dag":{"n1":{"ext":"todo","method":"todo.add","params":{"title":"hello"}}}}'></textarea>
+    </label>
+    <div class="wf-nm-row">
+      <button class="topbtn" onclick="wfImportCancel()" data-i18n="cancel">取消</button>
+      <button class="topbtn primary" onclick="wfImportApply()" data-i18n="wf_imported">📥 导入</button>
+    </div>
+  </div>
+</div>
+
+<!-- P2.5+B-4.E(2026-09-21)bundle import 弹层:多 workflow tar.gz 批量入库。
+     单文件 JSON 走 #wf-import-modal;tar.gz 走这里。后端 task-files.bundle_import
+     解压 → 写文件 + 写 SQLite,逐个 validateDag,失败列 skipped 不阻塞。 -->
+<div id="wf-bundle-modal" style="display:none">
+  <div class="wf-nm-card">
+    <h3 data-i18n="wf_bundle_import_title">📥 导入 bundle</h3>
+    <div class="wf-import-hint" data-i18n="wf_bundle_import_hint">
+      选 .tar.gz 文件(workflows-bundle-*.tar.gz)。tar.gz 由 task.files.bundle_export 产出;
+      Windows 10+ 内置 tar 可识别,跨机器可直接互发。批量 validateDag + 入库。
+    </div>
+    <label class="wf-import-row">
+      <span data-i18n="wf_bundle_import_file">📂 选 .tar.gz</span>
+      <input type="file" id="wf-bundle-file" accept=".tar.gz,.tgz">
+    </label>
+    <div class="wf-nm-row">
+      <button class="topbtn" onclick="wfBundleImportCancel()" data-i18n="cancel">取消</button>
+      <button class="topbtn primary" onclick="wfBundleImportApply()" data-i18n="wf_bundle_imported">📥 导入</button>
+    </div>
+  </div>
+</div>
+
+<!-- P2.5+B-4.F(2026-09-21)marketplace 远端浏览弹层:列出论坛「PrisirAI 对话」子版的
+     [Prisir-Workflow] 帖(带 attachment 的 bundle)。点行 → market.fetch → 走
+     task.files.bundle_import 批量入库。匿名公开读,无需登录。 -->
+<div id="wf-market-modal" style="display:none">
+  <div class="wf-nm-card" style="min-width:680px;max-width:880px">
+    <h3 data-i18n="wf_market_title">🌐 远端 workflow 镜像</h3>
+    <div class="wf-import-hint" data-i18n="wf_market_hint">
+      论坛 PrisirAI 对话 子版(browser/shell)上别人分享的 workflow bundle。
+      点 📥 下载 → 走 task.files.bundle_import 批量入库。匿名公开,无需登录。
+    </div>
+    <div id="wf-market-list"></div>
+    <div class="wf-nm-row">
+      <button class="topbtn" onclick="wfMarketRefresh()" data-i18n="wf_market_refresh">🔄 刷新</button>
+      <button class="topbtn" style="color:var(--gh-danger)" onclick="wfMarketTakedownBatch()" data-i18n="wf_market_takedown_batch">🚫 批量撤下</button>
+      <button class="topbtn" onclick="wfMarketCancel()" data-i18n="close">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- P2.5+B-4.F.B(2026-09-22)原因模板 dropdown + 自填输入(撤下 / 自删共用) -->
+<div id="wf-market-reason-modal" style="display:none">
+  <div class="wf-nm-card" style="min-width:380px;max-width:480px">
+    <h3><span id="wf-market-reason-mode">撤下</span>原因</h3>
+    <label class="wf-import-row">
+      <span>预设</span>
+      <select id="wf-market-reason-select" onchange="wfMarketReasonSelect()"></select>
+    </label>
+    <label class="wf-import-row">
+      <span>自填/补充</span>
+      <textarea id="wf-market-reason-text" rows="2" placeholder="选「其他」时必填;其他模式可补充细节"></textarea>
+    </label>
+    <div class="wf-nm-row">
+      <button class="topbtn primary" onclick="wfMarketReasonApply()" data-i18n="ok">确定</button>
+      <button class="topbtn" onclick="wfMarketReasonCancel()" data-i18n="cancel">取消</button>
+    </div>
+  </div>
+</div>
+
+<!-- P2.5+B-4.F.B(2026-09-22)批量撤下 modal:勾选远端帖 + 原因 → 一次 RPC -->
+<div id="wf-market-batch-modal" style="display:none">
+  <div class="wf-nm-card" style="min-width:680px;max-width:880px">
+    <h3 data-i18n="wf_market_takedown_batch_title">🚫 批量撤下 marketplace 帖</h3>
+    <div class="wf-import-hint" data-i18n="wf_market_takedown_batch_hint">
+      仅运营者可见。勾选要撤下的远端帖(已撤下的不会显示 checkbox),
+      一次 RPC 提交。失败的条目会标 error,不影响其他条目撤下。
+    </div>
+    <label class="wf-import-row">
+      <span data-i18n="wf_market_takedown_reason">原因</span>
+      <textarea id="wf-market-batch-reason-text" rows="2"></textarea>
+    </label>
+    <div id="wf-market-batch-list" style="max-height:380px;overflow-y:auto"></div>
+    <div class="wf-nm-row">
+      <button class="topbtn primary" style="color:var(--gh-danger)" onclick="wfMarketBatchApply()" data-i18n="wf_market_takedown_apply">撤下选中</button>
+      <button class="topbtn" onclick="wfMarketBatchCancel()" data-i18n="cancel">取消</button>
+    </div>
+    <div id="wf-market-batch-status" class="sub"></div>
+  </div>
+</div>
+
+<!-- P2.5+B-4.F(2026-09-21)marketplace 发布弹层:把当前勾选的 task 打包 →
+     marketplace ext 签名 + PoW 发到论坛 PrisirAI 对话 子版。需 1-3s 算 PoW。 -->
+<div id="wf-publish-modal" style="display:none">
+  <div class="wf-nm-card" style="min-width:520px;max-width:620px">
+    <h3 data-i18n="wf_publish_title">📤 发布到 Prisir 论坛</h3>
+    <div class="wf-import-hint" data-i18n="wf_publish_hint">
+      选中左栏 task(checkbox)→ 自动 bundle 打包 → 签名 + PoW 1-3s → 发到论坛「PrisirAI 对话」子版。
+      任何人可匿名下载。Identity 独立,首启自动生成(Ed25519)。
+    </div>
+    <label class="wf-import-row">
+      <span data-i18n="wf_market_title_label">标题</span>
+      <input type="text" id="wf-pub-title" placeholder="daily_summary bundle">
+    </label>
+    <label class="wf-import-row">
+      <span data-i18n="wf_market_desc_label">描述(可选)</span>
+      <textarea id="wf-pub-desc" rows="3" placeholder="这套工作流做…"></textarea>
+    </label>
+    <div class="wf-nm-row">
+      <button class="topbtn primary" onclick="wfPublishApply()" data-i18n="wf_publish_apply">发布</button>
+      <button class="topbtn" onclick="wfMarketCancel()" data-i18n="cancel">取消</button>
+    </div>
+    <div id="wf-pub-status" class="sub"></div>
   </div>
 </div>
 
@@ -4670,6 +6478,65 @@ const I18N = {
     doc_dirty:'⚠ 外置有改动', doc_reload:'重新加载', doc_refresh_title:'刷新',
     doc_current:'当前版本', doc_rollback:'⤴ 回滚到此版本',
     doc_skills:'🔧 skills', doc_skills_loading:'加载中…', skill_refresh_title:'刷新 skill 列表',
+    project_title:'📂 项目', project_sub:'切换当前工作目录;每个项目独立的文件树、文档栏和会话分组',
+    project_browse:'📂 浏览', project_path_ph:'C:\\path\\to\\project 或 /home/user/proj',
+    project_name_ph:'项目别名(可空,默认用目录名)', project_pin:'📌 置顶', project_unpin:'取消置顶',
+    project_remove:'🗑️ 移除', project_add:'添加', project_rename:'✏️ 改名',
+    project_switch_fail:'切换失败', project_add_fail:'添加失败', project_remove_confirm:'从项目列表移除?不会删磁盘文件',
+    workflow:'🔀 工作流', workflow_title:'工作流编排(拖拽 DAG + 重试 + 运行历史)',
+    wf_new:'+ 新建', wf_templates:'📋 模板', wf_validate:'✓ 校验', wf_run:'▶ 运行',
+    wf_tasks:'任务列表', wf_runs:'运行历史', wf_canvas_hint:'拖到画布添加节点;双击节点编辑;拖动节点移动',
+    wf_new_node:'+ 节点', wf_templates_title:'选个模板开搭',
+    wf_node_title:'节点配置', wf_node_id:'ID', wf_node_needs:'Needs (逗号分隔)', wf_node_retry:'重试',
+    wf_load_fail:'加载任务失败', wf_save_fail:'保存失败', wf_run_fail:'运行失败',
+    wf_delete_confirm:'删除任务?不会清运行历史',
+    wf_node_save:'保存', wf_dag_cycle:'DAG 有环',
+    // P2.5+B-3(2026-09-21)进度流 + 优雅取消
+    wf_cancel:'⏹ 取消当前运行', wf_canceled:'已取消', wf_running:'运行中',
+    wf_progress:'进度', wf_active:'当前运行',
+    // P2.5+B-3 hotfix(2026-09-21)运行历史清理
+    wf_runs_clear:'🧹 清空', wf_clear_runs_confirm:'清空所有运行历史?(只清 runs/node_runs,tasks 定义保留)',
+    wf_clear_runs_fail:'清空失败',
+    // P2.5+B-4.D(2026-09-21)workflow 文件 import/export
+    wf_export:'📤 导出当前', wf_import:'📥 导入',
+    wf_import_title:'📥 导入 workflow',
+    wf_import_hint:'选 .json 文件,或直接粘贴 JSON。校验后落到 task-runner,可立即 ▶ 跑。',
+    wf_import_file:'📂 选文件', wf_import_paste:'📋 或粘贴',
+    wf_imported:'📥 导入', wf_imported_ok:'✓ 已导入: ', wf_import_fail:'导入失败: ',
+    wf_export_fail:'导出失败: ', wf_export_no_task:'先加载一个任务再导出',
+    // P2.5+B-4.E(2026-09-21)bundle 跨机器共享
+    wf_bundle_all:'📦 全选', wf_bundle_export:'导出选中', wf_bundle_import:'📥 导入 bundle',
+    wf_bundle_select_first:'先在任务列表勾选要打包的 workflow(或点 📦 全选)',
+    wf_bundle_invalid_ext:'只接受 .tar.gz / .tgz 文件',
+    wf_bundle_export_fail:'导出 bundle 失败: ', wf_bundle_import_fail:'导入 bundle 失败: ',
+    wf_bundle_imported:'✓ bundle 导入完成', wf_bundle_exported:'✓ bundle 已导出',
+    wf_bundle_import_title:'📥 导入 bundle', wf_bundle_import_hint:'选 .tar.gz 文件;批量 validateDag + 入库。',
+    wf_bundle_import_file:'📂 选 .tar.gz',
+    // P2.5+B-4.F(2026-09-21)marketplace 远端镜像
+    wf_market_list:'🌐 浏览远端', wf_market_publish:'📤 发布到论坛',
+    wf_market_title:'🌐 远端 workflow 镜像',
+    wf_market_hint:'论坛 PrisirAI 对话 子版上别人分享的 workflow bundle。点 📥 下载 → 批量入库。',
+    wf_market_refresh:'🔄 刷新', wf_market_confirm:'确认下载',
+    wf_market_title_required:'请填标题',
+    wf_market_title_label:'标题', wf_market_desc_label:'描述(可选)',
+    wf_market_retract_confirm:'确认自删此 marketplace 帖(仅你能删自己的)',
+    wf_market_retract_reason_prompt:'为什么删?(可选,会写进 retract 帧 body 留 trace)',
+    wf_market_retracted:'已自删该 marketplace 帖',
+    wf_market_retract_fail:'自删失败',
+    // P2.5+B-4.F.B(2026-09-22)运营撤下 + 撤回通知 + 原因模板 + 批量撤下
+    wf_market_takedown_confirm:'运营撤下此帖(任何帖可撤,影响论坛可见性)',
+    wf_market_takedown_ok:'运营撤下成功',
+    wf_market_takedown_fail:'运营撤下失败',
+    wf_market_takedown_batch:'🚫 批量撤下',
+    wf_market_takedown_batch_title:'🚫 批量撤下 marketplace 帖',
+    wf_market_takedown_batch_hint:'仅运营者可见。勾选要撤下的远端帖(已撤下的不会显示 checkbox),一次 RPC 提交。失败的条目会标 error,不影响其他条目撤下。',
+    wf_market_takedown_reason:'原因',
+    wf_market_takedown_apply:'撤下选中',
+    wf_market_takedown_reasons:'[spam] [illegal] [harassment] [off-topic] [其他(自填)]',
+    wf_market_retract_reasons:'[误发] [重复] [已更新到新版本] [测试] [其他(自填)]',
+    wf_publish_title:'📤 发布到 Prisir 论坛',
+    wf_publish_hint:'选中左栏 task → 自动 bundle → 签名 + PoW → 发到论坛。1-3s。',
+    wf_publish_apply:'发布',
   },
   en: {
     send:'Send', new_session:'+ New chat', model_key:'🔑 Model Key', feedback:'⚙ Feedback',
@@ -4718,6 +6585,65 @@ const I18N = {
     doc_dirty:'⚠ External change', doc_reload:'Reload', doc_refresh_title:'Refresh',
     doc_current:'Current version', doc_rollback:'⤴ Roll back to this version',
     doc_skills:'🔧 skills', doc_skills_loading:'Loading…', skill_refresh_title:'Refresh skill list',
+    project_title:'📂 Projects', project_sub:'Switch working directory; each project keeps its own file tree, doc panel, and chat grouping',
+    project_browse:'📂 Browse', project_path_ph:'C:\\path\\to\\project or /home/user/proj',
+    project_name_ph:'Project alias (optional, defaults to folder name)', project_pin:'📌 Pin', project_unpin:'Unpin',
+    project_remove:'🗑️ Remove', project_add:'Add', project_rename:'✏️ Rename',
+    project_switch_fail:'Switch failed', project_add_fail:'Add failed', project_remove_confirm:'Remove from project list? Files on disk will not be deleted',
+    workflow:'🔀 Workflow', workflow_title:'Workflow editor (drag DAG + retry + run history)',
+    wf_new:'+ New', wf_templates:'📋 Templates', wf_validate:'✓ Validate', wf_run:'▶ Run',
+    wf_tasks:'Tasks', wf_runs:'Run history', wf_canvas_hint:'Drag to canvas to add node; double-click to edit; drag to move',
+    wf_new_node:'+ Node', wf_templates_title:'Pick a template to start',
+    wf_node_title:'Node config', wf_node_id:'ID', wf_node_needs:'Needs (comma-separated)', wf_node_retry:'Retry',
+    wf_load_fail:'Load task failed', wf_save_fail:'Save failed', wf_run_fail:'Run failed',
+    wf_delete_confirm:'Delete task? Run history will not be cleared',
+    wf_node_save:'Save', wf_dag_cycle:'DAG has cycle',
+    // P2.5+B-3(2026-09-21)progress stream + graceful cancel
+    wf_cancel:'⏹ Cancel current run', wf_canceled:'Canceled', wf_running:'Running',
+    wf_progress:'Progress', wf_active:'Active run',
+    // P2.5+B-3 hotfix(2026-09-21)run history cleanup
+    wf_runs_clear:'🧹 Clear', wf_clear_runs_confirm:'Clear all run history?(only runs/node_runs, task definitions kept)',
+    wf_clear_runs_fail:'Clear failed',
+    // P2.5+B-4.D(2026-09-21)workflow file import/export
+    wf_export:'📤 Export current', wf_import:'📥 Import',
+    wf_import_title:'📥 Import workflow',
+    wf_import_hint:'Pick a .json file, or paste JSON. After validation it lands in task-runner, ready to ▶ run.',
+    wf_import_file:'📂 File', wf_import_paste:'📋 Or paste',
+    wf_imported:'📥 Import', wf_imported_ok:'✓ Imported: ', wf_import_fail:'Import failed: ',
+    wf_export_fail:'Export failed: ', wf_export_no_task:'Load a task first before exporting',
+    // P2.5+B-4.E(2026-09-21)bundle cross-machine sharing
+    wf_bundle_all:'📦 Select all', wf_bundle_export:'Export selected', wf_bundle_import:'📥 Import bundle',
+    wf_bundle_select_first:'Check at least one workflow to bundle (or click 📦 Select all)',
+    wf_bundle_invalid_ext:'Only .tar.gz / .tgz files accepted',
+    wf_bundle_export_fail:'Bundle export failed: ', wf_bundle_import_fail:'Bundle import failed: ',
+    wf_bundle_imported:'✓ Bundle imported', wf_bundle_exported:'✓ Bundle exported',
+    wf_bundle_import_title:'📥 Import bundle', wf_bundle_import_hint:'Pick .tar.gz; batch validateDag + upsert.',
+    wf_bundle_import_file:'📂 Pick .tar.gz',
+    // P2.5+B-4.F(2026-09-21)marketplace 远端镜像
+    wf_market_list:'🌐 Browse remote', wf_market_publish:'📤 Publish to forum',
+    wf_market_title:'🌐 Remote workflow mirror',
+    wf_market_hint:'Workflow bundles shared on forum PrisirAI 对话 sub-board. Click 📥 to batch import.',
+    wf_market_refresh:'🔄 Refresh', wf_market_confirm:'Confirm download',
+    wf_market_title_required:'Title required',
+    wf_market_title_label:'Title', wf_market_desc_label:'Description (optional)',
+    wf_market_retract_confirm:'Confirm self-delete this marketplace post (only you can delete your own)',
+    wf_market_retract_reason_prompt:'Why delete? (optional, recorded in retract body for trace)',
+    wf_market_retracted:'Self-deleted this marketplace post',
+    wf_market_retract_fail:'Self-delete failed',
+    // P2.5+B-4.F.B(2026-09-22)operator takedown + retraction notice + reason templates + batch takedown
+    wf_market_takedown_confirm:'Operator takedown this post (any post, affects forum visibility)',
+    wf_market_takedown_ok:'Operator takedown success',
+    wf_market_takedown_fail:'Operator takedown failed',
+    wf_market_takedown_batch:'🚫 Batch takedown',
+    wf_market_takedown_batch_title:'🚫 Batch takedown marketplace posts',
+    wf_market_takedown_batch_hint:'Operator-only. Pick posts to takedown (already-removed ones hide the checkbox), one RPC. Failed entries flagged but do not block others.',
+    wf_market_takedown_reason:'Reason',
+    wf_market_takedown_apply:'Takedown selected',
+    wf_market_takedown_reasons:'[spam] [illegal] [harassment] [off-topic] [other(custom)]',
+    wf_market_retract_reasons:'[mistake] [duplicate] [updated] [test] [other(custom)]',
+    wf_publish_title:'📤 Publish to Prisir forum',
+    wf_publish_hint:'Pick left tasks → bundle → sign + PoW → post. 1-3s.',
+    wf_publish_apply:'Publish',
   }
 };
 let LANG = (function(){
@@ -5201,6 +7127,29 @@ function _highlightCodeIn(el) {
   });
 }
 
+// P2.5+9:大 diff 自动折叠(>30 行装进 <details>,避免污染视线)
+const _DIFF_COLLAPSE_THRESHOLD = 30;
+function _wrapLargeDiffIn(el) {
+  if (!el) return;
+  el.querySelectorAll('pre code.language-diff').forEach(code => {
+    const pre = code.parentElement;
+    if (!pre || (pre.parentElement && pre.parentElement.tagName === 'DETAILS')) return;
+    const lineCount = (code.textContent || '').split('\n').length;
+    if (lineCount <= _DIFF_COLLAPSE_THRESHOLD) return;
+    const det = document.createElement('details');
+    det.className = 'diff-collapse';
+    det.style.margin = '6px 0';
+    const sum = document.createElement('summary');
+    sum.style.cursor = 'pointer';
+    sum.style.fontSize = '12px';
+    sum.style.color = 'var(--gh-ink-faint)';
+    sum.textContent = (LANG === 'zh' ? '展开 diff(' : 'Expand diff (') + lineCount + (LANG === 'zh' ? ' 行)' : ' lines)');
+    det.appendChild(sum);
+    pre.parentNode.insertBefore(det, pre);
+    det.appendChild(pre);
+  });
+}
+
 // 壳三件套④:mermaid 图渲染。把容器内 ```mermaid 代码块(pre code.language-mermaid)
 // 转 SVG 内联。renderMd 是同步字符串→字符串,无法等 mermaid 异步,故渲染分两步:
 // addMsg 先 innerHTML 上 md,再 _renderMermaidIn(el) 异步把 mermaid 块换成 SVG。
@@ -5390,6 +7339,7 @@ function addMsg(role, text, followups) {
     d.classList.add('md');
     box.appendChild(d);
     _highlightCodeIn(d);  // ⑤代码高亮(含 diff)
+    _wrapLargeDiffIn(d);  // P2.5+9:大 diff 自动折叠(>30 行装进 <details>)
     _renderMermaidIn(d);  // ④mermaid 图 → SVG(异步,append 后才能量尺寸)
     _renderCaseIn(d);     // 一期②文科 case 故事卡(```case → 暖色叙事卡)
     _renderQuizIn(d);     // ⑥教学 quiz 卡(```quiz JSON → 交互选择题)
@@ -5415,14 +7365,22 @@ function addMsg(role, text, followups) {
 
 function setStatus(html){ document.getElementById('status').innerHTML = html; }
 
-async function loadSessions() {
-  sessions = await api('/sessions');
+async function loadSessions(opts) {
+  // M3.35:支持 scope=current|all|orphans,默认 current(只显示本项目会话)
+  const scope = (opts && opts.scope) || 'current';
+  sessions = await fetch(window.location.origin + '/prisiragent/api/sessions?scope=' + encodeURIComponent(scope))
+    .then(r => r.json()).catch(() => []);
   const list = document.getElementById('sess-list');
   list.innerHTML = '';
   sessions.forEach(s => {
     const el = document.createElement('div');
     el.className = 'sess' + (s.id === sessionId ? ' active' : '');
-    el.innerHTML = (s.pinned ? '<span class="pin">📌</span>' : '') + '<span class="t">' + esc(s.title) + '</span>';
+    // 孤儿会话(workdir 跟当前项目不同)显示 [dirname] 灰字标签
+    const isOrphan = s.workdir && s.workdir !== _currentWorkdir;
+    const wdTag = isOrphan
+      ? ' <span style="font-size:10px;color:var(--gh-ink-faint)">[' + esc(_dirname_(s.workdir)) + ']</span>'
+      : '';
+    el.innerHTML = (s.pinned ? '<span class="pin">📌</span>' : '') + '<span class="t">' + esc(s.title) + '</span>' + wdTag;
     el.onclick = () => switchSession(s.id);
     list.appendChild(el);
   });
@@ -5431,6 +7389,22 @@ async function loadSessions() {
 async function switchSession(id, opts) {
   // 切换右栏会话时自动退出分屏;但 openSplitScreen 程序内切右栏传 {keepSplit:true} 跳过(否则刚设的 splitFrom 被清)。
   if (splitFrom && id !== sessionId && !(opts && opts.keepSplit)) exitSplit();
+  // P2.5+9-C:CancellationToken 接入 — 切会话前先把当前会话 worker 收尾,避免残留 _run_chat_thread
+  // 继续推事件到已切走的 sessionId(消息错位)。短轮询等 running=false,超时 3s 强切。
+  if (sessionId && id !== sessionId && !(opts && opts.skipEstop)) {
+    try {
+      const s = await api('/status?session_id=' + sessionId);
+      if (s.running) {
+        await api('/estop', {method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({session_id: sessionId})});
+        for (let i = 0; i < 30; i++) {
+          await new Promise(r => setTimeout(r, 100));
+          const c = await api('/status?session_id=' + sessionId);
+          if (!c.running) break;
+        }
+      }
+    } catch (e) { /* estop 失败静默,继续流程 */ }
+  }
   sessionId = id;
   const r = await api('/history?session_id=' + id);
   document.getElementById('messages').innerHTML = '';
@@ -5877,9 +7851,10 @@ function renderPlanBadge(on){
 
 async function pollResult() {
   polling = true;
+  const pollSid = sessionId;   // P2.5+9-C:本轮轮询绑死 sid;sessionId 被 switchSession 改了立刻跳出
   const eb = document.getElementById('estop-btn');
   if (eb) eb.style.display = '';   // running 期间亮「停止」
-  while (sessionId) {
+  while (pollSid === sessionId) {
     await new Promise(r => setTimeout(r, 900));
     const r = await api('/status?session_id=' + sessionId);
     if (r.events && r.events.length) r.events.forEach(renderLiveToolEvent);
@@ -5899,21 +7874,25 @@ async function pollResult() {
           : 'Context nearly full — handoff summary ready, split-screen continue in this window'); }
     }
     if (!r.running) {
-      const h = await api('/history?session_id=' + sessionId);
+      const h = await api('/history?session_id=' + pollSid);
       document.getElementById('messages').innerHTML = '';
       document.getElementById('conv-title').textContent = h.title || T('sessions');
       h.messages.forEach(m => addMsg(m.role, m.content, m.followups));
       setStatus('');
-      document.getElementById('send').disabled = false;
-      if (eb) eb.style.display = 'none';   // 停了收起「停止」
+      // send / estop 按钮状态统一在 while 跳出后根据 pollSid 匹配处理
       loadSessions();
       break;
     }
   }
+  // P2.5+9-C:跳出后只在本 sid 还匹配时重置 UI(切走的话交给 switchSession 处理)
+  if (pollSid === sessionId) {
+    document.getElementById('send').disabled = false;
+    if (eb) eb.style.display = 'none';
+  }
   polling = false;
 }
 
-function openKeys(){ document.getElementById('keymodal').classList.add('open'); renderKeys(); loadWorkdir(); loadPlatformList(); }
+function openKeys(){ document.getElementById('keymodal').classList.add('open'); renderKeys(); loadPlatformList(); }
 
 // M3.22.2 — 下拉选厂商:auto填 base_url / 默认 model / kind(走 /llm/upsert)
 var _llmProviders = [];  // [{platform_id, display, kind, base_url, default_model, note, fields}]
@@ -6046,7 +8025,12 @@ function closeKeys(){ document.getElementById('keymodal').classList.remove('open
 //   点「发布到论坛」:POST /prisiragent/api/feedback_zip 打 zip + 经主进程 IPC 打开论坛反馈页
 //   点「仅打包到桌面」:只 POST 端点,显示 zip 路径,让用户决定怎么发
 // 不在装包器内做论坛发帖(token 同步/防滥用/邮件验证不在装包器责任范围)
-const FB_FORUM_URL = "https://bbs.babelspan.com/forum.html#board=browser/shell&hint=prisirai";
+// P2.5+15(2026-09-22):论坛 URL 走 prisIrai_config.yaml 三端对齐,找不到 yaml 用内置默认。
+// Python 端 main() 渲染 HTML 前会调 prisIrai_config.forum_url/board/hint 拼好注入到
+// window.__PRISIR_FORUM_URL__;失败/未注入时降级内置默认。
+const FB_FORUM_URL = (typeof window !== 'undefined' && window.__PRISIR_FORUM_URL__)
+  ? window.__PRISIR_FORUM_URL__
+  : "https://bbs.babelspan.com/forum.html#board=browser/shell&hint=prisirai";
 function openFeedback(){
   document.getElementById('fb-desc').value = "";
   // 默认勾选「包含 model key 脱敏信息」(脱敏是默认安全姿态)
@@ -6061,8 +8045,23 @@ function closeFeedback(){ document.getElementById('fbmodal').classList.remove('o
 function openPatch(){ document.getElementById('patchmodal').classList.add('open'); patchRefreshList(); }
 function closePatch(){ document.getElementById('patchmodal').classList.remove('open'); }
 
-/* ===== M3.27.3 陪聊入口:探活 + 开窗 ===== */
+/* ===== M3.27.3 陪聊入口:探活 + 开窗 =====
+ * P2.5+19(2026-09-22)双分支:
+ *   - 装包后(Tauri 主 WebView 注入 __TAURI_INTERNALS__)→ 调 Rust 命令
+ *     弹独立 companion-window(走 windows::open_window,跟托盘共用)
+ *   - 开发模式(Electron 壳 / 浏览器) → 走老逻辑 window.open(url, "_blank")
+ * 不引 @tauri-apps/api npm 包,只用 Tauri 2.x 自动注入的低层 __TAURI_INTERNALS__.invoke */
 async function openCompanion(){
+  // P2.5+19 分支 1:装包后 Tauri 壳注入的 __TAURI_INTERNALS__.invoke(cmd)
+  if (typeof window !== 'undefined' && window.__TAURI_INTERNALS__
+      && typeof window.__TAURI_INTERNALS__.invoke === 'function') {
+    try {
+      await window.__TAURI_INTERNALS__.invoke('open_companion_window_cmd');
+      return;
+    } catch(e) {
+      console.warn('[openCompanion] tauri invoke err, fallback window.open:', e);
+    }
+  }
   var port = 18850;
   var url = "http://127.0.0.1:" + port + "/";
   try {
@@ -6190,19 +8189,1335 @@ async function feedbackPackAndOpen(){
   document.getElementById('fb-status').innerHTML +=
     (LANG==='zh' ? '<br>💡 论坛新帖页打开后,请上传桌面这个 zip 文件作为附件。' : '<br>💡 After the forum post page opens, please upload the zip on your desktop as an attachment.');
 }
-async function loadWorkdir(){
-  const r = await api('/info');
-  document.getElementById('k-workdir').value = r.workdir || '';
+/* M3.35:工作目录已迁到顶栏 📂 项目切换器管理,keymodal 工作目录 JS 已删。 */
+
+/* ====== M3.35 项目切换器 ======
+   顶栏按钮 → openProject() → 渲染列表 → 点行 / add / pin / rename / remove
+   切项目后:_applyProjectChange() 刷新顶栏按钮 / 文件树 / 会话列表 / 文档栏。 */
+let _PROJECT_RENAMING = null;
+let _currentWorkdir = '';
+
+function _dirname_(p) {
+  if (!p) return '';
+  const parts = String(p).split(/[\\\/]/).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : p;
 }
-async function saveWorkdir(){
-  const hint = document.getElementById('k-workdir-hint');
-  const wd = document.getElementById('k-workdir').value.trim();
-  const zh = (LANG === 'zh');
-  if(!wd){ hint.textContent = zh ? '工作目录不能为空' : 'Working directory cannot be empty'; return; }
-  const r = await api('/workdir', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workdir:wd})});
-  if(r.ok){ hint.textContent = (zh ? '已应用:' : 'Applied: ') + r.workdir; }
-  else { hint.textContent = r.error || (zh ? '设置失败' : 'Failed'); }
+
+function _setProjectButton(workdir) {
+  const btn = document.getElementById('topbtnProjectName');
+  if (btn) btn.textContent = '📂 ' + (_dirname_(workdir) || '…');
 }
+
+// === P2.5+B-2(2026-09-21)工作流编排:wfmodal 全屏 + DAG 画布 + SVG 连线 ===
+let _wfCurrentTask = null;     // {id, name, dag, trigger, schedule}
+let _wfNodes = {};            // nid -> {el?, x, y, ext, method, params, needs, retry}
+let _wfDraggingNode = null;
+let _wfDragOffset = {x:0, y:0};
+let _wfRunsCollapsed = false;
+let _wfNodeEditing = null;
+let _wfExtListCache = null;   // 节点编辑时动态 ext 下拉缓存
+
+async function openWorkflow() {
+  // P2.5+19 分支 1:装包后 Tauri 壳注入 → 弹独立 workflow-window(独立窗体验)
+  if (typeof window !== 'undefined' && window.__TAURI_INTERNALS__
+      && typeof window.__TAURI_INTERNALS__.invoke === 'function') {
+    try {
+      await window.__TAURI_INTERNALS__.invoke('open_workflow_window_cmd');
+      // 独立窗已弹,主窗里的 wfmodal 不再打开(避免双开)
+      return;
+    } catch(e) {
+      console.warn('[openWorkflow] tauri invoke err, fallback to in-modal:', e);
+    }
+  }
+  // 分支 2:开发模式(Electron 壳 / 浏览器)→ 主窗 wfmodal 全屏打开
+  document.getElementById('wfmodal').classList.add('open');
+  await wfRenderTaskList();
+  await wfRefreshRuns();
+  await wfRefreshScheduleStatus();
+  // 节点模板拖拽初始化(避免重复绑定)
+  const tpl = document.getElementById('wf-new-node-template');
+  if (tpl && !tpl._dragInit) {
+    tpl._dragInit = true;
+    tpl.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/plain', '__wf_new__'));
+  }
+  // 画布 drop
+  const cv = document.getElementById('wf-canvas');
+  if (cv && !cv._dropInit) {
+    cv._dropInit = true;
+    cv.addEventListener('dragover', (e) => e.preventDefault());
+    cv.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const payload = e.dataTransfer.getData('text/plain');
+      if (payload !== '__wf_new__') return;
+      const cr = cv.getBoundingClientRect();
+      const x = e.clientX - cr.left + cv.scrollLeft - 90;
+      const y = e.clientY - cr.top + cv.scrollTop - 15;
+      const used = new Set(Object.keys(_wfNodes));
+      let i = 1; while (used.has('n' + i)) i++;
+      const nid = 'n' + i;
+      _wfNodes[nid] = {
+        ext: 'todo', method: 'todo.add', params: {}, needs: [],
+        retry: {max_retries: 0, backoff: 'exponential', timeout_sec: 30},
+        x: Math.max(0, x), y: Math.max(0, y),
+      };
+      wfRenderNodes();
+      wfRenderEdges();
+      wfEditNode(nid);
+    });
+  }
+}
+function closeWorkflow() {
+  document.getElementById('wfmodal').classList.remove('open');
+  document.getElementById('wf-node-modal').classList.remove('open');
+  document.getElementById('wf-tpl-modal').classList.remove('open');
+  // P2.5+B-3(2026-09-21)关 modal 不杀任务 — 后端 run 继续跑,前端只停轮询
+  wfStopProgressPoll();
+}
+
+async function wfRenderTaskList() {
+  const list = document.getElementById('wf-task-list');
+  list.innerHTML = '<div class="wf-meta">— ' + T('wf_tasks') + ' —</div>';
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method:'task.list', params:{limit:50}})});
+  if (!r.ok) { list.innerHTML = '<div class="wf-runs-err">' + esc(r.error||'load fail') + '</div>'; return; }
+  const tasks = ((r.result || {}).tasks) || [];
+  list.innerHTML = '';
+  if (!tasks.length) {
+    list.innerHTML = '<div class="wf-meta" style="padding:12px">' + T('wf_new') + ' / ' + T('wf_templates') + ' ✦</div>';
+    return;
+  }
+  for (const t of tasks) {
+    const row = document.createElement('div');
+    row.className = 'wf-task';
+    row.dataset.id = t.id;
+    // P2.5+B-4.E(2026-09-21)checkbox 列:多选 + 跨机器 bundle 导出。
+    // click 不冒泡到 row(行本身 onclick 是 wfLoadTask),所以勾选 checkbox 不触发载入。
+    row.innerHTML =
+      '<input type="checkbox" class="wf-task-check" data-task-name="' + esc(t.name) + '" data-task-id="' + esc(t.id) + '" onchange="wfBundleUpdateCount()">' +
+      '<span class="wf-task-name">' + esc(t.name) + '</span>' +
+      '<span class="wf-task-trigger">' + (t.trigger === 'schedule' ? '⏰' : '▶') + '</span>' +
+      '<span class="wf-task-acts">' +
+        '<button title="load">📂</button>' +
+        '<button title="run">▶</button>' +
+        '<button title="delete">🗑</button>' +
+      '</span>';
+    row.querySelectorAll('button')[0].onclick = (e) => { e.stopPropagation(); wfLoadTask(t.id); };
+    row.querySelectorAll('button')[1].onclick = (e) => { e.stopPropagation(); wfRunById(t.id, true); };
+    row.querySelectorAll('button')[2].onclick = (e) => { e.stopPropagation(); wfDeleteTask(t.id); };
+    row.onclick = () => wfLoadTask(t.id);
+    list.appendChild(row);
+  }
+  // 列表渲完后,bundle 选中计数从 0 开始
+  if (typeof wfBundleUpdateCount === 'function') wfBundleUpdateCount();
+}
+
+async function wfLoadTask(taskId) {
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method:'task.get', params:{id:taskId}})});
+  if (!r.ok) { alert(T('wf_load_fail') + ': ' + (r.error||'')); return; }
+  const t = ((r.result || {}).task) || null;
+  if (!t) { alert(T('wf_load_fail')); return; }
+  _wfCurrentTask = {id: t.id, name: t.name, dag: t.dag||{}, trigger: t.trigger||'manual', schedule: t.schedule||''};
+  _wfNodes = {};
+  let y = 60;
+  for (const [nid, n] of Object.entries(_wfCurrentTask.dag)) {
+    _wfNodes[nid] = Object.assign({}, n, {
+      retry: n.retry || {max_retries: 0, backoff: 'exponential', timeout_sec: 30},
+      x: 60, y: y,
+    });
+    y += 90;
+  }
+  document.getElementById('wf-nodes').innerHTML = '';
+  document.getElementById('wf-edges').innerHTML = '';
+  wfRenderNodes();
+  wfRenderEdges();
+  document.getElementById('wf-status').textContent = '✓ loaded: ' + _wfCurrentTask.name + ' (' + Object.keys(_wfNodes).length + ' nodes)';
+}
+
+function wfNew() {
+  _wfCurrentTask = {id: '', name: '未命名任务', dag: {}, trigger: 'manual', schedule: ''};
+  _wfNodes = {};
+  document.getElementById('wf-nodes').innerHTML = '';
+  document.getElementById('wf-edges').innerHTML = '';
+  wfRenderNodes();
+  wfRenderEdges();
+  const name = prompt(T('wf_new') + ': task name', '未命名任务');
+  if (name) _wfCurrentTask.name = name;
+  document.getElementById('wf-status').textContent = '— ' + _wfCurrentTask.name + ' (unsaved)';
+}
+
+async function wfSave() {
+  if (!_wfCurrentTask) { alert(T('wf_new')); return; }
+  const dag = {};
+  for (const [nid, n] of Object.entries(_wfNodes)) {
+    dag[nid] = {
+      ext: n.ext, method: n.method,
+      params: n.params || {}, needs: n.needs || [],
+    };
+    if (n.retry) dag[nid].retry = n.retry;
+  }
+  const payload = {
+    name: _wfCurrentTask.name,
+    dag: dag,
+    trigger: _wfCurrentTask.trigger || 'manual',
+    schedule: _wfCurrentTask.schedule || '',
+  };
+  if (_wfCurrentTask.id) payload.id = _wfCurrentTask.id;
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method:'task.upsert', params: payload})});
+  if (!r.ok) { alert(T('wf_save_fail') + ': ' + (r.error||'')); return; }
+  _wfCurrentTask.id = ((r.result || {}).id) || _wfCurrentTask.id;
+  document.getElementById('wf-status').textContent = '✓ saved: ' + _wfCurrentTask.id;
+  await wfRenderTaskList();
+}
+
+async function wfRun() {
+  if (!_wfCurrentTask || !_wfCurrentTask.id) {
+    if (confirm(T('wf_save_fail') + '? save first')) { await wfSave(); if (!_wfCurrentTask.id) return; }
+    else return;
+  }
+  // P2.5+B-3(2026-09-21)默认 fire-and-forget 跑,顶部 progress bar 实时跳。
+  // 任务列表行 ▶ 按钮 仍传 wait=true 走同步阻塞路径(wfRunById 旧分支)。
+  await wfRunById(_wfCurrentTask.id, false);
+}
+
+async function wfRunById(taskId, wait) {
+  document.getElementById('wf-status').innerHTML = '<span class="wf-running">⏳ running…</span>';
+  // 节点全标 running
+  for (const nid of Object.keys(_wfNodes)) {
+    const el = document.querySelector('#wf-nodes .wf-node[data-id="' + nid + '"]');
+    if (el) { el.classList.remove('ok','failed','canceled'); el.classList.add('running'); }
+  }
+  // P2.5+B-3(2026-09-21)fire-and-forget 模式:拿 run_id 后启动 progress polling,
+  // 不再同步等 task.run.wait=true 把前端卡死。等 run 结束再调 task.runs 拉最终节点结果。
+  const fireAndForget = !wait;
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method:'task.run', params:{id:taskId, wait:!!wait}, timeout: 60})});
+  if (!r.ok) {
+    alert(T('wf_run_fail') + ': ' + (r.error||''));
+    document.getElementById('wf-status').textContent = '✗ ' + (r.error||'fail');
+    wfStopProgressPoll();
+    return;
+  }
+  const run = r.result || {};
+  const runId = run.run_id || '';
+  if (fireAndForget && runId) {
+    wfStartProgressPoll(runId, taskId, Object.keys(_wfNodes).length);
+    return;
+  }
+  // wait=true 模式:run 跑完拿到 nodes 结果,直接上色(老路径,保留兼容)
+  wfStopProgressPoll();
+  wfOnRunDone(run);
+}
+
+function wfOnRunDone(run) {
+  if (!run) return;
+  document.getElementById('wf-status').innerHTML =
+    '<span class="wf-' + esc(run.status||'?') + '">' + esc(run.status||'?') + '</span> ' + esc(run.run_id||'');
+  if (run.nodes) {
+    for (const [nid, ns] of Object.entries(run.nodes)) {
+      const el = document.querySelector('#wf-nodes .wf-node[data-id="' + nid + '"]');
+      if (el) {
+        el.classList.remove('running');
+        el.classList.add(ns.status || 'failed');
+        el.dataset.attempts = ns.attempts || 1;
+        el.dataset.ms = ns.ms || 0;
+        el.title = (ns.status||'') + ' · ' + (ns.attempts||1) + ' attempts · ' + (ns.ms||0) + 'ms\n' +
+                   (ns.error ? 'error: ' + ns.error : '');
+      }
+    }
+  }
+  // 进度条 100% / 隐藏 cancel
+  const fill = document.getElementById('wf-progress-bar-fill');
+  if (fill) {
+    fill.style.width = '100%';
+    fill.classList.remove('running');
+  }
+  const cancelBtn = document.getElementById('wf-cancel-btn');
+  if (cancelBtn) cancelBtn.style.display = 'none';
+  wfRefreshRuns();
+}
+
+function wfRenderNodes() {
+  const wrap = document.getElementById('wf-nodes');
+  wrap.innerHTML = '';
+  for (const [nid, n] of Object.entries(_wfNodes)) {
+    const el = document.createElement('div');
+    el.className = 'wf-node';
+    el.dataset.id = nid;
+    el.style.left = n.x + 'px';
+    el.style.top = n.y + 'px';
+    const needs = (n.needs || []);
+    const rt = (n.retry || {}).max_retries || 0;
+    el.innerHTML =
+      '<div class="wf-node-head">' +
+        '<span class="wf-node-id">' + esc(nid) + (rt ? ' ↻'+rt : '') + '</span>' +
+        '<span class="wf-node-acts">' +
+          '<button data-act="edit" title="edit">✎</button>' +
+          '<button data-act="del" title="del">✕</button>' +
+        '</span>' +
+      '</div>' +
+      '<div class="wf-node-body">' + esc(n.ext) + '.' + esc(n.method) + '</div>' +
+      '<div class="wf-node-foot">' + (needs.length ? '← ' + esc(needs.join(', ')) : (esc(n.method) ? '· root' : '')) + '</div>';
+    el.addEventListener('mousedown', (e) => wfStartDrag(e, nid));
+    el.addEventListener('dblclick', () => wfEditNode(nid));
+    el.querySelector('[data-act="edit"]').onclick = (e) => { e.stopPropagation(); wfEditNode(nid); };
+    el.querySelector('[data-act="del"]').onclick = (e) => { e.stopPropagation(); wfDeleteNode(nid); };
+    wrap.appendChild(el);
+  }
+}
+
+function wfRenderEdges() {
+  const svg = document.getElementById('wf-edges');
+  if (!svg) return;
+  // 只清 g 内的 path(不动 defs/marker)
+  while (svg.firstChild && svg.firstChild.tagName !== 'defs') svg.removeChild(svg.firstChild);
+  for (const [nid, n] of Object.entries(_wfNodes)) {
+    const fromEl = document.querySelector('#wf-nodes .wf-node[data-id="' + nid + '"]');
+    if (!fromEl) continue;
+    const fx = parseFloat(fromEl.style.left) + 90;
+    const fy = parseFloat(fromEl.style.top) + 30;
+    for (const dep of (n.needs || [])) {
+      const toEl = document.querySelector('#wf-nodes .wf-node[data-id="' + dep + '"]');
+      if (!toEl) continue;
+      const tx = parseFloat(toEl.style.left) + 90;
+      const ty = parseFloat(toEl.style.top) + 60;
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      const cx = (fx + tx) / 2;
+      path.setAttribute('d', 'M' + fx + ',' + fy + ' C' + cx + ',' + fy + ' ' + cx + ',' + ty + ' ' + tx + ',' + ty);
+      path.setAttribute('stroke', 'var(--gh-ink-soft)');
+      path.setAttribute('stroke-width', '1.5');
+      path.setAttribute('fill', 'none');
+      path.setAttribute('marker-end', 'url(#wf-arrow)');
+      svg.appendChild(path);
+    }
+  }
+}
+
+function wfStartDrag(e, nid) {
+  if (e.button !== 0) return;
+  if (e.target.tagName === 'BUTTON') return;  // 不要拦按钮
+  // P2.5+B-3 hotfix(2026-09-21):之前 preventDefault() 让浏览器不期待 dblclick →
+  // 节点无法双击编辑。改成「mousedown 只记起点,mousemove 距离 >5px 才真拖」,
+  // 双击不被拦截。同时记 _wfDragArmed 让 mouseup 距离不达标时啥也不做。
+  const el = e.currentTarget;
+  const rect = el.getBoundingClientRect();
+  _wfDragArmed = nid;
+  _wfDragOffset = {x: e.clientX - rect.left, y: e.clientY - rect.top};
+  _wfDragOrigin = {x: e.clientX, y: e.clientY};
+  document.addEventListener('mousemove', wfOnDragMove);
+  document.addEventListener('mouseup', wfOnDragEnd);
+}
+
+let _wfDragArmed = null;     // mousedown 命中但距离未达标,等 mouseup 撤销
+let _wfDragOrigin = {x:0,y:0}; // mousedown 起点(用于阈值)
+function wfOnDragMove(e) {
+  // P2.5+B-3 hotfix:仅在 armed 且移动 >5px 才升级为真 drag,
+  // 否则让双击/单击正常冒泡。升级后继续走 wfApplyDragPos 移动节点。
+  if (_wfDragArmed) {
+    const dx = e.clientX - _wfDragOrigin.x;
+    const dy = e.clientY - _wfDragOrigin.y;
+    if (Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+    _wfDraggingNode = _wfDragArmed;
+    _wfDragArmed = null;
+  }
+  if (!_wfDraggingNode) return;
+  const el = document.querySelector('#wf-nodes .wf-node[data-id="' + _wfDraggingNode + '"]');
+  if (!el) return;
+  wfApplyDragPos(el, e);
+}
+
+function wfApplyDragPos(el, e) {
+  const canvas = document.getElementById('wf-canvas');
+  const cr = canvas.getBoundingClientRect();
+  const x = Math.max(0, e.clientX - cr.left - _wfDragOffset.x + canvas.scrollLeft);
+  const y = Math.max(0, e.clientY - cr.top - _wfDragOffset.y + canvas.scrollTop);
+  el.style.left = x + 'px';
+  el.style.top = y + 'px';
+  if (_wfNodes[_wfDraggingNode]) {
+    _wfNodes[_wfDraggingNode].x = x;
+    _wfNodes[_wfDraggingNode].y = y;
+  }
+  wfRenderEdges();
+}
+
+function wfOnDragEnd() {
+  document.removeEventListener('mousemove', wfOnDragMove);
+  document.removeEventListener('mouseup', wfOnDragEnd);
+}
+
+function wfEditNode(nid) {
+  _wfNodeEditing = nid;
+  const n = _wfNodes[nid];
+  if (!n) return;
+  document.getElementById('wf-nm-id').value = nid;
+  document.getElementById('wf-nm-ext').value = n.ext || 'todo';
+  document.getElementById('wf-nm-method').value = n.method || '';
+  document.getElementById('wf-nm-params').value = JSON.stringify(n.params || {}, null, 2);
+  document.getElementById('wf-nm-needs').value = (n.needs || []).join(', ');
+  const rt = n.retry || {};
+  document.getElementById('wf-nm-retries').value = rt.max_retries != null ? rt.max_retries : 0;
+  document.getElementById('wf-nm-backoff').value = rt.backoff || 'exponential';
+  document.getElementById('wf-nm-timeout').value = rt.timeout_sec != null ? rt.timeout_sec : 30;
+  document.getElementById('wf-node-modal').classList.add('open');
+}
+function wfNodeCancel() {
+  document.getElementById('wf-node-modal').classList.remove('open');
+  _wfNodeEditing = null;
+}
+function wfNodeSave() {
+  const oldId = _wfNodeEditing;
+  if (!oldId) return;
+  const newId = (document.getElementById('wf-nm-id').value || oldId).trim();
+  let params = {};
+  try {
+    params = JSON.parse(document.getElementById('wf-nm-params').value || '{}');
+  } catch (e) {
+    alert('Params 不是合法 JSON: ' + e.message); return;
+  }
+  const needs = document.getElementById('wf-nm-needs').value.split(',').map(s => s.trim()).filter(Boolean);
+  const node = {
+    ext: document.getElementById('wf-nm-ext').value.trim() || 'todo',
+    method: document.getElementById('wf-nm-method').value.trim(),
+    params: params,
+    needs: needs,
+    retry: {
+      max_retries: Math.max(0, Math.min(5, parseInt(document.getElementById('wf-nm-retries').value) || 0)),
+      backoff: document.getElementById('wf-nm-backoff').value,
+      timeout_sec: Math.max(1, Math.min(600, parseInt(document.getElementById('wf-nm-timeout').value) || 30)),
+    },
+  };
+  // ID 改名:删旧 + 改所有依赖
+  if (newId !== oldId) {
+    delete _wfNodes[oldId];
+    for (const n of Object.values(_wfNodes)) {
+      n.needs = (n.needs || []).map(d => d === oldId ? newId : d);
+    }
+  }
+  const prev = _wfNodes[oldId] || {};
+  _wfNodes[newId] = Object.assign({}, node, {x: prev.x != null ? prev.x : 60, y: prev.y != null ? prev.y : 60});
+  document.getElementById('wf-node-modal').classList.remove('open');
+  _wfNodeEditing = null;
+  wfRenderNodes();
+  wfRenderEdges();
+}
+
+function wfDeleteNode(nid) {
+  if (!confirm(T('wf_delete_confirm') + ' (' + nid + ')')) return;
+  delete _wfNodes[nid];
+  for (const n of Object.values(_wfNodes)) {
+    n.needs = (n.needs || []).filter(d => d !== nid);
+  }
+  wfRenderNodes();
+  wfRenderEdges();
+}
+
+async function wfValidate() {
+  const ids = Object.keys(_wfNodes);
+  const idset = new Set(ids);
+  const errors = [];
+  for (const [nid, n] of Object.entries(_wfNodes)) {
+    if (!n.ext) errors.push(nid + ': ext empty');
+    if (!n.method) errors.push(nid + ': method empty');
+    for (const dep of (n.needs || [])) {
+      if (!idset.has(dep)) errors.push(nid + ': needs missing ' + dep);
+    }
+  }
+  // 环检(Kahn)
+  const indeg = new Map(ids.map(i => [i, 0]));
+  for (const [nid, n] of Object.entries(_wfNodes)) {
+    for (const dep of (n.needs || [])) indeg.set(nid, indeg.get(nid) + 1);
+  }
+  const q = ids.filter(i => indeg.get(i) === 0);
+  let cnt = 0;
+  while (q.length) {
+    const nid = q.shift(); cnt++;
+    for (const [nid2, n] of Object.entries(_wfNodes)) {
+      if ((n.needs || []).includes(nid)) {
+        indeg.set(nid2, indeg.get(nid2) - 1);
+        if (indeg.get(nid2) === 0) q.push(nid2);
+      }
+    }
+  }
+  if (cnt !== ids.length) errors.push(T('wf_dag_cycle'));
+  if (errors.length) { alert('✗ ' + errors.join('\n')); return false; }
+  document.getElementById('wf-status').textContent = '✓ validated (' + ids.length + ' nodes)';
+  return true;
+}
+
+async function wfDeleteTask(taskId) {
+  if (!confirm(T('wf_delete_confirm') + ' (' + taskId + ')')) return;
+  await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method:'task.delete', params:{id:taskId}})});
+  if (_wfCurrentTask && _wfCurrentTask.id === taskId) {
+    _wfCurrentTask = null; _wfNodes = {};
+    document.getElementById('wf-nodes').innerHTML = '';
+    document.getElementById('wf-edges').innerHTML = '';
+  }
+  await wfRenderTaskList();
+}
+
+async function wfRefreshRuns() {
+  const body = document.getElementById('wf-runs-body');
+  if (!body) return;
+  body.innerHTML = '<div class="wf-meta">—</div>';
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method:'task.runs', params:{limit:30}})});
+  if (!r.ok) { body.innerHTML = '<div class="wf-runs-err">' + esc(r.error||'fail') + '</div>'; return; }
+  const runs = ((r.result || {}).runs) || [];
+  body.innerHTML = '';
+  if (!runs.length) {
+    body.innerHTML = '<div class="wf-meta" style="padding:10px">no runs yet · ▶ 一下跑一个看看</div>';
+    return;
+  }
+  for (const run of runs) {
+    const row = document.createElement('div');
+    row.className = 'wf-run wf-' + (run.status||'');
+    const dur = run.ms ? Math.round(run.ms/1000) + 's' : '?';
+    row.innerHTML =
+      '<span class="wf-run-id">' + esc(run.id) + '</span>' +
+      '<span class="wf-run-task">' + esc(run.task_id) + '</span>' +
+      '<span class="wf-run-status">' + esc(run.status||'?') + '</span>' +
+      '<span class="wf-run-time">' + new Date(run.started_at).toLocaleString() + '</span>' +
+      '<span class="wf-run-dur">' + dur + '</span>' +
+      '<span class="wf-run-err">' + esc(run.error||'') + '</span>';
+    row.title = 'click for node tree';
+    row.onclick = () => alert(JSON.stringify(run, null, 2));
+    body.appendChild(row);
+  }
+}
+
+// P2.5+B-3 hotfix(2026-09-21)清空运行历史按钮:
+//   调 task.runs.clear(task_id=current);全清可选 confirm 二次确认。
+async function wfClearRuns() {
+  if (!confirm(T('wf_clear_runs_confirm') || '清空所有运行历史?(只清 runs/node_runs,tasks 定义保留)')) return;
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method:'task.runs.clear', params:{}, timeout: 8})});
+  if (!r || !r.ok) {
+    alert((T('wf_clear_runs_fail') || '清空失败') + ': ' + (r?.error || ''));
+    return;
+  }
+  await wfRefreshRuns();
+}
+
+function wfToggleRuns() {
+  _wfRunsCollapsed = !_wfRunsCollapsed;
+  const body = document.getElementById('wf-runs-body');
+  body.style.display = _wfRunsCollapsed ? 'none' : '';
+  document.getElementById('wf-runs-toggle').textContent = _wfRunsCollapsed ? '▸' : '▾';
+}
+
+async function wfRefreshScheduleStatus() {
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method:'task.schedule.status', params:{}})});
+  const btn = document.getElementById('wf-sched-btn');
+  if (r.ok && r.result && r.result.running) {
+    btn.textContent = '⏰ 调度: 开 (' + (r.result.interval_sec||30) + 's)';
+    btn.classList.add('on');
+  } else {
+    btn.textContent = '⏰ 调度: 关';
+    btn.classList.remove('on');
+  }
+}
+
+async function wfToggleSchedule() {
+  const btn = document.getElementById('wf-sched-btn');
+  const isOn = btn.classList.contains('on');
+  const method = isOn ? 'task.schedule.stop' : 'task.schedule.start';
+  await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method, params: isOn ? {} : {interval_sec: 30}})});
+  await wfRefreshScheduleStatus();
+}
+
+async function wfTemplates() {
+  const r = await api('/workflow/templates', {method:'GET'});
+  if (!r.ok) { alert('templates fail'); return; }
+  const list = document.getElementById('wf-tpl-list');
+  list.innerHTML = '';
+  for (const t of (r.templates || [])) {
+    const row = document.createElement('div');
+    row.className = 'wf-tpl-row';
+    row.innerHTML =
+      '<span class="wf-tpl-name">' + esc(t.name) + '</span>' +
+      '<span class="wf-tpl-desc">' + esc(t.description || '') + '</span>' +
+      '<button class="topbtn primary">▶ use</button>';
+    row.querySelector('button').onclick = () => wfApplyTpl(t);
+    list.appendChild(row);
+  }
+  document.getElementById('wf-tpl-modal').classList.add('open');
+}
+
+function wfTplCancel() {
+  document.getElementById('wf-tpl-modal').classList.remove('open');
+}
+
+// === P2.5+B-4.E(2026-09-21)workflow bundle 多选打包/解包(跨机器共享) ===
+// 任务列表顶部 + checkbox 列:全选 / 导出选中 / 导入 bundle(走 .tar.gz)。
+// 单文件 JSON 走 wfExportCurrent / wfImportApply(顶部 📤/📥);多文件走这里。
+function wfBundleSelectAll() {
+  const cbs = document.querySelectorAll('#wf-task-list .wf-task-check');
+  if (!cbs.length) { alert(T('wf_bundle_select_first')); return; }
+  // 若已全选 → 反选(取消全选)
+  const allChecked = Array.from(cbs).every(c => c.checked);
+  cbs.forEach(c => { c.checked = !allChecked; });
+  wfBundleUpdateCount();
+}
+
+function wfBundleUpdateCount() {
+  const cbs = document.querySelectorAll('#wf-task-list .wf-task-check');
+  const n = Array.from(cbs).filter(c => c.checked).length;
+  const btn = document.getElementById('wf-bundle-export-btn');
+  if (!btn) return;
+  btn.textContent = '📦 ' + T('wf_bundle_export') + '(' + n + ')';
+  btn.disabled = n === 0;
+}
+
+async function wfBundleExport() {
+  const names = Array.from(document.querySelectorAll('#wf-task-list .wf-task-check:checked'))
+    .map(c => c.dataset.taskName).filter(Boolean);
+  if (names.length === 0) { alert(T('wf_bundle_select_first')); return; }
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method: 'task.files.bundle_export',
+                          params: {names}, timeout: 30})});
+  if (!r.ok || !r.result || !r.result.ok) {
+    const err = (r.result && r.result.error) || r.error || 'rpc fail';
+    alert(T('wf_bundle_export_fail') + err);
+    return;
+  }
+  // base64 → Uint8Array → Blob → 触发下载
+  try {
+    const bin = atob(r.result.base64 || '');
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const blob = new Blob([bytes], {type: 'application/gzip'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = r.result.name || 'workflows-bundle.tar.gz';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+  } catch (e) {
+    alert(T('wf_bundle_export_fail') + 'decode: ' + e.message);
+    return;
+  }
+  document.getElementById('wf-status').textContent =
+    T('wf_bundle_exported') + ' (' + (r.result.count || 0) + ' / ' + Math.round((r.result.size_bytes || 0)/1024) + ' KB)';
+}
+
+function wfBundleOpenImport() {
+  const fi = document.getElementById('wf-bundle-file');
+  if (fi) fi.value = '';
+  document.getElementById('wf-bundle-modal').classList.add('open');
+}
+
+function wfBundleImportCancel() {
+  document.getElementById('wf-bundle-modal').classList.remove('open');
+}
+
+// ─── P2.5+B-4.F(2026-09-21)marketplace 远端镜像:6 函数 ─────────────
+// 调 marketplace ext 3 命令:market.list / market.fetch / market.publish
+// 发帖 = bundle_export(task-runner) + market.publish(marketplace) 两步
+async function wfMarketList() {
+  document.getElementById('wf-market-modal').classList.add('open');
+  await wfMarketRefresh();
+}
+async function wfMarketRefresh(opts) {
+  opts = opts || {};
+  const includeRetracted = !!opts.includeRetracted;
+  const batchMode = !!opts.batchMode;
+  const box = batchMode
+    ? document.getElementById('wf-market-batch-list')
+    : document.getElementById('wf-market-list');
+  if (!box) return;
+  box.innerHTML = '<div class="sub">⏳ 拉论坛列表…</div>';
+  // P2.5+B-4.F.A(2026-09-21)拿到自己 fp,只有自己发的帖才显示 🗑️ 自删按钮 + ★ 标记
+  // P2.5+B-4.F.B(2026-09-22)拿到运营者身份,是运营者才显示 🚫 撤下按钮(任意帖)
+  let myFp = '', isOperator = false, operatorFp = '';
+  try {
+    const me = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ext_id:'marketplace', method:'market.identity', params:{}, timeout:3})});
+    if (me.ok && me.result && me.result.ok) myFp = (me.result.identity && me.result.identity.fp) || '';
+  } catch {}
+  try {
+    const op = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ext_id:'marketplace', method:'market.operator_identity', params:{}, timeout:3})});
+    if (op.ok && op.result && op.result.is_operator) {
+      isOperator = true; operatorFp = op.result.fp || '';
+    }
+  } catch {}
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'marketplace', method:'market.list',
+                          params: includeRetracted ? {include_retracted: true} : {}, timeout:15})});
+  if (!r.ok || !r.result || !r.result.ok) {
+    box.innerHTML = '<div class="sub">❌ ' + esc((r.result && r.result.error) || r.error || 'rpc fail') + '</div>';
+    return;
+  }
+  const posts = r.result.posts || [];
+  if (!posts.length) {
+    box.innerHTML = '<div class="sub">' +
+                    (batchMode ? 'marketplace 上暂无帖(运营撤下前先发几个?)' : '暂无可下载的工作流') +
+                    '</div>';
+    return;
+  }
+  // 顶部状态:运营者徽章
+  let headBanner = '';
+  if (!batchMode && isOperator) {
+    headBanner = '<div class="sub" style="color:var(--gh-accent);margin-bottom:6px">' +
+                 '⚙️ 当前是 marketplace 运营者(fp=' + esc(operatorFp.slice(0, 8)) + '…),' +
+                 '每行右侧可一键撤下</div>';
+  }
+  let h = headBanner + '<table style="width:100%;font-size:13px;border-collapse:collapse"><tr>' +
+          '<th style="text-align:left">标题</th><th>作者</th><th>workflow</th><th>大小</th><th>时间</th><th></th></tr>';
+  for (const p of posts) {
+    const fp = (p.author_fp || '').slice(0, 8);
+    const isMine = myFp && p.author_fp === myFp;
+    // P2.5+B-4.F.B 已撤下横幅:背景色 + 徽章
+    const isRetracted = p.status === 'retracted';
+    const isTakenDown = p.status === 'taken_down';
+    const rowBg = isRetracted ? 'background:var(--gh-paper);opacity:0.55' :
+                  isTakenDown ? 'background:#fee;border-left:3px solid var(--gh-warn)' : '';
+    const statusBadge = isRetracted ? ' <span title="' + esc(p.retracted_reason || '') +
+                        '" style="color:var(--gh-warn);font-weight:bold">⚠ 已自删</span>' :
+                      isTakenDown ? ' <span title="' + esc(p.taken_down_reason || '') +
+                        '" style="color:var(--gh-danger);font-weight:bold">⚠ 运营撤下</span>' : '';
+    let actions = '';
+    if (batchMode) {
+      if (!isRetracted && !isTakenDown) {
+        actions = '<input type="checkbox" class="wf-market-batch-check" data-post-id="' + esc(p.post_id) + '">';
+      }
+    } else {
+      actions = '<button class="topbtn mini" onclick="wfMarketDownload(\'' + esc(p.post_id) + '\')">📥 下载</button>';
+      if (isMine) actions += ' <button class="topbtn mini" style="color:var(--gh-warn)" onclick="wfMarketRetract(\'' + esc(p.post_id) + '\')">🗑️ 自删</button>';
+      if (isOperator && !isMine && !isRetracted && !isTakenDown) {
+        actions += ' <button class="topbtn mini" style="color:var(--gh-danger)" onclick="wfMarketTakedown(\'' + esc(p.post_id) + '\')">🚫 撤下</button>';
+      }
+    }
+    h += '<tr style="border-top:1px solid var(--gh-line);' + rowBg + '">' +
+         '<td>' + esc(p.title || '') + statusBadge + '</td>' +
+         '<td style="text-align:center"><code>' + esc(fp) + '</code>' + (isMine ? ' <span style="color:var(--gh-accent)">★</span>' : '') + '</td>' +
+         '<td style="text-align:center">' + (p.workflow_count || '?') + '</td>' +
+         '<td style="text-align:center">' + (((p.bundle_size || 0) / 1024).toFixed(1)) + ' KB</td>' +
+         '<td style="text-align:center">' + esc(new Date(p.ts).toLocaleString()) + '</td>' +
+         '<td style="text-align:center;white-space:nowrap">' + actions + '</td></tr>';
+  }
+  box.innerHTML = h + '</table>';
+}
+async function wfMarketDownload(postId) {
+  if (!confirm(T('wf_market_confirm') + '?\n' + postId)) return;
+  // 1) market.fetch 拉附件 base64
+  const r1 = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'marketplace', method:'market.fetch', params:{post_id: postId}, timeout:30})});
+  if (!r1.ok || !r1.result || !r1.result.ok) {
+    alert('❌ 拉附件失败: ' + ((r1.result && r1.result.error) || r1.error || 'rpc fail'));
+    return;
+  }
+  // 2) 走 task.files.bundle_import(B-4.E 已 ship)
+  const r2 = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method:'task.files.bundle_import',
+                          params:{base64: r1.result.attachment.data_b64}, timeout:30})});
+  if (!r2.ok || !r2.result || !r2.result.ok) {
+    alert('❌ 导入失败: ' + ((r2.result && r2.result.error) || r2.error || 'rpc fail'));
+    return;
+  }
+  const n = (r2.result.imported || []).length;
+  const s = (r2.result.skipped || []).length;
+  alert('✓ 已导入 ' + n + ' 个 workflow' + (s ? '(跳过 ' + s + ')' : ''));
+  await wfRenderTaskList();
+  document.getElementById('wf-status').textContent = '✓ 远端下载完成: ' + n + ' 个';
+}
+// P2.5+B-4.F.A(2026-09-21)作者一键自删自己发的 marketplace 帖。
+// P2.5+B-4.F.B(2026-09-22)原因改 dropdown 模板 + 自填输入框;运营者撤下走 wfMarketTakedown。
+// 流程:弹 modal 选原因模板(5 预设 + 自填)→ confirm → 调 market.retract → 失败 rich error / 成功刷新。
+async function wfMarketRetract(postId) {
+  if (!postId) return;
+  const reason = await wfMarketPickReason('retract');   // 模板 dropdown + 自填
+  if (reason === null) return;  // 用户点取消
+  if (!confirm(T('wf_market_retract_confirm') + '?\n' + postId + '\n原因: ' + reason)) return;
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'marketplace', method:'market.retract',
+                          params:{post_id: postId, reason: reason}, timeout:30})});
+  if (!r.ok || !r.result || !r.result.ok) {
+    const err = (r.result && r.result.error) || r.error || 'rpc fail';
+    const hint = (r.result && r.result.hint) ? '\n\n' + r.result.hint : '';
+    const fpInfo = (r.result && r.result.your_fp)
+      ? '\n\n你的 fp: ' + r.result.your_fp + '\n该帖作者 fp: ' + (r.result.post_author_fp || '?')
+      : '';
+    alert('❌ ' + T('wf_market_retract_fail') + '\n' + err + hint + fpInfo);
+    return;
+  }
+  alert('✓ ' + T('wf_market_retracted') + '\n' + postId);
+  await wfMarketRefresh();
+  document.getElementById('wf-status').textContent = '✓ ' + T('wf_market_retracted') + ': ' + postId;
+}
+
+// P2.5+B-4.F.B(2026-09-22)撤回/撤下原因模板 dropdown(5 预设 + 自填输入)。
+// 弹一个小 modal,用户选预设或输自填;返最终 reason 字符串;点取消返 null。
+// mode='retract' 用 retract 预设,mode='takedown' 用 takedown 预设(更偏运营场景)。
+async function wfMarketPickReason(mode) {
+  const presets = mode === 'takedown'
+    ? ['[spam]', '[illegal]', '[harassment]', '[off-topic]', '[其他(自填)]']
+    : ['[误发]', '[重复]', '[已更新到新版本]', '[测试]', '[其他(自填)]'];
+  const m = document.getElementById('wf-market-reason-modal');
+  const sel = document.getElementById('wf-market-reason-select');
+  const txt = document.getElementById('wf-market-reason-text');
+  sel.innerHTML = '';
+  presets.forEach((p, i) => {
+    const opt = document.createElement('option');
+    opt.value = p;
+    opt.textContent = p;
+    sel.appendChild(opt);
+  });
+  txt.value = '';
+  txt.style.display = 'none';
+  document.getElementById('wf-market-reason-mode').textContent = mode === 'takedown' ? '撤下' : '自删';
+  m.dataset.mode = mode;
+  m.classList.add('open');
+  return await new Promise((resolve) => { m._resolve = resolve; });
+}
+function wfMarketReasonSelect() {
+  const sel = document.getElementById('wf-market-reason-select');
+  const txt = document.getElementById('wf-market-reason-text');
+  txt.style.display = sel.value === '[其他(自填)]' ? '' : 'none';
+  if (sel.value !== '[其他(自填)]') txt.value = sel.value;
+}
+function wfMarketReasonCancel() {
+  const m = document.getElementById('wf-market-reason-modal');
+  m.classList.remove('open');
+  if (m._resolve) { const r = m._resolve; m._resolve = null; r(null); }
+}
+function wfMarketReasonApply() {
+  const m = document.getElementById('wf-market-reason-modal');
+  const sel = document.getElementById('wf-market-reason-select');
+  const txt = document.getElementById('wf-market-reason-text');
+  let reason = (txt.value || '').trim() || sel.value;
+  if (sel.value === '[其他(自填)]' && !txt.value.trim()) { alert('选了「其他」请填具体原因'); return; }
+  m.classList.remove('open');
+  if (m._resolve) { const r = m._resolve; m._resolve = null; r(reason.slice(0, 200)); }
+}
+
+// P2.5+B-4.F.B(2026-09-22)运营者撤下(单条)— 仅 isOperator=true 时由 UI 调用。
+async function wfMarketTakedown(postId) {
+  if (!postId) return;
+  const reason = await wfMarketPickReason('takedown');
+  if (reason === null) return;
+  if (!confirm(T('wf_market_takedown_confirm') + '?\n' + postId + '\n原因: ' + reason)) return;
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'marketplace', method:'market.take_down',
+                          params:{post_id: postId, reason: reason}, timeout:15})});
+  if (!r.ok || !r.result || !r.result.ok) {
+    const err = (r.result && r.result.error) || r.error || 'rpc fail';
+    const hint = (r.result && r.result.hint) ? '\n\n' + r.result.hint : '';
+    alert('❌ ' + T('wf_market_takedown_fail') + '\n' + err + hint);
+    return;
+  }
+  alert('✓ ' + T('wf_market_takedown_ok') + '\n' + postId);
+  await wfMarketRefresh();
+  document.getElementById('wf-status').textContent = '✓ ' + T('wf_market_takedown_ok') + ': ' + postId;
+}
+
+// 批量撤下:弹专用 modal 选要撤的远端帖(checkbox 多选)+ 选原因 → 一次 RPC。
+async function wfMarketTakedownBatch() {
+  const reason = await wfMarketPickReason('takedown');
+  if (reason === null) return;
+  await wfMarketRefresh({includeRetracted: true, batchMode: true});
+  document.getElementById('wf-market-batch-status').textContent = '请勾选要撤下的远端帖';
+  document.getElementById('wf-market-batch-reason-text').value = reason;
+  document.getElementById('wf-market-batch-modal').classList.add('open');
+}
+function wfMarketBatchCancel() { document.getElementById('wf-market-batch-modal').classList.remove('open'); }
+async function wfMarketBatchApply() {
+  const cbs = document.querySelectorAll('#wf-market-batch-list .wf-market-batch-check:checked');
+  const post_ids = Array.from(cbs).map(cb => cb.dataset.postId);
+  if (!post_ids.length) { alert(T('wf_bundle_select_first')); return; }
+  const reason = document.getElementById('wf-market-batch-reason-text').value.trim() || '(批量撤下)';
+  const status = document.getElementById('wf-market-batch-status');
+  status.textContent = '⏳ 撤下中…(' + post_ids.length + ' 帖)';
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'marketplace', method:'market.take_down_batch',
+                          params:{post_ids, reason}, timeout:120})});
+  if (!r.ok || !r.result || !r.result.ok) {
+    status.textContent = '❌ ' + ((r.result && r.result.error) || r.error || 'rpc fail');
+    return;
+  }
+  const result = r.result;
+  status.textContent = '✓ ' + result.succeeded + '/' + result.total + ' 撤下成功,' + result.failed + ' 失败';
+  setTimeout(() => {
+    document.getElementById('wf-market-batch-modal').classList.remove('open');
+    wfMarketRefresh();
+  }, 2000);
+}
+
+async function wfMarketPublish() {
+  const checked = document.querySelectorAll('#wf-task-list .wf-task-check:checked');
+  if (!checked.length) { alert(T('wf_bundle_select_first')); return; }
+  document.getElementById('wf-pub-title').value = '';
+  document.getElementById('wf-pub-desc').value = '';
+  document.getElementById('wf-pub-status').textContent = '将发布 ' + checked.length + ' 个 workflow';
+  document.getElementById('wf-publish-modal').classList.add('open');
+}
+async function wfPublishApply() {
+  const title = document.getElementById('wf-pub-title').value.trim();
+  const desc = document.getElementById('wf-pub-desc').value.trim();
+  if (!title) { alert(T('wf_market_title_required')); return; }
+  const checked = document.querySelectorAll('#wf-task-list .wf-task-check:checked');
+  const names = Array.from(checked).map(cb => cb.dataset.taskName);
+  const status = document.getElementById('wf-pub-status');
+  status.textContent = '⏳ 1/2 打包中…';
+  // 1) bundle_export(task-runner) 拿 base64
+  const r1 = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method:'task.files.bundle_export',
+                          params:{names}, timeout:60})});
+  if (!r1.ok || !r1.result || !r1.result.ok) {
+    status.textContent = '❌ 打包失败: ' + ((r1.result && r1.result.error) || r1.error || 'rpc fail');
+    return;
+  }
+  status.textContent = '⏳ 2/2 签名 + 发帖中(PoW 1-3s)…';
+  // 2) market.publish(marketplace) 算 PoW + 签名 + 发帖
+  const r2 = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'marketplace', method:'market.publish',
+                          params: {
+                            title, description: desc,
+                            workflow_count: r1.result.count,
+                            attachment_filename: r1.result.name,
+                            attachment_mime: 'application/gzip',
+                            attachment_sha256: '',   // 服务端会重算
+                            attachment_size: r1.result.size_bytes,
+                            attachment_data_b64: r1.result.base64,
+                          }, timeout:60})});
+  if (!r2.ok || !r2.result || !r2.result.ok) {
+    status.textContent = '❌ 发帖失败: ' + ((r2.result && r2.result.error) || r2.error || 'rpc fail');
+    return;
+  }
+  status.textContent = '✓ 已发布: post_id=' + (r2.result.post_id || '?') + ' (seq=' + (r2.result.seq || '?') + ')';
+  setTimeout(() => {
+    document.getElementById('wf-publish-modal').classList.remove('open');
+    document.getElementById('wf-status').textContent = '✓ 已发布到论坛: ' + title;
+  }, 2000);
+}
+function wfMarketCancel() {
+  document.getElementById('wf-market-modal').classList.remove('open');
+  document.getElementById('wf-publish-modal').classList.remove('open');
+  document.getElementById('wf-market-reason-modal').classList.remove('open');
+  document.getElementById('wf-market-batch-modal').classList.remove('open');
+}
+
+async function wfBundleImportApply() {
+  const fi = document.getElementById('wf-bundle-file');
+  if (!fi || !fi.files || fi.files.length === 0) {
+    alert(T('wf_bundle_select_first'));
+    return;
+  }
+  const file = fi.files[0];
+  const fname = (file.name || '').toLowerCase();
+  if (!fname.endsWith('.tar.gz') && !fname.endsWith('.tgz')) {
+    alert(T('wf_bundle_invalid_ext'));
+    return;
+  }
+  // Uint8Array → base64
+  let base64 = '';
+  try {
+    const buf = await file.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let bin = '';
+    // 大文件分块(避免 String.fromCharCode 长度爆栈)— 64KB/chunk
+    const CHUNK = 0x8000;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+    }
+    base64 = btoa(bin);
+  } catch (e) {
+    alert(T('wf_bundle_import_fail') + 'encode: ' + e.message);
+    return;
+  }
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method: 'task.files.bundle_import',
+                          params: {base64}, timeout: 60})});
+  if (!r.ok || !r.result || !r.result.ok) {
+    const err = (r.result && r.result.error) || r.error || 'rpc fail';
+    alert(T('wf_bundle_import_fail') + err);
+    return;
+  }
+  document.getElementById('wf-bundle-modal').classList.remove('open');
+  await wfRenderTaskList();
+  const imported = (r.result.imported || []).length;
+  const skipped = (r.result.skipped || []).length;
+  const total = r.result.total || 0;
+  document.getElementById('wf-status').textContent =
+    T('wf_bundle_imported') + ' (' + imported + ' / ' + total + ',skipped ' + skipped + ')';
+  if (skipped > 0) {
+    console.warn('[wfBundleImportApply] skipped:', r.result.skipped);
+  }
+}
+
+// === P2.5+B-4.D(2026-09-21)workflow 文件 import/export ===
+async function wfExportCurrent() {
+  if (!_wfCurrentTask || !_wfCurrentTask.id) {
+    alert(T('wf_export_no_task'));
+    return;
+  }
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method: 'task.files.export',
+                          params:{id: _wfCurrentTask.id}, timeout: 8})});
+  if (!r.ok || !r.result) { alert(T('wf_export_fail') + (r.error||'rpc fail')); return; }
+  // task-runner 返 {ok, name, json} — 触发浏览器下载
+  const blob = new Blob([r.result.json || ''], {type: 'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (r.result.name || _wfCurrentTask.name || 'workflow') + '.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  document.getElementById('wf-status').textContent = '✓ ' + a.download;
+}
+
+function wfOpenImport() {
+  document.getElementById('wf-import-file').value = '';
+  document.getElementById('wf-import-paste').value = '';
+  document.getElementById('wf-import-modal').classList.add('open');
+}
+
+function wfImportCancel() {
+  document.getElementById('wf-import-modal').classList.remove('open');
+}
+
+async function wfImportApply() {
+  let content = '';
+  const fileEl = document.getElementById('wf-import-file');
+  if (fileEl && fileEl.files && fileEl.files.length > 0) {
+    try {
+      content = await fileEl.files[0].text();
+    } catch (e) {
+      alert(T('wf_import_fail') + e.message);
+      return;
+    }
+  } else {
+    content = (document.getElementById('wf-import-paste').value || '').trim();
+  }
+  if (!content) {
+    alert(T('wf_import_fail') + 'empty');
+    return;
+  }
+  // 走 task.files.import(content) — task-runner 内部 validateDag + write + upsert
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method: 'task.files.import',
+                          params:{content}, timeout: 10})});
+  if (!r.ok || !(r.result && r.result.ok)) {
+    alert('导入失败: ' + ((r.result && r.result.error) || r.error || 'rpc fail'));
+    return;
+  }
+  wfImportCancel();
+  await wfRenderTaskList();
+  // 导入成功后自动跳到刚导入的 task
+  if (r.result.task_id && typeof wfLoadTask === 'function') {
+    wfLoadTask(r.result.task_id);
+  }
+  document.getElementById('wf-status').textContent = T('wf_imported_ok') + (r.result.name || '');
+}
+
+function wfApplyTpl(tpl) {
+  wfTplCancel();
+  _wfCurrentTask = {id: '', name: tpl.name, dag: tpl.dag||{}, trigger: tpl.trigger||'manual', schedule: tpl.schedule||''};
+  _wfNodes = {};
+  let y = 60;
+  for (const [nid, n] of Object.entries(_wfCurrentTask.dag)) {
+    _wfNodes[nid] = Object.assign({}, n, {
+      retry: n.retry || {max_retries: 0, backoff: 'exponential', timeout_sec: 30},
+      x: 60, y: y,
+    });
+    y += 90;
+  }
+  document.getElementById('wf-nodes').innerHTML = '';
+  document.getElementById('wf-edges').innerHTML = '';
+  wfRenderNodes();
+  wfRenderEdges();
+  document.getElementById('wf-status').textContent = '— template: ' + _wfCurrentTask.name + ' (unsaved)';
+}
+
+// ──────────────── P2.5+B-3(2026-09-21)进度流 + 优雅取消 ────────────────
+// 设计:task-runner 子进程跑 task.run(wait=false) 后立即返 run_id,
+// 主进程通过 task.run.progress notification 把每节点 start/end 推进
+// _WF_PROGRESS_QUEUE;wfmodal 用 500ms 长轮询 /api/workflow/run_progress
+// 拿增量(seq 游标),自己驱 progress bar + 节点上色。
+// 取消走 task.run.cancel task_id → 找 activeRuns Map 里 controller.abort()
+// → 当前 invokeExt reject('aborted') → 标 canceled + 写 node_runs。
+let _wfCurrentRunId = null;     // 当前盯的 run_id
+let _wfCurrentRunTaskId = null;
+let _wfPollTimer = null;        // setInterval handle
+let _wfProgressLastSeq = 0;     // 已消费的 seq
+let _wfProgressTotal = 0;       // 节点总数(进度分母)
+
+function wfStartProgressPoll(runId, taskId, total) {
+  _wfCurrentRunId = runId;
+  _wfCurrentRunTaskId = taskId;
+  _wfProgressTotal = total || 0;
+  _wfProgressLastSeq = 0;
+  // 重置 UI
+  const fill = document.getElementById('wf-progress-bar-fill');
+  if (fill) { fill.style.width = '0%'; fill.classList.add('running'); fill.classList.remove('canceled'); }
+  const txt = document.getElementById('wf-progress-text');
+  if (txt) txt.textContent = '0/' + _wfProgressTotal;
+  const btn = document.getElementById('wf-cancel-btn');
+  if (btn) btn.style.display = '';
+  if (_wfPollTimer) clearInterval(_wfPollTimer);
+  _wfPollTimer = setInterval(() => wfPollProgress(), 500);
+  // 立刻拉一次(不 setInterval 等 500ms)
+  wfPollProgress();
+}
+
+function wfStopProgressPoll() {
+  if (_wfPollTimer) { clearInterval(_wfPollTimer); _wfPollTimer = null; }
+  _wfCurrentRunId = null;
+  _wfCurrentRunTaskId = null;
+  _wfProgressLastSeq = 0;
+  _wfProgressTotal = 0;
+}
+
+async function wfPollProgress() {
+  if (!_wfCurrentRunId) return;
+  const r = await api('/workflow/run_progress', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({run_id: _wfCurrentRunId, since: _wfProgressLastSeq, ack: true}),
+  });
+  if (!r || !r.ok) return;
+  if (r.missing) {  // 队列已清(run 结束后 wfmodal 主动清理过)
+    wfStopProgressPoll();
+    return;
+  }
+  const items = r.items || [];
+  if (items.length) {
+    _wfProgressLastSeq = r.seq || _wfProgressLastSeq;
+    for (const p of items) wfOnProgress(p);
+  }
+  // 隔几次 poll 后查 run 主状态,若不再 running/pending,停轮询 + 拉 nodes
+  // (5 秒 = 每 10 次 poll 查一次,降低 RPC 频率)
+  if (_wfPollTimer && ((_wfProgressLastSeq | 0) % 10 === 0) && items.length === 0) {
+    wfMaybeFinishRun();
+  }
+}
+
+async function wfMaybeFinishRun() {
+  if (!_wfCurrentRunId || !_wfCurrentRunTaskId) return;
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method:'task.runs',
+                          params:{task_id:_wfCurrentRunTaskId, limit:5}, timeout: 5})});
+  if (!r.ok || !r.result) return;
+  const runs = (r.result.runs || []);
+  const cur = runs.find(x => x.run_id === _wfCurrentRunId || x.id === _wfCurrentRunId);
+  if (!cur) return;
+  if (cur.status === 'running' || cur.status === 'pending') return;
+  // run 结束
+  wfStopProgressPoll();
+  wfOnRunDone(cur);
+}
+
+function wfOnProgress(payload) {
+  if (!payload) return;
+  if (payload.run_id && _wfCurrentRunId && payload.run_id !== _wfCurrentRunId) return;
+  const nid = payload.node_id;
+  const st = payload.status || 'running';
+  if (nid) {
+    const el = document.querySelector('#wf-nodes .wf-node[data-id="' + nid + '"]');
+    if (el) {
+      el.classList.remove('running','ok','failed','canceled');
+      el.classList.add(st);
+      if (payload.attempts) el.dataset.attempts = payload.attempts;
+      if (payload.ms) el.dataset.ms = payload.ms;
+      if (payload.error) el.title = st + ' · ' + (payload.attempts||1) + ' attempts · ' + (payload.ms||0) + 'ms\nerror: ' + payload.error;
+    }
+  }
+  // 顶部 progress bar + 文本
+  const total = Math.max(1, _wfProgressTotal || Object.keys(_wfNodes).length || 1);
+  const done = document.querySelectorAll(
+    '#wf-nodes .wf-node.ok, #wf-nodes .wf-node.failed, #wf-nodes .wf-node.canceled'
+  ).length;
+  const fill = document.getElementById('wf-progress-bar-fill');
+  if (fill) {
+    fill.style.width = (done / total * 100).toFixed(1) + '%';
+    if (st === 'canceled') {
+      fill.classList.remove('running');
+      fill.classList.add('canceled');
+    } else if (st === 'failed') {
+      fill.classList.remove('running');
+    }
+  }
+  const txt = document.getElementById('wf-progress-text');
+  if (txt) txt.textContent = done + '/' + total;
+}
+
+async function wfCancelRun() {
+  const rid = _wfCurrentRunId;
+  if (!rid) return;
+  if (!confirm(T('wf_cancel') + '?')) return;
+  document.getElementById('wf-status').innerHTML = '<span class="wf-canceled">⏹ canceling…</span>';
+  const r = await api('/ext/rpc', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ext_id:'task-runner', method:'task.run.cancel',
+                          params:{run_id: rid}, timeout: 5})});
+  if (!r || !r.ok) {
+    document.getElementById('wf-status').innerHTML = '<span class="wf-failed">✗ cancel fail: ' + esc(r?.error||'') + '</span>';
+    return;
+  }
+  // 不立即清 _wfCurrentRunId,等下一个 progress 通知(status=canceled)走到 wfOnProgress 自然上色
+  // wfMaybeFinishRun 隔几秒确认 run 主状态 canceled 才停轮询
+}
+
+async function openProject() {
+  document.getElementById('projmodal').classList.add('open');
+  await projectRenderList();
+}
+
+function closeProject() {
+  document.getElementById('projmodal').classList.remove('open');
+  _PROJECT_RENAMING = null;
+  const rr = document.getElementById('proj-rename-row');
+  if (rr) rr.style.display = 'none';
+}
+
+async function projectRenderList() {
+  const r = await api('/projects', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({op:'list'})});
+  if (r && r.active) _currentWorkdir = r.current_workdir || r.active;
+  const list = document.getElementById('proj-list');
+  if (!list) return;
+  list.innerHTML = '';
+  const items = (r.items || []).slice().sort((a, b) => {
+    if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1;
+    return (b.added_at || 0) - (a.added_at || 0);
+  });
+  if (!items.length) {
+    list.innerHTML = '<div style="padding:14px;font-size:12px;color:var(--gh-ink-faint);text-align:center">' +
+      (LANG === 'zh' ? '暂无项目,在下方输入路径添加' : 'No projects yet — paste a path below to add one') + '</div>';
+    return;
+  }
+  for (const it of items) {
+    const row = document.createElement('div');
+    row.className = 'proj-item' + (it.path === r.active ? ' active' : '');
+    const pin = it.pinned
+      ? '<span class="pin" title="' + (LANG==='zh'?'取消置顶':'Unpin') + '">📌</span>'
+      : '<span class="nopin"></span>';
+    const pinLabel = it.pinned ? T('project_unpin') : T('project_pin');
+    row.innerHTML = pin
+      + '<span class="name" title="' + esc(it.name) + '">' + esc(it.name) + '</span>'
+      + '<span class="path" title="' + esc(it.path) + '">' + esc(it.path) + '</span>'
+      + '<span class="acts">'
+      +   '<button onclick="event.stopPropagation();projectRename(\'' + esc(it.path).replace(/'/g, "\\'") + '\')" title="' + T('project_rename') + '">✏️</button>'
+      +   '<button onclick="event.stopPropagation();projectPin(\'' + esc(it.path).replace(/'/g, "\\'") + '\')" title="' + pinLabel + '">' + (it.pinned ? '📌' : '☆') + '</button>'
+      +   '<button onclick="event.stopPropagation();projectRemove(\'' + esc(it.path).replace(/'/g, "\\'") + '\')" title="' + T('project_remove') + '">🗑️</button>'
+      + '</span>';
+    row.onclick = () => projectSwitch(it.path);
+    list.appendChild(row);
+  }
+}
+
+async function projectSwitch(path) {
+  const r = await api('/projects', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({op:'switch', path: path})});
+  if (r && r.ok) {
+    _currentWorkdir = r.active || path;
+    closeProject();
+    await _applyProjectChange();
+  } else {
+    alert((r && r.error) || T('project_switch_fail'));
+  }
+}
+
+async function projectAddFromInput() {
+  const inp = document.getElementById('proj-path');
+  const p = (inp.value || '').trim();
+  if (!p) return;
+  const r = await api('/projects', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({op:'add', path: p})});
+  if (r && r.ok) {
+    inp.value = '';
+    await projectRenderList();
+  } else {
+    alert((r && r.error) || T('project_add_fail'));
+  }
+}
+
+function projectBrowse() {
+  // Electron 沙箱无原生 dialog;若主进程暴露 electronAPI.openDir 则用,否则让用户粘贴。
+  const inp = document.getElementById('proj-path');
+  if (inp) inp.focus();
+  if (window.electronAPI && typeof window.electronAPI.openDir === 'function') {
+    window.electronAPI.openDir().then(p => { if (p) inp.value = p; });
+    return;
+  }
+  alert(LANG === 'zh'
+    ? '请直接粘贴项目目录的绝对路径(例如 C:\\path\\to\\project)'
+    : 'Please paste the absolute path of the project directory (e.g. C:\\path\\to\\project)');
+}
+
+function projectRename(path) {
+  _PROJECT_RENAMING = path;
+  const row = document.getElementById('proj-rename-row');
+  const inp = document.getElementById('proj-rename-input');
+  if (!row || !inp) return;
+  inp.value = '';
+  row.style.display = 'flex';
+  inp.focus();
+}
+
+async function projectRenameSave() {
+  if (!_PROJECT_RENAMING) return;
+  const name = (document.getElementById('proj-rename-input').value || '').trim();
+  if (!name) { alert(LANG==='zh' ? '别名不能为空' : 'Name cannot be empty'); return; }
+  const r = await api('/projects', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({op:'rename', path: _PROJECT_RENAMING, name: name})});
+  if (r && r.ok) {
+    _PROJECT_RENAMING = null;
+    document.getElementById('proj-rename-row').style.display = 'none';
+    await projectRenderList();
+  } else {
+    alert((r && r.error) || T('project_add_fail'));
+  }
+}
+
+async function projectPin(path) {
+  await api('/projects', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({op:'pin', path: path})});
+  await projectRenderList();
+}
+
+async function projectRemove(path) {
+  if (!confirm(T('project_remove_confirm'))) return;
+  const r = await api('/projects', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({op:'remove', path: path})});
+  if (r && r.active) _currentWorkdir = r.active;
+  await projectRenderList();
+}
+
+async function _applyProjectChange() {
+  // 切项目后刷新所有依赖 workdir 的 UI
+  let info = null;
+  try { info = await api('/info'); } catch (_) {}
+  if (info && info.workdir) _currentWorkdir = info.workdir;
+  _setProjectButton(info && info.workdir);
+  // 文件树(若 frail 在用)
+  if (typeof loadFileTree === 'function') { try { await loadFileTree(); } catch (_) {} }
+  // 会话列表(默认 scope=current)
+  if (typeof loadSessions === 'function') {
+    try { await loadSessions({scope: 'current'}); } catch (_) {}
+  }
+  // 文档栏(若开着,清空 + 刷新)
+  const dp = document.getElementById('doc-panel');
+  if (dp && dp.style.display !== 'none' && typeof docRefreshTimeline === 'function') {
+    try { docRefreshTimeline(); } catch (_) {}
+  }
+}
+
+// 启动时拉一次 projects 把顶栏按钮设上
+(async function initTopbarProject() {
+  try {
+    const r = await api('/projects', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({op:'list'})});
+    if (r) {
+      _currentWorkdir = r.current_workdir || r.active || '';
+      _setProjectButton(_currentWorkdir);
+    }
+  } catch (_) {}
+})();
 
 /* ---- 附件:文本内联 / 图片多模态 ---- */
 let _attachments = [];
@@ -6458,7 +9773,8 @@ async function delKey(p){ await api('/keys/delete',{method:'POST',headers:{'Cont
 document.getElementById('input').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 });
-// M3.31.12(2026-09-16):输入框自适应多行 — 按内容行数动态 rows,直到 8 行才出滚动条
+// M3.31.12(2026-09-16)+P2.5+9(2026-09-20):输入框自适应多行 — 按内容行数动态 rows,
+// 起步 2 行(P2.5+9 用户拍板,跟 HTML rows=2 对齐),撑到 12 行上限才出滚动条
 // 原本 max-height:160px + rows=2 导致只能容 2 行,再多就压缩出滚动条,UX 糟
 function _autoResizeInput() {
   const el = document.getElementById('input');
@@ -6466,12 +9782,12 @@ function _autoResizeInput() {
   // 用 \n 数 + wrap(每行宽度估算):textarea scrollHeight 已经按 wrap 折算,
   // 但因 min-height:44px 即使 1 行 scrollHeight=44,需按 value 实际行数算
   const value = el.value || '';
+  // P2.5+9:列宽估算降到 70px 字符(更窄屏 + padding 12px*2 占用),更稳
+  const colsPerLine = 70;
   const wrappedLines = value.split('\n').reduce((sum, line) => {
-    // 估算每行字符宽:14.5px font * 0.6 ≈ 8.7px 字符,box width ~700px → ~80 字符/行
-    const colsPerLine = 80;
     return sum + Math.max(1, Math.ceil(line.length / colsPerLine));
   }, 0);
-  el.rows = Math.max(1, Math.min(8, wrappedLines));
+  el.rows = Math.max(2, Math.min(12, wrappedLines));
 }
 document.getElementById('input').addEventListener('input', _autoResizeInput);
 // 初始化(防首次加载就有内容)
@@ -6955,18 +10271,40 @@ async function docLoadDiff() {
       stats.textContent = "+0 -0";
       return;
     }
-    // 自实现红绿 split(不依赖 hljs — cdn 可能异步或被代理挡)
+    // P2.5+9:左右分栏 diff 视图(Monaco-style 降级 — 走 CSS Grid + 同步滚动,不引 CDN)
+    //   左栏 = A 版本(- 行上下文),右栏 = B 版本(+ 行上下文)
     const lines = diffText.split("\n");
-    const parts = lines.map(ln => {
-      const esc = docEscapeHtml(ln);
-      if (ln.startsWith("+++") || ln.startsWith("---") || ln.startsWith("@@")) {
-        return '<span class="hljs-meta">' + esc + '</span>';
-      }
-      if (ln.startsWith("+")) return '<span class="hljs-addition">' + esc + '</span>';
-      if (ln.startsWith("-")) return '<span class="hljs-deletion">' + esc + '</span>';
-      return esc;
-    });
-    body.innerHTML = '<pre><code class="language-diff">' + parts.join("\n") + '</code></pre>';
+    const ctxRows = [];
+    for (const ln of lines) {
+      if (ln.startsWith("+++") || ln.startsWith("---")) continue;
+      if (ln.startsWith("@@")) { ctxRows.push({type:'meta', text: ln}); continue; }
+      if (ln.startsWith("+")) { ctxRows.push({type:'add', text: ln.slice(1)}); continue; }
+      if (ln.startsWith("-")) { ctxRows.push({type:'del', text: ln.slice(1)}); continue; }
+      ctxRows.push({type:'ctx', text: ln});
+    }
+    const esc = docEscapeHtml;
+    const left = ctxRows.filter(r => r.type !== 'add').map(r =>
+      '<div class="diff-row diff-' + r.type + '"><span class="diff-marker">' +
+      (r.type === 'del' ? '-' : r.type === 'meta' ? '@' : ' ') + '</span><span class="diff-text">' +
+      esc(r.text || ' ') + '</span></div>').join('');
+    const right = ctxRows.filter(r => r.type !== 'del').map(r =>
+      '<div class="diff-row diff-' + r.type + '"><span class="diff-marker">' +
+      (r.type === 'add' ? '+' : r.type === 'meta' ? '@' : ' ') + '</span><span class="diff-text">' +
+      esc(r.text || ' ') + '</span></div>').join('');
+    body.innerHTML =
+      '<div class="diff-split">' +
+        '<div class="diff-pane diff-pane-left"><div class="diff-pane-head">A</div>' +
+          '<div class="diff-pane-body">' + left + '</div></div>' +
+        '<div class="diff-pane diff-pane-right"><div class="diff-pane-head">B</div>' +
+          '<div class="diff-pane-body">' + right + '</div></div>' +
+      '</div>';
+    // 同步滚动:任一栏滚,另一栏跟着
+    const lp = body.querySelector('.diff-pane-left .diff-pane-body');
+    const rp = body.querySelector('.diff-pane-right .diff-pane-body');
+    if (lp && rp) {
+      lp.addEventListener('scroll', () => { rp.scrollTop = lp.scrollTop; });
+      rp.addEventListener('scroll', () => { lp.scrollTop = rp.scrollTop; });
+    }
     stats.textContent = "+" + (j.added || 0) + " -" + (j.removed || 0);
   } catch (e) {
     body.innerHTML = "diff err: " + docEscapeHtml(e.message);
@@ -7091,6 +10429,279 @@ window.addEventListener("beforeunload", function(e) {
       })
       .catch(function(){});
   }, 900);
+})();
+
+// Phase 6(2026-09-28):Skills 工作台事件轮询 + 渲染。
+// 沿用 external_inject polling 范式 — 主面板前端没 SSE,每 900ms 拉 /api/skill_plan/peek。
+// 处理三类事件:skill_plan_request(弹规划卡)、skill_plan_auto_executed(sys 卡片)、skill_plan_confirm_ack(系统提示)。
+// 按钮 click 调 /api/skill_plan/confirm 后端顺序执行,完成 ack 回队列,前端再次 polling 拿到后展示。
+(function _setupSkillPlanPolling(){
+  if (window.__skillPlanStarted) return;
+  window.__skillPlanStarted = true;
+  var seenIds = new Set();
+  var pending = null;  // 当前弹出的 plan: {evtId, calls, maxRisk}
+
+  function escHtml(s){
+    return String(s == null ? "" : s)
+      .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+      .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+  }
+  function maxRiskOf(calls){
+    var order = {L0:0,L1:1,L2:2,L3:3};
+    var top = "L0";
+    (calls || []).forEach(function(c){
+      var r = (c && c.risk) || "L1";
+      if (order[r] != null && order[r] > order[top]) top = r;
+    });
+    return top;
+  }
+  function closeCard(){
+    var el = document.getElementById("skillPlanCard");
+    if (el) el.remove();
+    pending = null;
+  }
+  function showPlanCard(evtId, calls){
+    var maxR = maxRiskOf(calls);
+    var rows = "";
+    (calls || []).forEach(function(c, i){
+      var sid = escHtml(c.skill_id || "?");
+      var risk = escHtml(c.risk || "L1");
+      var argsJson = "";
+      try {
+        var a = c.args || {};
+        var pairs = [];
+        for (var k in a) {
+          if (Object.prototype.hasOwnProperty.call(a, k)) {
+            pairs.push(k + "=" + String(a[k]).slice(0, 80));
+          }
+        }
+        argsJson = pairs.join("  ") || "(无参数)";
+      } catch(e){ argsJson = "(解析失败)"; }
+      rows += '<div class="skill-plan-row">'
+        + '<span class="skill-plan-idx">' + (i+1) + '.</span>'
+        + '<span class="skill-plan-sid">' + sid + '</span>'
+        + '<span class="skill-plan-risk" data-risk="' + risk + '">' + risk + '</span>'
+        + '<div class="skill-plan-args">' + escHtml(argsJson) + '</div>'
+        + '</div>';
+    });
+    var html = ''
+      + '<div class="skill-plan-card" id="skillPlanCard">'
+      +   '<div class="skill-plan-box">'
+      +     '<div class="skill-plan-title">🧩 Skills 工作台规划卡</div>'
+      +     '<div class="skill-plan-meta">'
+      +       '<span class="skill-plan-count">' + (calls||[]).length + ' 项</span>'
+      +       '<span class="skill-plan-risk" data-risk="' + escHtml(maxR) + '">' + escHtml(maxR) + '</span>'
+      +     '</div>'
+      +     '<div>' + rows + '</div>'
+      +     '<div class="skill-plan-buttons">'
+      +       '<button id="skillPlanCancel">取消</button>'
+      +       '<button class="primary" id="skillPlanOk">我确认,顺序执行</button>'
+      +     '</div>'
+      +   '</div>'
+      + '</div>';
+    document.body.insertAdjacentHTML("beforeend", html);
+    pending = {evtId: evtId, calls: calls};
+    var okBtn = document.getElementById("skillPlanOk");
+    var cancelBtn = document.getElementById("skillPlanCancel");
+    if (okBtn) okBtn.addEventListener("click", function(){
+      var c = pending;
+      closeCard();
+      if (!c) return;
+      fetch("/prisiragent/api/skill_plan/confirm", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({approved: true, calls: c.calls, ack_event_id: c.evtId})
+      }).catch(function(){});
+    });
+    if (cancelBtn) cancelBtn.addEventListener("click", function(){
+      var c = pending;
+      closeCard();
+      if (!c) return;
+      fetch("/prisiragent/api/skill_plan/confirm", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({approved: false, calls: c.calls || [], ack_event_id: c.evtId})
+      }).catch(function(){});
+    });
+  }
+  function renderAutoExec(item){
+    var ok = item.ok_count || 0, total = item.total || 0;
+    var html = '<div class="skill-plan-auto-msg">🧩 Skills 自动执行:'
+      + '<span class="ok">' + ok + '</span>/' + total + ' 成功</div>';
+    var box = document.getElementById("messages");
+    if (box) box.insertAdjacentHTML("beforeend", html);
+  }
+  function renderAck(item){
+    var msg;
+    if (item.approved) {
+      msg = '🧩 Skills 规划已执行:' + (item.executed || 0) + '/' + (item.total || 0) + ' 成功';
+    } else {
+      msg = '🧩 Skills 规划已取消' + (item.reason ? '(' + item.reason + ')' : '');
+    }
+    var box = document.getElementById("messages");
+    if (box) box.insertAdjacentHTML("beforeend", '<div class="skill-plan-auto-msg">' + escHtml(msg) + '</div>');
+  }
+  function handleItem(item){
+    if (!item || !item.id || seenIds.has(item.id)) return;
+    seenIds.add(item.id);
+    try {
+      if (item.type === "skill_plan_request") {
+        showPlanCard(item.id, item.calls || []);
+      } else if (item.type === "skill_plan_auto_executed") {
+        renderAutoExec(item);
+      } else if (item.type === "skill_plan_confirm_ack") {
+        renderAck(item);
+      }
+    } catch (err) { console.error("skill_plan handler", err); }
+    // ack 移除(避免重连重复处理)
+    fetch("/prisiragent/api/skill_plan/ack?id=" + encodeURIComponent(item.id))
+      .catch(function(){});
+  }
+  setInterval(function(){
+    var sid = (typeof sessionId !== "undefined" && sessionId) ? sessionId : "";
+    var url = "/prisiragent/api/skill_plan/peek";
+    if (sid) url += "?session_id=" + encodeURIComponent(sid);
+    fetch(url)
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        (d.items || []).forEach(handleItem);
+      })
+      .catch(function(){});
+  }, 900);
+})();
+</script>
+<script>
+// ---- M3.36.C (2026-09-28):colibri 三选一 onboarding 引导卡 ------------------
+// 主对话窗口(/prisIragent/web)首次启动时,若无云端 key 则弹引导卡
+//   no_key  → POST /prisiragent/api/colibri/onboarding/choose + 触发下载
+//   has_key → 关闭引导 + 提示去设置填 key
+//   skip    → 关闭引导,下次启动还弹
+(function(){
+  function $(id){ return document.getElementById(id); }
+  var card = $("onboardingCard");
+  if (!card) return;   // 引导卡不在页面 → 不挂监听
+  var choices = $("onbChoices");
+  var closeBtn = $("onbClose");
+  var prog = $("onbProgress");
+  var progText = $("onbProgressText");
+  var progFill = $("onbProgressFill");
+
+  function checkOnboarding(){
+    fetch("/prisiragent/api/colibri/onboarding", { cache: "no-store" })
+      .then(function(r){
+        if (!r.ok) return null;
+        return r.json();
+      })
+      .then(function(data){
+        if (!data || !data.ok) return;
+        if (!data.should_show) return;
+        card.classList.add("shown");
+      })
+      .catch(function(){ /* 网络错 / 后端未起 → 不弹 */ });
+  }
+
+  function submit(choice){
+    card.classList.remove("shown");
+    fetch("/prisiragent/api/colibri/onboarding/choose", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ choice: choice }),
+    })
+    .then(function(r){ return r.ok ? r.json() : { ok:false }; })
+    .then(function(data){
+      if (choice === "no_key") {
+        // M3.36.B(2026-09-28):显示进度条 + 触发下载 + 真实轮询
+        if (prog) prog.style.display = "block";
+        if (progText) progText.textContent = "📥 准备下载 OLMoE 模型(~7 GB,首次较慢)……";
+        if (progFill) progFill.style.width = "0%";
+        fetch("/prisiragent/api/colibri/download", { method: "POST" })
+          .then(function(r){ return r.ok ? r.json() : { ok:false }; })
+          .then(function(data){
+            if (!data || !data.ok) {
+              if (progText) progText.textContent = "❌ 启动下载失败: " + ((data && data.err) || "未知");
+              return;
+            }
+            // 开始轮询进度
+            pollDownloadProgress();
+          })
+          .catch(function(e){
+            if (progText) progText.textContent = "❌ 下载启动失败: " + e;
+          });
+      } else if (choice === "has_key") {
+        // 提示去设置页
+        var hint = document.createElement("div");
+        hint.style.cssText = "margin:14px 16px;padding:10px 14px;background:#ddf4e1;border:1px solid #1a7f37;border-radius:8px;color:#1a7f37;font-size:12px";
+        hint.textContent = "✅ 已记录。点击右上角「⚙ 设置」→ 「LLM Key」填写 OpenAI / Anthropic 等平台 key;PrisirAI 会自动读取环境变量里的 key。";
+        card.parentNode.insertBefore(hint, card.nextSibling);
+        setTimeout(function(){ hint.remove(); }, 8000);
+      } else if (choice === "skip") {
+        // 静默关闭
+      }
+    })
+    .catch(function(){ /* fail-soft */ });
+  }
+
+  // M3.36.B(2026-09-28):下载进度轮询 — 每 2s 拉一次,直到 phase != downloading
+  function pollDownloadProgress(){
+    var stopped = false;
+    var tries = 0;
+    function tick(){
+      if (stopped) return;
+      tries += 1;
+      fetch("/prisiragent/api/colibri/download/status", { cache: "no-store" })
+        .then(function(r){ return r.ok ? r.json() : { ok:false }; })
+        .then(function(s){
+          if (!s || !s.ok) {
+            if (progText) progText.textContent = "⚠️ 进度查询失败";
+            return;
+          }
+          if (progFill && typeof s.progress_pct === "number") {
+            progFill.style.width = Math.max(0, Math.min(100, s.progress_pct)) + "%";
+          }
+          if (s.phase === "downloading") {
+            var mb = s.done_bytes ? (s.done_bytes/1024/1024).toFixed(0) : "?";
+            var tot = s.total_bytes ? (s.total_bytes/1024/1024).toFixed(0) : "?";
+            if (progText) {
+              progText.textContent = "📥 正在下载 OLMoE 模型… " +
+                (s.progress_pct || 0).toFixed(1) + "% " +
+                "(" + mb + " MB / " + tot + " MB)";
+            }
+            setTimeout(tick, 2000);
+          } else if (s.phase === "ready") {
+            if (progText) progText.textContent = "✅ 下载完成!模型已就绪,刷新后即可对话。";
+            if (progFill) progFill.style.width = "100%";
+            setTimeout(function(){ if (prog) prog.style.display = "none"; location.reload(); }, 3000);
+          } else if (s.phase === "failed") {
+            if (progText) progText.textContent = "❌ 下载失败: " + (s.error || "未知错误");
+          } else {
+            // idle — 用户没下,不做任何事
+            if (prog) prog.style.display = "none";
+          }
+        })
+        .catch(function(){
+          // 静默重试
+          if (tries < 600) setTimeout(tick, 3000);  // 最多 30 分钟
+        });
+    }
+    tick();
+  }
+
+  if (choices) {
+    choices.addEventListener("click", function(ev){
+      var t = ev.target.closest(".onb-choice");
+      if (!t) return;
+      var c = t.getAttribute("data-choice");
+      if (c) submit(c);
+    });
+  }
+  if (closeBtn) {
+    closeBtn.addEventListener("click", function(){ submit("skip"); });
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", checkOnboarding);
+  } else {
+    checkOnboarding();
+  }
 })();
 </script>
 </body>
@@ -9016,7 +12627,12 @@ class Handler(BaseHTTPRequestHandler):
                 tok = (qs.get("token") or [""])[0]
                 if tok and lp.verify_token(tok):
                     # 手动发响应以附 Set-Cookie(_html 不透出自定义头)
-                    body = _PAGE.encode("utf-8")
+                    # P2.5+15(2026-09-22):跟主路径一致 inline 替换 forum URL placeholder。
+                    try:
+                        _forum_full = f"{prisIrai_config.forum_url()}#board={prisIrai_config.forum_board()}&hint={prisIrai_config.forum_hint()}"
+                    except Exception:
+                        _forum_full = "https://bbs.babelspan.com/forum.html#board=browser/shell&hint=prisirai"
+                    body = _PAGE.replace("__PRISIR_FORUM_URL_PLACEHOLDER__", _forum_full).encode("utf-8")
                     self.send_response(200)
                     self.send_header("Content-Type", "text/html; charset=utf-8")
                     self.send_header("Content-Length", str(len(body)))
@@ -9024,9 +12640,41 @@ class Handler(BaseHTTPRequestHandler):
                     self.end_headers()
                     self.wfile.write(body)
                     return
-            self._html(_PAGE)
+            # P2.5+15(2026-09-22):YAML 三端对齐 — forum URL 拼好注入到 __PRISIR_FORUM_URL__。
+            # 找不到 yaml / import 失败时降级内置默认(JS 里同样的 fallback)。
+            try:
+                _forum_full = f"{prisIrai_config.forum_url()}#board={prisIrai_config.forum_board()}&hint={prisIrai_config.forum_hint()}"
+            except Exception:
+                _forum_full = "https://bbs.babelspan.com/forum.html#board=browser/shell&hint=prisirai"
+            _page_html = _PAGE.replace("__PRISIR_FORUM_URL_PLACEHOLDER__", _forum_full)
+            self._html(_page_html)
         elif path.startswith("/prisiragent/assets/"):
             self._asset(path[len("/prisiragent/assets/"):])
+        elif path == "/prisiragent/api/colibri/onboarding":
+            # M3.36.C(2026-09-28):colibri 三选一引导卡状态端点
+            # 判定是否需要在主对话窗口弹"零配置起步"卡片
+            try:
+                from companion.colibri_state import (
+                    should_show_onboarding, load_state, has_existing_keys,
+                )
+                should_show = bool(should_show_onboarding())
+                s = load_state()
+                reason = ("user_dismissed" if s.onboarding_choice == "has_key"
+                          else "downloaded" if (s.onboarding_choice == "no_key"
+                                                  and s.downloaded)
+                          else "has_existing_keys" if has_existing_keys()
+                          else "first_launch")
+                self._json({
+                    "ok": True,
+                    "should_show": should_show,
+                    "reason": reason,
+                    "choice": s.onboarding_choice,
+                    "downloaded": s.downloaded,
+                    "state": s.state,
+                })
+            except Exception as e:
+                _LOGGER.warning("[colibri-onboarding] 状态端点失败: %s", e)
+                self._json({"ok": False, "err": str(e), "should_show": False})
         elif path == "/prisiragent/api/info":
             self._json({"strategy": DEFAULT_STRATEGY, "workdir": _WORKDIR["path"],
                         "platforms": _router.available_platforms(),
@@ -9034,6 +12682,66 @@ class Handler(BaseHTTPRequestHandler):
                         "active_platform": _SETTINGS.get("active_platform", ""),  # 用户手动选择的平台
                         "port": WEB_PORT, "lan_ip": _lan_ip(),
                         "lan_enabled": lan_pair.instance() is not None})
+        elif path == "/prisiragent/api/port_status":
+            # M3.34(2026-09-19):端口状态端点。前端 fetch 后:
+            #   - changed=true → 弹一次性 toast「端口 X 被占,改用 Y」(sessionStorage 标记已弹)
+            #   - changed=false → 不弹
+            # reason 字段让前端知道为什么 fallback:
+            #   - "os_allocated"  : args.port=0,OS 分配
+            #   - "conflict_fallback" : 端口冲突,bind(0) 拿新端口
+            #   - ""            : 无变化
+            try:
+                configured = int(_CONFIGURED_PORT)
+                actual = int(_REAL_PORT)
+            except Exception:  # noqa: BLE001
+                configured, actual = int(WEB_PORT), int(WEB_PORT)
+            changed = (actual != configured)
+            reason = ""
+            if changed:
+                reason = "os_allocated" if configured == 0 else "conflict_fallback"
+            # P2.5+14(2026-09-22):日历端口同款追踪。日历端口未启用(--calendar-port=0)时
+            # actual=0,前端跳过 toast。日历端口冲突时 reason 同款。
+            try:
+                cal_configured = int(_CONFIGURED_CALENDAR_PORT)
+                cal_actual = int(_REAL_CALENDAR_PORT)
+            except Exception:  # noqa: BLE001
+                cal_configured, cal_actual = 0, 0
+            cal_changed = (cal_actual != cal_configured)
+            cal_reason = ""
+            if cal_changed and cal_actual > 0:
+                cal_reason = "os_allocated" if cal_configured == 0 else "conflict_fallback"
+            self._json({
+                "ok": True,
+                "web": {
+                    "configured": configured,
+                    "actual": actual,
+                    "changed": changed,
+                    "reason": reason,
+                },
+                "calendar": {
+                    "configured": cal_configured,
+                    "actual": cal_actual,
+                    "changed": cal_changed,
+                    "reason": cal_reason,
+                    "enabled": cal_actual > 0,
+                },
+            })
+        elif path == "/prisiragent/api/schedule/history":
+            # P2.5+8(2026-09-20):GET 仅返 history + 状态(POST 在 do_POST 处理 clear)
+            self._json({
+                "ok": True,
+                "history": schedule_extractor_history(50),
+                "enabled": schedule_extractor_enabled(),
+                "consent_required": schedule_extractor_consent_required(),
+                "history_count": len(_SCHEDULE_TRIGGERS_HISTORY),
+            })
+        elif path == "/prisiragent/api/schedule/consent":
+            # P2.5+8(2026-09-20):GET 返 status(POST 在 do_POST 处理 grant/revoke)
+            self._json({
+                "ok": True,
+                "enabled": schedule_extractor_enabled(),
+                "consent_required": schedule_extractor_consent_required(),
+            })
         elif path == "/prisiragent/api/pair/offer":
             # P1 配对:生成一次性配对令牌。本机(回环)+ 局域网(私网/链路本地,如真手机/MuMu NAT)
             # 都可调——配对码出示在 PC 屏上由人抄进手机,私网 fetch 不放大风险;仅公网来源拦。
@@ -9044,7 +12752,11 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self._json(lp.new_offer())
         elif path == "/prisiragent/api/sessions":
-            self._json(list_sessions())
+            # M3.35:支持 scope=current|all|orphans,默认 current
+            scope = (qs.get("scope") or ["current"])[0]
+            if scope not in ("current", "all", "orphans"):
+                scope = "current"
+            self._json(list_sessions(scope))
         elif path == "/prisiragent/api/files":
             # 文件资料栏(2026-09-06):列出 workdir 文件树。只读,realpath 锁在 workdir 内防穿越。
             rel = (qs.get("path") or [""])[0]
@@ -9537,6 +13249,28 @@ class Handler(BaseHTTPRequestHandler):
                 _INJECT_QUEUE[:] = [x for x in _INJECT_QUEUE if x.get("id") != inj_id]
                 removed = before - len(_INJECT_QUEUE)
             self._json({"ok": True, "removed": removed})
+        elif path == "/prisiragent/api/skill_plan/peek":
+            # Phase 6(2026-09-28):Skills 工作台事件队列 peek(沿用 external_inject polling 范式)。
+            # 前端每 900ms 拉一次;按 session_id 过滤;返未 ack 事件。
+            try:
+                from prisIr_work.skills.integration import get_skill_plan_queue  # noqa: PLC0415
+                _sid = (qs.get("session_id") or [""])[0] or None
+                items = get_skill_plan_queue().peek(session_id=_sid)
+                self._json({"ok": True, "items": items, "count": len(items)})
+            except Exception as _e:  # noqa: BLE001
+                self._json({"ok": False, "err": f"{type(_e).__name__}: {_e}"}, 500)
+        elif path == "/prisiragent/api/skill_plan/ack":
+            # Phase 6:前端处理完事件后调,按 id 从队列移除。
+            evt_id = (qs.get("id") or [""])[0]
+            if not evt_id:
+                self._json({"ok": False, "err": "id 必填"}, 400)
+                return
+            try:
+                from prisIr_work.skills.integration import get_skill_plan_queue  # noqa: PLC0415
+                removed = get_skill_plan_queue().ack(evt_id)
+                self._json({"ok": True, "removed": bool(removed)})
+            except Exception as _e:  # noqa: BLE001
+                self._json({"ok": False, "err": f"{type(_e).__name__}: {_e}"}, 500)
         elif path == "/prisiragent/api/registry_recent":
             wd = _WORKDIR.get("path", "") if hasattr(_WORKDIR, "get") else (_WORKDIR or "")
             limit = int((qs.get("limit") or ["200"])[0])
@@ -9831,6 +13565,55 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": True, "alias": alias, "alias_file": _alias_file_path()})
             except OSError as e:
                 self._json({"ok": False, "err": f"写 alias 失败: {e}"}, 500)
+        elif path == "/prisiragent/api/colibri/onboarding/choose":
+            # M3.36.C(2026-09-28):colibri 三选一引导卡选择端点
+            # body: {choice: "no_key" | "has_key" | "skip"}
+            choice = (body.get("choice") or "").strip() if isinstance(body, dict) else ""
+            if choice not in ("no_key", "has_key", "skip"):
+                self._json({"ok": False, "err": f"unknown choice: {choice}"}, 400)
+                return
+            try:
+                from companion.colibri_state import update_state
+                if choice == "has_key":
+                    update_state(onboarding_choice="has_key")
+                    _LOGGER.info("[M3.36.C] 主对话:onboarding has_key → user will configure key manually")
+                elif choice == "no_key":
+                    update_state(onboarding_choice="no_key")
+                    _LOGGER.info("[M3.36.C] 主对话:onboarding no_key → user will download local model")
+                else:  # skip
+                    # skip 不持久化 choice(下次启动继续弹),只更新时间戳
+                    update_state(onboarding_at=int(time.time()))
+                    _LOGGER.info("[M3.36.C] 主对话:onboarding skip (next launch will re-prompt)")
+                self._json({"ok": True, "choice": choice})
+            except Exception as e:
+                _LOGGER.warning("[colibri-onboarding] choose 端点失败: %s", e)
+                self._json({"ok": False, "err": str(e)}, 500)
+        elif path == "/prisiragent/api/colibri/download":
+            # M3.36.B(2026-09-28):触发 OLMoE 后台下载
+            # 幂等:已在跑 → 返 task_id,不重复触发
+            try:
+                from companion.colibri_download import request_download
+                result = request_download()
+                self._json(result)
+            except Exception as e:
+                _LOGGER.exception("[colibri-download] request_download failed: %s", e)
+                self._json({"ok": False, "err": f"{type(e).__name__}: {e}"}, 500)
+        elif path == "/prisiragent/api/colibri/download/status":
+            # M3.36.B(2026-09-28):下载进度查询(前端每 2s 轮询)
+            try:
+                from companion.colibri_download import get_download_status
+                self._json(get_download_status())
+            except Exception as e:
+                _LOGGER.exception("[colibri-download] get_download_status failed: %s", e)
+                self._json({"ok": False, "err": f"{type(e).__name__}: {e}"}, 500)
+        elif path == "/prisiragent/api/colibri/download/cancel":
+            # M3.36.B(2026-09-28):用户取消下载
+            try:
+                from companion.colibri_download import request_cancel
+                self._json(request_cancel())
+            except Exception as e:
+                _LOGGER.exception("[colibri-download] request_cancel failed: %s", e)
+                self._json({"ok": False, "err": f"{type(e).__name__}: {e}"}, 500)
         elif path == "/api/asr/active":
             # M3.27.4(2026-09-18):主面板 k-platform-pick 选 ASR 后调用。
             # 主面板端口 18802 → 转发到 companion 服务 18850 /api/asr/active。
@@ -9877,6 +13660,67 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:  # noqa: BLE001  SSE 失败不影响主流程
                 pass
             self._json({"ok": True, "id": item["id"], "queue_size": len(_INJECT_QUEUE)})
+        elif path == "/prisiragent/api/skill_plan/confirm":
+            # Phase 6(2026-09-28):用户在前端规划卡点「执行/取消」后调。
+            # approved=True → 顺序 execute_skill → emit capability_exec_result + ack
+            # approved=False → emit ack{reason: user_cancelled}
+            approved = bool(body.get("approved", False)) if isinstance(body, dict) else False
+            calls = body.get("calls") if isinstance(body, dict) else None
+            ack_evt_id = body.get("ack_event_id", "") if isinstance(body, dict) else ""
+            if not isinstance(calls, list):
+                self._json({"ok": False, "err": "calls 必须为 list"}, 400)
+                return
+            try:
+                from prisIr_work.skills.integration import (  # noqa: PLC0415
+                    execute_skill, get_skill_plan_queue,
+                    push_skill_plan_confirm_ack,
+                )
+            except Exception as _e:  # noqa: BLE001
+                self._json({"ok": False, "err": f"import 失败: {_e}"}, 500)
+                return
+            executed = 0
+            results: list[dict] = []
+            if approved and calls:
+                for c in calls:
+                    sid = str((c or {}).get("skill_id") or "")
+                    args = (c or {}).get("args") or {}
+                    if not sid:
+                        results.append({"skill_id": "", "ok": False, "error": "no skill_id"})
+                        continue
+                    try:
+                        r = execute_skill(sid, dict(args), force=True)
+                        results.append({
+                            "skill_id": r.skill_id,
+                            "ok": r.ok,
+                            "error": r.error or "",
+                            "result": r.payload or {},
+                        })
+                        if r.ok:
+                            executed += 1
+                    except Exception as _e:  # noqa: BLE001
+                        results.append({"skill_id": sid, "ok": False, "error": str(_e)})
+            # ack 推回队列(前端 polling 拉到)
+            ack_id = push_skill_plan_confirm_ack(
+                ack_evt_id.split(":", 1)[0] if ack_evt_id else "",
+                approved=approved,
+                executed=executed,
+                total=len(calls) if calls else 0,
+                reason="" if approved else "user_cancelled",
+            )
+            # 移除原 skill_plan_request 事件(若有 ack_event_id)
+            if ack_evt_id:
+                try:
+                    get_skill_plan_queue().ack(ack_evt_id)
+                except Exception:  # noqa: BLE001
+                    pass
+            self._json({
+                "ok": True,
+                "approved": approved,
+                "executed": executed,
+                "total": len(calls) if calls else 0,
+                "results": results,
+                "ack_event_id": ack_id,
+            })
         elif path == "/prisiragent/api/skill_install":
             # M3.33(2026-09-16):从本地路径或 git URL 装 skill(简化版 — 本期只支持本地路径)
             # 安全边界:不允许任意 URL 下载,只允许白名单路径或 git clone 已有本地 repo
@@ -10155,6 +13999,29 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:  # noqa: BLE001
                 pass
             self._json({"ok": bool(ok)})
+        elif path == "/prisiragent/api/schedule/consent":
+            # P2.5+8(2026-09-20):首次明细弹卡后,前端调此接口 grant/revoke
+            # body: {"action": "grant" | "revoke" | "status"}
+            action = (body.get("action") or "status").strip().lower()
+            if action == "grant":
+                schedule_extractor_consent_grant()
+                self._json({"ok": True, "enabled": True, "consent_required": False})
+            elif action == "revoke":
+                schedule_extractor_consent_revoke()
+                self._json({"ok": True, "enabled": False, "consent_required": True})
+            else:
+                self._json({
+                    "ok": True,
+                    "enabled": schedule_extractor_enabled(),
+                    "consent_required": schedule_extractor_consent_required(),
+                })
+        elif path == "/prisiragent/api/schedule/history":
+            # P2.5+8(2026-09-20):POST 仅处理 clear(GET 在 do_GET 处理)
+            if body.get("clear"):
+                stats = _schedule_extractor_clear_all()
+                self._json({"ok": True, "cleared": stats})
+            else:
+                self._json({"ok": False, "err": "no clear flag"}, 400)
         elif path == "/prisiragent/api/rename":
             rename_session(body.get("session_id", ""), body.get("title", "")[:60])
             self._json({"ok": True})
@@ -10243,7 +14110,145 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:  # noqa: BLE001
                 pass
             self._json({"ok": True, "workdir": p})
+        elif path == "/prisiragent/api/projects":
+            # M3.35(2026-09-20)项目切换器端点。op=list|switch|add|rename|pin|remove。
+            op = (body.get("op") or "list").strip()
+            try:
+                if op == "list":
+                    self._json({
+                        "ok": True,
+                        "active": _PROJECTS["active"],
+                        "items": list(_PROJECTS["items"]),
+                        "current_workdir": _WORKDIR.get("path", ""),
+                    })
+                elif op == "switch":
+                    p = (body.get("path") or "").strip()
+                    if _projects_activate(p):
+                        try:
+                            _projects_save()
+                        except OSError as se:
+                            self._json({"ok": True, "active": _PROJECTS["active"],
+                                        "warn": f"save failed: {se}"})
+                            return
+                        self._json({"ok": True, "active": _PROJECTS["active"],
+                                    "event": "project_changed"})
+                    else:
+                        self._json({"ok": False, "error": f"目录不存在: {p}"}, 400)
+                elif op == "add":
+                    p = (body.get("path") or "").strip()
+                    if not p:
+                        self._json({"ok": False, "error": "path 必填"}, 400); return
+                    p = os.path.abspath(os.path.expanduser(p))
+                    if not os.path.isdir(p):
+                        self._json({"ok": False, "error": f"目录不存在: {p}"}, 400); return
+                    name = (body.get("name") or "").strip() or None
+                    _projects_upsert(p, name=name, pinned=False)
+                    try:
+                        _projects_save()
+                    except OSError as se:
+                        self._json({"ok": False, "error": f"save failed: {se}"}, 500); return
+                    self._json({"ok": True})
+                elif op == "rename":
+                    p = (body.get("path") or "").strip()
+                    name = (body.get("name") or "").strip()
+                    if not name or len(name) > 32:
+                        self._json({"ok": False, "error": "name 1-32 字"}, 400); return
+                    _projects_upsert(p, name=name)
+                    try:
+                        _projects_save()
+                    except OSError as se:
+                        self._json({"ok": False, "error": f"save failed: {se}"}, 500); return
+                    self._json({"ok": True})
+                elif op == "pin":
+                    p = (body.get("path") or "").strip()
+                    p = os.path.abspath(p)
+                    found = False
+                    with _PROJECTS_LOCK:
+                        for it in _PROJECTS["items"]:
+                            if it.get("path") == p:
+                                it["pinned"] = not bool(it.get("pinned"))
+                                found = True
+                                break
+                    if not found:
+                        self._json({"ok": False, "error": "项目不在列表"}, 400); return
+                    try:
+                        _projects_save()
+                    except OSError as se:
+                        self._json({"ok": False, "error": f"save failed: {se}"}, 500); return
+                    self._json({"ok": True})
+                elif op == "remove":
+                    p = (body.get("path") or "").strip()
+                    _projects_remove(p)
+                    try:
+                        _projects_save()  # 红线:remove 必须 save(M3.35 bug 历史教训)
+                    except OSError as se:
+                        self._json({"ok": False, "error": f"save failed: {se}"}, 500); return
+                    self._json({"ok": True, "active": _PROJECTS["active"]})
+                else:
+                    self._json({"ok": False, "error": f"未知 op: {op}"}, 400)
+            except Exception as e:  # noqa: BLE001
+                self._json({"ok": False, "error": f"projects 异常: {e}"}, 500)
         # === M3.31 外部版本管理兼容(2026-09-16)===
+        elif path == "/prisiragent/api/ext/rpc":
+            # P2.5+B-0(2026-09-21)ext RPC bridge 调试端点:
+            #   POST {ext_id, method, params, timeout?}
+            #   → 转发到 _ext_rpc_call,返 {ok, result} 或 {ok:false, error}
+            ext_id = (body.get("ext_id") or "").strip()
+            method = (body.get("method") or "").strip()
+            params = body.get("params") or {}
+            timeout = float(body.get("timeout") or 5.0)
+            if not ext_id or not method:
+                self._json({"ok": False, "error": "ext_id 和 method 必填"}, 400)
+                return
+            with _EXT_BRIDGE_LOCK:
+                st = _EXT_PROCS.get(ext_id)
+                if not st or not st.get("proc") or st["proc"].poll() is not None:
+                    _ext_spawn(ext_id)
+            r = _ext_rpc_call(ext_id, method, params, timeout=timeout)
+            if "error" in r:
+                self._json({"ok": False, "error": r["error"], "ext_id": ext_id,
+                            "method": method})
+                return
+            self._json({"ok": True, "result": r.get("result"), "ext_id": ext_id,
+                        "method": method})
+        elif path == "/prisiragent/api/workflow/templates":
+            # P2.5+B-2(2026-09-21)工作流编排 UI 模板 wrapper。
+            #   直接走 ext RPC 调 task-runner 的 task.template.list 命令;若 ext 未启
+            #   → 自动 spawn;若 task-runner 不在 → 返内置兜底模板,前端不卡死。
+            try:
+                with _EXT_BRIDGE_LOCK:
+                    st = _EXT_PROCS.get("task-runner")
+                    if not st or not st.get("proc") or st["proc"].poll() is not None:
+                        _ext_spawn("task-runner")
+                r = _ext_rpc_call("task-runner", "task.template.list", {}, timeout=5)
+                if r.get("error"):
+                    self._json({"ok": True, "templates": _WF_FALLBACK_TEMPLATES,
+                                "warn": f"task-runner 不可用,返内置兜底: {r['error']}"})
+                    return
+                self._json({"ok": True, "templates": (r.get("result") or {}).get("templates") or _WF_FALLBACK_TEMPLATES})
+            except Exception as e:  # noqa: BLE001
+                self._json({"ok": True, "templates": _WF_FALLBACK_TEMPLATES,
+                            "warn": f"templates 异常: {e}"})
+        elif path == "/prisiragent/api/workflow/run_progress":
+            # P2.5+B-3(2026-09-21)进度长轮询 peek:wfmodal 调 POST body {run_id, since, ack},
+            #   返 {items: [...]} + seq;ack=true 清已读(避免重复推)。
+            #   不在 queue → 返 missing=True(说明 run 没起来或已 GC)
+            run_id = (body.get("run_id") or "").strip() if isinstance(body, dict) else ""
+            try:
+                since = int(body.get("since") or 0) if isinstance(body, dict) else 0
+            except Exception:
+                since = 0
+            ack = bool(body.get("ack")) if isinstance(body, dict) else False
+            with _WF_PROGRESS_LOCK:
+                q = _WF_PROGRESS_QUEUE.get(run_id) if run_id else None
+                if not q:
+                    self._json({"ok": True, "run_id": run_id, "items": [], "seq": 0, "missing": True})
+                    return
+                items = [it for it in q["items"] if it.get("seq", 0) > since]
+                out_seq = q["seq"]
+                if ack and items:
+                    q["items"] = [it for it in q["items"] if it.get("seq", 0) > out_seq - len(items)]
+            self._json({"ok": True, "run_id": run_id, "items": items, "seq": out_seq})
         elif path == "/prisiragent/api/git_detect":
             # 探测本机是否有 git;force=true 跳过缓存重跑。
             force = str(body.get("force") or "").lower() in ("1", "true", "yes")
@@ -10914,6 +14919,147 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"ok": True, "platforms": _router.available_platforms()})
 
 
+# ============================================================
+# P2.5+14(2026-09-22):独立日历端口 — 同进程双端口 listen。
+# CalendarHandler 只服务日历相关路由(/prisIragent/calendar* 静态 + /prisIragent/api/calendar/*
+# 动态),其它路由返 404 + 日志告警,避免把主 web 端的非日历路径意外暴露到 18803。
+# 用 BaseHTTPRequestHandler 子类而不是 ThreadingHTTPServer 多 bind,是因为
+# BaseHTTPRequestHandler 不支持多 bind(它把 host/port 绑死);两条独立 server 是更干净的方案。
+# 复用主 Handler 的 _json / _html / _download / _serve_calendar_static / _handle_calendar_*
+# 助手(都是类方法或无依赖 instance 函数),无重复代码。
+# ============================================================
+class CalendarHandler(BaseHTTPRequestHandler):
+    """P2.5+14:日历专用 HTTP handler(只接受 calendar 路由)。
+
+    与主 Handler 共用 CalendarStore + _handle_calendar_* 实现,仅路由表收窄。
+    进程内同源,通过共享内存 + threading.Lock 保证 CalendarStore 单例一致。
+    """
+
+    def log_message(self, fmt, *args):  # noqa: N802
+        pass
+
+    def _json(self, data, code: int = 200):
+        # P2.5+14:复用主 Handler._json 序列化逻辑(避免重复)。通过 type(self).__mro__
+        # 找主 Handler 的 _json 不可靠(它是 _serve_calendar_static 里调
+        # Handler._handle_calendar_timeline 等会走主 handler self);这里直接 inline 一份。
+        body = json.dumps(data, ensure_ascii=False).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        if WEB_HOST == "0.0.0.0":  # P1 局域网同 main() 行为
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Prisir-Token")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _serve_calendar_static(self, filename: str):
+        # P2.5+14:CalendarHandler 不继承 Handler(为路由表收窄),所以静态服务逻辑就地内联。
+        # 跟主 Handler._serve_calendar_static 同款(读 prisIragent_calendar/static/<safe>)。
+        safe = os.path.basename(filename)  # 防穿越
+        if safe != filename:
+            self._json({"error": "bad path"}, 400)
+            return
+        try:
+            base = Path(__file__).resolve().parent / "prisIragent_calendar" / "static"
+            fpath = base / safe
+            if not fpath.is_file():
+                self._json({"error": "not found"}, 404)
+                return
+            data = fpath.read_bytes()
+        except OSError as e:  # noqa: BLE001
+            _LOGGER.warning("[calendar-handler] read %s failed: %s", filename, e)
+            self._json({"error": f"read failed: {e}"}, 500)
+            return
+        if safe.endswith(".html"):
+            ctype = "text/html; charset=utf-8"
+        elif safe.endswith(".js"):
+            ctype = "application/javascript; charset=utf-8"
+        elif safe.endswith(".css"):
+            ctype = "text/css; charset=utf-8"
+        else:
+            ctype = "application/octet-stream"
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_GET(self):  # noqa: N802 — BaseHTTPRequestHandler 接口名
+        from urllib.parse import urlparse, parse_qs
+        u = urlparse(self.path)
+        path = u.path
+        qs = parse_qs(u.query)
+        try:
+            if path == "/" or path == "/prisIragent/calendar" or path == "/prisIragent/calendar/":
+                # 日历端口首页 = 时间线(等同主 web 端 GET /prisIragent/calendar)
+                self._serve_calendar_static("timeline.html")
+                return
+            if path.startswith("/prisIragent/calendar/"):
+                # /prisIragent/calendar/<file> 静态资源
+                self._serve_calendar_static(path[len("/prisIragent/calendar/"):])
+                return
+            if path == "/prisIragent/api/calendar/timeline":
+                # 复用主 Handler._handle_calendar_timeline(qs)(同模块 def 函数,直接调)
+                Handler._handle_calendar_timeline(self, qs)
+                return
+            if path == "/prisIragent/api/calendar/export.ics":
+                Handler._handle_calendar_export(self)
+                return
+            # P2.5+14 日历端口健康端点 — Electron 壳 main.js openCalendarWindow 等 sentinel 时
+            # 用 /__calendar_ready(不要打 prisiragent 前缀,跟主端口的 /__web_ready 对称)。
+            if path == "/__calendar_ready":
+                self._json({"ok": True, "service": "calendar", "port": WEB_PORT})
+                return
+            # 兜底:日历端口拒绝非日历路径(防止 web 端路由意外暴露到 18803)
+            _LOGGER.info("[calendar-handler] rejected non-calendar path: %s", path)
+            self._json({"error": "not a calendar endpoint", "path": path}, 404)
+        except Exception as e:  # noqa: BLE001
+            _LOGGER.exception("[calendar-handler] do_GET %s crashed: %s", path, e)
+            try:
+                self._json({"error": "internal error: %s" % e}, 500)
+            except Exception:
+                pass
+
+    def do_POST(self):  # noqa: N802
+        from urllib.parse import urlparse
+        u = urlparse(self.path)
+        path = u.path
+        # 读 body(同主 Handler.do_POST 早期逻辑)
+        try:
+            length = int(self.headers.get("Content-Length") or "0")
+        except Exception:
+            length = 0
+        raw = self.rfile.read(length) if length > 0 else b""
+        try:
+            body = json.loads(raw.decode("utf-8")) if raw else {}
+        except Exception:
+            body = {}
+        try:
+            if path == "/prisIragent/api/calendar/dismiss":
+                Handler._handle_calendar_dismiss(self, body)
+                return
+            if path == "/prisIragent/api/calendar/scan":
+                Handler._handle_calendar_scan(self, body)
+                return
+            _LOGGER.info("[calendar-handler] rejected non-calendar POST: %s", path)
+            self._json({"error": "not a calendar endpoint", "path": path}, 404)
+        except Exception as e:  # noqa: BLE001
+            _LOGGER.exception("[calendar-handler] do_POST %s crashed: %s", path, e)
+            try:
+                self._json({"error": "internal error: %s" % e}, 500)
+            except Exception:
+                pass
+
+    def do_OPTIONS(self):  # noqa: N802 — CORS preflight,主 handler 已有逻辑,这里返 204
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Prisir-Token")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+
 def main():
     global DEFAULT_MODEL, DEFAULT_WORKDIR, DEFAULT_STRATEGY, WEB_HOST, WEB_PORT
     # M3.34(2026-09-19)端口统一:CLI > env > 用户设置(HKCU/JSON) > 模块默认。
@@ -10930,6 +15076,21 @@ def main():
         _resolved_port = resolve_start_port("web", _env_web, WEB_PORT, _DEFAULT_WEB_PORT)
         ap = argparse.ArgumentParser()
         ap.add_argument("--port", type=int, default=_resolved_port)
+        # P2.5+14(2026-09-22):独立日历端口。优先级跟 web 一致(CLI > env > 用户设置 > 默认)。
+        # env:PRISIRAGENT_CALENDAR_PORT。用户设置:HKCU calendar_port / ports.json['calendar']。
+        # 默认:DEFAULT_CALENDAR_PORT = 18803。可用 --no-calendar-port(=0)禁用(测试态 / 单端口模式)。
+        try:
+            from companion.music.port_config import (
+                DEFAULT_CALENDAR_PORT as _DEFAULT_CALENDAR_PORT,
+                resolve_start_port as _resolve_cal,
+            )
+            _env_cal = os.environ.get("PRISIRAGENT_CALENDAR_PORT")
+            _resolved_cal_port = _resolve_cal("calendar", _env_cal, None, _DEFAULT_CALENDAR_PORT)
+            ap.add_argument("--calendar-port", type=int, default=_resolved_cal_port,
+                            help="独立日历端口(默认 18803);=0 禁用")
+        except Exception:  # noqa: BLE001 — port_config 不可用时退化到默认值
+            ap.add_argument("--calendar-port", type=int, default=18803,
+                            help="独立日历端口(默认 18803);=0 禁用")
     except Exception as _pc_err:  # noqa: BLE001 — port_config 不可用时退化到旧行为
         try:
             _LOGGER.warning("port_config unavailable, fallback to env/CLI/default: %s", _pc_err)
@@ -10937,6 +15098,8 @@ def main():
             pass
         ap = argparse.ArgumentParser()
         ap.add_argument("--port", type=int, default=WEB_PORT)
+        ap.add_argument("--calendar-port", type=int, default=18803,
+                        help="独立日历端口(默认 18803);=0 禁用")
     ap.add_argument("--model", default=DEFAULT_MODEL)
     ap.add_argument("--workdir", default=DEFAULT_WORKDIR)
     ap.add_argument("--strategy", default=DEFAULT_STRATEGY)
@@ -10946,8 +15109,14 @@ def main():
                     help="诊断日志落点(默认 %%APPDATA%%/prisiragent-shell/logs/prisirai-backend.log)")
     args = ap.parse_args()
     DEFAULT_MODEL, DEFAULT_WORKDIR, DEFAULT_STRATEGY = args.model, args.workdir, args.strategy
-    _configured_port = args.port
-    WEB_PORT = _configured_port   # 真端口(--port 覆盖 env 默认),供 /api/info 报告给 About 页
+    global _CONFIGURED_PORT, _REAL_PORT, _CONFIGURED_CALENDAR_PORT, _REAL_CALENDAR_PORT
+    _CONFIGURED_PORT = args.port
+    WEB_PORT = _CONFIGURED_PORT   # 真端口(--port 覆盖 env 默认),供 /api/info 报告给 About 页
+    _REAL_PORT = WEB_PORT          # 默认与 configured 相同;启动后若 fallback 则覆盖
+    # P2.5+14:日历端口同样走 configured/actual 双轨。=0 表示禁用(单端口模式,日历走主 web 端
+    # 18802 的 /prisIragent/calendar 路由,跟 P2.5+13 ship 的行为一致 — 向后兼容)。
+    _CONFIGURED_CALENDAR_PORT = int(args.calendar_port)
+    _REAL_CALENDAR_PORT = _CONFIGURED_CALENDAR_PORT
 
     # v2.0 日志基础设施:RotatingFileHandler 5MB×3
     log_file = _setup_logging(args.log_file)
@@ -10962,6 +15131,18 @@ def main():
         lp = lan_pair.init(str(_DB_DIR), args.port)
         lp.start_broadcast()
         _LOGGER.info("LAN mode: listening 0.0.0.0:%d, token gate ON, mDNS broadcast ON", args.port)
+
+    # M3.35:启动时从 ~/.prisir/projects.json 读上次激活的项目
+    # (若文件不存在 / 损坏,仍用 DEFAULT_WORKDIR 默认值)
+    try:
+        _projects_load()
+        if _PROJECTS["active"] and os.path.isdir(_PROJECTS["active"]):
+            DEFAULT_WORKDIR = _PROJECTS["active"]
+            _WORKDIR["path"] = DEFAULT_WORKDIR
+            _LOGGER.info("projects.json loaded: active=%s items=%d",
+                         DEFAULT_WORKDIR, len(_PROJECTS["items"]))
+    except Exception as e:  # noqa: BLE001
+        _LOGGER.warning("projects.json load failed (use default): %s", e)
 
     # v1.0 权限闸:初始化 coworker 引擎(path sandbox 根=workdir,审计落 logs/audit)。
     try:
@@ -10979,6 +15160,17 @@ def main():
     except Exception as e:  # noqa: BLE001 — skill 扫失败不致命(只是没 skill 用)
         _LOGGER.warning("skill scan failed (no skills available): %s", e)
 
+    # P2.5+B-0(2026-09-21)ext RPC bridge 自动启动:
+    #   读 ~/.prisir/installed.json,把 enabled=true 的 ext 子进程拉起来。
+    #   文件缺失/坏 → 跳过(等价于没装扩展,正常路径)。
+    try:
+        _ext_autostart_from_installed()
+    except Exception as e:  # noqa: BLE001
+        try:
+            _LOGGER.warning("[ext-bridge] autostart failed: %s", e)
+        except Exception:
+            pass
+
     srv = ThreadingHTTPServer((WEB_HOST, args.port), Handler)
     _LOGGER.info("PrisirAI 对话模式 http://%s:%d  路由=%s  数据=%s",
                  WEB_HOST, args.port, DEFAULT_STRATEGY, _CHAT_DB)
@@ -10988,13 +15180,14 @@ def main():
     # M3.34(2026-09-19)端口变化写回:若 srv.server_address[1] 与配置端口不一致
     # (例如 args.port=0 由 OS 分配、或 args.port 被占用被 fallback),
     # 把真端口写回注册表,下次 Tauri 壳启动读到新值。
+    # 注:_CONFIGURED_PORT/_REAL_PORT 的 global 声明见 main() 开头 11027,本块不再重复
     try:
-        _real_port = int(srv.server_address[1])
-        if _real_port != int(_configured_port):
+        _REAL_PORT = int(srv.server_address[1])
+        if _REAL_PORT != int(_CONFIGURED_PORT):
             try:
-                from companion.music.port_config import notify_port_changed as _notify_pc, \
-                    write_port as _pc_write_port
-                notify_port_changed("web", int(_configured_port), _real_port)
+                from companion.music.port_config import notify_port_changed as _notify_pc
+                _notify_pc("web", int(_CONFIGURED_PORT), _REAL_PORT)
+                WEB_PORT = _REAL_PORT   # 让 /api/info 也返真端口,前端用真实连
             except Exception as _pc_w_err:  # noqa: BLE001
                 try:
                     _LOGGER.warning("port_config write-back failed: %s", _pc_w_err)
@@ -11002,6 +15195,49 @@ def main():
                     pass
     except Exception:  # noqa: BLE001 — 拿真端口失败不能阻塞 boot
         pass
+
+    # ============================================================
+    # P2.5+14(2026-09-22):日历端口同进程双端口 listen。
+    # CalendarHandler 只服务日历路由,ThreadingHTTPServer 复用线程模型。
+    # 跟主 web 端口并行跑,互不阻塞。
+    # --calendar-port=0 表示禁用日历端口,日历路由仍走主 web 18802(向后兼容 P2.5+13 ship 的行为)。
+    # ============================================================
+    cal_srv = None
+    if _CONFIGURED_CALENDAR_PORT > 0:
+        try:
+            cal_srv = ThreadingHTTPServer((WEB_HOST, _CONFIGURED_CALENDAR_PORT), CalendarHandler)
+            _REAL_CALENDAR_PORT = int(cal_srv.server_address[1])
+            print(f"[prisIragent_web] Listening on http://127.0.0.1:{_REAL_CALENDAR_PORT} (calendar-only)",
+                  flush=True)
+            print(f"[prisIragent_web] PRISIR_CALENDAR_READY port={_REAL_CALENDAR_PORT}", flush=True)
+            _LOGGER.info("calendar sub-server listening on http://%s:%d (calendar-only routes)",
+                         WEB_HOST, _REAL_CALENDAR_PORT)
+            if _REAL_CALENDAR_PORT != int(_CONFIGURED_CALENDAR_PORT):
+                # 跟主端口同款:configured vs actual 不一致时写回注册表
+                try:
+                    from companion.music.port_config import notify_port_changed as _notify_pc_cal
+                    _notify_pc_cal("calendar", int(_CONFIGURED_CALENDAR_PORT), _REAL_CALENDAR_PORT)
+                except Exception as _pc_cal_err:  # noqa: BLE001
+                    try:
+                        _LOGGER.warning("port_config calendar write-back failed: %s", _pc_cal_err)
+                    except Exception:
+                        pass
+            # 后台线程跑日历端口,主线程继续 serve_forever web 端口
+            import threading as _t_cal
+            _cal_thread = _t_cal.Thread(target=cal_srv.serve_forever, name="calendar-http", daemon=True)
+            _cal_thread.start()
+        except OSError as _cal_bind_err:  # 端口被占 → skip(走主 web 端口的日历路由 fallback)
+            _LOGGER.warning("[calendar-handler] bind %s:%d failed: %s — calendar routes stay on main web port %d",
+                            WEB_HOST, _CONFIGURED_CALENDAR_PORT, _cal_bind_err, _REAL_PORT)
+            cal_srv = None
+        except Exception as _cal_boot_err:  # noqa: BLE001 — 日历端口启动失败不能阻塞主 web
+            _LOGGER.warning("[calendar-handler] boot failed: %s — calendar routes stay on main web port",
+                            _cal_boot_err)
+            cal_srv = None
+    else:
+        _LOGGER.info("calendar sub-server disabled (--calendar-port=0); calendar routes on main web port %d",
+                     _REAL_PORT)
+
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
@@ -11009,6 +15245,13 @@ def main():
     except Exception as e:  # noqa: BLE001
         _LOGGER.exception("srv.serve_forever crashed: %s", e)
         raise
+    finally:
+        # 优雅关闭日历端口(daemon 线程随主进程退出,但显式 shutdown 更稳)
+        if cal_srv is not None:
+            try:
+                cal_srv.shutdown()
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":
