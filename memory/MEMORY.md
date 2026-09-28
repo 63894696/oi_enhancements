@@ -12,3 +12,5 @@
 ## M3.64 5 scenario critical 专项 + Obsidian 复活(活跃,本地完成)
 - [M3.64 5 scenario critical 专项 + M3.66 L3 + Obsidian 验证 2026-09-23](prisIr-companion-m364-5scenarios-critical.md) — **本地完成 A/B1/B2**:Obsidian fcontent_root 死路径→真 vault 修复 + index 重建(10→15 entries) + ai_done 实测;4 个 baseline + 4 个 v3_critical.py + 8 个 v3 jsonl(280-480 条/场景,critical 23-39%);**B3/C 阻塞**:aliyun 192.220.14.165:49108 /workspace 被回收 / 无 nvidia,等用户重启 T4 后训 4 个 v3_conf + 8 个 AgentJev head- [PrisirAI Skills 工作台 Phase 6 主面板 ship](prisIr-skills-workbench-phase-6.md) — 2026-09-28 commit a7830eb;integration.py + 3 HTTP 端点 + polling + 弹卡;puppeteer 实测图
 - [PrisirAI Skills 工作台 Phase 7 紧凑化 + 默认全开 ship](prisIr-skills-workbench-phase-7.md) — 2026-09-28;12882→7993c(-38%);去 emoji + name 截断 24 + tags 上限 4;主面板/companion 默认全开
+- [PrisirAI Skills 工作台 文档 ship](prisIr-skills-workbench-docs.md) — 2026-09-28;config.md 11 开关 × 2 入口 + 4 档风险门 + fail-open 6 点 + token 经济性表;shipped.md 8 阶段 12 commit + 148 测试
+- [PrisirAI Skills 工作台 Phase 8 tier 分层字段 ship](prisIr-skills-workbench-phase-8.md) — 2026-09-28 commit 04ce490;69 skill 标 hot=3/warm=56/cold=10/archive=0;不动能力只分层;capability `_tier` override 启发式;未来留口子按 tier 分层注入
