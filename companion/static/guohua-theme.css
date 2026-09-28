@@ -268,3 +268,11 @@
   0% { transform: scale(1.4); }
   100% { transform: scale(1); }
 }
+
+/* M3.36.C (2026-09-28):colibri 三选一引导卡
+   两种用户分叉:
+     ① 完全不懂 API/key → 下载本地模型(一次性,~7 GB)
+     ② 会配置 / 已有 key → 关闭引导,日常走云端
+*/
+/* M3.36.C 重构:colibri 引导卡 UI 已转移到主对话窗口(prisIragent_web.py 的 _PAGE),
+   companion(语音对话扩展)不再展示此卡。 */

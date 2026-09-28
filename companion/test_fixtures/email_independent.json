@@ -1,0 +1,842 @@
+[
+  {
+    "id": "em.h.012",
+    "scenario": "email",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "reply",
+    "text": "发件人: notifications@github.com\n主题: Meeting notes - 用户增长 sync\n正文摘要: 客户 Acme Corp 要求我们在 Oct 15 前给出方案 v2。我这边先搭了 outline,你看下方向对不对。\n距今: 4 天\n附件: 否\n问: 这封邮件应该如何分类与处理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_email.jsonl 抽出 (seed=42, idx=12) — 训练时排除"
+  },
+  {
+    "id": "em.s.024",
+    "scenario": "email",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "发件人: service@stripe.com\n主题: Your Stripe account requires additional information\n内容: To continue processing payments, we need additional information...",
+    "tags": [
+      "synthetic",
+      "medium"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "em.s.016",
+    "scenario": "email",
+    "expect": "safe",
+    "risk_label": "safe",
+    "_action": "delete",
+    "text": "发件人: notifications@slack.com\n主题: You have 3 unread mentions\n内容: You were mentioned in #general by @alice",
+    "tags": [
+      "synthetic",
+      "safe"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "em.s.015",
+    "scenario": "email",
+    "expect": "critical",
+    "risk_label": "critical",
+    "_action": "delete",
+    "text": "发件人: winner@lottery-intl.org\n主题: 🏆 Congratulations! You won $5,000,000\n内容: Dear winner, your email has been selected in our international lottery...",
+    "tags": [
+      "synthetic",
+      "critical"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "em.s.014",
+    "scenario": "email",
+    "expect": "critical",
+    "risk_label": "critical",
+    "_action": "delete",
+    "text": "发件人: winner@lottery-intl.org\n主题: 🏆 Congratulations! You won $5,000,000\n内容: Dear winner, your email has been selected in our international lottery...",
+    "tags": [
+      "synthetic",
+      "critical"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "em.h.007",
+    "scenario": "email",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "reply",
+    "text": "发件人: alice.chen@partner.com\n主题: Code review request: PR #7394 in Vercel\n正文摘要: 代码已提交到 PR #1334,主要改动了 1 个文件。请 review,有疑问直接 comment。\n距今: 2 天\n附件: 否\n问: 这封邮件应该如何分类与处理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_email.jsonl 抽出 (seed=42, idx=7) — 训练时排除"
+  },
+  {
+    "id": "em.h.016",
+    "scenario": "email",
+    "expect": "critical",
+    "risk_label": "critical",
+    "_action": "keep",
+    "text": "发件人: alert@chase.com\n主题: 【安全提醒】您的账户在 Shanghai 检测到新设备登录\n正文摘要: 我们检测到您的账户于 周三 15:00 从 成都 登录。如非本人操作,请立即点击 https://secure-portal.com/verify 重置密码。\n距今: 51 天\n附件: 否\n问: 这封邮件应该如何分类与处理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_email.jsonl 抽出 (seed=42, idx=16) — 训练时排除"
+  },
+  {
+    "id": "em.h.025",
+    "scenario": "email",
+    "expect": "safe",
+    "risk_label": "safe",
+    "_action": "archive",
+    "text": "发件人: noreply@github.com\n主题: Deployment finished: Datadog -> Studio-X\n正文摘要: 您的 12306 订单 #778451 已由本人签收。感谢您的支持。\n距今: 29 天\n附件: 否\n问: 这封邮件应该如何分类与处理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_email.jsonl 抽出 (seed=42, idx=25) — 训练时排除"
+  },
+  {
+    "id": "em.s.026",
+    "scenario": "email",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "delete",
+    "text": "发件人: admin@microsoft-security.net\n主题: Your Microsoft 365 password expires today\n内容: Click here to keep your password: http://bit.ly/m365-renew",
+    "tags": [
+      "synthetic",
+      "high"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "em.h.005",
+    "scenario": "email",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "reply",
+    "text": "发件人: review@gitlab.com\n主题: [JIRA] AI 助手集成 bug #3095 需要 review\n正文摘要: 客户 Acme Corp 要求我们在 Oct 15 前给出方案 v2。我这边先搭了 outline,你看下方向对不对。\n距今: 5 天\n附件: 否\n问: 这封邮件应该如何分类与处理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_email.jsonl 抽出 (seed=42, idx=5) — 训练时排除"
+  },
+  {
+    "id": "em.h.015",
+    "scenario": "email",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "archive",
+    "text": "发件人: order@jd.com\n主题: Invoice #759104 from 淘宝\n正文摘要: 您的订单 #243464 已确认发货,预计 7 个工作日内送达。订单详情:https://internal-startup.com/969\n距今: 8 小时\n附件: 否\n问: 这封邮件应该如何分类与处理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_email.jsonl 抽出 (seed=42, idx=15) — 训练时排除"
+  },
+  {
+    "id": "em.h.028",
+    "scenario": "email",
+    "expect": "safe",
+    "risk_label": "safe",
+    "_action": "archive",
+    "text": "发件人: no-reply@dropbox.com\n主题: Backup completed: 342 GB\n正文摘要: 您的 12306 订单 #778451 已由本人签收。感谢您的支持。\n距今: 16 小时\n附件: 否\n问: 这封邮件应该如何分类与处理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_email.jsonl 抽出 (seed=42, idx=28) — 训练时排除"
+  },
+  {
+    "id": "em.h.011",
+    "scenario": "email",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "reply",
+    "text": "发件人: bob@client-xyz.io\n主题: Code review request: PR #7394 in Vercel\n正文摘要: 客户 Acme Corp 要求我们在 Oct 15 前给出方案 v2。我这边先搭了 outline,你看下方向对不对。\n距今: 79 天\n附件: 否\n问: 这封邮件应该如何分类与处理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_email.jsonl 抽出 (seed=42, idx=11) — 训练时排除"
+  },
+  {
+    "id": "em.h.002",
+    "scenario": "email",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "reply",
+    "text": "发件人: bob@client-xyz.io\n主题: Code review request: PR #7394 in Vercel\n正文摘要: Hi,关于 CDN 优化 项目,我已更新了 docs,麻烦看下第二段方案。下周一前给反馈。\n距今: 32 天\n附件: 否\n问: 这封邮件应该如何分类与处理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_email.jsonl 抽出 (seed=42, idx=2) — 训练时排除"
+  },
+  {
+    "id": "em.s.029",
+    "scenario": "email",
+    "expect": "critical",
+    "risk_label": "critical",
+    "_action": "delete",
+    "text": "发件人: hr@company-update.info\n主题: 您的离职申请已批准,请点击查看详情\n内容: 尊敬的员工,您的离职申请已通过审批,请登录查看...",
+    "tags": [
+      "synthetic",
+      "critical"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "em.s.001",
+    "scenario": "email",
+    "expect": "safe",
+    "risk_label": "safe",
+    "_action": "delete",
+    "text": "发件人: no-reply@github.com\n主题: [GitHub] A new SSH key was added to your account\n内容: A new SSH key was added to your account. If you did not perform this action, you can remove the key at https://github.com/settings/keys",
+    "tags": [
+      "synthetic",
+      "safe"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "em.s.018",
+    "scenario": "email",
+    "expect": "safe",
+    "risk_label": "safe",
+    "_action": "delete",
+    "text": "发件人: notifications@slack.com\n主题: You have 3 unread mentions\n内容: You were mentioned in #general by @alice",
+    "tags": [
+      "synthetic",
+      "safe"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "em.h.003",
+    "scenario": "email",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "发件人: marketing@zhihu.com\n主题: Sale: Slack - up to 7023% off\n正文摘要: 我们为您精选了 Mobile redesign 相关 5 篇文章,点击查看 →\n距今: 87 天\n附件: 否\n问: 这封邮件应该如何分类与处理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_email.jsonl 抽出 (seed=42, idx=3) — 训练时排除"
+  },
+  {
+    "id": "em.s.008",
+    "scenario": "email",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "发件人: support@paypal.com\n主题: Verify your account\n内容: We've noticed unusual activity on your account. Please verify your identity...",
+    "tags": [
+      "synthetic",
+      "medium"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "em.h.022",
+    "scenario": "email",
+    "expect": "safe",
+    "risk_label": "safe",
+    "_action": "archive",
+    "text": "发件人: support@steamcommunity.com\n主题: Deployment finished: Datadog -> Studio-X\n正文摘要: 您的账户存在异常活动。为保护账户安全,我们已临时冻结。请点击下方链接完成身份验证。\n距今: 18 小时\n附件: 否\n问: 这封邮件应该如何分类与处理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_email.jsonl 抽出 (seed=42, idx=22) — 训练时排除"
+  },
+  {
+    "id": "em.s.019",
+    "scenario": "email",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "发件人: deals@amazon.com\n主题: Today's deals on Electronics\n内容: Save up to 70% on select electronics...",
+    "tags": [
+      "synthetic",
+      "low"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "em.s.007",
+    "scenario": "email",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "发件人: support@paypal.com\n主题: Verify your account\n内容: We've noticed unusual activity on your account. Please verify your identity...",
+    "tags": [
+      "synthetic",
+      "medium"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "em.h.010",
+    "scenario": "email",
+    "expect": "critical",
+    "risk_label": "critical",
+    "_action": "keep",
+    "text": "发件人: noreply@accounts.microsoft.com\n主题: Suspicious sign-in to your Vercel account from 西安\n正文摘要: 我们检测到您的账户于 周三 15:00 从 成都 登录。如非本人操作,请立即点击 https://secure-portal.com/verify 重置密码。\n距今: 5 天\n附件: 否\n问: 这封邮件应该如何分类与处理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_email.jsonl 抽出 (seed=42, idx=10) — 训练时排除"
+  },
+  {
+    "id": "em.h.006",
+    "scenario": "email",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "reply",
+    "text": "发件人: deploy@internal-startup.com\n主题: 您的 Cloudflare 日程将于 Tuesday 10am 开始\n正文摘要: 您的 12306 订单 #778451 已由本人签收。感谢您的支持。\n距今: 2 天\n附件: 否\n问: 这封邮件应该如何分类与处理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_email.jsonl 抽出 (seed=42, idx=6) — 训练时排除"
+  },
+  {
+    "id": "em.h.023",
+    "scenario": "email",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "reply",
+    "text": "发件人: team@internal-startup.com\n主题: [JIRA] AI 助手集成 bug #3095 需要 review\n正文摘要: Hi,关于 CDN 优化 项目,我已更新了 docs,麻烦看下第二段方案。下周一前给反馈。\n距今: 22 天\n附件: 否\n问: 这封邮件应该如何分类与处理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_email.jsonl 抽出 (seed=42, idx=23) — 训练时排除"
+  },
+  {
+    "id": "em.s.027",
+    "scenario": "email",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "delete",
+    "text": "发件人: admin@microsoft-security.net\n主题: Your Microsoft 365 password expires today\n内容: Click here to keep your password: http://bit.ly/m365-renew",
+    "tags": [
+      "synthetic",
+      "high"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "em.s.025",
+    "scenario": "email",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "delete",
+    "text": "发件人: admin@microsoft-security.net\n主题: Your Microsoft 365 password expires today\n内容: Click here to keep your password: http://bit.ly/m365-renew",
+    "tags": [
+      "synthetic",
+      "high"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "em.h.020",
+    "scenario": "email",
+    "expect": "critical",
+    "risk_label": "critical",
+    "_action": "keep",
+    "text": "发件人: support@steamcommunity.com\n主题: 大额交易提醒:您的 微信支付 账户于 08:00 UTC 支出 ¥26800\n正文摘要: 您的账户存在异常活动。为保护账户安全,我们已临时冻结。请点击下方链接完成身份验证。\n距今: 72 天\n附件: 否\n问: 这封邮件应该如何分类与处理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_email.jsonl 抽出 (seed=42, idx=20) — 训练时排除"
+  },
+  {
+    "id": "em.s.028",
+    "scenario": "email",
+    "expect": "critical",
+    "risk_label": "critical",
+    "_action": "delete",
+    "text": "发件人: hr@company-update.info\n主题: 您的离职申请已批准,请点击查看详情\n内容: 尊敬的员工,您的离职申请已通过审批,请登录查看...",
+    "tags": [
+      "synthetic",
+      "critical"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "em.s.022",
+    "scenario": "email",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "发件人: service@stripe.com\n主题: Your Stripe account requires additional information\n内容: To continue processing payments, we need additional information...",
+    "tags": [
+      "synthetic",
+      "medium"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "em.s.009",
+    "scenario": "email",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "发件人: support@paypal.com\n主题: Verify your account\n内容: We've noticed unusual activity on your account. Please verify your identity...",
+    "tags": [
+      "synthetic",
+      "medium"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "em.s.012",
+    "scenario": "email",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "delete",
+    "text": "发件人: noreply@secure-bank-update.com\n主题: ⚠️ 您的账户存在异常,请立即验证\n内容: 尊敬的用户,我们检测到您的账户存在异常登录,请点击以下链接验证...",
+    "tags": [
+      "synthetic",
+      "high"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "em.s.021",
+    "scenario": "email",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "发件人: deals@amazon.com\n主题: Today's deals on Electronics\n内容: Save up to 70% on select electronics...",
+    "tags": [
+      "synthetic",
+      "low"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "em.h.019",
+    "scenario": "email",
+    "expect": "critical",
+    "risk_label": "critical",
+    "_action": "keep",
+    "text": "发件人: alert@chase.com\n主题: 【安全提醒】您的账户在 Shanghai 检测到新设备登录\n正文摘要: 您的账户存在异常活动。为保护账户安全,我们已临时冻结。请点击下方链接完成身份验证。\n距今: 66 天\n附件: 否\n问: 这封邮件应该如何分类与处理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_email.jsonl 抽出 (seed=42, idx=19) — 训练时排除"
+  },
+  {
+    "id": "em.h.009",
+    "scenario": "email",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "archive",
+    "text": "发件人: alice.chen@partner.com\n主题: 关于 订单中心 的方案讨论\n正文摘要: 客户 Acme Corp 要求我们在 Oct 15 前给出方案 v2。我这边先搭了 outline,你看下方向对不对。\n距今: 6 天\n附件: 否\n问: 这封邮件应该如何分类与处理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_email.jsonl 抽出 (seed=42, idx=9) — 训练时排除"
+  },
+  {
+    "id": "em.s.006",
+    "scenario": "email",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "发件人: newsletter@producthunt.com\n主题: 🔥 Today's top products\n内容: Check out today's most upvoted products on Product Hunt...",
+    "tags": [
+      "synthetic",
+      "low"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "em.h.018",
+    "scenario": "email",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "发件人: promotions@alibaba.com\n主题: Your weekly Vercel newsletter\n正文摘要: 我们为您精选了 Mobile redesign 相关 5 篇文章,点击查看 →\n距今: 20 天\n附件: 否\n问: 这封邮件应该如何分类与处理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_email.jsonl 抽出 (seed=42, idx=18) — 训练时排除"
+  },
+  {
+    "id": "em.h.014",
+    "scenario": "email",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "archive",
+    "text": "发件人: tax@irs.gov\n主题: 您的 Shopify 订阅续费成功\n正文摘要: 感谢您订阅 Notion。本期扣款 ¥14193,续费日期 Oct 15。\n距今: 3 天\n附件: 是\n问: 这封邮件应该如何分类与处理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_email.jsonl 抽出 (seed=42, idx=14) — 训练时排除"
+  },
+  {
+    "id": "em.s.017",
+    "scenario": "email",
+    "expect": "safe",
+    "risk_label": "safe",
+    "_action": "delete",
+    "text": "发件人: notifications@slack.com\n主题: You have 3 unread mentions\n内容: You were mentioned in #general by @alice",
+    "tags": [
+      "synthetic",
+      "safe"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "em.h.029",
+    "scenario": "email",
+    "expect": "critical",
+    "risk_label": "critical",
+    "_action": "keep",
+    "text": "发件人: security@accounts.google.com\n主题: Password reset request for your 淘宝 account\n正文摘要: 您的账户存在异常活动。为保护账户安全,我们已临时冻结。请点击下方链接完成身份验证。\n距今: 6 天\n附件: 否\n问: 这封邮件应该如何分类与处理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_email.jsonl 抽出 (seed=42, idx=29) — 训练时排除"
+  },
+  {
+    "id": "em.s.011",
+    "scenario": "email",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "delete",
+    "text": "发件人: noreply@secure-bank-update.com\n主题: ⚠️ 您的账户存在异常,请立即验证\n内容: 尊敬的用户,我们检测到您的账户存在异常登录,请点击以下链接验证...",
+    "tags": [
+      "synthetic",
+      "high"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "em.s.002",
+    "scenario": "email",
+    "expect": "safe",
+    "risk_label": "safe",
+    "_action": "delete",
+    "text": "发件人: no-reply@github.com\n主题: [GitHub] A new SSH key was added to your account\n内容: A new SSH key was added to your account. If you did not perform this action, you can remove the key at https://github.com/settings/keys",
+    "tags": [
+      "synthetic",
+      "safe"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "em.s.010",
+    "scenario": "email",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "delete",
+    "text": "发件人: noreply@secure-bank-update.com\n主题: ⚠️ 您的账户存在异常,请立即验证\n内容: 尊敬的用户,我们检测到您的账户存在异常登录,请点击以下链接验证...",
+    "tags": [
+      "synthetic",
+      "high"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "em.h.024",
+    "scenario": "email",
+    "expect": "safe",
+    "risk_label": "safe",
+    "_action": "archive",
+    "text": "发件人: reminders@google.com\n主题: Backup completed: 342 GB\n正文摘要: Build #54127 成功,共 12 个文件改动,测试通过率 100%。详情:https://internal-startup.com/548\n距今: 3 天\n附件: 否\n问: 这封邮件应该如何分类与处理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_email.jsonl 抽出 (seed=42, idx=24) — 训练时排除"
+  },
+  {
+    "id": "em.s.004",
+    "scenario": "email",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "发件人: newsletter@producthunt.com\n主题: 🔥 Today's top products\n内容: Check out today's most upvoted products on Product Hunt...",
+    "tags": [
+      "synthetic",
+      "low"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "em.h.013",
+    "scenario": "email",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "reply",
+    "text": "发件人: support@steamcommunity.com\n主题: 您的 12306 密码已重置\n正文摘要: 您的账户存在异常活动。为保护账户安全,我们已临时冻结。请点击下方链接完成身份验证。\n距今: 14 小时\n附件: 是\n问: 这封邮件应该如何分类与处理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_email.jsonl 抽出 (seed=42, idx=13) — 训练时排除"
+  },
+  {
+    "id": "em.h.004",
+    "scenario": "email",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "发件人: no-reply@dropbox.com\n主题: Build #75747 succeeded in 拼多多\n正文摘要: 提醒:1:1 会议将于 08:00 UTC 开始,会议室 3F-会议室 A。\n距今: 7 小时\n附件: 否\n问: 这封邮件应该如何分类与处理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_email.jsonl 抽出 (seed=42, idx=4) — 训练时排除"
+  },
+  {
+    "id": "em.h.027",
+    "scenario": "email",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "reply",
+    "text": "发件人: deploy@internal-startup.com\n主题: Build #75747 succeeded in 拼多多\n正文摘要: Build #54127 成功,共 12 个文件改动,测试通过率 100%。详情:https://internal-startup.com/548\n距今: 20 天\n附件: 是\n问: 这封邮件应该如何分类与处理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_email.jsonl 抽出 (seed=42, idx=27) — 训练时排除"
+  },
+  {
+    "id": "em.h.030",
+    "scenario": "email",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "reply",
+    "text": "发件人: pm@internal-startup.com\n主题: [JIRA] AI 助手集成 bug #3095 需要 review\n正文摘要: Hi,关于 CDN 优化 项目,我已更新了 docs,麻烦看下第二段方案。下周一前给反馈。\n距今: 52 天\n附件: 否\n问: 这封邮件应该如何分类与处理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_email.jsonl 抽出 (seed=42, idx=30) — 训练时排除"
+  },
+  {
+    "id": "em.s.005",
+    "scenario": "email",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "发件人: newsletter@producthunt.com\n主题: 🔥 Today's top products\n内容: Check out today's most upvoted products on Product Hunt...",
+    "tags": [
+      "synthetic",
+      "low"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "em.s.013",
+    "scenario": "email",
+    "expect": "critical",
+    "risk_label": "critical",
+    "_action": "delete",
+    "text": "发件人: winner@lottery-intl.org\n主题: 🏆 Congratulations! You won $5,000,000\n内容: Dear winner, your email has been selected in our international lottery...",
+    "tags": [
+      "synthetic",
+      "critical"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "em.h.001",
+    "scenario": "email",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "reply",
+    "text": "发件人: review@gitlab.com\n主题: Weekly report - Q4 规划 周工作汇总\n正文摘要: Hi,关于 CDN 优化 项目,我已更新了 docs,麻烦看下第二段方案。下周一前给反馈。\n距今: 25 天\n附件: 否\n问: 这封邮件应该如何分类与处理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_email.jsonl 抽出 (seed=42, idx=1) — 训练时排除"
+  },
+  {
+    "id": "em.s.023",
+    "scenario": "email",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "发件人: service@stripe.com\n主题: Your Stripe account requires additional information\n内容: To continue processing payments, we need additional information...",
+    "tags": [
+      "synthetic",
+      "medium"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "em.s.003",
+    "scenario": "email",
+    "expect": "safe",
+    "risk_label": "safe",
+    "_action": "delete",
+    "text": "发件人: no-reply@github.com\n主题: [GitHub] A new SSH key was added to your account\n内容: A new SSH key was added to your account. If you did not perform this action, you can remove the key at https://github.com/settings/keys",
+    "tags": [
+      "synthetic",
+      "safe"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "em.h.026",
+    "scenario": "email",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "archive",
+    "text": "发件人: order@jd.com\n主题: Tax statement for 工商银行 - 周五前\n正文摘要: 您的订单 #243464 已确认发货,预计 7 个工作日内送达。订单详情:https://internal-startup.com/969\n距今: 33 天\n附件: 是\n问: 这封邮件应该如何分类与处理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_email.jsonl 抽出 (seed=42, idx=26) — 训练时排除"
+  },
+  {
+    "id": "em.s.020",
+    "scenario": "email",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "发件人: deals@amazon.com\n主题: Today's deals on Electronics\n内容: Save up to 70% on select electronics...",
+    "tags": [
+      "synthetic",
+      "low"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "em.h.008",
+    "scenario": "email",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "reply",
+    "text": "发件人: tax@irs.gov\n主题: 拼多多 月度结算报告 - 下周一\n正文摘要: 本月度账单总额 ¥27345,请于 next Tuesday 前完成支付。https://example.com/881\n距今: 22 天\n附件: 否\n问: 这封邮件应该如何分类与处理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_email.jsonl 抽出 (seed=42, idx=8) — 训练时排除"
+  },
+  {
+    "id": "em.s.030",
+    "scenario": "email",
+    "expect": "critical",
+    "risk_label": "critical",
+    "_action": "delete",
+    "text": "发件人: hr@company-update.info\n主题: 您的离职申请已批准,请点击查看详情\n内容: 尊敬的员工,您的离职申请已通过审批,请登录查看...",
+    "tags": [
+      "synthetic",
+      "critical"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "em.h.017",
+    "scenario": "email",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "reply",
+    "text": "发件人: no-reply@notion.so\n主题: Re: design system 项目进展\n正文摘要: FYI - 周三的客户会议我整理了下纪要,见附件。下一轮 sprint 我们重点做 订单中心。\n距今: 3 天\n附件: 否\n问: 这封邮件应该如何分类与处理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_email.jsonl 抽出 (seed=42, idx=17) — 训练时排除"
+  },
+  {
+    "id": "em.h.021",
+    "scenario": "email",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "发件人: newsletter@huxiu.com\n主题: 邀请您加入 Cloudflare 社群\n正文摘要: 本周 Top 10 新片已更新,周末休闲必备。https://internal-startup.com/642\n距今: 17 小时\n附件: 否\n问: 这封邮件应该如何分类与处理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_email.jsonl 抽出 (seed=42, idx=21) — 训练时排除"
+  }
+]

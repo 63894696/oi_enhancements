@@ -6,11 +6,14 @@
 - ✅ 新:camera_observe 单帧/连续观察
 - ✅ 新:source 支持 windows_desktop / mumu_screencap(adb)
 - ✅ 新:base64 编码 → 视觉 LLM(走 cc-switch claude-opus-4-8 vision 或 qwen-vl-max)
+- ✅ M3.77:vision_query 加 laya_guard fast-path 拦截 prompt injection
+         (复用 projects/laya_guard/src/laya_guard.py)
 
 环境变量:
 - AUREON_VISION_DEFAULT_SOURCE: 默认 source,默认 "windows_desktop"
 - AUREON_VISION_DEFAULT_PROMPT: 默认 prompt,默认 "描述这张图"
 - AUREON_VISION_MODEL: 视觉 LLM,默认走 cc-switch qwen-vl-max(便宜 + 中文好)
+- AUREON_VISION_NO_LAYA_GUARD: 设 "1" 禁用 laya_guard(默认启用)
 """
 from __future__ import annotations
 
@@ -145,20 +148,289 @@ def capture_frame(source: str = _DEFAULT_SOURCE) -> tuple[bytes, dict]:
 
 
 # ─────────────────────────────────────────────────
+# 1.5 laya_guard 懒加载(M3.77) — vision_query 入口拦截 prompt injection
+# ─────────────────────────────────────────────────
+# 设计:
+#   - 单进程单 Router 单例 cache(与其它程序共享 laya 模型)
+#   - laya 未加载 → fail-closed 返 risk="medium"(不拦截,只 warn)
+#   - 失败 prompt → risk=high/critical → 短路 vision_query 不调 LLM
+#   - AUREON_VISION_NO_LAYA_GUARD=1 → 完全跳过(测试 / 离线用)
+
+_PROJECTS_DIR = Path("C:/Users/Administrator/oi_enhancements/projects")
+_LAYA_GUARD_SRC = _PROJECTS_DIR / "laya_guard" / "src"
+if str(_LAYA_GUARD_SRC) not in sys.path:
+    sys.path.insert(0, str(_LAYA_GUARD_SRC))
+
+# lazy import state
+_GUARD_OK = False           # laya 模块导入成功
+_GUARD_LOADED = False       # 尝试加载过(laya 未安装则不再重试)
+_GUARD_IMPORT_ERROR: str | None = None
+
+
+def _probe_laya_guard() -> None:
+    """启动时探测 laya_guard 是否可用。结果存到模块级单例。"""
+    global _GUARD_OK, _GUARD_LOADED, _GUARD_IMPORT_ERROR
+    if _GUARD_LOADED:
+        return
+    _GUARD_LOADED = True
+    try:
+        from laya_guard import guard, decide  # noqa: F401
+        _GUARD_OK = True
+    except Exception as e:  # noqa: BLE001
+        _GUARD_OK = False
+        _GUARD_IMPORT_ERROR = f"{type(e).__name__}: {e}"
+        log.warning(f"laya_guard 不可用: {_GUARD_IMPORT_ERROR} → vision_guard 走 fail-closed")
+
+
+def vision_guard(prompt: str) -> dict:
+    """vision LLM prompt 预检 — 拦截 jailbreak / injection / sensitive。
+
+    Args:
+        prompt: 用户给视觉 LLM 的指令文本
+
+    Returns:
+        dict:
+          - risk: "safe" / "low" / "medium" / "high" / "critical"
+          - jailbreak / injection / sensitive / harm / topic(同 laya_guard)
+          - decision: "allow" / "ask" / "deny"
+          - decision_reason: 简要原因
+          - latency_ms
+          - backend: "laya" / "fail-closed"
+          - parse_fail: bool
+          - enabled: bool(AUREON_VISION_NO_LAYA_GUARD=1 时=False,跳过全部)
+    """
+    no_laya = os.environ.get("AUREON_VISION_NO_LAYA_GUARD", "") == "1"
+    if no_laya:
+        return {
+            "risk": "unknown",
+            "jailbreak": 0.0,
+            "injection": 0.0,
+            "sensitive": 0.0,
+            "harm": 0.0,
+            "topic": None,
+            "decision": "allow",
+            "decision_reason": "laya_guard disabled by env",
+            "latency_ms": 0.0,
+            "backend": "disabled",
+            "parse_fail": False,
+            "enabled": False,
+        }
+
+    _probe_laya_guard()
+    if not _GUARD_OK:
+        # fail-closed:不拦截,只是不预警
+        return {
+            "risk": "medium",
+            "jailbreak": 0.0,
+            "injection": 0.0,
+            "sensitive": 0.0,
+            "harm": 0.0,
+            "topic": None,
+            "decision": "allow",
+            "decision_reason": f"laya_guard unavailable: {_GUARD_IMPORT_ERROR}",
+            "latency_ms": 0.0,
+            "backend": "fail-closed",
+            "parse_fail": True,
+            "enabled": True,
+        }
+
+    try:
+        from laya_guard import guard, decide
+        result = guard(prompt)
+        decision = decide(result)
+        return {
+            "risk": result.get("risk"),
+            "jailbreak": result.get("jailbreak", 0.0),
+            "injection": result.get("injection", 0.0),
+            "sensitive": result.get("sensitive", 0.0),
+            "harm": result.get("harm", 0.0),
+            "topic": result.get("topic"),
+            "decision": decision.get("decision", "allow"),
+            "decision_reason": decision.get("reason", ""),
+            "latency_ms": result.get("latency_ms", 0.0),
+            "backend": result.get("backend", "laya"),
+            "parse_fail": result.get("parse_fail", False),
+            "enabled": True,
+        }
+    except Exception as e:  # noqa: BLE001
+        log.exception("vision_guard 调用失败")
+        return {
+            "risk": "medium",
+            "jailbreak": 0.0,
+            "injection": 0.0,
+            "sensitive": 0.0,
+            "harm": 0.0,
+            "topic": None,
+            "decision": "allow",
+            "decision_reason": f"vision_guard error: {type(e).__name__}: {e}",
+            "latency_ms": 0.0,
+            "backend": "fail-closed",
+            "parse_fail": True,
+            "enabled": True,
+        }
+
+
+# ─────────────────────────────────────────────────
+# 1.6 laya captioner 懒加载(M3.81) — vision_query race_impl 4 分类 fast-path
+# ─────────────────────────────────────────────────
+# 设计:
+#   - 单进程单 Router 单例 cache(复用 laya_guard 同模型)
+#   - laya 不可用 → fail-open (走原 urllib qwen-vl-max)
+#   - 4 分类:app / focused / code / dialog(描述用户期望看到的屏幕内容类型)
+#   - race_impl 逻辑:
+#       * laya 预测 "code" 且 conf >= 0.55 → fast-path (max_tokens=30,~1s)
+#       * laya 预测 "dialog" 且 conf >= 0.30 → fast-path
+#       * 其它 → 走完整 qwen-vl-max (max_tokens=1024,~2-4s)
+#   - AUREON_VISION_NO_CAPTIONER=1 → 完全跳过
+
+_CAPTIONER_OK = False
+_CAPTIONER_LOADED = False
+_CAPTIONER_IMPORT_ERROR: str | None = None
+_CAPTIONER_ROUTER = None
+_CAPTIONER_QS = {
+    "screen_type": {
+        "type": "choice",
+        "instructions": "Predict what type of screen content the user is asking about in `prompt`.",
+        "criteria": {
+            "app": "a desktop application window (browser, file manager, IDE overall framework with menus/toolbars)",
+            "focused": "a focused text input or terminal command prompt in progress",
+            "code": "source code or technical text content (programming, scripts, markup, configs)",
+            "dialog": "a modal dialog, alert, popup, or system message overlay",
+        },
+    }
+}
+# fast-path 阈值 (per-class,基于 M3.81 bench 500 条:code 83% / dialog 28% / app 57% / focused 60%)
+_CAPTIONER_THRESHOLDS = {
+    "code": 0.55,    # code 类 83% ACC,高阈值即真用
+    "dialog": 0.30,  # dialog 类 28% ACC,只高置信度才信
+    "app": 0.65,     # app 57% ACC,稍高阈值
+    "focused": 0.60, # focused 60% ACC
+}
+
+
+def _probe_captioner() -> None:
+    """启动时探测 laya captioner Router 是否可用。"""
+    global _CAPTIONER_OK, _CAPTIONER_LOADED, _CAPTIONER_IMPORT_ERROR, _CAPTIONER_ROUTER
+    if _CAPTIONER_LOADED:
+        return
+    _CAPTIONER_LOADED = True
+    try:
+        from laya import Router  # noqa: F401
+        # 用 multilingual 中文 + English 混合 prompt
+        _CAPTIONER_ROUTER = Router(default="multilingual", preload=True)
+        _CAPTIONER_OK = True
+    except Exception as e:  # noqa: BLE001
+        _CAPTIONER_OK = False
+        _CAPTIONER_IMPORT_ERROR = f"{type(e).__name__}: {e}"
+        log.warning(f"laya captioner 不可用: {_CAPTIONER_IMPORT_ERROR} → race_impl fail-open")
+
+
+def vision_captioner(prompt: str) -> dict:
+    """vision captioner — 用 laya zero-shot 4 分类预测 prompt 期望的屏幕类型。
+
+    Returns:
+        dict:
+          - choice: "app" / "focused" / "code" / "dialog" / None
+          - conf: 0-1 概率
+          - probabilities: 4 类概率 dict
+          - threshold: 该类的 fast-path 阈值
+          - fast_path: bool(是否建议走 fast-path)
+          - backend: "laya" / "fail-open"
+          - latency_ms
+          - parse_fail: bool
+          - enabled: bool(AUREON_VISION_NO_CAPTIONER=1 时=False)
+    """
+    no_captioner = os.environ.get("AUREON_VISION_NO_CAPTIONER", "") == "1"
+    if no_captioner:
+        return {
+            "choice": None,
+            "conf": 0.0,
+            "probabilities": {},
+            "threshold": 0.0,
+            "fast_path": False,
+            "backend": "disabled",
+            "latency_ms": 0.0,
+            "parse_fail": False,
+            "enabled": False,
+            "reason": "AUREON_VISION_NO_CAPTIONER=1",
+        }
+
+    _probe_captioner()
+    if not _CAPTIONER_OK:
+        return {
+            "choice": None,
+            "conf": 0.0,
+            "probabilities": {},
+            "threshold": 0.0,
+            "fast_path": False,
+            "backend": "fail-open",
+            "latency_ms": 0.0,
+            "parse_fail": True,
+            "enabled": True,
+            "reason": f"laya unavailable: {_CAPTIONER_IMPORT_ERROR}",
+        }
+
+    t0 = time.time()
+    try:
+        res = _CAPTIONER_ROUTER.predict({"prompt": prompt}, _CAPTIONER_QS)
+        elapsed_ms = (time.time() - t0) * 1000
+        answers = res.get("answers", {})
+        st = answers.get("screen_type", {})
+        choice = st.get("choice")
+        probs = st.get("probabilities", {})
+        conf = st.get("answer_confidence") or st.get("confidence") or 0.0
+
+        if not choice or choice not in _CAPTIONER_THRESHOLDS:
+            return {
+                "choice": None,
+                "conf": 0.0,
+                "probabilities": probs,
+                "threshold": 0.0,
+                "fast_path": False,
+                "backend": "laya",
+                "latency_ms": elapsed_ms,
+                "parse_fail": True,
+                "enabled": True,
+                "reason": "no valid choice",
+            }
+
+        threshold = _CAPTIONER_THRESHOLDS[choice]
+        fast_path = conf >= threshold
+        return {
+            "choice": choice,
+            "conf": round(conf, 4),
+            "probabilities": {k: round(v, 4) for k, v in probs.items()},
+            "threshold": threshold,
+            "fast_path": fast_path,
+            "backend": "laya",
+            "latency_ms": round(elapsed_ms, 1),
+            "parse_fail": False,
+            "enabled": True,
+            "reason": f"{choice} conf={conf:.3f} >= {threshold}",
+        }
+    except Exception as e:  # noqa: BLE001
+        log.exception("vision_captioner 调用失败")
+        return {
+            "choice": None,
+            "conf": 0.0,
+            "probabilities": {},
+            "threshold": 0.0,
+            "fast_path": False,
+            "backend": "fail-open",
+            "latency_ms": (time.time() - t0) * 1000,
+            "parse_fail": True,
+            "enabled": True,
+            "reason": f"{type(e).__name__}: {e}",
+        }
+
+
+# ─────────────────────────────────────────────────
 # 2. 视觉 LLM(走 cc-switch OpenAI 兼容)
 # ─────────────────────────────────────────────────
 
-def vision_query(png_bytes: bytes, prompt: str, model: str = _VISION_MODEL) -> dict:
-    """调百炼 qwen-vl-max 视觉模型,返回文字描述
-
-    走 OpenAI 兼容 chat/completions + image_url(data:image/png;base64,...)
-    直连百炼(不走 cc-switch,cc-switch 路由不一定支持 vision 模态)
-    """
-    if not png_bytes:
-        return {"ok": False, "error": "空图像"}
-    if not _BAILIAN_KEY:
-        return {"ok": False, "error": "BAILIAN_API_KEY 未设,无法调百炼视觉"}
-
+def _qwen_vl_call(png_bytes: bytes, prompt: str, model: str, max_tokens: int = 1024,
+                  temperature: float = 0.3) -> dict:
+    """真实调百炼 qwen-vl-max (内部用)。"""
     b64 = base64.b64encode(png_bytes).decode("ascii")
     data_url = f"data:image/png;base64,{b64}"
 
@@ -173,39 +445,122 @@ def vision_query(png_bytes: bytes, prompt: str, model: str = _VISION_MODEL) -> d
                 ],
             }
         ],
-        "max_tokens": 1024,
-        "temperature": 0.3,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
     }
 
-    try:
-        import urllib.request
-        req = urllib.request.Request(
-            f"{_BAILIAN_BASE}/chat/completions",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {_BAILIAN_KEY}",
-            },
-            method="POST",
+    import urllib.request
+    req = urllib.request.Request(
+        f"{_BAILIAN_BASE}/chat/completions",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {_BAILIAN_KEY}",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=60) as r:
+        resp = json.loads(r.read().decode("utf-8"))
+    choices = resp.get("choices", [])
+    if not choices:
+        return {"ok": False, "error": f"百炼无 choices: {json.dumps(resp)[:300]}"}
+    content = choices[0].get("message", {}).get("content", "")
+    if isinstance(content, list):
+        content = "".join(b.get("text", "") for b in content if isinstance(b, dict))
+    usage = resp.get("usage", {})
+    return {
+        "ok": True,
+        "model": model,
+        "description": content,
+        "usage": usage,
+        "max_tokens": max_tokens,
+    }
+
+
+def vision_query(png_bytes: bytes, prompt: str, model: str = _VISION_MODEL) -> dict:
+    """调百炼 qwen-vl-max 视觉模型,返回文字描述
+
+    走 OpenAI 兼容 chat/completions + image_url(data:image/png;base64,...)
+    直连百炼(不走 cc-switch,cc-switch 路由不一定支持 vision 模态)
+
+    M3.77:入口先调 vision_guard(prompt) 拦截 prompt injection。
+      - decision=deny  → 短路,不调 LLM,返 ok=False
+      - decision=ask   → 放行(在 result 里标记 laya_guard 字段)
+      - decision=allow → 正常路径
+
+    M3.81:race_impl — captioner fast-path:
+      - laya captioner 预测 prompt 期望的 4 类(基于 prompt 文本,无需图像)
+      - conf >= per-class 阈值 → fast-path (max_tokens=30,~1s 节省 ¥)
+      - conf < 阈值 → 完整 qwen-vl-max (max_tokens=1024)
+      - laya 不可用 / 失败 → fail-open 走完整 qwen-vl-max
+      - 结果中含 captioner 字段(backend/conf/fast_path)
+    """
+    if not png_bytes:
+        return {"ok": False, "error": "空图像"}
+    if not _BAILIAN_KEY:
+        return {"ok": False, "error": "BAILIAN_API_KEY 未设,无法调百炼视觉"}
+
+    # M3.77:laya_guard 拦截
+    guard_result = vision_guard(prompt)
+    guard_decision = guard_result.get("decision", "allow")
+    if guard_decision == "deny":
+        log.warning(
+            f"vision_guard 拦截 prompt (risk={guard_result.get('risk')}): "
+            f"{guard_result.get('decision_reason')} | prompt={prompt[:100]!r}"
         )
-        with urllib.request.urlopen(req, timeout=60) as r:
-            resp = json.loads(r.read().decode("utf-8"))
-        choices = resp.get("choices", [])
-        if not choices:
-            return {"ok": False, "error": f"百炼无 choices: {json.dumps(resp)[:300]}"}
-        content = choices[0].get("message", {}).get("content", "")
-        if isinstance(content, list):
-            content = "".join(b.get("text", "") for b in content if isinstance(b, dict))
-        usage = resp.get("usage", {})
         return {
-            "ok": True,
+            "ok": False,
+            "error": "laya_guard_denied",
+            "error_detail": guard_result.get("decision_reason"),
+            "laya_guard": guard_result,
             "model": model,
-            "description": content,
-            "usage": usage,
+        }
+
+    # M3.81:laya captioner race decision(基于 prompt 文本预测期望屏幕类型)
+    captioner_result = vision_captioner(prompt)
+    fast_path = bool(captioner_result.get("fast_path"))
+    choice = captioner_result.get("choice")
+
+    # fast-path 选 max_tokens
+    if fast_path and choice == "code":
+        # code 类:用户期望代码片段,fast-path 返回代码分类即可
+        max_tokens = 30
+        mode = "fast_code"
+    elif fast_path and choice == "dialog":
+        # dialog 类:用户期望 dialog 文本,max 短
+        max_tokens = 40
+        mode = "fast_dialog"
+    elif fast_path and choice == "app":
+        # app 类:用户期望应用窗口概述
+        max_tokens = 60
+        mode = "fast_app"
+    elif fast_path and choice == "focused":
+        # focused 类:用户期望输入框文本
+        max_tokens = 50
+        mode = "fast_focused"
+    else:
+        max_tokens = 1024
+        mode = "full"
+
+    try:
+        result = _qwen_vl_call(png_bytes, prompt, model, max_tokens=max_tokens)
+        if not result.get("ok"):
+            return {**result, "laya_guard": guard_result, "captioner": captioner_result}
+        return {
+            **result,
+            "laya_guard": guard_result,
+            "captioner": captioner_result,
+            "race_mode": mode,
         }
     except Exception as e:
         log.exception("vision_query failed")
-        return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:300]}"}
+        return {
+            "ok": False,
+            "error": f"{type(e).__name__}: {str(e)[:300]}",
+            "laya_guard": guard_result,
+            "captioner": captioner_result,
+            "race_mode": mode,
+        }
 
 
 def camera_observe_stream_impl(
@@ -240,6 +595,9 @@ def camera_observe_stream_impl(
             "description": vision_result.get("description"),
             "usage": vision_result.get("usage"),
             "capture_size_kb": round(len(png_bytes) / 1024, 1),
+            "laya_guard": vision_result.get("laya_guard"),
+            "captioner": vision_result.get("captioner"),
+            "race_mode": vision_result.get("race_mode"),
         })
         if i < frames - 1:
             time.sleep(interval_sec)
@@ -290,6 +648,9 @@ def camera_observe_impl(
             "description": vision_result.get("description"),
             "usage": vision_result.get("usage"),
         },
+        "laya_guard": vision_result.get("laya_guard"),
+        "captioner": vision_result.get("captioner"),
+        "race_mode": vision_result.get("race_mode"),
     }
     if not vision_result.get("ok"):
         out["error"] = vision_result.get("error")
@@ -314,6 +675,12 @@ def vision_health_impl() -> str:
     png, meta = capture_frame("windows_desktop")
     health["capture_test"] = meta
     health["capture_test_ok"] = meta.get("ok", False)
+    # M3.81: captioner 状态
+    health["captioner"] = {
+        "available": _CAPTIONER_OK,
+        "error": _CAPTIONER_IMPORT_ERROR,
+        "thresholds": _CAPTIONER_THRESHOLDS,
+    }
     return json.dumps(health, ensure_ascii=False, indent=2, default=str)
 
 

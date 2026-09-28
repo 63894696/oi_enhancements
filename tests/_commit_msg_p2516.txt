@@ -1,0 +1,42 @@
+# P2.5+16 web_search.py — 多 provider rank fusion
+
+**任务 ID**: 633
+**认领 ts**: 1790169105
+**落盘 mtime**: 2026-09-23 21:17 (web_search.py) / 21:15 (test_web_search.py)
+
+## 改动文件 (ls)
+```
+-rw-r--r-- 1 Administrator 197121 19423 Sep 23 21:17 prisir_work/web_search.py
+-rw-r--r-- 1 Administrator 197121 10215 Sep 23 21:15 tests/test_web_search.py
+```
+
+## 实现要点
+- `register_provider(name, fn)` / `search(query, limit, providers, timeout)` 公共接口
+- 5 个内置 provider:`ddg_html` / `baidu` / `bing_public` 总是注册;`tavily` / `serper`
+  启动时按 env key 注册(无 key 则不出现在默认列表)
+- RRF (k=60):`score = Σ 1/(k + rank)`;URL 规范化去重(`url_normalize` = strip fragment +
+  lowercase host + strip trailing slash + 默认端口剥离);输出 url 字段统一规范化
+- 并发:daemon 线程 + 主线程 join(timeout);超时未完成的 provider 视为空
+- 异常隔离:provider 函数自己抛/超时/网络断 → 全部吞,只 LOG warning
+- LRU 缓存:模块级 OrderedDict, max 32, ttl 300s,key=md5(query+str(limit)+sorted providers)
+- CLI:`python -m prisir_work.web_search "query"` 打印 JSON
+- 零外部依赖(纯 stdlib)
+
+## 测试结果 (8/8 PASSED)
+```
+tests/test_web_search.py::test_url_normalize PASSED
+tests/test_web_search.py::test_empty_query PASSED
+tests/test_web_search.py::test_no_providers PASSED
+tests/test_web_search.py::test_rrf_fusion PASSED
+tests/test_web_search.py::test_provider_failure_isolated PASSED
+tests/test_web_search.py::test_provider_timeout PASSED
+tests/test_web_search.py::test_url_dedup PASSED
+tests/test_web_search.py::test_lru_cache_hit PASSED
+============================== 8 passed in 0.79s ==============================
+```
+
+## 备注
+- 初始实现用 `concurrent.futures.ThreadPoolExecutor` + `as_completed`,但 `with` 上下文
+  会等所有 worker 完成后才退出,慢线程(time.sleep)无法被 future.result(timeout=0.5) 截断。
+  改成手动 daemon 线程 + join(deadline) 后,timeout=0.5 测试通过(dt<1.5s)。
+- URL 规范化后的输出 url 字段统一用 `norm_url`,RRF 去重测试通过(同一 url 不同写法 → 1 条)。

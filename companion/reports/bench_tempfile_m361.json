@@ -1,0 +1,567 @@
+{
+  "ts": "2026-09-23T11:46:58Z",
+  "scenarios_listed": [
+    "tempfile"
+  ],
+  "scenarios": {
+    "tempfile": {
+      "fixture": "tempfile_independent",
+      "fixture_path": "C:\\Users\\Administrator\\oi_enhancements\\companion\\test_fixtures\\tempfile_independent.json",
+      "local": {
+        "fixture": "tempfile_independent",
+        "fixture_path": "C:\\Users\\Administrator\\oi_enhancements\\companion\\test_fixtures\\tempfile_independent.json",
+        "n_cases": 60,
+        "results": [
+          {
+            "i": 1,
+            "id": "tf.h.029",
+            "expect": "high",
+            "actual": "high",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 21144
+          },
+          {
+            "i": 2,
+            "id": "tf.h.023",
+            "expect": "high",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6918
+          },
+          {
+            "i": 3,
+            "id": "tf.h.002",
+            "expect": "high",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7368
+          },
+          {
+            "i": 4,
+            "id": "tf.s.016",
+            "expect": "safe",
+            "actual": "low",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6623
+          },
+          {
+            "i": 5,
+            "id": "tf.s.018",
+            "expect": "safe",
+            "actual": "low",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6754
+          },
+          {
+            "i": 6,
+            "id": "tf.s.004",
+            "expect": "low",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6814
+          },
+          {
+            "i": 7,
+            "id": "tf.s.014",
+            "expect": "critical",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6876
+          },
+          {
+            "i": 8,
+            "id": "tf.s.021",
+            "expect": "low",
+            "actual": "high",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6770
+          },
+          {
+            "i": 9,
+            "id": "tf.s.008",
+            "expect": "medium",
+            "actual": "low",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6905
+          },
+          {
+            "i": 10,
+            "id": "tf.s.011",
+            "expect": "high",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7330
+          },
+          {
+            "i": 11,
+            "id": "tf.s.005",
+            "expect": "low",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6705
+          },
+          {
+            "i": 12,
+            "id": "tf.s.030",
+            "expect": "critical",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6954
+          },
+          {
+            "i": 13,
+            "id": "tf.h.004",
+            "expect": "high",
+            "actual": "high",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 6795
+          },
+          {
+            "i": 14,
+            "id": "tf.h.005",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7513
+          },
+          {
+            "i": 15,
+            "id": "tf.h.018",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7111
+          },
+          {
+            "i": 16,
+            "id": "tf.h.008",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7169
+          },
+          {
+            "i": 17,
+            "id": "tf.s.002",
+            "expect": "safe",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6814
+          },
+          {
+            "i": 18,
+            "id": "tf.h.011",
+            "expect": "critical",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6991
+          },
+          {
+            "i": 19,
+            "id": "tf.s.009",
+            "expect": "medium",
+            "actual": "low",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6969
+          },
+          {
+            "i": 20,
+            "id": "tf.h.010",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7319
+          },
+          {
+            "i": 21,
+            "id": "tf.h.003",
+            "expect": "critical",
+            "actual": "critical",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 6718
+          },
+          {
+            "i": 22,
+            "id": "tf.s.027",
+            "expect": "high",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6870
+          },
+          {
+            "i": 23,
+            "id": "tf.h.006",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7836
+          },
+          {
+            "i": 24,
+            "id": "tf.h.024",
+            "expect": "high",
+            "actual": "high",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7164
+          },
+          {
+            "i": 25,
+            "id": "tf.h.016",
+            "expect": "critical",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6756
+          },
+          {
+            "i": 26,
+            "id": "tf.h.017",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7400
+          },
+          {
+            "i": 27,
+            "id": "tf.h.007",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7894
+          },
+          {
+            "i": 28,
+            "id": "tf.h.022",
+            "expect": "high",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7076
+          },
+          {
+            "i": 29,
+            "id": "tf.h.030",
+            "expect": "high",
+            "actual": "high",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 6760
+          },
+          {
+            "i": 30,
+            "id": "tf.s.001",
+            "expect": "safe",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6812
+          },
+          {
+            "i": 31,
+            "id": "tf.h.015",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7817
+          },
+          {
+            "i": 32,
+            "id": "tf.s.023",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 6894
+          },
+          {
+            "i": 33,
+            "id": "tf.h.028",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7664
+          },
+          {
+            "i": 34,
+            "id": "tf.h.014",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7482
+          },
+          {
+            "i": 35,
+            "id": "tf.s.020",
+            "expect": "low",
+            "actual": "high",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7100
+          },
+          {
+            "i": 36,
+            "id": "tf.s.012",
+            "expect": "high",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6969
+          },
+          {
+            "i": 37,
+            "id": "tf.h.001",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7933
+          },
+          {
+            "i": 38,
+            "id": "tf.s.019",
+            "expect": "low",
+            "actual": "high",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6790
+          },
+          {
+            "i": 39,
+            "id": "tf.s.022",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7162
+          },
+          {
+            "i": 40,
+            "id": "tf.s.026",
+            "expect": "high",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7020
+          },
+          {
+            "i": 41,
+            "id": "tf.s.007",
+            "expect": "medium",
+            "actual": "low",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7005
+          },
+          {
+            "i": 42,
+            "id": "tf.s.010",
+            "expect": "high",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7125
+          },
+          {
+            "i": 43,
+            "id": "tf.h.012",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 9298
+          },
+          {
+            "i": 44,
+            "id": "tf.h.025",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7022
+          },
+          {
+            "i": 45,
+            "id": "tf.s.025",
+            "expect": "high",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7246
+          },
+          {
+            "i": 46,
+            "id": "tf.s.024",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7113
+          },
+          {
+            "i": 47,
+            "id": "tf.h.013",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7705
+          },
+          {
+            "i": 48,
+            "id": "tf.h.009",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7374
+          },
+          {
+            "i": 49,
+            "id": "tf.s.006",
+            "expect": "low",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6974
+          },
+          {
+            "i": 50,
+            "id": "tf.h.019",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7613
+          },
+          {
+            "i": 51,
+            "id": "tf.s.015",
+            "expect": "critical",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6886
+          },
+          {
+            "i": 52,
+            "id": "tf.h.026",
+            "expect": "high",
+            "actual": "high",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7213
+          },
+          {
+            "i": 53,
+            "id": "tf.h.021",
+            "expect": "high",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7715
+          },
+          {
+            "i": 54,
+            "id": "tf.h.027",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7308
+          },
+          {
+            "i": 55,
+            "id": "tf.s.013",
+            "expect": "critical",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6913
+          },
+          {
+            "i": 56,
+            "id": "tf.s.029",
+            "expect": "critical",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6861
+          },
+          {
+            "i": 57,
+            "id": "tf.s.003",
+            "expect": "safe",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6877
+          },
+          {
+            "i": 58,
+            "id": "tf.h.020",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7568
+          },
+          {
+            "i": 59,
+            "id": "tf.s.028",
+            "expect": "critical",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6791
+          },
+          {
+            "i": 60,
+            "id": "tf.s.017",
+            "expect": "safe",
+            "actual": "low",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6630
+          }
+        ],
+        "summary": {
+          "n": 60,
+          "accuracy": 0.45,
+          "parse_fail_rate": 0.0,
+          "latency_p50_ms": 7022,
+          "latency_p95_ms": 7933
+        },
+        "elapsed_total_s": 443.23
+      }
+    }
+  }
+}

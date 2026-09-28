@@ -1,0 +1,398 @@
+{
+  "model": "perf_ch_v1 (AgentJev classification-head)",
+  "n": 50,
+  "correct": 10,
+  "accuracy": 0.2,
+  "per_class": {
+    "safe": {
+      "correct": 0,
+      "total": 10,
+      "accuracy": 0.0
+    },
+    "low": {
+      "correct": 10,
+      "total": 10,
+      "accuracy": 1.0
+    },
+    "medium": {
+      "correct": 0,
+      "total": 10,
+      "accuracy": 0.0
+    },
+    "high": {
+      "correct": 0,
+      "total": 10,
+      "accuracy": 0.0
+    },
+    "critical": {
+      "correct": 0,
+      "total": 10,
+      "accuracy": 0.0
+    }
+  },
+  "confusion": {
+    "safe->low": 10,
+    "medium->low": 10,
+    "high->low": 10,
+    "critical->high": 7,
+    "critical->low": 3
+  },
+  "latency_ms": {
+    "p50": 1976.6,
+    "min": 1185.1,
+    "max": 3535.8,
+    "total_s": 98.3
+  },
+  "records": [
+    {
+      "i": 1,
+      "truth": "safe",
+      "pred": "low",
+      "top_prob": 0.20894181728363037,
+      "latency_ms": 2220.4
+    },
+    {
+      "i": 2,
+      "truth": "safe",
+      "pred": "low",
+      "top_prob": 0.2080911546945572,
+      "latency_ms": 1685.6
+    },
+    {
+      "i": 3,
+      "truth": "safe",
+      "pred": "low",
+      "top_prob": 0.20872794091701508,
+      "latency_ms": 1928.3
+    },
+    {
+      "i": 4,
+      "truth": "safe",
+      "pred": "low",
+      "top_prob": 0.20799514651298523,
+      "latency_ms": 1281.7
+    },
+    {
+      "i": 5,
+      "truth": "safe",
+      "pred": "low",
+      "top_prob": 0.20808452367782593,
+      "latency_ms": 1288.0
+    },
+    {
+      "i": 6,
+      "truth": "safe",
+      "pred": "low",
+      "top_prob": 0.20850080251693726,
+      "latency_ms": 1241.6
+    },
+    {
+      "i": 7,
+      "truth": "safe",
+      "pred": "low",
+      "top_prob": 0.20886079967021942,
+      "latency_ms": 1772.0
+    },
+    {
+      "i": 8,
+      "truth": "safe",
+      "pred": "low",
+      "top_prob": 0.20870216190814972,
+      "latency_ms": 2396.3
+    },
+    {
+      "i": 9,
+      "truth": "safe",
+      "pred": "low",
+      "top_prob": 0.20874904096126556,
+      "latency_ms": 2261.5
+    },
+    {
+      "i": 10,
+      "truth": "safe",
+      "pred": "low",
+      "top_prob": 0.20781193673610687,
+      "latency_ms": 1976.6
+    },
+    {
+      "i": 11,
+      "truth": "low",
+      "pred": "low",
+      "top_prob": 0.2078789472579956,
+      "latency_ms": 2244.1
+    },
+    {
+      "i": 12,
+      "truth": "low",
+      "pred": "low",
+      "top_prob": 0.20623968541622162,
+      "latency_ms": 1946.8
+    },
+    {
+      "i": 13,
+      "truth": "low",
+      "pred": "low",
+      "top_prob": 0.20630241930484772,
+      "latency_ms": 1573.2
+    },
+    {
+      "i": 14,
+      "truth": "low",
+      "pred": "low",
+      "top_prob": 0.20624974370002747,
+      "latency_ms": 1627.0
+    },
+    {
+      "i": 15,
+      "truth": "low",
+      "pred": "low",
+      "top_prob": 0.20634232461452484,
+      "latency_ms": 1291.4
+    },
+    {
+      "i": 16,
+      "truth": "low",
+      "pred": "low",
+      "top_prob": 0.20779506862163544,
+      "latency_ms": 1656.1
+    },
+    {
+      "i": 17,
+      "truth": "low",
+      "pred": "low",
+      "top_prob": 0.20623968541622162,
+      "latency_ms": 1315.1
+    },
+    {
+      "i": 18,
+      "truth": "low",
+      "pred": "low",
+      "top_prob": 0.20624974370002747,
+      "latency_ms": 1247.0
+    },
+    {
+      "i": 19,
+      "truth": "low",
+      "pred": "low",
+      "top_prob": 0.20634277164936066,
+      "latency_ms": 1199.0
+    },
+    {
+      "i": 20,
+      "truth": "low",
+      "pred": "low",
+      "top_prob": 0.20634232461452484,
+      "latency_ms": 1185.1
+    },
+    {
+      "i": 21,
+      "truth": "medium",
+      "pred": "low",
+      "top_prob": 0.20625051856040955,
+      "latency_ms": 1191.1
+    },
+    {
+      "i": 22,
+      "truth": "medium",
+      "pred": "low",
+      "top_prob": 0.20616017282009125,
+      "latency_ms": 1440.0
+    },
+    {
+      "i": 23,
+      "truth": "medium",
+      "pred": "low",
+      "top_prob": 0.20630881190299988,
+      "latency_ms": 1606.7
+    },
+    {
+      "i": 24,
+      "truth": "medium",
+      "pred": "low",
+      "top_prob": 0.2063707709312439,
+      "latency_ms": 1448.6
+    },
+    {
+      "i": 25,
+      "truth": "medium",
+      "pred": "low",
+      "top_prob": 0.20627190172672272,
+      "latency_ms": 1269.2
+    },
+    {
+      "i": 26,
+      "truth": "medium",
+      "pred": "low",
+      "top_prob": 0.20637163519859314,
+      "latency_ms": 1312.9
+    },
+    {
+      "i": 27,
+      "truth": "medium",
+      "pred": "low",
+      "top_prob": 0.2060105949640274,
+      "latency_ms": 1185.5
+    },
+    {
+      "i": 28,
+      "truth": "medium",
+      "pred": "low",
+      "top_prob": 0.20616017282009125,
+      "latency_ms": 1243.0
+    },
+    {
+      "i": 29,
+      "truth": "medium",
+      "pred": "low",
+      "top_prob": 0.20625051856040955,
+      "latency_ms": 1280.0
+    },
+    {
+      "i": 30,
+      "truth": "medium",
+      "pred": "low",
+      "top_prob": 0.20627190172672272,
+      "latency_ms": 1329.4
+    },
+    {
+      "i": 31,
+      "truth": "high",
+      "pred": "low",
+      "top_prob": 0.20557112991809845,
+      "latency_ms": 2846.7
+    },
+    {
+      "i": 32,
+      "truth": "high",
+      "pred": "low",
+      "top_prob": 0.20508551597595215,
+      "latency_ms": 2478.3
+    },
+    {
+      "i": 33,
+      "truth": "high",
+      "pred": "low",
+      "top_prob": 0.20522871613502502,
+      "latency_ms": 2104.7
+    },
+    {
+      "i": 34,
+      "truth": "high",
+      "pred": "low",
+      "top_prob": 0.20502711832523346,
+      "latency_ms": 2164.0
+    },
+    {
+      "i": 35,
+      "truth": "high",
+      "pred": "low",
+      "top_prob": 0.2055126130580902,
+      "latency_ms": 2105.4
+    },
+    {
+      "i": 36,
+      "truth": "high",
+      "pred": "low",
+      "top_prob": 0.20508551597595215,
+      "latency_ms": 2263.1
+    },
+    {
+      "i": 37,
+      "truth": "high",
+      "pred": "low",
+      "top_prob": 0.2055303156375885,
+      "latency_ms": 2656.2
+    },
+    {
+      "i": 38,
+      "truth": "high",
+      "pred": "low",
+      "top_prob": 0.20508551597595215,
+      "latency_ms": 2928.6
+    },
+    {
+      "i": 39,
+      "truth": "high",
+      "pred": "low",
+      "top_prob": 0.20557112991809845,
+      "latency_ms": 2603.1
+    },
+    {
+      "i": 40,
+      "truth": "high",
+      "pred": "low",
+      "top_prob": 0.20502711832523346,
+      "latency_ms": 3497.6
+    },
+    {
+      "i": 41,
+      "truth": "critical",
+      "pred": "high",
+      "top_prob": 0.20624962449073792,
+      "latency_ms": 3535.8
+    },
+    {
+      "i": 42,
+      "truth": "critical",
+      "pred": "high",
+      "top_prob": 0.20612698793411255,
+      "latency_ms": 3360.2
+    },
+    {
+      "i": 43,
+      "truth": "critical",
+      "pred": "high",
+      "top_prob": 0.20640946924686432,
+      "latency_ms": 3363.1
+    },
+    {
+      "i": 44,
+      "truth": "critical",
+      "pred": "high",
+      "top_prob": 0.20636537671089172,
+      "latency_ms": 2343.7
+    },
+    {
+      "i": 45,
+      "truth": "critical",
+      "pred": "high",
+      "top_prob": 0.20625829696655273,
+      "latency_ms": 2289.5
+    },
+    {
+      "i": 46,
+      "truth": "critical",
+      "pred": "high",
+      "top_prob": 0.20631809532642365,
+      "latency_ms": 2228.3
+    },
+    {
+      "i": 47,
+      "truth": "critical",
+      "pred": "low",
+      "top_prob": 0.20742462575435638,
+      "latency_ms": 2147.2
+    },
+    {
+      "i": 48,
+      "truth": "critical",
+      "pred": "low",
+      "top_prob": 0.20494429767131805,
+      "latency_ms": 2191.5
+    },
+    {
+      "i": 49,
+      "truth": "critical",
+      "pred": "low",
+      "top_prob": 0.20494429767131805,
+      "latency_ms": 2087.0
+    },
+    {
+      "i": 50,
+      "truth": "critical",
+      "pred": "high",
+      "top_prob": 0.20638637244701385,
+      "latency_ms": 2502.8
+    }
+  ]
+}

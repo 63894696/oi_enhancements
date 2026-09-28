@@ -1,0 +1,567 @@
+{
+  "ts": "2026-09-23T11:01:11Z",
+  "scenarios_listed": [
+    "disk_cleanup"
+  ],
+  "scenarios": {
+    "disk_cleanup": {
+      "fixture": "disk_cleanup_independent",
+      "fixture_path": "C:\\Users\\Administrator\\oi_enhancements\\companion\\test_fixtures\\disk_cleanup_independent.json",
+      "local": {
+        "fixture": "disk_cleanup_independent",
+        "fixture_path": "C:\\Users\\Administrator\\oi_enhancements\\companion\\test_fixtures\\disk_cleanup_independent.json",
+        "n_cases": 60,
+        "results": [
+          {
+            "i": 1,
+            "id": "dc.h.010",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 22360
+          },
+          {
+            "i": 2,
+            "id": "dc.s.028",
+            "expect": "critical",
+            "actual": "low",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7075
+          },
+          {
+            "i": 3,
+            "id": "dc.h.013",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 9210
+          },
+          {
+            "i": 4,
+            "id": "dc.s.007",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 8315
+          },
+          {
+            "i": 5,
+            "id": "dc.s.005",
+            "expect": "low",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7147
+          },
+          {
+            "i": 6,
+            "id": "dc.s.029",
+            "expect": "critical",
+            "actual": "low",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6819
+          },
+          {
+            "i": 7,
+            "id": "dc.s.001",
+            "expect": "safe",
+            "actual": "low",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7320
+          },
+          {
+            "i": 8,
+            "id": "dc.s.030",
+            "expect": "critical",
+            "actual": "low",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7026
+          },
+          {
+            "i": 9,
+            "id": "dc.s.010",
+            "expect": "high",
+            "actual": "critical",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 10037
+          },
+          {
+            "i": 10,
+            "id": "dc.h.021",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 8785
+          },
+          {
+            "i": 11,
+            "id": "dc.h.012",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 8849
+          },
+          {
+            "i": 12,
+            "id": "dc.h.023",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 9393
+          },
+          {
+            "i": 13,
+            "id": "dc.h.006",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 9097
+          },
+          {
+            "i": 14,
+            "id": "dc.h.027",
+            "expect": "critical",
+            "actual": "critical",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 11299
+          },
+          {
+            "i": 15,
+            "id": "dc.h.011",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 9143
+          },
+          {
+            "i": 16,
+            "id": "dc.h.017",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 8618
+          },
+          {
+            "i": 17,
+            "id": "dc.s.026",
+            "expect": "high",
+            "actual": "low",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7497
+          },
+          {
+            "i": 18,
+            "id": "dc.h.028",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 9182
+          },
+          {
+            "i": 19,
+            "id": "dc.h.014",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 9178
+          },
+          {
+            "i": 20,
+            "id": "dc.h.030",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 9224
+          },
+          {
+            "i": 21,
+            "id": "dc.s.021",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7314
+          },
+          {
+            "i": 22,
+            "id": "dc.s.022",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7663
+          },
+          {
+            "i": 23,
+            "id": "dc.h.025",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 8575
+          },
+          {
+            "i": 24,
+            "id": "dc.h.019",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 9249
+          },
+          {
+            "i": 25,
+            "id": "dc.s.025",
+            "expect": "high",
+            "actual": "low",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7512
+          },
+          {
+            "i": 26,
+            "id": "dc.s.003",
+            "expect": "safe",
+            "actual": "low",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7707
+          },
+          {
+            "i": 27,
+            "id": "dc.h.018",
+            "expect": "high",
+            "actual": "low",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 8451
+          },
+          {
+            "i": 28,
+            "id": "dc.h.007",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 8885
+          },
+          {
+            "i": 29,
+            "id": "dc.s.002",
+            "expect": "safe",
+            "actual": "low",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7856
+          },
+          {
+            "i": 30,
+            "id": "dc.s.023",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7279
+          },
+          {
+            "i": 31,
+            "id": "dc.h.009",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 9107
+          },
+          {
+            "i": 32,
+            "id": "dc.s.020",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7300
+          },
+          {
+            "i": 33,
+            "id": "dc.s.014",
+            "expect": "critical",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7123
+          },
+          {
+            "i": 34,
+            "id": "dc.s.017",
+            "expect": "safe",
+            "actual": "low",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7680
+          },
+          {
+            "i": 35,
+            "id": "dc.h.003",
+            "expect": "critical",
+            "actual": "critical",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 11708
+          },
+          {
+            "i": 36,
+            "id": "dc.s.009",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 8065
+          },
+          {
+            "i": 37,
+            "id": "dc.s.011",
+            "expect": "high",
+            "actual": "critical",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 10491
+          },
+          {
+            "i": 38,
+            "id": "dc.h.004",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 8659
+          },
+          {
+            "i": 39,
+            "id": "dc.s.018",
+            "expect": "safe",
+            "actual": "low",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7464
+          },
+          {
+            "i": 40,
+            "id": "dc.h.001",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 8919
+          },
+          {
+            "i": 41,
+            "id": "dc.s.027",
+            "expect": "high",
+            "actual": "low",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7695
+          },
+          {
+            "i": 42,
+            "id": "dc.s.015",
+            "expect": "critical",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6815
+          },
+          {
+            "i": 43,
+            "id": "dc.s.019",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7399
+          },
+          {
+            "i": 44,
+            "id": "dc.s.006",
+            "expect": "low",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7478
+          },
+          {
+            "i": 45,
+            "id": "dc.s.008",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 8439
+          },
+          {
+            "i": 46,
+            "id": "dc.h.002",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 8730
+          },
+          {
+            "i": 47,
+            "id": "dc.h.022",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 8707
+          },
+          {
+            "i": 48,
+            "id": "dc.h.005",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 9160
+          },
+          {
+            "i": 49,
+            "id": "dc.h.015",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 8487
+          },
+          {
+            "i": 50,
+            "id": "dc.h.016",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 9384
+          },
+          {
+            "i": 51,
+            "id": "dc.h.008",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 9621
+          },
+          {
+            "i": 52,
+            "id": "dc.s.024",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7526
+          },
+          {
+            "i": 53,
+            "id": "dc.s.004",
+            "expect": "low",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7221
+          },
+          {
+            "i": 54,
+            "id": "dc.h.029",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 9392
+          },
+          {
+            "i": 55,
+            "id": "dc.h.024",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 10205
+          },
+          {
+            "i": 56,
+            "id": "dc.s.012",
+            "expect": "high",
+            "actual": "critical",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 10340
+          },
+          {
+            "i": 57,
+            "id": "dc.s.013",
+            "expect": "critical",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6891
+          },
+          {
+            "i": 58,
+            "id": "dc.h.026",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 9153
+          },
+          {
+            "i": 59,
+            "id": "dc.h.020",
+            "expect": "critical",
+            "actual": "critical",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 10743
+          },
+          {
+            "i": 60,
+            "id": "dc.s.016",
+            "expect": "safe",
+            "actual": "low",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7512
+          }
+        ],
+        "summary": {
+          "n": 60,
+          "accuracy": 0.6333,
+          "parse_fail_rate": 0.0,
+          "latency_p50_ms": 8618,
+          "latency_p95_ms": 11299
+        },
+        "elapsed_total_s": 523.51
+      }
+    }
+  }
+}

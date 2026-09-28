@@ -1,0 +1,33 @@
+seed: 0
+out_dir: /workspace/agent-jev-output/unified_v3
+log_path: /workspace/agent-jev-output/unified_v3/log.jsonl
+log_reset: true
+model_path: /workspace/base_model
+data_path: /workspace/companion/data/data_unified_ch.jsonl
+batch_states: 2
+grad_accum: 4
+max_len: 256
+max_state_tokens: 128
+max_steps: 1500
+warmup_ratio: 0.05
+weight_decay: 0.01
+grad_clip: 1.0
+log_every: 20
+max_consec_fail: 25
+set_dim: 256
+set_layers: 2
+set_heads: 4
+encoder_impl: path
+margin: 0.5
+lr:
+  embed: 1.0e-5
+  bottom: 2.0e-5
+  middle: 4.0e-5
+  top: 6.0e-5
+  head: 1.0e-4
+loss_weights:
+  ce: 1.0
+  brier: 0.0
+  perm_kl: 0.0
+save_every_steps: 200
+save_final: true

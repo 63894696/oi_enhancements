@@ -80,7 +80,7 @@ fn url_for_label(app: &AppHandle, label: &str) -> Option<String> {
 ///   4. unminimize + show + set_focus 三件套
 ///
 /// 复用语义:webview 句柄常驻(close handler 走 hide),JS heap 保留 → 秒级响应。
-pub fn open_window(app: &AppHandle, label: &str) -> Result<(), String> {
+pub fn open_window(app: &AppHandle, label: &'static str) -> Result<(), String> {
     if !SUBWINDOW_LABELS.contains(&label) {
         return Err(format!("unknown subwindow label: {}", label));
     }
@@ -109,7 +109,7 @@ pub fn open_window(app: &AppHandle, label: &str) -> Result<(), String> {
 /// 复用 lib.rs 主窗 close-to-tray 模板(line 999-1007):
 ///   - WindowEvent::CloseRequested + api.prevent_close() + window.hide()
 ///   - quitting 守卫:真退出时不拦,让进程正常结束
-pub fn bind_close_to_tray(app: &AppHandle, label: &str) {
+pub fn bind_close_to_tray(app: &AppHandle, label: &'static str) {
     let Some(win) = app.get_webview_window(label) else {
         log::warn!("[closeToTray] {} not configured, skip", label);
         return;

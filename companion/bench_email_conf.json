@@ -1,0 +1,64 @@
+{
+  "scenario": "email",
+  "samples_total": 450,
+  "test_size": 90,
+  "with_adapter": {
+    "n": 90,
+    "risk_accuracy": 0.5888888888888889,
+    "action_accuracy": 0.45555555555555555,
+    "parse_fail_rate": 0.2111111111111111,
+    "calibration": {
+      "risk_conf_mean_correct": 0.3995,
+      "risk_conf_mean_wrong": 0.3643,
+      "n_with_conf": 48
+    },
+    "latency_ms": {
+      "p50": 2508.3,
+      "p95": 2514.3,
+      "mean": 2532.6
+    },
+    "confusion_risk": {
+      "safe": {
+        "safe": 14
+      },
+      "low": {
+        "low": 21,
+        "safe": 1
+      },
+      "medium": {
+        "medium": 13,
+        "low": 1,
+        "safe": 5
+      },
+      "high": {
+        "low": 7,
+        "high": 5
+      },
+      "critical": {
+        "low": 4
+      }
+    },
+    "confusion_action": {
+      "delete": {
+        "_none_": 3,
+        "keep": 2
+      },
+      "archive": {
+        "delete": 3,
+        "_none_": 3,
+        "keep": 3
+      },
+      "reply": {
+        "_none_": 6,
+        "keep": 3,
+        "delete": 1,
+        "archive": 3
+      },
+      "keep": {
+        "delete": 3
+      }
+    }
+  },
+  "base_only": null,
+  "delta_risk_accuracy": 0.5888888888888889
+}

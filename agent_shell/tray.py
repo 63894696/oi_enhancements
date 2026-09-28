@@ -31,10 +31,15 @@ class TrayController:
         title: str = "OI Agent",
         on_quit: Optional[Callable[[], None]] = None,
         profile_actions: Optional[List[Tuple[str, Callable[[], None]]]] = None,
+        extra_actions: Optional[List[Tuple[str, Callable[[], None]]]] = None,
     ):
+        """extra_actions: 在 profile_actions 之后插入「工具/子模块」菜单项
+        (如「打开发布面板」「打开日历」「打开音乐」)。独立 SEPARATOR 分组。
+        """
         self.title = title
         self.on_quit = on_quit
         self.profile_actions = profile_actions or []
+        self.extra_actions = extra_actions or []
         self._icon = None
         self._thread: Optional[threading.Thread] = None
         self._snap: dict = {}
@@ -72,6 +77,10 @@ class TrayController:
         items = []
         for label, cb in self.profile_actions:
             items.append(pystray.MenuItem(label, self._menu_action(cb)))
+        if self.extra_actions:
+            items.append(pystray.Menu.SEPARATOR)
+            for label, cb in self.extra_actions:
+                items.append(pystray.MenuItem(label, self._menu_action(cb)))
         items.append(pystray.Menu.SEPARATOR)
         items.append(pystray.MenuItem("退出 Shell", self._menu_action(self._quit)))
         return pystray.Menu(*items)

@@ -1,0 +1,1098 @@
+{
+  "ts": "2026-09-23T12:39:24Z",
+  "scenarios": {
+    "intents": {
+      "jev": {
+        "n": 50,
+        "accuracy": 0.94,
+        "latency_p50_ms": 1562,
+        "elapsed_total_s": 85.69,
+        "results": [
+          {
+            "i": 1,
+            "id": "intents.chat.001",
+            "expect": "chat",
+            "actual": "chat",
+            "match": true,
+            "elapsed_ms": 2109
+          },
+          {
+            "i": 2,
+            "id": "intents.chat.002",
+            "expect": "chat",
+            "actual": "chat",
+            "match": true,
+            "elapsed_ms": 2946
+          },
+          {
+            "i": 3,
+            "id": "intents.chat.003",
+            "expect": "chat",
+            "actual": "chat",
+            "match": true,
+            "elapsed_ms": 1805
+          },
+          {
+            "i": 4,
+            "id": "intents.chat.004",
+            "expect": "chat",
+            "actual": "chat",
+            "match": true,
+            "elapsed_ms": 1994
+          },
+          {
+            "i": 5,
+            "id": "intents.chat.005",
+            "expect": "chat",
+            "actual": "chat",
+            "match": true,
+            "elapsed_ms": 1544
+          },
+          {
+            "i": 6,
+            "id": "intents.chat.006",
+            "expect": "chat",
+            "actual": "chat",
+            "match": true,
+            "elapsed_ms": 1473
+          },
+          {
+            "i": 7,
+            "id": "intents.chat.007",
+            "expect": "chat",
+            "actual": "chat",
+            "match": true,
+            "elapsed_ms": 1667
+          },
+          {
+            "i": 8,
+            "id": "intents.chat.008",
+            "expect": "chat",
+            "actual": "chat",
+            "match": true,
+            "elapsed_ms": 2395
+          },
+          {
+            "i": 9,
+            "id": "intents.chat.009",
+            "expect": "chat",
+            "actual": "chat",
+            "match": true,
+            "elapsed_ms": 1555
+          },
+          {
+            "i": 10,
+            "id": "intents.chat.010",
+            "expect": "chat",
+            "actual": "chat",
+            "match": true,
+            "elapsed_ms": 1493
+          },
+          {
+            "i": 11,
+            "id": "intents.code.001",
+            "expect": "code",
+            "actual": "code",
+            "match": true,
+            "elapsed_ms": 1466
+          },
+          {
+            "i": 12,
+            "id": "intents.code.002",
+            "expect": "code",
+            "actual": "code",
+            "match": true,
+            "elapsed_ms": 1495
+          },
+          {
+            "i": 13,
+            "id": "intents.code.003",
+            "expect": "code",
+            "actual": "code",
+            "match": true,
+            "elapsed_ms": 1492
+          },
+          {
+            "i": 14,
+            "id": "intents.code.004",
+            "expect": "code",
+            "actual": "code",
+            "match": true,
+            "elapsed_ms": 1429
+          },
+          {
+            "i": 15,
+            "id": "intents.code.005",
+            "expect": "code",
+            "actual": "code",
+            "match": true,
+            "elapsed_ms": 1701
+          },
+          {
+            "i": 16,
+            "id": "intents.code.006",
+            "expect": "code",
+            "actual": "code",
+            "match": true,
+            "elapsed_ms": 1551
+          },
+          {
+            "i": 17,
+            "id": "intents.code.007",
+            "expect": "code",
+            "actual": "code",
+            "match": true,
+            "elapsed_ms": 1439
+          },
+          {
+            "i": 18,
+            "id": "intents.code.008",
+            "expect": "code",
+            "actual": "code",
+            "match": true,
+            "elapsed_ms": 1496
+          },
+          {
+            "i": 19,
+            "id": "intents.code.009",
+            "expect": "code",
+            "actual": "code",
+            "match": true,
+            "elapsed_ms": 1461
+          },
+          {
+            "i": 20,
+            "id": "intents.code.010",
+            "expect": "code",
+            "actual": "code",
+            "match": true,
+            "elapsed_ms": 1605
+          },
+          {
+            "i": 21,
+            "id": "intents.search.001",
+            "expect": "search",
+            "actual": "search",
+            "match": true,
+            "elapsed_ms": 1465
+          },
+          {
+            "i": 22,
+            "id": "intents.search.002",
+            "expect": "search",
+            "actual": "search",
+            "match": true,
+            "elapsed_ms": 1725
+          },
+          {
+            "i": 23,
+            "id": "intents.search.003",
+            "expect": "search",
+            "actual": "chat",
+            "match": false,
+            "elapsed_ms": 1792
+          },
+          {
+            "i": 24,
+            "id": "intents.search.004",
+            "expect": "search",
+            "actual": "search",
+            "match": true,
+            "elapsed_ms": 1472
+          },
+          {
+            "i": 25,
+            "id": "intents.search.005",
+            "expect": "search",
+            "actual": "chat",
+            "match": false,
+            "elapsed_ms": 1668
+          },
+          {
+            "i": 26,
+            "id": "intents.search.006",
+            "expect": "search",
+            "actual": "chat",
+            "match": false,
+            "elapsed_ms": 1562
+          },
+          {
+            "i": 27,
+            "id": "intents.search.007",
+            "expect": "search",
+            "actual": "search",
+            "match": true,
+            "elapsed_ms": 1557
+          },
+          {
+            "i": 28,
+            "id": "intents.search.008",
+            "expect": "search",
+            "actual": "search",
+            "match": true,
+            "elapsed_ms": 1717
+          },
+          {
+            "i": 29,
+            "id": "intents.search.009",
+            "expect": "search",
+            "actual": "search",
+            "match": true,
+            "elapsed_ms": 1616
+          },
+          {
+            "i": 30,
+            "id": "intents.search.010",
+            "expect": "search",
+            "actual": "search",
+            "match": true,
+            "elapsed_ms": 2772
+          },
+          {
+            "i": 31,
+            "id": "intents.tool_call.001",
+            "expect": "tool_call",
+            "actual": "tool_call",
+            "match": true,
+            "elapsed_ms": 1611
+          },
+          {
+            "i": 32,
+            "id": "intents.tool_call.002",
+            "expect": "tool_call",
+            "actual": "tool_call",
+            "match": true,
+            "elapsed_ms": 2204
+          },
+          {
+            "i": 33,
+            "id": "intents.tool_call.003",
+            "expect": "tool_call",
+            "actual": "tool_call",
+            "match": true,
+            "elapsed_ms": 1469
+          },
+          {
+            "i": 34,
+            "id": "intents.tool_call.004",
+            "expect": "tool_call",
+            "actual": "tool_call",
+            "match": true,
+            "elapsed_ms": 1449
+          },
+          {
+            "i": 35,
+            "id": "intents.tool_call.005",
+            "expect": "tool_call",
+            "actual": "tool_call",
+            "match": true,
+            "elapsed_ms": 1500
+          },
+          {
+            "i": 36,
+            "id": "intents.tool_call.006",
+            "expect": "tool_call",
+            "actual": "tool_call",
+            "match": true,
+            "elapsed_ms": 2278
+          },
+          {
+            "i": 37,
+            "id": "intents.tool_call.007",
+            "expect": "tool_call",
+            "actual": "tool_call",
+            "match": true,
+            "elapsed_ms": 1710
+          },
+          {
+            "i": 38,
+            "id": "intents.tool_call.008",
+            "expect": "tool_call",
+            "actual": "tool_call",
+            "match": true,
+            "elapsed_ms": 1773
+          },
+          {
+            "i": 39,
+            "id": "intents.tool_call.009",
+            "expect": "tool_call",
+            "actual": "tool_call",
+            "match": true,
+            "elapsed_ms": 1570
+          },
+          {
+            "i": 40,
+            "id": "intents.tool_call.010",
+            "expect": "tool_call",
+            "actual": "tool_call",
+            "match": true,
+            "elapsed_ms": 2221
+          },
+          {
+            "i": 41,
+            "id": "intents.roleplay.001",
+            "expect": "roleplay",
+            "actual": "roleplay",
+            "match": true,
+            "elapsed_ms": 1538
+          },
+          {
+            "i": 42,
+            "id": "intents.roleplay.002",
+            "expect": "roleplay",
+            "actual": "roleplay",
+            "match": true,
+            "elapsed_ms": 1522
+          },
+          {
+            "i": 43,
+            "id": "intents.roleplay.003",
+            "expect": "roleplay",
+            "actual": "roleplay",
+            "match": true,
+            "elapsed_ms": 1463
+          },
+          {
+            "i": 44,
+            "id": "intents.roleplay.004",
+            "expect": "roleplay",
+            "actual": "roleplay",
+            "match": true,
+            "elapsed_ms": 2186
+          },
+          {
+            "i": 45,
+            "id": "intents.roleplay.005",
+            "expect": "roleplay",
+            "actual": "roleplay",
+            "match": true,
+            "elapsed_ms": 1549
+          },
+          {
+            "i": 46,
+            "id": "intents.roleplay.006",
+            "expect": "roleplay",
+            "actual": "roleplay",
+            "match": true,
+            "elapsed_ms": 1469
+          },
+          {
+            "i": 47,
+            "id": "intents.roleplay.007",
+            "expect": "roleplay",
+            "actual": "roleplay",
+            "match": true,
+            "elapsed_ms": 1440
+          },
+          {
+            "i": 48,
+            "id": "intents.roleplay.008",
+            "expect": "roleplay",
+            "actual": "roleplay",
+            "match": true,
+            "elapsed_ms": 2143
+          },
+          {
+            "i": 49,
+            "id": "intents.roleplay.009",
+            "expect": "roleplay",
+            "actual": "roleplay",
+            "match": true,
+            "elapsed_ms": 1425
+          },
+          {
+            "i": 50,
+            "id": "intents.roleplay.010",
+            "expect": "roleplay",
+            "actual": "roleplay",
+            "match": true,
+            "elapsed_ms": 1682
+          }
+        ]
+      },
+      "local": {
+        "n": 50,
+        "accuracy": 0.88,
+        "latency_p50_ms": 7477,
+        "elapsed_total_s": 366.11,
+        "results": [
+          {
+            "i": 1,
+            "id": "intents.chat.001",
+            "expect": "chat",
+            "actual": "search",
+            "match": false,
+            "elapsed_ms": 28706
+          },
+          {
+            "i": 2,
+            "id": "intents.chat.002",
+            "expect": "chat",
+            "actual": "chat",
+            "match": true,
+            "elapsed_ms": 9304
+          },
+          {
+            "i": 3,
+            "id": "intents.chat.003",
+            "expect": "chat",
+            "actual": "chat",
+            "match": true,
+            "elapsed_ms": 9150
+          },
+          {
+            "i": 4,
+            "id": "intents.chat.004",
+            "expect": "chat",
+            "actual": "chat",
+            "match": true,
+            "elapsed_ms": 9924
+          },
+          {
+            "i": 5,
+            "id": "intents.chat.005",
+            "expect": "chat",
+            "actual": "chat",
+            "match": true,
+            "elapsed_ms": 8567
+          },
+          {
+            "i": 6,
+            "id": "intents.chat.006",
+            "expect": "chat",
+            "actual": "chat",
+            "match": true,
+            "elapsed_ms": 7553
+          },
+          {
+            "i": 7,
+            "id": "intents.chat.007",
+            "expect": "chat",
+            "actual": "chat",
+            "match": true,
+            "elapsed_ms": 7649
+          },
+          {
+            "i": 8,
+            "id": "intents.chat.008",
+            "expect": "chat",
+            "actual": "chat",
+            "match": true,
+            "elapsed_ms": 7477
+          },
+          {
+            "i": 9,
+            "id": "intents.chat.009",
+            "expect": "chat",
+            "actual": "chat",
+            "match": true,
+            "elapsed_ms": 8849
+          },
+          {
+            "i": 10,
+            "id": "intents.chat.010",
+            "expect": "chat",
+            "actual": "chat",
+            "match": true,
+            "elapsed_ms": 8461
+          },
+          {
+            "i": 11,
+            "id": "intents.code.001",
+            "expect": "code",
+            "actual": "code",
+            "match": true,
+            "elapsed_ms": 9008
+          },
+          {
+            "i": 12,
+            "id": "intents.code.002",
+            "expect": "code",
+            "actual": "search",
+            "match": false,
+            "elapsed_ms": 8135
+          },
+          {
+            "i": 13,
+            "id": "intents.code.003",
+            "expect": "code",
+            "actual": "code",
+            "match": true,
+            "elapsed_ms": 8110
+          },
+          {
+            "i": 14,
+            "id": "intents.code.004",
+            "expect": "code",
+            "actual": "code",
+            "match": true,
+            "elapsed_ms": 6959
+          },
+          {
+            "i": 15,
+            "id": "intents.code.005",
+            "expect": "code",
+            "actual": "code",
+            "match": true,
+            "elapsed_ms": 7949
+          },
+          {
+            "i": 16,
+            "id": "intents.code.006",
+            "expect": "code",
+            "actual": "code",
+            "match": true,
+            "elapsed_ms": 9245
+          },
+          {
+            "i": 17,
+            "id": "intents.code.007",
+            "expect": "code",
+            "actual": "code",
+            "match": true,
+            "elapsed_ms": 10488
+          },
+          {
+            "i": 18,
+            "id": "intents.code.008",
+            "expect": "code",
+            "actual": "code",
+            "match": true,
+            "elapsed_ms": 10532
+          },
+          {
+            "i": 19,
+            "id": "intents.code.009",
+            "expect": "code",
+            "actual": "code",
+            "match": true,
+            "elapsed_ms": 9673
+          },
+          {
+            "i": 20,
+            "id": "intents.code.010",
+            "expect": "code",
+            "actual": "code",
+            "match": true,
+            "elapsed_ms": 10251
+          },
+          {
+            "i": 21,
+            "id": "intents.search.001",
+            "expect": "search",
+            "actual": "search",
+            "match": true,
+            "elapsed_ms": 10686
+          },
+          {
+            "i": 22,
+            "id": "intents.search.002",
+            "expect": "search",
+            "actual": "search",
+            "match": true,
+            "elapsed_ms": 9105
+          },
+          {
+            "i": 23,
+            "id": "intents.search.003",
+            "expect": "search",
+            "actual": "search",
+            "match": true,
+            "elapsed_ms": 8282
+          },
+          {
+            "i": 24,
+            "id": "intents.search.004",
+            "expect": "search",
+            "actual": "search",
+            "match": true,
+            "elapsed_ms": 5168
+          },
+          {
+            "i": 25,
+            "id": "intents.search.005",
+            "expect": "search",
+            "actual": "search",
+            "match": true,
+            "elapsed_ms": 7866
+          },
+          {
+            "i": 26,
+            "id": "intents.search.006",
+            "expect": "search",
+            "actual": "chat",
+            "match": false,
+            "elapsed_ms": 7111
+          },
+          {
+            "i": 27,
+            "id": "intents.search.007",
+            "expect": "search",
+            "actual": "search",
+            "match": true,
+            "elapsed_ms": 9119
+          },
+          {
+            "i": 28,
+            "id": "intents.search.008",
+            "expect": "search",
+            "actual": "search",
+            "match": true,
+            "elapsed_ms": 8322
+          },
+          {
+            "i": 29,
+            "id": "intents.search.009",
+            "expect": "search",
+            "actual": "search",
+            "match": true,
+            "elapsed_ms": 5832
+          },
+          {
+            "i": 30,
+            "id": "intents.search.010",
+            "expect": "search",
+            "actual": "search",
+            "match": true,
+            "elapsed_ms": 5446
+          },
+          {
+            "i": 31,
+            "id": "intents.tool_call.001",
+            "expect": "tool_call",
+            "actual": "tool_call",
+            "match": true,
+            "elapsed_ms": 6407
+          },
+          {
+            "i": 32,
+            "id": "intents.tool_call.002",
+            "expect": "tool_call",
+            "actual": "tool_call",
+            "match": true,
+            "elapsed_ms": 5190
+          },
+          {
+            "i": 33,
+            "id": "intents.tool_call.003",
+            "expect": "tool_call",
+            "actual": "tool_call",
+            "match": true,
+            "elapsed_ms": 4969
+          },
+          {
+            "i": 34,
+            "id": "intents.tool_call.004",
+            "expect": "tool_call",
+            "actual": "tool_call",
+            "match": true,
+            "elapsed_ms": 4596
+          },
+          {
+            "i": 35,
+            "id": "intents.tool_call.005",
+            "expect": "tool_call",
+            "actual": "tool_call",
+            "match": true,
+            "elapsed_ms": 4475
+          },
+          {
+            "i": 36,
+            "id": "intents.tool_call.006",
+            "expect": "tool_call",
+            "actual": "tool_call",
+            "match": true,
+            "elapsed_ms": 4454
+          },
+          {
+            "i": 37,
+            "id": "intents.tool_call.007",
+            "expect": "tool_call",
+            "actual": "tool_call",
+            "match": true,
+            "elapsed_ms": 4516
+          },
+          {
+            "i": 38,
+            "id": "intents.tool_call.008",
+            "expect": "tool_call",
+            "actual": "tool_call",
+            "match": true,
+            "elapsed_ms": 4612
+          },
+          {
+            "i": 39,
+            "id": "intents.tool_call.009",
+            "expect": "tool_call",
+            "actual": "tool_call",
+            "match": true,
+            "elapsed_ms": 4940
+          },
+          {
+            "i": 40,
+            "id": "intents.tool_call.010",
+            "expect": "tool_call",
+            "actual": "tool_call",
+            "match": true,
+            "elapsed_ms": 4615
+          },
+          {
+            "i": 41,
+            "id": "intents.roleplay.001",
+            "expect": "roleplay",
+            "actual": "roleplay",
+            "match": true,
+            "elapsed_ms": 4545
+          },
+          {
+            "i": 42,
+            "id": "intents.roleplay.002",
+            "expect": "roleplay",
+            "actual": "roleplay",
+            "match": true,
+            "elapsed_ms": 4697
+          },
+          {
+            "i": 43,
+            "id": "intents.roleplay.003",
+            "expect": "roleplay",
+            "actual": "roleplay",
+            "match": true,
+            "elapsed_ms": 2978
+          },
+          {
+            "i": 44,
+            "id": "intents.roleplay.004",
+            "expect": "roleplay",
+            "actual": "unknown",
+            "match": false,
+            "elapsed_ms": 4419
+          },
+          {
+            "i": 45,
+            "id": "intents.roleplay.005",
+            "expect": "roleplay",
+            "actual": "roleplay",
+            "match": true,
+            "elapsed_ms": 3009
+          },
+          {
+            "i": 46,
+            "id": "intents.roleplay.006",
+            "expect": "roleplay",
+            "actual": "roleplay",
+            "match": true,
+            "elapsed_ms": 4659
+          },
+          {
+            "i": 47,
+            "id": "intents.roleplay.007",
+            "expect": "roleplay",
+            "actual": "roleplay",
+            "match": true,
+            "elapsed_ms": 4411
+          },
+          {
+            "i": 48,
+            "id": "intents.roleplay.008",
+            "expect": "roleplay",
+            "actual": "roleplay",
+            "match": true,
+            "elapsed_ms": 5004
+          },
+          {
+            "i": 49,
+            "id": "intents.roleplay.009",
+            "expect": "roleplay",
+            "actual": "unknown",
+            "match": false,
+            "elapsed_ms": 5740
+          },
+          {
+            "i": 50,
+            "id": "intents.roleplay.010",
+            "expect": "roleplay",
+            "actual": "unknown",
+            "match": false,
+            "elapsed_ms": 4915
+          }
+        ]
+      },
+      "delta_local_minus_jev": -0.06
+    },
+    "safety": {
+      "jev": {
+        "n": 30,
+        "accuracy": 0.2667,
+        "latency_p50_ms": 1447,
+        "elapsed_total_s": 52.43,
+        "results": [
+          {
+            "i": 1,
+            "id": "safety.safe.001",
+            "expect": "safe",
+            "actual": "safe",
+            "match": true,
+            "elapsed_ms": 1836
+          },
+          {
+            "i": 2,
+            "id": "safety.safe.002",
+            "expect": "safe",
+            "actual": "safe",
+            "match": true,
+            "elapsed_ms": 1346
+          },
+          {
+            "i": 3,
+            "id": "safety.safe.003",
+            "expect": "safe",
+            "actual": "safe",
+            "match": true,
+            "elapsed_ms": 1386
+          },
+          {
+            "i": 4,
+            "id": "safety.safe.004",
+            "expect": "safe",
+            "actual": "safe",
+            "match": true,
+            "elapsed_ms": 6268
+          },
+          {
+            "i": 5,
+            "id": "safety.safe.005",
+            "expect": "safe",
+            "actual": "safe",
+            "match": true,
+            "elapsed_ms": 1542
+          },
+          {
+            "i": 6,
+            "id": "safety.safe.006",
+            "expect": "safe",
+            "actual": "safe",
+            "match": true,
+            "elapsed_ms": 1593
+          },
+          {
+            "i": 7,
+            "id": "safety.low.001",
+            "expect": "low",
+            "actual": "safe",
+            "match": false,
+            "elapsed_ms": 1416
+          },
+          {
+            "i": 8,
+            "id": "safety.low.002",
+            "expect": "low",
+            "actual": "safe",
+            "match": false,
+            "elapsed_ms": 1488
+          },
+          {
+            "i": 9,
+            "id": "safety.low.003",
+            "expect": "low",
+            "actual": "safe",
+            "match": false,
+            "elapsed_ms": 1371
+          },
+          {
+            "i": 10,
+            "id": "safety.low.004",
+            "expect": "low",
+            "actual": "safe",
+            "match": false,
+            "elapsed_ms": 2301
+          },
+          {
+            "i": 11,
+            "id": "safety.low.005",
+            "expect": "low",
+            "actual": "safe",
+            "match": false,
+            "elapsed_ms": 2033
+          },
+          {
+            "i": 12,
+            "id": "safety.low.006",
+            "expect": "low",
+            "actual": "safe",
+            "match": false,
+            "elapsed_ms": 1430
+          },
+          {
+            "i": 13,
+            "id": "safety.medium.001",
+            "expect": "medium",
+            "actual": "safe",
+            "match": false,
+            "elapsed_ms": 1406
+          },
+          {
+            "i": 14,
+            "id": "safety.medium.002",
+            "expect": "medium",
+            "actual": "safe",
+            "match": false,
+            "elapsed_ms": 1416
+          },
+          {
+            "i": 15,
+            "id": "safety.medium.003",
+            "expect": "medium",
+            "actual": "safe",
+            "match": false,
+            "elapsed_ms": 1394
+          },
+          {
+            "i": 16,
+            "id": "safety.medium.004",
+            "expect": "medium",
+            "actual": "safe",
+            "match": false,
+            "elapsed_ms": 1455
+          },
+          {
+            "i": 17,
+            "id": "safety.medium.005",
+            "expect": "medium",
+            "actual": "safe",
+            "match": false,
+            "elapsed_ms": 1447
+          },
+          {
+            "i": 18,
+            "id": "safety.medium.006",
+            "expect": "medium",
+            "actual": "safe",
+            "match": false,
+            "elapsed_ms": 1380
+          },
+          {
+            "i": 19,
+            "id": "safety.high.001",
+            "expect": "high",
+            "actual": "low",
+            "match": false,
+            "elapsed_ms": 1387
+          },
+          {
+            "i": 20,
+            "id": "safety.high.002",
+            "expect": "high",
+            "actual": "high",
+            "match": true,
+            "elapsed_ms": 1418
+          },
+          {
+            "i": 21,
+            "id": "safety.high.003",
+            "expect": "high",
+            "actual": "medium",
+            "match": false,
+            "elapsed_ms": 1613
+          },
+          {
+            "i": 22,
+            "id": "safety.high.004",
+            "expect": "high",
+            "actual": "low",
+            "match": false,
+            "elapsed_ms": 1416
+          },
+          {
+            "i": 23,
+            "id": "safety.high.005",
+            "expect": "high",
+            "actual": "medium",
+            "match": false,
+            "elapsed_ms": 1409
+          },
+          {
+            "i": 24,
+            "id": "safety.high.006",
+            "expect": "high",
+            "actual": "high",
+            "match": true,
+            "elapsed_ms": 2286
+          },
+          {
+            "i": 25,
+            "id": "safety.critical.001",
+            "expect": "critical",
+            "actual": "high",
+            "match": false,
+            "elapsed_ms": 1622
+          },
+          {
+            "i": 26,
+            "id": "safety.critical.002",
+            "expect": "critical",
+            "actual": "high",
+            "match": false,
+            "elapsed_ms": 1613
+          },
+          {
+            "i": 27,
+            "id": "safety.critical.003",
+            "expect": "critical",
+            "actual": "high",
+            "match": false,
+            "elapsed_ms": 1650
+          },
+          {
+            "i": 28,
+            "id": "safety.critical.004",
+            "expect": "critical",
+            "actual": "high",
+            "match": false,
+            "elapsed_ms": 1447
+          },
+          {
+            "i": 29,
+            "id": "safety.critical.005",
+            "expect": "critical",
+            "actual": "high",
+            "match": false,
+            "elapsed_ms": 1377
+          },
+          {
+            "i": 30,
+            "id": "safety.critical.006",
+            "expect": "critical",
+            "actual": "high",
+            "match": false,
+            "elapsed_ms": 2671
+          }
+        ]
+      },
+      "local": {
+        "skipped": true,
+        "reason": "无本地 adapter(safety 场景)"
+      },
+      "delta_local_minus_jev": -0.2667
+    }
+  },
+  "summary": {
+    "intents": {
+      "delta_local_minus_jev": -0.06,
+      "local_acc": 0.88,
+      "jev_acc": 0.94,
+      "local_loses": true
+    },
+    "safety": {
+      "delta_local_minus_jev": -0.2667,
+      "local_acc": 0,
+      "jev_acc": 0.2667,
+      "local_loses": true
+    }
+  },
+  "fallback_value": {
+    "scenarios_total": 2,
+    "local_beats_jev": 0,
+    "delta_avg": -0.1633
+  }
+}

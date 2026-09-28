@@ -122,6 +122,9 @@ target/
 
 # 本地临时调试脚本(以前用 _*.py 命名,现在很多改 .tmp_*.py)
 .tmp_*
+
+# scripts/_cache/ 是上游仓库 clone 缓存(agency-agents 等),不进库
+scripts/_cache/
 .tmp_at*.txt
 .tmp_capacitor_hello/
 .tmp_check.apk
@@ -304,3 +307,4 @@ companion/lx_runtime/lx_main.js
 companion/lx_runtime/juhe.js
 companion/lx_runtime/ikun.js
 
+*/__pycache__/

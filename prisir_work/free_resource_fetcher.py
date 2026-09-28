@@ -1,19 +1,30 @@
 """
-prisir_work/free_resource_fetcher.py — 免费资源统一门面(Phase 12 OM-P4, 2026-09-28)。
+prisir_work/free_resource_fetcher.py — 免费资源统一门面(Phase 12 OM-P4 + OM-P4-fix, 2026-09-28)。
 
 承接 [[prisIr-phase-11-om-p3-pre-compose]] + 用户「渐进 ship + 证据」决策。
 
 ## 定位
 统一封装 3 个免费资源客户端,作为 video_creator 的 fallback 入口:
-- edge_tts_client  — 免费 TTS(无 key,中文 Xiaoxiao)
-- pixabay_client    — 免费 BGM/视频(需 PIXABAY_API_KEY)
-- archive_org_client — 免费 stock 视频(无 key,历史素材)
+- edge_tts_client    — 免费 TTS(无 key,中文 Xiaoxiao)
+- pixabay_client     — 免费 stock 图片/视频(需 PIXABAY_API_KEY;**无音频 API**)
+- archive_org_client — 免费 stock 视频/音频(无 key,历史素材;**音频来源**)
+
+## ⚠ Pixabay OM-P4-fix(2026-09-28 用户纠正)
+  Pixabay **网页**有 Music 版块(https://pixabay.com/music/ 可手动下载海量 BGM),
+  但**公开 REST API 没有音频端点**(https://pixabay.com/api/docs/ 只列 images + videos)。
+  /api/audio/ 返 403 — 端点不开放。
+
+  本门面 free_bgm 改走 archive.org audio(API 可用):
+    1. 主路径 archive_org_client mediatype='audio' (mp3 下载源)
+    2. 想要 Pixabay Music 必须手动下到本地 → 用本地路径
+    3. pixabay_client.search_music 已删除
 
 ## 关键 API
   - free_tts(text, output_path) → TTSResult
-  - free_bgm(query, limit=10) → list[BGMHit]
+  - free_bgm(query, limit=10) → list[ArchiveHit]  (改为 archive.org audio)
+  - free_stock_image(query, limit=15) → list[ImageHit]  (新增,Pixabay 真搜)
   - free_stock_video(query, limit=10) → list[Union[VideoHit, ArchiveHit]]
-  - free_resource_status() → dict  (3 个资源就绪状态 + 配额)
+  - free_resource_status() → FreeResourceStatus  (3 资源就绪状态)
 
 ## 不破坏 video_creator
 - video_creator.pick_provider_for_creator 已 ship(OM-P2)
@@ -29,6 +40,7 @@ __all__ = [
     "FreeResourceStatus",
     "free_tts",
     "free_bgm",
+    "free_stock_image",
     "free_stock_video",
     "free_resource_status",
 ]
@@ -110,15 +122,37 @@ def free_tts(text: str, output_path: str,
 
 
 def free_bgm(query: str = "", limit: int = 10) -> list:
-    """免费 BGM 调用(转 pixabay_client.search_music)。
+    """免费 BGM 调用(OM-P4-fix 改:走 archive.org audio mediatype)。
+
+    历史:Pixabay 网页有 Music 但 API 不开放(/api/audio/ 403)。
+    本函数现走 archive.org — 公开 mp3,适合作为短剧 BGM 起点。
+    若需 Pixabay Music 海量曲库:手动到 https://pixabay.com/music/ 下到本地。
+
+    Args:
+        query: 关键词(留空返 trending audio)
+        limit: 返几条(默认 10)
+
+    Returns:
+        list[ArchiveHit](失败返 [])
+    """
+    try:
+        from .archive_org_client import search_videos as arch_search
+    except ImportError:
+        return []
+    return arch_search(query=query, limit=limit, mediatype="audio")
+
+
+def free_stock_image(query: str = "", image_type: str = "all",
+                     limit: int = 15) -> list:
+    """免费 stock 图片(OM-P4-fix 新增,转 pixabay_client.search_images)。
 
     无 key → 返 []
     """
     try:
-        from .pixabay_client import search_music
+        from .pixabay_client import search_images
     except ImportError:
         return []
-    return search_music(query=query, limit=limit)
+    return search_images(query=query, image_type=image_type, limit=limit)
 
 
 def free_stock_video(query: str = "", limit: int = 10) -> list:
@@ -143,8 +177,12 @@ def free_stock_video(query: str = "", limit: int = 10) -> list:
             remaining = limit - len(hits)
             arch_hits = arch_search(query=query, limit=remaining,
                                     mediatype="movies")
-            # 避免重复 identifier
-            existing_ids = {getattr(h, "id", None) for h in hits}
+            # 避免重复:Pixabay 用 id,Archive 用 identifier;字段名不同要容错
+            existing_ids = set()
+            for h in hits:
+                _id = getattr(h, "id", None) or getattr(h, "identifier", None)
+                if _id:
+                    existing_ids.add(_id)
             for ah in arch_hits:
                 if ah.identifier not in existing_ids:
                     hits.append(ah)

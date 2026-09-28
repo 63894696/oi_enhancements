@@ -396,6 +396,43 @@ TOOL_DEFS = [
             "required": [],
         },
     },
+    # M3.83: race_impl(4 头 LoRA + regex fallback)
+    {
+        "name": "goal_check_reviewer_lora",
+        "description": (
+            "H6 Reviewer 守卫 — M3.83 race_impl 版本。"
+            "调用 4 头 LoRA(reviewer_met/reviewer_blocked)取 conf ≥ 0.7,"
+            "否则降级 regex check_reviewer_gate。"
+            "LoRA 缺失/CUDA 不可用 → 自动 fallback regex(行为完全等价原版本)。"
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "integer", "description": "任务 ID"},
+                "file_ops": {"type": "integer", "description": "文件操作次数"},
+                "min_report_chars": {"type": "integer", "default": 600},
+            },
+            "required": ["task_id", "file_ops"],
+        },
+    },
+    {
+        "name": "goal_check_verifier_lora",
+        "description": (
+            "H8 Verifier 守卫 — M3.83 race_impl 版本。"
+            "调用 4 头 LoRA(verifier_met/verifier_blocked)取 conf ≥ 0.7,"
+            "否则降级 regex check_verifier_gate。"
+            "LoRA 缺失/CUDA 不可用 → 自动 fallback regex(行为完全等价原版本)。"
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "integer", "description": "任务 ID"},
+                "file_ops": {"type": "integer", "description": "文件操作次数"},
+                "min_report_chars": {"type": "integer", "default": 600},
+            },
+            "required": ["task_id", "file_ops"],
+        },
+    },
 ]
 
 
@@ -421,6 +458,213 @@ def _goal_check_verifier_impl(
     return result.to_json()
 
 
+# ── M3.83: 4 头 LoRA + regex race_impl ────────────────────────────
+
+import logging
+_LOG = logging.getLogger("goal_state.lora_race")
+
+# 4 头 LoRA 注册表(在 adapter_registry.py 已配 spec,这里只引用)
+LORA_HEADS = {
+    "reviewer_met": "goal_gate_reviewer_met",
+    "reviewer_blocked": "goal_gate_reviewer_blocked",
+    "verifier_met": "goal_gate_verifier_met",
+    "verifier_blocked": "goal_gate_verifier_blocked",
+}
+
+# 置信阈值:M3.83 L4 race_impl — conf >= 0.7 用 LoRA 结果,< 0.7 fallback regex
+LORA_CONF_THRESHOLD = 0.7
+
+# LoRA 加载失败 / CUDA 不可用时静默退化为 regex,记 warning
+_LORA_AVAILABLE: bool | None = None
+
+
+def _try_load_lora_head(head_name: str):
+    """尝试加载一个 LoRA head。M3.83 设计:
+      - 加载失败(FileNotFound / CUDA 不可用 / OOM)→ return None,外层 fallback regex
+      - 加载成功 → return LoadedAdapter 实例
+    """
+    import os
+    global _LORA_AVAILABLE
+    adapter_id = LORA_HEADS.get(head_name)
+    if not adapter_id:
+        return None
+
+    # 一次性检测环境,失败则不再尝试
+    if _LORA_AVAILABLE is False:
+        return None
+
+    try:
+        # 路径:companion/adapter_registry.py 与 prisiragent_server 同级
+        # 从 mcp_prisiragent_server/goal_state.py 出发上跳一级
+        _HERE = Path(__file__).resolve().parent.parent
+        sys_path = str(_HERE / "companion")
+        if sys_path not in os.sys.path:
+            os.sys.path.insert(0, sys_path)
+        from adapter_registry import get_adapter
+        return get_adapter(adapter_id)
+    except Exception as e:  # noqa: BLE001
+        _LOG.warning(f"[M3.83] LoRA head '{head_name}' 加载失败,降级 regex: {e}")
+        _LORA_AVAILABLE = False
+        return None
+
+
+def _lora_classify(head_name: str, gate_type: str, report: str) -> tuple[str, float] | None:
+    """跑 LoRA head,返 (predicted_action, confidence) 或 None。
+
+    predicted_action: 'Met' | 'Blocked'
+    confidence: 0.0-1.0
+
+    None 表示:加载失败 / 推理失败 / 输出无法解析。
+    """
+    adapter = _try_load_lora_head(head_name)
+    if adapter is None:
+        return None
+
+    # M3.83 prompt 模板:跟训练时一致
+    text = f"gate_type: {gate_type}\nhead_focus: {head_name.split('_')[-1]}\n{report}"
+    try:
+        res = adapter.classify(text)
+    except Exception as e:  # noqa: BLE001
+        _LOG.warning(f"[M3.83] LoRA 推理失败,降级 regex: {e}")
+        return None
+
+    raw = res.get("raw", "").strip()
+    # 解析 Safety + Action
+    import re
+    m_action = re.search(r"Action:\s*(\w+)", raw, re.IGNORECASE)
+    m_conf = re.search(r":(\d+\.\d+)", raw)
+
+    if not m_action:
+        return None
+
+    pred = m_action.group(1).strip().lower()
+    # 兼容大小写 + 同义(Met/Approve/Pass → met;Blocked/Reject/Fail → blocked)
+    if pred in ("met", "approve", "pass", "通过", "批准"):
+        pred_action = "Met"
+    elif pred in ("blocked", "block", "reject", "fail", "失败", "拒绝"):
+        pred_action = "Blocked"
+    else:
+        return None
+
+    conf = float(m_conf.group(1)) if m_conf else 0.5
+    return pred_action, conf
+
+
+def _race_check(
+    gate_type: str,
+    head_met: str,
+    head_blocked: str,
+    task_id: int,
+    file_ops: int,
+    min_report_chars: int,
+    regex_fn,
+    regex_args: dict,
+) -> GateResult:
+    """M3.83 race_impl:同时跑 2 个 LoRA head (met + blocked),取 conf 高者。
+
+    Args:
+        gate_type: "reviewer" | "verifier"
+        head_met / head_blocked: LORA_HEADS 的 key
+        regex_fn: 原 regex 检查函数(check_reviewer_gate / check_verifier_gate)
+        regex_args: 传给 regex_fn 的 kwargs
+    """
+    # 1. 先读报告(regex 需要报告路径,但 LoRA 不需要)
+    candidates = _find_recent_reports(
+        "h1b_review" if gate_type == "reviewer" else "orch_verify",
+        task_id,
+    )
+    if not candidates:
+        # 没有报告 → 直接 regex 兜底
+        return regex_fn(**regex_args)
+
+    report_path, _ = candidates[0]
+    report = _read_report(report_path)
+    if report is None or report.startswith("READ_FAIL"):
+        return regex_fn(**regex_args)
+
+    # 2. 跑 LoRA 双 head (met / blocked) 取 conf 高者
+    met_pred = _lora_classify(head_met, gate_type, report)
+    blocked_pred = _lora_classify(head_blocked, gate_type, report)
+
+    # 3. 取较高 confidence
+    lora_decision: tuple[str, float] | None = None
+    if met_pred and blocked_pred:
+        if met_pred[1] >= blocked_pred[1]:
+            lora_decision = met_pred
+        else:
+            lora_decision = blocked_pred
+    elif met_pred:
+        lora_decision = met_pred
+    elif blocked_pred:
+        lora_decision = blocked_pred
+
+    # 4. 决策
+    if lora_decision is not None and lora_decision[1] >= LORA_CONF_THRESHOLD:
+        action, conf = lora_decision
+        if action == "Met":
+            return GateResult(
+                status=GoalStatus.MET,
+                gate_name=f"{'H6_REVIEWER' if gate_type == 'reviewer' else 'H8_VERIFIER'}",
+                task_id=task_id,
+                report_path=report_path,
+                report_chars=len(report),
+            )
+        else:
+            # Blocked — 找具体 reason(regex 给的 reason 信息更具体)
+            regex_result = regex_fn(**regex_args)
+            # 透传 LoRA 决策,但 reason 用 regex 给出的
+            regex_result.report_path = report_path
+            regex_result.report_chars = len(report)
+            return regex_result
+    else:
+        # LoRA conf 不够或加载失败 → regex fallback
+        return regex_fn(**regex_args)
+
+
+def check_reviewer_gate_lora(
+    task_id: int,
+    file_ops: int,
+    min_report_chars: int = 600,
+) -> GateResult:
+    """M3.83 L4 race_impl for reviewer gate."""
+    return _race_check(
+        gate_type="reviewer",
+        head_met="reviewer_met",
+        head_blocked="reviewer_blocked",
+        task_id=task_id,
+        file_ops=file_ops,
+        min_report_chars=min_report_chars,
+        regex_fn=check_reviewer_gate,
+        regex_args={
+            "task_id": task_id,
+            "file_ops": file_ops,
+            "min_report_chars": min_report_chars,
+        },
+    )
+
+
+def check_verifier_gate_lora(
+    task_id: int,
+    file_ops: int,
+    min_report_chars: int = 600,
+) -> GateResult:
+    """M3.83 L4 race_impl for verifier gate."""
+    return _race_check(
+        gate_type="verifier",
+        head_met="verifier_met",
+        head_blocked="verifier_blocked",
+        task_id=task_id,
+        file_ops=file_ops,
+        min_report_chars=min_report_chars,
+        regex_fn=check_verifier_gate,
+        regex_args={
+            "task_id": task_id,
+            "file_ops": file_ops,
+            "min_report_chars": min_report_chars,
+        },
+    )
+
+
 def _goal_evaluate_impl(results_json: str = "") -> str:
     """MCP wrapper for GoalMachine.evaluate."""
     import json
@@ -440,6 +684,28 @@ def _goal_evaluate_impl(results_json: str = "") -> str:
             )
             machine.add_gate(gr.gate_name, gr)
     return json.dumps(machine.evaluate(), ensure_ascii=False, indent=2)
+
+
+# ── M3.83: race_impl MCP wrappers ─────────────────────────────────
+
+def _goal_check_reviewer_lora_impl(
+    task_id: int,
+    file_ops: int,
+    min_report_chars: int = 600,
+) -> str:
+    """M3.83 race_impl for reviewer: 4 头 LoRA + regex fallback."""
+    result = check_reviewer_gate_lora(task_id, file_ops, min_report_chars)
+    return result.to_json()
+
+
+def _goal_check_verifier_lora_impl(
+    task_id: int,
+    file_ops: int,
+    min_report_chars: int = 600,
+) -> str:
+    """M3.83 race_impl for verifier: 4 头 LoRA + regex fallback."""
+    result = check_verifier_gate_lora(task_id, file_ops, min_report_chars)
+    return result.to_json()
 
 
 # ── Dynamic Registry Exports (v0.38) ────────────────────────────
@@ -493,10 +759,50 @@ TOOL_DEFS = [
             "required": [],
         },
     },
+    # M3.83: race_impl(4 头 LoRA + regex fallback)
+    {
+        "name": "goal_check_reviewer_lora",
+        "description": (
+            "H6 Reviewer 守卫 — M3.83 race_impl 版本。"
+            "调用 4 头 LoRA(reviewer_met/reviewer_blocked)取 conf ≥ 0.7,"
+            "否则降级 regex check_reviewer_gate。"
+            "LoRA 缺失/CUDA 不可用 → 自动 fallback regex(行为完全等价原版本)。"
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "integer", "description": "任务 ID"},
+                "file_ops": {"type": "integer", "description": "文件操作次数"},
+                "min_report_chars": {"type": "integer", "default": 600},
+            },
+            "required": ["task_id", "file_ops"],
+        },
+    },
+    {
+        "name": "goal_check_verifier_lora",
+        "description": (
+            "H8 Verifier 守卫 — M3.83 race_impl 版本。"
+            "调用 4 头 LoRA(verifier_met/verifier_blocked)取 conf ≥ 0.7,"
+            "否则降级 regex check_verifier_gate。"
+            "LoRA 缺失/CUDA 不可用 → 自动 fallback regex(行为完全等价原版本)。"
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "task_id": {"type": "integer", "description": "任务 ID"},
+                "file_ops": {"type": "integer", "description": "文件操作次数"},
+                "min_report_chars": {"type": "integer", "default": 600},
+            },
+            "required": ["task_id", "file_ops"],
+        },
+    },
 ]
 
 HANDLERS = {
     "goal_check_reviewer": _goal_check_reviewer_impl,
     "goal_check_verifier": _goal_check_verifier_impl,
     "goal_evaluate": _goal_evaluate_impl,
+    # M3.83: race_impl(LoRA + regex fallback)
+    "goal_check_reviewer_lora": _goal_check_reviewer_lora_impl,
+    "goal_check_verifier_lora": _goal_check_verifier_lora_impl,
 }

@@ -1,0 +1,1026 @@
+{
+  "ts": "2026-09-22T02:35:34",
+  "config": {
+    "intent_timeout_sec": 1.0,
+    "intent_min_confidence": 0.55,
+    "prefer": "openrouter"
+  },
+  "n": 50,
+  "n_ok": 50,
+  "accuracy": 0.94,
+  "routed_count": 50,
+  "routed_accuracy": 0.94,
+  "fallback_rate": 0.0,
+  "latency_ms": {
+    "p50": 1147,
+    "p95": 1418,
+    "max": 1757,
+    "min": 1066
+  },
+  "confidence_buckets": {
+    "<0.4": 0,
+    "0.4-0.6": 1,
+    "0.6-0.8": 2,
+    ">=0.8": 47
+  },
+  "by_class": {
+    "chat": {
+      "total": 10,
+      "match": 10,
+      "precision_recall": 1.0
+    },
+    "code": {
+      "total": 10,
+      "match": 10,
+      "precision_recall": 1.0
+    },
+    "search": {
+      "total": 10,
+      "match": 7,
+      "precision_recall": 0.7
+    },
+    "tool_call": {
+      "total": 10,
+      "match": 10,
+      "precision_recall": 1.0
+    },
+    "roleplay": {
+      "total": 10,
+      "match": 10,
+      "precision_recall": 1.0
+    }
+  },
+  "confusion_matrix": {
+    "chat": {
+      "chat": 10,
+      "code": 0,
+      "search": 0,
+      "tool_call": 0,
+      "roleplay": 0,
+      "unknown": 0
+    },
+    "code": {
+      "chat": 0,
+      "code": 10,
+      "search": 0,
+      "tool_call": 0,
+      "roleplay": 0,
+      "unknown": 0
+    },
+    "search": {
+      "chat": 3,
+      "code": 0,
+      "search": 7,
+      "tool_call": 0,
+      "roleplay": 0,
+      "unknown": 0
+    },
+    "tool_call": {
+      "chat": 0,
+      "code": 0,
+      "search": 0,
+      "tool_call": 10,
+      "roleplay": 0,
+      "unknown": 0
+    },
+    "roleplay": {
+      "chat": 0,
+      "code": 0,
+      "search": 0,
+      "tool_call": 0,
+      "roleplay": 10,
+      "unknown": 0
+    },
+    "unknown": {
+      "chat": 0,
+      "code": 0,
+      "search": 0,
+      "tool_call": 0,
+      "roleplay": 0,
+      "unknown": 0
+    }
+  },
+  "wrong_samples": [
+    {
+      "text": "推荐一本好看的小说",
+      "expect": "search",
+      "actual": "chat",
+      "confidence": 0.59
+    },
+    {
+      "text": "孩子不听话怎么办",
+      "expect": "search",
+      "actual": "chat",
+      "confidence": 0.99
+    },
+    {
+      "text": "怎么跟女朋友道歉比较好",
+      "expect": "search",
+      "actual": "chat",
+      "confidence": 1.0
+    }
+  ],
+  "total_ms": 59026,
+  "details": [
+    {
+      "i": 1,
+      "expect": "chat",
+      "actual": "chat",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1757,
+      "ok": true,
+      "text_preview": "今天天气真好呀",
+      "probabilities": {
+        "roleplay": 0.0,
+        "search": 0.0,
+        "code": 0.0,
+        "tool_call": 0.0,
+        "chat": 1.0
+      }
+    },
+    {
+      "i": 2,
+      "expect": "chat",
+      "actual": "chat",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1129,
+      "ok": true,
+      "text_preview": "我刚吃完饭,有点困",
+      "probabilities": {
+        "chat": 1.0,
+        "roleplay": 0.0,
+        "search": 0.0,
+        "tool_call": 0.0,
+        "code": 0.0
+      }
+    },
+    {
+      "i": 3,
+      "expect": "chat",
+      "actual": "chat",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1182,
+      "ok": true,
+      "text_preview": "你在干嘛呢?",
+      "probabilities": {
+        "tool_call": 0.0,
+        "chat": 1.0,
+        "roleplay": 0.0,
+        "search": 0.0,
+        "code": 0.0
+      }
+    },
+    {
+      "i": 4,
+      "expect": "chat",
+      "actual": "chat",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1159,
+      "ok": true,
+      "text_preview": "哈哈,你真逗",
+      "probabilities": {
+        "chat": 1.0,
+        "roleplay": 0.0,
+        "search": 0.0,
+        "tool_call": 0.0,
+        "code": 0.0
+      }
+    },
+    {
+      "i": 5,
+      "expect": "chat",
+      "actual": "chat",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1220,
+      "ok": true,
+      "text_preview": "我心情不太好",
+      "probabilities": {
+        "chat": 1.0,
+        "code": 0.0,
+        "roleplay": 0.0,
+        "tool_call": 0.0,
+        "search": 0.0
+      }
+    },
+    {
+      "i": 6,
+      "expect": "chat",
+      "actual": "chat",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1128,
+      "ok": true,
+      "text_preview": "周末想出去走走",
+      "probabilities": {
+        "tool_call": 0.0,
+        "roleplay": 0.0,
+        "code": 0.0,
+        "chat": 1.0,
+        "search": 0.0
+      }
+    },
+    {
+      "i": 7,
+      "expect": "chat",
+      "actual": "chat",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1160,
+      "ok": true,
+      "text_preview": "今天心情不太好,有点难过",
+      "probabilities": {
+        "roleplay": 0.0,
+        "chat": 1.0,
+        "tool_call": 0.0,
+        "search": 0.0,
+        "code": 0.0
+      }
+    },
+    {
+      "i": 8,
+      "expect": "chat",
+      "actual": "chat",
+      "match": true,
+      "routed": true,
+      "confidence": 0.67,
+      "elapsed_ms": 1094,
+      "ok": true,
+      "text_preview": "你叫什么名字?",
+      "probabilities": {
+        "code": 0.0,
+        "search": 0.26,
+        "tool_call": 0.0,
+        "chat": 0.73,
+        "roleplay": 0.01
+      }
+    },
+    {
+      "i": 9,
+      "expect": "chat",
+      "actual": "chat",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1136,
+      "ok": true,
+      "text_preview": "我喜欢你这种说话风格",
+      "probabilities": {
+        "chat": 1.0,
+        "tool_call": 0.0,
+        "code": 0.0,
+        "search": 0.0,
+        "roleplay": 0.0
+      }
+    },
+    {
+      "i": 10,
+      "expect": "chat",
+      "actual": "chat",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1110,
+      "ok": true,
+      "text_preview": "陪我聊会儿天吧",
+      "probabilities": {
+        "code": 0.0,
+        "chat": 1.0,
+        "tool_call": 0.0,
+        "search": 0.0,
+        "roleplay": 0.0
+      }
+    },
+    {
+      "i": 11,
+      "expect": "code",
+      "actual": "code",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1160,
+      "ok": true,
+      "text_preview": "帮我写一个 Python 装饰器",
+      "probabilities": {
+        "code": 1.0,
+        "tool_call": 0.0,
+        "search": 0.0,
+        "chat": 0.0,
+        "roleplay": 0.0
+      }
+    },
+    {
+      "i": 12,
+      "expect": "code",
+      "actual": "code",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1303,
+      "ok": true,
+      "text_preview": "解释下 React 的 useEffect",
+      "probabilities": {
+        "chat": 0.0,
+        "search": 0.0,
+        "roleplay": 0.0,
+        "tool_call": 0.0,
+        "code": 1.0
+      }
+    },
+    {
+      "i": 13,
+      "expect": "code",
+      "actual": "code",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1083,
+      "ok": true,
+      "text_preview": "SQL 怎么优化索引?",
+      "probabilities": {
+        "chat": 0.0,
+        "tool_call": 0.0,
+        "roleplay": 0.0,
+        "code": 1.0,
+        "search": 0.0
+      }
+    },
+    {
+      "i": 14,
+      "expect": "code",
+      "actual": "code",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1225,
+      "ok": true,
+      "text_preview": "教我用 git rebase",
+      "probabilities": {
+        "code": 1.0,
+        "roleplay": 0.0,
+        "tool_call": 0.0,
+        "chat": 0.0,
+        "search": 0.0
+      }
+    },
+    {
+      "i": 15,
+      "expect": "code",
+      "actual": "code",
+      "match": true,
+      "routed": true,
+      "confidence": 0.99,
+      "elapsed_ms": 1143,
+      "ok": true,
+      "text_preview": "Python 异步和并发的区别",
+      "probabilities": {
+        "chat": 0.0,
+        "tool_call": 0.0,
+        "code": 0.99,
+        "search": 0.01,
+        "roleplay": 0.0
+      }
+    },
+    {
+      "i": 16,
+      "expect": "code",
+      "actual": "code",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1125,
+      "ok": true,
+      "text_preview": "TypeScript 中 interface 和 type ",
+      "probabilities": {
+        "code": 1.0,
+        "search": 0.0,
+        "chat": 0.0,
+        "tool_call": 0.0,
+        "roleplay": 0.0
+      }
+    },
+    {
+      "i": 17,
+      "expect": "code",
+      "actual": "code",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1144,
+      "ok": true,
+      "text_preview": "这个报错 'Cannot read property of ",
+      "probabilities": {
+        "roleplay": 0.0,
+        "tool_call": 0.0,
+        "chat": 0.0,
+        "search": 0.0,
+        "code": 1.0
+      }
+    },
+    {
+      "i": 18,
+      "expect": "code",
+      "actual": "code",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1164,
+      "ok": true,
+      "text_preview": "帮我写个递归求斐波那契",
+      "probabilities": {
+        "tool_call": 0.0,
+        "search": 0.0,
+        "chat": 0.0,
+        "code": 1.0,
+        "roleplay": 0.0
+      }
+    },
+    {
+      "i": 19,
+      "expect": "code",
+      "actual": "code",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1094,
+      "ok": true,
+      "text_preview": "Docker 怎么配置多阶段构建",
+      "probabilities": {
+        "code": 1.0,
+        "roleplay": 0.0,
+        "tool_call": 0.0,
+        "chat": 0.0,
+        "search": 0.0
+      }
+    },
+    {
+      "i": 20,
+      "expect": "code",
+      "actual": "code",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1087,
+      "ok": true,
+      "text_preview": "Rust 的生命周期怎么理解",
+      "probabilities": {
+        "code": 1.0,
+        "chat": 0.0,
+        "roleplay": 0.0,
+        "tool_call": 0.0,
+        "search": 0.0
+      }
+    },
+    {
+      "i": 21,
+      "expect": "search",
+      "actual": "search",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1249,
+      "ok": true,
+      "text_preview": "为什么天空是蓝色的?",
+      "probabilities": {
+        "chat": 0.0,
+        "tool_call": 0.0,
+        "search": 1.0,
+        "roleplay": 0.0,
+        "code": 0.0
+      }
+    },
+    {
+      "i": 22,
+      "expect": "search",
+      "actual": "search",
+      "match": true,
+      "routed": true,
+      "confidence": 0.98,
+      "elapsed_ms": 1070,
+      "ok": true,
+      "text_preview": "今天股市怎么样",
+      "probabilities": {
+        "tool_call": 0.0,
+        "code": 0.0,
+        "roleplay": 0.0,
+        "search": 0.98,
+        "chat": 0.02
+      }
+    },
+    {
+      "i": 23,
+      "expect": "search",
+      "actual": "chat",
+      "match": false,
+      "routed": true,
+      "confidence": 0.59,
+      "elapsed_ms": 1105,
+      "ok": true,
+      "text_preview": "推荐一本好看的小说",
+      "probabilities": {
+        "tool_call": 0.01,
+        "roleplay": 0.01,
+        "code": 0.0,
+        "search": 0.31,
+        "chat": 0.67
+      }
+    },
+    {
+      "i": 24,
+      "expect": "search",
+      "actual": "search",
+      "match": true,
+      "routed": true,
+      "confidence": 0.81,
+      "elapsed_ms": 1066,
+      "ok": true,
+      "text_preview": "推荐几本理财的书",
+      "probabilities": {
+        "roleplay": 0.0,
+        "code": 0.08,
+        "tool_call": 0.01,
+        "chat": 0.07,
+        "search": 0.84
+      }
+    },
+    {
+      "i": 25,
+      "expect": "search",
+      "actual": "chat",
+      "match": false,
+      "routed": true,
+      "confidence": 0.99,
+      "elapsed_ms": 1683,
+      "ok": true,
+      "text_preview": "孩子不听话怎么办",
+      "probabilities": {
+        "tool_call": 0.0,
+        "chat": 1.0,
+        "roleplay": 0.0,
+        "search": 0.0,
+        "code": 0.0
+      }
+    },
+    {
+      "i": 26,
+      "expect": "search",
+      "actual": "chat",
+      "match": false,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1182,
+      "ok": true,
+      "text_preview": "怎么跟女朋友道歉比较好",
+      "probabilities": {
+        "tool_call": 0.0,
+        "code": 0.0,
+        "roleplay": 0.0,
+        "chat": 1.0,
+        "search": 0.0
+      }
+    },
+    {
+      "i": 27,
+      "expect": "search",
+      "actual": "search",
+      "match": true,
+      "routed": true,
+      "confidence": 0.72,
+      "elapsed_ms": 1418,
+      "ok": true,
+      "text_preview": "我想学钢琴,几岁开始好",
+      "probabilities": {
+        "roleplay": 0.0,
+        "code": 0.15,
+        "tool_call": 0.0,
+        "chat": 0.07,
+        "search": 0.78
+      }
+    },
+    {
+      "i": 28,
+      "expect": "search",
+      "actual": "search",
+      "match": true,
+      "routed": true,
+      "confidence": 0.99,
+      "elapsed_ms": 1184,
+      "ok": true,
+      "text_preview": "什么是量子计算?",
+      "probabilities": {
+        "search": 0.99,
+        "code": 0.01,
+        "roleplay": 0.0,
+        "chat": 0.0,
+        "tool_call": 0.0
+      }
+    },
+    {
+      "i": 29,
+      "expect": "search",
+      "actual": "search",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1201,
+      "ok": true,
+      "text_preview": "北京的人口有多少",
+      "probabilities": {
+        "chat": 0.0,
+        "tool_call": 0.0,
+        "roleplay": 0.0,
+        "code": 0.0,
+        "search": 1.0
+      }
+    },
+    {
+      "i": 30,
+      "expect": "search",
+      "actual": "search",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1080,
+      "ok": true,
+      "text_preview": "二战是哪一年结束的?",
+      "probabilities": {
+        "code": 0.0,
+        "search": 1.0,
+        "tool_call": 0.0,
+        "chat": 0.0,
+        "roleplay": 0.0
+      }
+    },
+    {
+      "i": 31,
+      "expect": "tool_call",
+      "actual": "tool_call",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1174,
+      "ok": true,
+      "text_preview": "帮我打开浏览器",
+      "probabilities": {
+        "search": 0.0,
+        "roleplay": 0.0,
+        "chat": 0.0,
+        "tool_call": 1.0,
+        "code": 0.0
+      }
+    },
+    {
+      "i": 32,
+      "expect": "tool_call",
+      "actual": "tool_call",
+      "match": true,
+      "routed": true,
+      "confidence": 0.99,
+      "elapsed_ms": 1106,
+      "ok": true,
+      "text_preview": "关闭所有窗口",
+      "probabilities": {
+        "code": 0.0,
+        "search": 0.0,
+        "tool_call": 0.99,
+        "chat": 0.01,
+        "roleplay": 0.0
+      }
+    },
+    {
+      "i": 33,
+      "expect": "tool_call",
+      "actual": "tool_call",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1127,
+      "ok": true,
+      "text_preview": "把音量调到 50%",
+      "probabilities": {
+        "code": 0.0,
+        "roleplay": 0.0,
+        "search": 0.0,
+        "tool_call": 1.0,
+        "chat": 0.0
+      }
+    },
+    {
+      "i": 34,
+      "expect": "tool_call",
+      "actual": "tool_call",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1118,
+      "ok": true,
+      "text_preview": "删除 C 盘下 temp 文件夹",
+      "probabilities": {
+        "code": 0.0,
+        "search": 0.0,
+        "tool_call": 1.0,
+        "chat": 0.0,
+        "roleplay": 0.0
+      }
+    },
+    {
+      "i": 35,
+      "expect": "tool_call",
+      "actual": "tool_call",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1158,
+      "ok": true,
+      "text_preview": "截图当前屏幕",
+      "probabilities": {
+        "search": 0.0,
+        "code": 0.0,
+        "roleplay": 0.0,
+        "chat": 0.0,
+        "tool_call": 1.0
+      }
+    },
+    {
+      "i": 36,
+      "expect": "tool_call",
+      "actual": "tool_call",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1248,
+      "ok": true,
+      "text_preview": "给张三发邮件,主题是周报",
+      "probabilities": {
+        "code": 0.0,
+        "chat": 0.0,
+        "tool_call": 1.0,
+        "search": 0.0,
+        "roleplay": 0.0
+      }
+    },
+    {
+      "i": 37,
+      "expect": "tool_call",
+      "actual": "tool_call",
+      "match": true,
+      "routed": true,
+      "confidence": 0.98,
+      "elapsed_ms": 1244,
+      "ok": true,
+      "text_preview": "重启电脑",
+      "probabilities": {
+        "roleplay": 0.0,
+        "search": 0.0,
+        "code": 0.0,
+        "chat": 0.01,
+        "tool_call": 0.99
+      }
+    },
+    {
+      "i": 38,
+      "expect": "tool_call",
+      "actual": "tool_call",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1124,
+      "ok": true,
+      "text_preview": "打开 VS Code 打开项目 D:/work",
+      "probabilities": {
+        "roleplay": 0.0,
+        "tool_call": 1.0,
+        "chat": 0.0,
+        "code": 0.0,
+        "search": 0.0
+      }
+    },
+    {
+      "i": 39,
+      "expect": "tool_call",
+      "actual": "tool_call",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1145,
+      "ok": true,
+      "text_preview": "搜索我的桌面文件名为 '合同' 的文档",
+      "probabilities": {
+        "code": 0.0,
+        "search": 0.0,
+        "roleplay": 0.0,
+        "tool_call": 1.0,
+        "chat": 0.0
+      }
+    },
+    {
+      "i": 40,
+      "expect": "tool_call",
+      "actual": "tool_call",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1170,
+      "ok": true,
+      "text_preview": "把这个 PDF 转成 Word",
+      "probabilities": {
+        "chat": 0.0,
+        "search": 0.0,
+        "code": 0.0,
+        "roleplay": 0.0,
+        "tool_call": 1.0
+      }
+    },
+    {
+      "i": 41,
+      "expect": "roleplay",
+      "actual": "roleplay",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1150,
+      "ok": true,
+      "text_preview": "讲个鬼故事给我听",
+      "probabilities": {
+        "tool_call": 0.0,
+        "code": 0.0,
+        "chat": 0.0,
+        "search": 0.0,
+        "roleplay": 1.0
+      }
+    },
+    {
+      "i": 42,
+      "expect": "roleplay",
+      "actual": "roleplay",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1112,
+      "ok": true,
+      "text_preview": "假装你是李白,我们来对诗",
+      "probabilities": {
+        "roleplay": 1.0,
+        "tool_call": 0.0,
+        "code": 0.0,
+        "search": 0.0,
+        "chat": 0.0
+      }
+    },
+    {
+      "i": 43,
+      "expect": "roleplay",
+      "actual": "roleplay",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1171,
+      "ok": true,
+      "text_preview": "玩个角色扮演,你是黑骑士",
+      "probabilities": {
+        "tool_call": 0.0,
+        "chat": 0.0,
+        "code": 0.0,
+        "search": 0.0,
+        "roleplay": 1.0
+      }
+    },
+    {
+      "i": 44,
+      "expect": "roleplay",
+      "actual": "roleplay",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1129,
+      "ok": true,
+      "text_preview": "继续讲那个穿越小说的剧情",
+      "probabilities": {
+        "search": 0.0,
+        "tool_call": 0.0,
+        "code": 0.0,
+        "roleplay": 1.0,
+        "chat": 0.0
+      }
+    },
+    {
+      "i": 45,
+      "expect": "roleplay",
+      "actual": "roleplay",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1218,
+      "ok": true,
+      "text_preview": "假设你在中世纪,我是国王,你来当军师",
+      "probabilities": {
+        "tool_call": 0.0,
+        "search": 0.0,
+        "code": 0.0,
+        "roleplay": 1.0,
+        "chat": 0.0
+      }
+    },
+    {
+      "i": 46,
+      "expect": "roleplay",
+      "actual": "roleplay",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1123,
+      "ok": true,
+      "text_preview": "演一段面试官,我要练习面试",
+      "probabilities": {
+        "chat": 0.0,
+        "search": 0.0,
+        "roleplay": 1.0,
+        "code": 0.0,
+        "tool_call": 0.0
+      }
+    },
+    {
+      "i": 47,
+      "expect": "roleplay",
+      "actual": "roleplay",
+      "match": true,
+      "routed": true,
+      "confidence": 0.98,
+      "elapsed_ms": 1086,
+      "ok": true,
+      "text_preview": "扮演我的英语老师,我们用英语对话",
+      "probabilities": {
+        "roleplay": 0.99,
+        "tool_call": 0.0,
+        "search": 0.0,
+        "code": 0.01,
+        "chat": 0.0
+      }
+    },
+    {
+      "i": 48,
+      "expect": "roleplay",
+      "actual": "roleplay",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1217,
+      "ok": true,
+      "text_preview": "讲个童话故事哄孩子睡觉",
+      "probabilities": {
+        "tool_call": 0.0,
+        "chat": 0.0,
+        "roleplay": 1.0,
+        "search": 0.0,
+        "code": 0.0
+      }
+    },
+    {
+      "i": 49,
+      "expect": "roleplay",
+      "actual": "roleplay",
+      "match": true,
+      "routed": true,
+      "confidence": 1.0,
+      "elapsed_ms": 1132,
+      "ok": true,
+      "text_preview": "你是海盗,我也是海盗,我们抢宝藏",
+      "probabilities": {
+        "chat": 0.0,
+        "roleplay": 1.0,
+        "code": 0.0,
+        "tool_call": 0.0,
+        "search": 0.0
+      }
+    },
+    {
+      "i": 50,
+      "expect": "roleplay",
+      "actual": "roleplay",
+      "match": true,
+      "routed": true,
+      "confidence": 0.99,
+      "elapsed_ms": 1211,
+      "ok": true,
+      "text_preview": "模仿苏东坡的语气给我写首词",
+      "probabilities": {
+        "code": 0.0,
+        "search": 0.0,
+        "tool_call": 0.0,
+        "chat": 0.01,
+        "roleplay": 0.99
+      }
+    }
+  ]
+}

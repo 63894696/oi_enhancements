@@ -37,7 +37,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 IS_WINDOWS = platform.system() == "Windows"
 
@@ -68,6 +68,9 @@ DEFAULT_WHITELIST = {
 
 # ── 黑名单持久化路径 ──
 BLACKLIST_PATH = Path.home() / ".claude" / "process_blacklist.json"
+# M3.79:auto-blacklist 误伤防护
+BLACKLIST_TTL_SEC_DEFAULT = 7 * 24 * 3600       # auto entry 默认 7 天过期
+BLACKLIST_MAX_SIZE = 50                         # 硬上限,满了拒绝新加
 
 
 def _err(stage: str, exc: Exception) -> str:
@@ -290,18 +293,47 @@ def process_cpu_limit_impl(pid: int, cores: int) -> str:
 # ═════════════════════════════════════════════════════════════
 # v2 新增:白名单 / 黑名单
 # ═════════════════════════════════════════════════════════════
-def _load_blacklist() -> list[str]:
-    if BLACKLIST_PATH.exists():
-        try:
-            return json.loads(BLACKLIST_PATH.read_text(encoding="utf-8"))
-        except Exception:
-            return []
-    return []
+def _load_blacklist() -> list[dict]:
+    """读 + 兼容旧 flat list + TTL 清理。返回 list[dict]。
+
+    M3.79:旧 flat list[str] → 自动迁移到 list[dict] + metadata 字段。
+    TTL 过期项自动剔除并写回(仅当有过期时)。
+    """
+    if not BLACKLIST_PATH.exists():
+        return []
+    try:
+        raw = json.loads(BLACKLIST_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    if not raw:
+        return []
+
+    # 兼容旧 flat list[str](M3.55 之前的格式)
+    if isinstance(raw[0], str):
+        raw = [{
+            "name": n,
+            "added_at": 0.0,
+            "added_by": "legacy",
+            "source": "user",
+            "reason": "imported from M3.55 flat list",
+            "expires_at": None,
+            "count": 1,
+        } for n in raw]
+        _save_blacklist_unlocked(raw)  # 持久化迁移结果
+
+    # TTL 清理:过期项剔除
+    now = time.time()
+    kept = [e for e in raw if e.get("expires_at") is None or e["expires_at"] > now]
+    if len(kept) != len(raw):
+        _save_blacklist_unlocked(kept)
+    return kept
 
 
-def _save_blacklist(items: list[str]) -> None:
+def _save_blacklist_unlocked(items: list[dict]) -> None:
+    """裸写盘(无 size 检查,供 _load_blacklist 迁移/清理和内部用)。"""
     BLACKLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
-    BLACKLIST_PATH.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+    BLACKLIST_PATH.write_text(json.dumps(items, ensure_ascii=False, indent=2),
+                              encoding="utf-8")
 
 
 # ═════════════════════════════════════════════════════════════
@@ -683,19 +715,90 @@ def process_io_stat_impl(pid: int, sample_sec: int = 1) -> str:
 
 
 def blacklist_list_impl() -> str:
-    """列用户黑名单(持久化到 ~/.claude/process_blacklist.json)"""
+    """列用户黑名单(持久化到 ~/.claude/process_blacklist.json)
+
+    M3.79:返 list[dict],每个 entry 含 name/added_at/added_by/source/reason/expires_at/count。
+    """
     items = _load_blacklist()
     return json.dumps({"ok": True, "count": len(items), "blacklist": items}, ensure_ascii=False, indent=2)
 
 
-def blacklist_add_impl(name: str) -> str:
-    """加进程名到黑名单(ProBalance 优先降)"""
+def blacklist_add_impl(
+    name: str,
+    added_by: str = "user",
+    source: str = "user",
+    reason: str = "",
+    ttl_sec: int | None = None,
+) -> str:
+    """加进程名到黑名单(M3.79:+ metadata + size cap + auto-source toast)
+
+    Args:
+        name: 进程名
+        added_by: 来源标识(perf_guard.M3.55 / perf_guard.M3.78 / user)
+        source: "user"(永久) 或 "auto"(7 天 TTL)
+        reason: 触发原因,可读短文
+        ttl_sec: 自定义 TTL(秒);None = 默认(7d auto / null user)
+
+    Returns:
+        ok=True: added + blacklist_size
+        ok=False: 满 50 条拒绝 + suggest review
+    """
     try:
         items = _load_blacklist()
-        if name.lower() not in [x.lower() for x in items]:
-            items.append(name)
-            _save_blacklist(items)
-        return json.dumps({"ok": True, "added": name, "blacklist": items}, ensure_ascii=False)
+        # M3.79 size cap:已达上限 → 拒绝 + 提示 review
+        if len(items) >= BLACKLIST_MAX_SIZE:
+            return json.dumps({
+                "ok": False,
+                "error": f"blacklist 已达上限 {BLACKLIST_MAX_SIZE} 条,先 blacklist-review 清理",
+                "suggest": "process_controller_tools.py blacklist-review --source auto",
+            }, ensure_ascii=False)
+
+        now = time.time()
+        # 查找现有(按 name 小写匹配)
+        existing = next((e for e in items if e["name"].lower() == name.lower()), None)
+        if existing:
+            existing["added_at"] = now
+            existing["count"] = existing.get("count", 1) + 1
+            if reason:
+                existing["reason"] = reason
+            existing["added_by"] = added_by
+            existing["source"] = source
+            # 重新计算 expires_at
+            if ttl_sec is not None:
+                new_ttl = ttl_sec
+            elif source == "auto":
+                new_ttl = BLACKLIST_TTL_SEC_DEFAULT
+            else:
+                new_ttl = None  # user 永久
+            existing["expires_at"] = (now + new_ttl) if new_ttl else None
+        else:
+            if ttl_sec is not None:
+                ttl = ttl_sec
+            elif source == "auto":
+                ttl = BLACKLIST_TTL_SEC_DEFAULT
+            else:
+                ttl = None  # user 永久
+            items.append({
+                "name": name,
+                "added_at": now,
+                "added_by": added_by,
+                "source": source,
+                "reason": reason,
+                "expires_at": (now + ttl) if ttl else None,
+                "count": 1,
+            })
+
+        _save_blacklist_unlocked(items)
+
+        # M3.79:auto 来源 → 异步弹 toast(不阻塞主流程)
+        if source == "auto":
+            _toast_blacklist_added(name, reason)
+
+        return json.dumps({
+            "ok": True, "added": name,
+            "blacklist_size": len(items),
+            "ttl_sec": ttl if source == "auto" else None,
+        }, ensure_ascii=False)
     except Exception as e:
         return _err("blacklist_add", e)
 
@@ -705,14 +808,139 @@ def blacklist_remove_impl(name: str) -> str:
     try:
         items = _load_blacklist()
         before = len(items)
-        items = [x for x in items if x.lower() != name.lower()]
-        _save_blacklist(items)
+        items = [e for e in items if e["name"].lower() != name.lower()]
+        _save_blacklist_unlocked(items)
         return json.dumps({
             "ok": True, "removed": before - len(items),
-            "blacklist": items,
+            "blacklist": [e["name"] for e in items],
         }, ensure_ascii=False)
     except Exception as e:
         return _err("blacklist_remove", e)
+
+
+def blacklist_review_impl(
+    source: str | None = None,
+    expiring_within_sec: int | None = None,
+) -> str:
+    """M3.79:列全 metadata,可过滤 source / 即将过期。
+
+    Args:
+        source: None / "auto" / "user"
+        expiring_within_sec: 只列 expires_at 在 N 秒内过期的 entry
+
+    Returns:
+        dict 含 count / blacklist(每个 entry 加 expires_in_sec)/ now
+    """
+    try:
+        items = _load_blacklist()
+        if source:
+            items = [e for e in items if e.get("source") == source]
+        now = time.time()
+        if expiring_within_sec is not None:
+            cutoff = now + expiring_within_sec
+            items = [e for e in items if e.get("expires_at") and e["expires_at"] < cutoff]
+        # 计算 expires_in_sec(给 user 看)
+        out_items = []
+        for e in items:
+            e2 = dict(e)
+            if e2.get("expires_at"):
+                e2["expires_in_sec"] = int(e2["expires_at"] - now)
+                e2["expires_in_human"] = _humanize_seconds(e2["expires_at"] - now)
+            else:
+                e2["expires_in_sec"] = None
+                e2["expires_in_human"] = "永久"
+            out_items.append(e2)
+        return json.dumps({
+            "ok": True, "count": len(out_items),
+            "blacklist": out_items, "now": now,
+            "filter": {"source": source, "expiring_within_sec": expiring_within_sec},
+        }, ensure_ascii=False, indent=2)
+    except Exception as e:
+        return _err("blacklist_review", e)
+
+
+def blacklist_unfreeze_recent_impl(
+    age_sec: int = 7 * 24 * 3600,
+    name_filter: str | None = None,
+    source: str = "auto",
+) -> str:
+    """M3.79:批量删 auto 来源 + 年龄 ≤ age_sec(默认 7 天)。
+
+    Args:
+        age_sec: 多少秒内添加的算"最近"(默认 7 天)
+        name_filter: 只删名字匹配(子串),None = 全删
+        source: "auto" 默认(避免误删 user 配置),也可 "user"
+
+    Returns:
+        ok=True, removed_count, removed list, remaining count
+    """
+    try:
+        items = _load_blacklist()
+        cutoff = time.time() - age_sec
+        kept = []
+        removed = []
+        for e in items:
+            keep = True
+            if e.get("source") == source and e.get("added_at", 0) >= cutoff:
+                if name_filter is None or name_filter.lower() in e["name"].lower():
+                    keep = False
+            if keep:
+                kept.append(e)
+            else:
+                removed.append(e["name"])
+        _save_blacklist_unlocked(kept)
+        return json.dumps({
+            "ok": True, "removed_count": len(removed),
+            "removed": removed, "remaining": len(kept),
+        }, ensure_ascii=False)
+    except Exception as e:
+        return _err("blacklist_unfreeze_recent", e)
+
+
+def _humanize_seconds(sec: float) -> str:
+    """M3.79:人类可读剩余时间(<0 = 已过期)。"""
+    sec = int(sec)
+    if sec < 0:
+        return f"已过期 {-sec}s"
+    if sec < 60:
+        return f"{sec}s"
+    if sec < 3600:
+        return f"{sec // 60}m{sec % 60}s"
+    if sec < 86400:
+        return f"{sec // 3600}h{(sec % 3600) // 60}m"
+    return f"{sec // 86400}d{(sec % 86400) // 3600}h"
+
+
+def _toast_blacklist_added(name: str, reason: str) -> None:
+    """M3.79:异步 PowerShell NotifyIcon toast — 不阻塞 _handle_perf_risk。
+
+    走内置 WinForms NotifyIcon(无需 BurntToast 第三方模块)。
+    """
+    def _send() -> None:
+        try:
+            # 转义 reason 中可能的单引号(避免 PS 注入)
+            reason_safe = (reason or "(no reason)").replace("'", "''")
+            name_safe = (name or "?").replace("'", "''")
+            ps = (
+                "Add-Type -AssemblyName System.Windows.Forms | Out-Null; "
+                "Add-Type -AssemblyName System.Drawing | Out-Null; "
+                "$n = New-Object System.Windows.Forms.NotifyIcon; "
+                "$n.Icon = [System.Drawing.SystemIcons]::Warning; "
+                "$n.Visible = $true; "
+                f"$n.BalloonTipTitle = 'PrisirAI auto-blacklist'; "
+                f"$n.BalloonTipText = '{name_safe}: {reason_safe}'; "
+                "$n.ShowBalloonTip(5000); "
+                "Start-Sleep -Seconds 6; "
+                "$n.Dispose()"
+            )
+            subprocess.run(
+                ["powershell.exe", "-NoProfile", "-Command", ps],
+                timeout=5, capture_output=True,
+            )
+        except Exception as e:
+            print(f"[blacklist] toast 失败: {type(e).__name__}: {e}",
+                  file=sys.stderr)
+    threading.Thread(target=_send, daemon=True).start()
 
 
 def whitelist_add_impl(name: str) -> str:
@@ -838,6 +1066,19 @@ DEFAULT_WATCHDOG_CONFIG = {
     "recover_threshold": 30.0,          # auto_recover 触发阈值(平均 CPU < 此值恢复)
     "cooldown_sec": 60,                 # 同一进程多久内不重复降权
     "enabled": True,                    # 配置开关(供 watchdog_start 不传参数时用)
+    # M3.55:kill_mode — 黑名单进程出现即杀(非降优先级)
+    #   "off"      — 黑名单只走降权(M3.54 行为)
+    #   "kill"     — 黑名单出现即 kill(force=True),每次重启都杀(需 admin)
+    #   "both"     — 黑名单先 kill,然后非黑名单按规则降权
+    "kill_mode": "off",
+    "kill_cooldown_sec": 30,            # kill 模式冷却(避免杀进程→spawn→再杀的抖动)
+    "kill_max_per_round": 10,            # kill 模式每轮最多杀多少
+    # M3.78:perf_guard_enabled — 每 N 轮跑 perf_conf_v3 子进程,critical+conf≥0.6
+    # 自动加 blacklist + 启 kill_mode(复用 perf_guard._trigger_kill_mode)。
+    # 子进程隔离 adapter 内存,父进程 watchdog 5s 周期不卡。
+    "perf_guard_enabled": True,
+    "perf_guard_interval_rounds": 6,    # 6 轮 ≈ 30s(5s/轮 × 6)
+    "perf_guard_conf_threshold": 0.60,  # risk_conf 阈值(perf_conf_v3 ACC 78%,critical 召回 70%)
 }
 
 _watchdog_state = {
@@ -1030,11 +1271,151 @@ def process_tree_watch_impl(pid: int, cpu_threshold: float = 50.0, interval_sec:
         return _err("process_tree_watch", e)
 
 
+# ============================================================
+# M3.78:perf_conf_v3 子进程隔离 + 触发 kill_mode
+# ============================================================
+_PERF_RUNNER_PATH = Path(__file__).resolve().parent / "perf_subprocess_runner.py"
+_PERF_RUNNER_TIMEOUT = 30  # 子进程超时(秒) — perf_conf_v3 首次 ~15s,后续 ~5s
+
+
+def _run_perf_subprocess() -> dict | None:
+    """调 perf_subprocess_runner.py 子进程跑 perf_conf_v3 分类,返 stdout JSON dict。
+
+    子进程隔离 adapter 内存(17.5MB + ~850MB base),父进程(watchdog)不污染。
+    失败/超时/parse_fail → 返 None,父进程只记 stderr 不触发。
+    """
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(_PERF_RUNNER_PATH)],
+            capture_output=True,
+            timeout=_PERF_RUNNER_TIMEOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except subprocess.TimeoutExpired:
+        print(f"[watchdog perf_guard] 子进程超时({_PERF_RUNNER_TIMEOUT}s)",
+              file=sys.stderr)
+        return None
+    except Exception as e:  # noqa: BLE001
+        print(f"[watchdog perf_guard] 子进程启动失败: {type(e).__name__}: {e}",
+              file=sys.stderr)
+        return None
+
+    if proc.returncode not in (0, 1):
+        # 子进程 fatal error — stderr 给调试用
+        print(f"[watchdog perf_guard] 子进程 rc={proc.returncode}: "
+              f"{(proc.stderr or '')[:200]}", file=sys.stderr)
+        return None
+
+    try:
+        payload = json.loads(proc.stdout)
+    except json.JSONDecodeError as e:
+        print(f"[watchdog perf_guard] stdout 非 JSON: {e}: {(proc.stdout or '')[:200]}",
+              file=sys.stderr)
+        return None
+
+    if not payload.get("ok"):
+        print(f"[watchdog perf_guard] 子进程 ok=False: {payload.get('error')}",
+              file=sys.stderr)
+        return None
+
+    return payload
+
+
+def _handle_perf_risk(risk_result: dict, blacklist: list[str]) -> Optional[dict]:
+    """处理 perf_conf_v3 子进程返回的 risk,critical+conf≥阈值 → 调 perf_guard._trigger_kill_mode。
+
+    M3.87 P0-2:_trigger_kill_mode 默认 auto_apply=False(建议模式),本函数返回建议对象
+    给前端 ws / 外部监听器,**不再自动 add blacklist + 启 kill_mode**。
+    前端 toast 展示建议,user 一键确认才真正执行。
+
+    Args:
+        risk_result: 子进程 stdout JSON,含 risk/risk_conf/sample
+        blacklist: 当前 watchdog 加载的黑名单(供复用入口查)
+
+    Returns:
+        None(不触发) 或 dict(perf_guard._trigger_kill_mode 返回的建议 evt,含 suggested_actions)
+    """
+    risk = risk_result.get("risk")
+    risk_conf = risk_result.get("risk_conf") or 0.0
+    cfg_threshold = float(_watchdog_state["config"].get(
+        "perf_guard_conf_threshold", 0.60))
+
+    # 任何非 critical → 不触发,只记 history
+    if risk != "critical":
+        return None
+
+    # conf < 阈值 → 不触发
+    if risk_conf < cfg_threshold:
+        _watchdog_state["history"].append({
+            "ts": time.time(),
+            "iso": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "reason": f"perf_conf_v3 critical 但 conf={risk_conf:.2f}<{cfg_threshold:.2f} "
+                      f"(已记录,未触发)",
+            "action": "perf_guard_low_conf",
+            "risk_result": {
+                "risk": risk, "risk_conf": risk_conf,
+                "latency_ms": risk_result.get("latency_ms"),
+            },
+        })
+        return None
+
+    # critical + conf≥阈值 → 复用 perf_guard._trigger_kill_mode
+    # 构造 fake rec + sample 给 perf_guard 用
+    sample = risk_result.get("sample") or {}
+    rec = {
+        "risk": "critical",
+        "risk_conf": risk_conf,
+        "action": "alert",
+        "latency_ms": risk_result.get("latency_ms"),
+        "raw": risk_result.get("raw", ""),
+        "perf_guard_source": "M3.78_watchdog_loop",
+    }
+
+    try:
+        # 复用 M3.55 + M3.59 完整逻辑(admin_state + blacklist + kill_mode)
+        import sys as _sys
+        _companion_path = Path(__file__).resolve().parent.parent / "companion"
+        if str(_companion_path) not in _sys.path:
+            _sys.path.insert(0, str(_companion_path))
+        from perf_guard import _trigger_kill_mode
+        kill_evt = _trigger_kill_mode(rec, sample=sample)
+    except Exception as e:  # noqa: BLE001
+        print(f"[watchdog perf_guard] _trigger_kill_mode 调用失败: "
+              f"{type(e).__name__}: {e}", file=sys.stderr)
+        return None
+
+    if kill_evt:
+        _watchdog_state["history"].append({
+            "ts": time.time(),
+            "iso": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "reason": (f"perf_conf_v3 critical conf={risk_conf:.2f} → 建议加 blacklist "
+                       f"(M3.87 建议模式,需 user 确认才真正执行)"),
+            "action": "perf_guard_blacklist_suggest",
+            "risk_conf": risk_conf,
+            "kill_evt": kill_evt,
+            "auto_applied": kill_evt.get("auto_applied", False),
+        })
+        # M3.87 P0-2:不自动把建议名字加进当前 watchdog blacklist 内存
+        # 真正的 add 行为必须由 user 显式调 blacklist_add 触发(从前端一键 apply)
+        # 如果 auto_apply=True 老路径有 blacklist_added,这里补回兼容
+        for n in kill_evt.get("blacklist_added", []):
+            if n.lower() not in [b.lower() for b in blacklist]:
+                blacklist.append(n)
+
+    return kill_evt
+
+
+def _watchdog_loop() -> None:
     """ProBalance 守护线程(v3):
     - CPU 高 → 降非白名单进程
     - 内存高 → 降内存大户
     - 冷却:同一进程 cooldown_sec 内不重复降
     - 自动恢复:auto_recover=True 时,CPU 降下来后恢复原优先级
+    - M3.55:kill_mode=kill/both 时,黑名单出现立即 kill(force=True)
+    - M3.78:perf_guard_enabled=True 时,每 N 轮跑 perf_conf_v3 子进程
+            critical+conf≥阈值 → 复用 perf_guard._trigger_kill_mode 加 blacklist+启 kill_mode
     """
     cfg = _watchdog_state["config"]
     interval = cfg["interval_sec"]
@@ -1046,18 +1427,86 @@ def process_tree_watch_impl(pid: int, cpu_threshold: float = 50.0, interval_sec:
     auto_recover = cfg["auto_recover"]
     recover_threshold = cfg["recover_threshold"]
     cooldown_sec = cfg["cooldown_sec"]
-    blacklist = _load_blacklist()
+    blacklist = [e["name"] for e in _load_blacklist()]  # M3.79:_load_blacklist 返 list[dict]
+    # M3.55:kill_mode 配置
+    kill_mode = cfg.get("kill_mode", "off")
+    kill_cooldown = cfg.get("kill_cooldown_sec", 30)
+    kill_max = cfg.get("kill_max_per_round", 10)
+    # M3.78:perf_guard 配置
+    perf_guard_enabled = cfg.get("perf_guard_enabled", True)
+    perf_guard_interval = max(1, int(cfg.get("perf_guard_interval_rounds", 6)))
+    perf_guard_conf_threshold = float(cfg.get("perf_guard_conf_threshold", 0.60))
 
     print(
         f"[watchdog v3] start, interval={interval}s cpu={cpu_threshold}% "
-        f"mem={mem_threshold}% level={level} dry_run={dry_run} auto_recover={auto_recover}",
+        f"mem={mem_threshold}% level={level} dry_run={dry_run} auto_recover={auto_recover} "
+        f"kill_mode={kill_mode} perf_guard={perf_guard_enabled}",
         file=sys.stderr,
     )
 
+    round_counter = 0
     while not _watchdog_state["stop_event"].is_set():
         try:
+            # M3.78:perf_guard — 每 N 轮跑 perf_conf_v3 子进程
+            # 必须在 avg_cpu 之前(避免被主逻辑阻塞)
+            if perf_guard_enabled and round_counter % perf_guard_interval == 0:
+                risk_result = _run_perf_subprocess()
+                if risk_result is not None:
+                    _handle_perf_risk(risk_result, blacklist=list(blacklist))
+            round_counter += 1
+
             avg_cpu = _get_avg_cpu_percent()
             avg_mem = _get_memory_percent() if mem_threshold > 0 else 0.0
+
+            # M3.55:kill_mode — 黑名单出现立即 kill(无需等 CPU 高)
+            # 不依赖 avg_cpu 阈值,只要黑名单进程在 → 直接 kill + cooldown
+            if kill_mode in ("kill", "both") and blacklist:
+                plist_k = json.loads(process_list_impl(sort_by="cpu", limit=50))
+                kills = 0
+                now = time.time()
+                for p in plist_k.get("processes", []):
+                    if kills >= kill_max:
+                        break
+                    name_lower = p["name"].lower()
+                    # 匹配黑名单(进程名包含黑名单任一)
+                    matched = None
+                    for blk in blacklist:
+                        if blk.lower() in name_lower:
+                            matched = blk
+                            break
+                    if not matched:
+                        continue
+                    # 冷却:同一进程 kill_cooldown 内不重复
+                    last = _watchdog_state["cooldown"].get(f"kill:{p['pid']}", 0)
+                    if now - last < kill_cooldown:
+                        continue
+                    if dry_run:
+                        kills += 1
+                        _watchdog_state["history"].append({
+                            "ts": now, "iso": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                            "pid": p["pid"], "name": p["name"],
+                            "reason": f"DRY_RUN blacklist_match={matched}",
+                            "action": "would_kill",
+                        })
+                        continue
+                    r = json.loads(process_kill_impl(p["pid"], force=True))
+                    _watchdog_state["history"].append({
+                        "ts": now, "iso": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                        "pid": p["pid"], "name": p["name"],
+                        "reason": f"blacklist_match={matched}",
+                        "action": "killed" if r.get("ok") else "kill_failed",
+                        "kill_result": r,
+                    })
+                    if r.get("ok"):
+                        kills += 1
+                        _watchdog_state["cooldown"][f"kill:{p['pid']}"] = now
+                        print(f"[watchdog] 🗡️ blacklist {matched} → killed pid {p['pid']} ({p['name']})",
+                              file=sys.stderr)
+                if kills:
+                    print(f"[watchdog] kill_mode {kill_mode} → {kills} procs killed", file=sys.stderr)
+                # kill_mode == "kill" 时跳过后续降权逻辑(已经处理完本轮)
+                if kill_mode == "kill" and kills > 0:
+                    pass  # 仍走后续(可能有非黑名单要降)
 
             # 触发条件:CPU 高 OR 内存高
             cpu_trigger = avg_cpu >= cpu_threshold
@@ -1187,10 +1636,48 @@ def watchdog_start_impl(
     auto_recover: bool = False,
     recover_threshold: float = 30.0,
     cooldown_sec: int = 60,
+    kill_mode: str = "off",
+    kill_cooldown_sec: int = 30,
+    kill_max_per_round: int = 10,
     persist_config: bool = True,
+    perf_guard_enabled: bool = True,
+    perf_guard_interval_rounds: int = 6,
+    perf_guard_conf_threshold: float = 0.60,
 ) -> str:
-    """启动 ProBalance watchdog v3"""
+    """启动 ProBalance watchdog v3(M3.55:加 kill_mode,M3.78:加 perf_guard)
+    kill_mode:
+      - "off"   — 黑名单只走降权(M3.54 行为,M3.87 P0-3 默认)
+      - "kill"  — 黑名单出现即 kill(force=True),无视 avg_cpu
+      - "both"  — 黑名单 kill + 非黑名单按规则降权
+
+    M3.87 P0-3:kill_mode=kill/both 需要 admin 校验 — perf_guard ML 78% ACC,
+    非 admin + kill_mode 风险:小模型误判 → 真杀进程。强制 admin 检查。
+    非 admin 显式降级到 kill_mode=off + 警告 stderr。
+
+    M3.78 perf_guard_enabled:
+      - True   — 每 perf_guard_interval_rounds 轮跑 perf_conf_v3 子进程
+                  critical+conf≥perf_guard_conf_threshold → 自动加 blacklist
+                  (M3.87 P0-2 后:auto_apply=False 走建议模式,不自动 add)
+      - False  — 纯机械阈值(M3.55 行为,零 ML)
+    """
     try:
+        if kill_mode not in ("off", "kill", "both"):
+            return json.dumps({"ok": False, "error": f"kill_mode 必须从 off/kill/both 选,got {kill_mode}"},
+                              ensure_ascii=False)
+        # M3.87 P0-3:kill_mode=kill/both 强制 admin 校验,非 admin 降级到 off
+        if kill_mode in ("kill", "both"):
+            try:
+                import sys as _sys
+                _companion_path = Path(__file__).resolve().parent.parent / "companion"
+                if str(_companion_path) not in _sys.path:
+                    _sys.path.insert(0, str(_companion_path))
+                from admin_state import is_admin
+                if not is_admin():
+                    print(f"[watchdog] M3.87 P0-3:kill_mode={kill_mode} 需要 admin,"
+                          f"当前非 admin → 自动降级到 kill_mode=off", file=sys.stderr)
+                    kill_mode = "off"
+            except ImportError:
+                pass
         if _watchdog_state["running"]:
             return json.dumps({"ok": False, "error": "watchdog 已在跑,先 stop"}, ensure_ascii=False)
 
@@ -1205,6 +1692,12 @@ def watchdog_start_impl(
             "auto_recover": auto_recover,
             "recover_threshold": recover_threshold,
             "cooldown_sec": cooldown_sec,
+            "kill_mode": kill_mode,
+            "kill_cooldown_sec": kill_cooldown_sec,
+            "kill_max_per_round": kill_max_per_round,
+            "perf_guard_enabled": perf_guard_enabled,
+            "perf_guard_interval_rounds": perf_guard_interval_rounds,
+            "perf_guard_conf_threshold": perf_guard_conf_threshold,
         })
         _watchdog_state["config"] = cfg
         if persist_config:
@@ -1299,7 +1792,8 @@ TOOL_DEFS = [
 
     {"name": "process_watchdog_start", "description": (
         "启动 ProBalance watchdog v3(后台线程)。"
-        "可配:cpu_threshold / memory_threshold_pct / dry_run / auto_recover / cooldown_sec 等"
+        "可配:cpu_threshold / memory_threshold_pct / dry_run / auto_recover / cooldown_sec / "
+        "kill_mode(M3.55,黑名单出现即 kill)等"
     ),
      "inputSchema": {"type": "object", "properties": {
          "interval_sec": {"type": "integer", "default": 5},
@@ -1311,6 +1805,12 @@ TOOL_DEFS = [
          "auto_recover": {"type": "boolean", "default": False, "description": "True=CPU 降下来后自动恢复原优先级"},
          "recover_threshold": {"type": "number", "default": 30.0},
          "cooldown_sec": {"type": "integer", "default": 60},
+         "kill_mode": {"type": "string", "enum": ["off", "kill", "both"], "default": "off",
+                       "description": "M3.55:黑名单处理方式 — off=只降权 / kill=出现即 kill / both=黑名单 kill + 非黑名单降权"},
+         "kill_cooldown_sec": {"type": "integer", "default": 30,
+                               "description": "M3.55:同一进程 kill 冷却秒数(避免杀进程→spawn→再杀的抖动)"},
+         "kill_max_per_round": {"type": "integer", "default": 10,
+                                "description": "M3.55:每轮最多 kill 多少进程"},
      }}},
     {"name": "process_watchdog_stop", "description": "停 watchdog",
      "inputSchema": {"type": "object", "properties": {}}},
@@ -1426,7 +1926,34 @@ def _cli():
     sub.add_parser("whitelist")
     sub.add_parser("blacklist")
     p_ba = sub.add_parser("blacklist-add"); p_ba.add_argument("name")
+    # M3.79:blacklist 新签名 flags(向后兼容,name 必填)
+    p_ba.add_argument("--source", choices=["auto", "user"], default="user",
+                      help="来源(auto=7 天 TTL,user=手动永久,默认 user)")
+    p_ba.add_argument("--reason", default="",
+                      help="触发原因(auto 来源时显式说明)")
+    p_ba.add_argument("--ttl", type=int, default=None,
+                      help="自定义 TTL(秒);默认 source=auto=7d,source=user=null(永久)")
+    # M3.79:新增 review / unfreeze-recent 命令
+    p_br = sub.add_parser("blacklist-review")
+    p_br.add_argument("--source", choices=["auto", "user"], default=None,
+                      help="仅列指定 source")
+    p_br.add_argument("--expiring", type=int, default=None,
+                      help="仅列将在指定秒数内过期的 entry")
+    p_bur = sub.add_parser("blacklist-unfreeze-recent")
+    p_bur.add_argument("--age", type=int, default=7*24*3600,
+                      help="多少秒内添加的算'最近'(默认 7 天)")
+    p_bur.add_argument("--name", default=None,
+                      help="只删匹配名字(子串)")
+    p_bur.add_argument("--source", choices=["auto", "user"], default="auto",
+                      help="仅删指定 source(默认 auto 避免误删 user)")
     p_ws = sub.add_parser("watchdog-start"); p_ws.add_argument("--interval", type=int, default=5); p_ws.add_argument("--threshold", type=float, default=80.0); p_ws.add_argument("--level", default="BelowNormal"); p_ws.add_argument("--max", type=int, default=5)
+    # M3.78 perf_guard flags
+    p_ws.add_argument("--no-perf-guard", action="store_true",
+                      help="禁用 perf_conf_v3 子进程守护(纯机械阈值,M3.55 行为)")
+    p_ws.add_argument("--perf-guard-interval", type=int, default=6,
+                      help="perf_guard 触发轮数间隔(默认 6 轮 ≈ 30s)")
+    p_ws.add_argument("--perf-guard-conf", type=float, default=0.60,
+                      help="perf_conf_v3 risk_conf 阈值(默认 0.60)")
     sub.add_parser("watchdog-stop")
     sub.add_parser("watchdog-status")
 
@@ -1442,8 +1969,26 @@ def _cli():
         "io-stat": lambda: process_io_stat_impl(args.pid, args.sample),
         "whitelist": lambda: whitelist_list_impl(),
         "blacklist": lambda: blacklist_list_impl(),
-        "blacklist-add": lambda: blacklist_add_impl(args.name),
-        "watchdog-start": lambda: watchdog_start_impl(args.interval, args.threshold, args.level, args.max),
+        "blacklist-add": lambda: blacklist_add_impl(
+            args.name,
+            added_by="user:cli",
+            source=args.source,
+            reason=args.reason,
+            ttl_sec=args.ttl,
+        ),
+        "blacklist-review": lambda: blacklist_review_impl(args.source, args.expiring),
+        "blacklist-unfreeze-recent": lambda: blacklist_unfreeze_recent_impl(
+            args.age, args.name, args.source,
+        ),
+        "watchdog-start": lambda: watchdog_start_impl(
+            interval_sec=args.interval,
+            cpu_threshold=args.threshold,
+            level=args.level,
+            max_per_round=args.max,
+            perf_guard_enabled=not args.no_perf_guard,
+            perf_guard_interval_rounds=args.perf_guard_interval,
+            perf_guard_conf_threshold=args.perf_guard_conf,
+        ),
         "watchdog-stop": lambda: watchdog_stop_impl(),
         "watchdog-status": lambda: watchdog_status_impl(),
     }

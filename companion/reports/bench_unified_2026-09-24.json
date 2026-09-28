@@ -1,0 +1,340 @@
+{
+  "model": "unified AgentJev classification-head (跨 8 scenario, 单 model)",
+  "n_scenes": 8,
+  "avg_accuracy": 0.5099,
+  "scenes": [
+    {
+      "scene": "disk_cleanup",
+      "model": "unified",
+      "n": 60,
+      "correct": 34,
+      "accuracy": 0.5667,
+      "parse_fail_rate": 0.0,
+      "per_class": {
+        "medium": {
+          "correct": 13,
+          "total": 19,
+          "accuracy": 0.6842
+        },
+        "critical": {
+          "correct": 9,
+          "total": 9,
+          "accuracy": 1.0
+        },
+        "low": {
+          "correct": 12,
+          "total": 19,
+          "accuracy": 0.6316
+        },
+        "safe": {
+          "correct": 0,
+          "total": 6,
+          "accuracy": 0.0
+        },
+        "high": {
+          "correct": 0,
+          "total": 7,
+          "accuracy": 0.0
+        }
+      },
+      "latency_ms": {
+        "p50": 1877.6,
+        "min": 1071.0,
+        "max": 3904.8,
+        "total_s": 120.8
+      }
+    },
+    {
+      "scene": "tempfile",
+      "model": "unified",
+      "n": 60,
+      "correct": 12,
+      "accuracy": 0.2,
+      "parse_fail_rate": 0.0,
+      "per_class": {
+        "high": {
+          "correct": 0,
+          "total": 15,
+          "accuracy": 0.0
+        },
+        "safe": {
+          "correct": 0,
+          "total": 6,
+          "accuracy": 0.0
+        },
+        "low": {
+          "correct": 8,
+          "total": 14,
+          "accuracy": 0.5714
+        },
+        "critical": {
+          "correct": 3,
+          "total": 9,
+          "accuracy": 0.3333
+        },
+        "medium": {
+          "correct": 1,
+          "total": 16,
+          "accuracy": 0.0625
+        }
+      },
+      "latency_ms": {
+        "p50": 1385.8,
+        "min": 1128.1,
+        "max": 2417.9,
+        "total_s": 85.4
+      }
+    },
+    {
+      "scene": "email",
+      "model": "unified",
+      "n": 60,
+      "correct": 26,
+      "accuracy": 0.4333,
+      "parse_fail_rate": 0.0,
+      "per_class": {
+        "medium": {
+          "correct": 9,
+          "total": 19,
+          "accuracy": 0.4737
+        },
+        "safe": {
+          "correct": 3,
+          "total": 10,
+          "accuracy": 0.3
+        },
+        "critical": {
+          "correct": 8,
+          "total": 11,
+          "accuracy": 0.7273
+        },
+        "high": {
+          "correct": 3,
+          "total": 10,
+          "accuracy": 0.3
+        },
+        "low": {
+          "correct": 3,
+          "total": 10,
+          "accuracy": 0.3
+        }
+      },
+      "latency_ms": {
+        "p50": 1745.6,
+        "min": 963.0,
+        "max": 2313.2,
+        "total_s": 95.1
+      }
+    },
+    {
+      "scene": "log",
+      "model": "unified",
+      "n": 60,
+      "correct": 48,
+      "accuracy": 0.8,
+      "parse_fail_rate": 0.0,
+      "per_class": {
+        "critical": {
+          "correct": 7,
+          "total": 11,
+          "accuracy": 0.6364
+        },
+        "safe": {
+          "correct": 12,
+          "total": 12,
+          "accuracy": 1.0
+        },
+        "high": {
+          "correct": 13,
+          "total": 13,
+          "accuracy": 1.0
+        },
+        "low": {
+          "correct": 11,
+          "total": 13,
+          "accuracy": 0.8462
+        },
+        "medium": {
+          "correct": 5,
+          "total": 11,
+          "accuracy": 0.4545
+        }
+      },
+      "latency_ms": {
+        "p50": 1775.5,
+        "min": 1471.0,
+        "max": 2331.7,
+        "total_s": 107.9
+      }
+    },
+    {
+      "scene": "perf",
+      "model": "unified",
+      "n": 60,
+      "correct": 36,
+      "accuracy": 0.6,
+      "parse_fail_rate": 0.0,
+      "per_class": {
+        "medium": {
+          "correct": 5,
+          "total": 13,
+          "accuracy": 0.3846
+        },
+        "high": {
+          "correct": 7,
+          "total": 15,
+          "accuracy": 0.4667
+        },
+        "low": {
+          "correct": 13,
+          "total": 14,
+          "accuracy": 0.9286
+        },
+        "critical": {
+          "correct": 8,
+          "total": 8,
+          "accuracy": 1.0
+        },
+        "safe": {
+          "correct": 3,
+          "total": 10,
+          "accuracy": 0.3
+        }
+      },
+      "latency_ms": {
+        "p50": 2766.9,
+        "min": 1296.6,
+        "max": 4134.7,
+        "total_s": 151.4
+      }
+    },
+    {
+      "scene": "intents",
+      "model": "unified",
+      "n": 50,
+      "correct": 36,
+      "accuracy": 0.72,
+      "parse_fail_rate": 0.0,
+      "per_class": {
+        "chat": {
+          "correct": 7,
+          "total": 10,
+          "accuracy": 0.7
+        },
+        "code": {
+          "correct": 5,
+          "total": 10,
+          "accuracy": 0.5
+        },
+        "search": {
+          "correct": 8,
+          "total": 10,
+          "accuracy": 0.8
+        },
+        "tool_call": {
+          "correct": 6,
+          "total": 10,
+          "accuracy": 0.6
+        },
+        "roleplay": {
+          "correct": 10,
+          "total": 10,
+          "accuracy": 1.0
+        }
+      },
+      "latency_ms": {
+        "p50": 672.6,
+        "min": 578.1,
+        "max": 927.6,
+        "total_s": 34.2
+      }
+    },
+    {
+      "scene": "task",
+      "model": "unified",
+      "n": 59,
+      "correct": 33,
+      "accuracy": 0.5593,
+      "parse_fail_rate": 0.0,
+      "per_class": {
+        "code_call": {
+          "correct": 12,
+          "total": 12,
+          "accuracy": 1.0
+        },
+        "code_qa": {
+          "correct": 1,
+          "total": 12,
+          "accuracy": 0.0833
+        },
+        "creative": {
+          "correct": 8,
+          "total": 10,
+          "accuracy": 0.8
+        },
+        "long": {
+          "correct": 0,
+          "total": 1,
+          "accuracy": 0.0
+        },
+        "fast": {
+          "correct": 8,
+          "total": 12,
+          "accuracy": 0.6667
+        },
+        "general": {
+          "correct": 4,
+          "total": 12,
+          "accuracy": 0.3333
+        }
+      },
+      "latency_ms": {
+        "p50": 836.1,
+        "min": 702.0,
+        "max": 3108.3,
+        "total_s": 58.1
+      }
+    },
+    {
+      "scene": "safety",
+      "model": "unified",
+      "n": 30,
+      "correct": 6,
+      "accuracy": 0.2,
+      "parse_fail_rate": 0.0,
+      "per_class": {
+        "safe": {
+          "correct": 6,
+          "total": 6,
+          "accuracy": 1.0
+        },
+        "low": {
+          "correct": 0,
+          "total": 6,
+          "accuracy": 0.0
+        },
+        "medium": {
+          "correct": 0,
+          "total": 6,
+          "accuracy": 0.0
+        },
+        "high": {
+          "correct": 0,
+          "total": 6,
+          "accuracy": 0.0
+        },
+        "critical": {
+          "correct": 0,
+          "total": 6,
+          "accuracy": 0.0
+        }
+      },
+      "latency_ms": {
+        "p50": 337.6,
+        "min": 315.8,
+        "max": 668.2,
+        "total_s": 11.2
+      }
+    }
+  ]
+}

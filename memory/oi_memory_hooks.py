@@ -57,9 +57,10 @@ def recall(query: str, n: int = 5) -> list[dict]:
     ]
 
 
-def _format_hits_for_prompt(hits: list) -> str:
+def _format_hits_for_prompt(hits: list, max_chars: int = 0) -> str:
     """把 recall 结果格式化成可注入 system prompt 的文本
     支持 Memory dataclass 和 dict 两种输入(hooks 层用 dict)
+    max_chars > 0 时总输出截断 + 追加 [truncated]
     """
     if not hits:
         return ""
@@ -72,10 +73,14 @@ def _format_hits_for_prompt(hits: list) -> str:
         more = "..." if len(content or "") > 200 else ""
         lines.append(f"  {i}. [{layer}] {title}: {snippet}{more}")
     lines.append("[End recall]")
-    return "\n".join(lines)
+    out = "\n".join(lines)
+    if max_chars > 0 and len(out) > max_chars:
+        out = out[:max_chars] + "\n[truncated]"
+    return out
 
 
-def install(interpreter, agent_name: str = "oi", recall_n: int = 5, max_recall_chars: int = 1500) -> None:
+def install(interpreter, agent_name: str = "oi", recall_n: int = 5, max_recall_chars: int = 1500,
+            vault_budget: int = 800) -> None:
     """把 pre_chat / post_chat hooks 装到 OI interpreter 上
 
     装完之后:
@@ -107,8 +112,25 @@ def install(interpreter, agent_name: str = "oi", recall_n: int = 5, max_recall_c
         if isinstance(task, str) and task.strip():
             # P1 per-agent 隔离:传入 agent_name,只召回 全局共享(owner_agent='') + 本 agent 私有 的记忆
             hits = mem.recall(task, n=recall_n, visible_to=agent_name)
-            if hits:
-                ctx = _format_hits_for_prompt(hits)
+            # OI 占总预算的剩余部分(总 - vault_budget),保证 vault 段必见
+            oi_budget = max(100, max_recall_chars - vault_budget)
+            ctx_oi = _format_hits_for_prompt(hits, max_chars=oi_budget) if hits else ""
+
+            # ★ 方向 D:prisIr_graph 结构化召回(vault 知识库)
+            # bridge 失败静默 — 不污染对话主链
+            ctx_vault = ""
+            try:
+                import prisIr_graph_recall_bridge as _vault_bridge
+                vault_hits = _vault_bridge.recall_for_task(task, k=5)
+                ctx_vault = _vault_bridge.format_vault_hits_for_prompt(
+                    vault_hits, max_chars=vault_budget
+                )
+            except Exception:
+                pass
+
+            ctx = (ctx_oi + ("\n\n" if ctx_oi and ctx_vault else "") + ctx_vault).strip()
+            if ctx:
+                # 总预算兜底(防 OI 召回未截断超长)
                 if len(ctx) > max_recall_chars:
                     ctx = ctx[:max_recall_chars] + "\n[recall truncated]"
                 # 把 recall 注入到 task 开头(只发给 LLM,不存到 L3)

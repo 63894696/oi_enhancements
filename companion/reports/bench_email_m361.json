@@ -1,0 +1,567 @@
+{
+  "ts": "2026-09-23T11:10:59Z",
+  "scenarios_listed": [
+    "email"
+  ],
+  "scenarios": {
+    "email": {
+      "fixture": "email_independent",
+      "fixture_path": "C:\\Users\\Administrator\\oi_enhancements\\companion\\test_fixtures\\email_independent.json",
+      "local": {
+        "fixture": "email_independent",
+        "fixture_path": "C:\\Users\\Administrator\\oi_enhancements\\companion\\test_fixtures\\email_independent.json",
+        "n_cases": 60,
+        "results": [
+          {
+            "i": 1,
+            "id": "em.h.012",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 28054
+          },
+          {
+            "i": 2,
+            "id": "em.s.024",
+            "expect": "medium",
+            "actual": "high",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 8573
+          },
+          {
+            "i": 3,
+            "id": "em.s.016",
+            "expect": "safe",
+            "actual": "low",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7888
+          },
+          {
+            "i": 4,
+            "id": "em.s.015",
+            "expect": "critical",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7006
+          },
+          {
+            "i": 5,
+            "id": "em.s.014",
+            "expect": "critical",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7141
+          },
+          {
+            "i": 6,
+            "id": "em.h.007",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7365
+          },
+          {
+            "i": 7,
+            "id": "em.h.016",
+            "expect": "critical",
+            "actual": "critical",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 8272
+          },
+          {
+            "i": 8,
+            "id": "em.h.025",
+            "expect": "safe",
+            "actual": "safe",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7308
+          },
+          {
+            "i": 9,
+            "id": "em.s.026",
+            "expect": "high",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 6974
+          },
+          {
+            "i": 10,
+            "id": "em.h.005",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7806
+          },
+          {
+            "i": 11,
+            "id": "em.h.015",
+            "expect": "high",
+            "actual": "high",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7846
+          },
+          {
+            "i": 12,
+            "id": "em.h.028",
+            "expect": "safe",
+            "actual": "safe",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7353
+          },
+          {
+            "i": 13,
+            "id": "em.h.011",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7600
+          },
+          {
+            "i": 14,
+            "id": "em.h.002",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7389
+          },
+          {
+            "i": 15,
+            "id": "em.s.029",
+            "expect": "critical",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7277
+          },
+          {
+            "i": 16,
+            "id": "em.s.001",
+            "expect": "safe",
+            "actual": "safe",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7481
+          },
+          {
+            "i": 17,
+            "id": "em.s.018",
+            "expect": "safe",
+            "actual": "low",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6618
+          },
+          {
+            "i": 18,
+            "id": "em.h.003",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7141
+          },
+          {
+            "i": 19,
+            "id": "em.s.008",
+            "expect": "medium",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6457
+          },
+          {
+            "i": 20,
+            "id": "em.h.022",
+            "expect": "safe",
+            "actual": "safe",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7512
+          },
+          {
+            "i": 21,
+            "id": "em.s.019",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 6565
+          },
+          {
+            "i": 22,
+            "id": "em.s.007",
+            "expect": "medium",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6493
+          },
+          {
+            "i": 23,
+            "id": "em.h.010",
+            "expect": "critical",
+            "actual": "critical",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 8193
+          },
+          {
+            "i": 24,
+            "id": "em.h.006",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7945
+          },
+          {
+            "i": 25,
+            "id": "em.h.023",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 8081
+          },
+          {
+            "i": 26,
+            "id": "em.s.027",
+            "expect": "high",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 7071
+          },
+          {
+            "i": 27,
+            "id": "em.s.025",
+            "expect": "high",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 6844
+          },
+          {
+            "i": 28,
+            "id": "em.h.020",
+            "expect": "critical",
+            "actual": "critical",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 8246
+          },
+          {
+            "i": 29,
+            "id": "em.s.028",
+            "expect": "critical",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7130
+          },
+          {
+            "i": 30,
+            "id": "em.s.022",
+            "expect": "medium",
+            "actual": "high",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6525
+          },
+          {
+            "i": 31,
+            "id": "em.s.009",
+            "expect": "medium",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6542
+          },
+          {
+            "i": 32,
+            "id": "em.s.012",
+            "expect": "high",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7539
+          },
+          {
+            "i": 33,
+            "id": "em.s.021",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 6497
+          },
+          {
+            "i": 34,
+            "id": "em.h.019",
+            "expect": "critical",
+            "actual": "critical",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7609
+          },
+          {
+            "i": 35,
+            "id": "em.h.009",
+            "expect": "high",
+            "actual": "high",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7453
+          },
+          {
+            "i": 36,
+            "id": "em.s.006",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 6839
+          },
+          {
+            "i": 37,
+            "id": "em.h.018",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 6852
+          },
+          {
+            "i": 38,
+            "id": "em.h.014",
+            "expect": "high",
+            "actual": "high",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7193
+          },
+          {
+            "i": 39,
+            "id": "em.s.017",
+            "expect": "safe",
+            "actual": "low",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6449
+          },
+          {
+            "i": 40,
+            "id": "em.h.029",
+            "expect": "critical",
+            "actual": "critical",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7192
+          },
+          {
+            "i": 41,
+            "id": "em.s.011",
+            "expect": "high",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7564
+          },
+          {
+            "i": 42,
+            "id": "em.s.002",
+            "expect": "safe",
+            "actual": "safe",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7636
+          },
+          {
+            "i": 43,
+            "id": "em.s.010",
+            "expect": "high",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7476
+          },
+          {
+            "i": 44,
+            "id": "em.h.024",
+            "expect": "safe",
+            "actual": "safe",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7859
+          },
+          {
+            "i": 45,
+            "id": "em.s.004",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 6870
+          },
+          {
+            "i": 46,
+            "id": "em.h.013",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7523
+          },
+          {
+            "i": 47,
+            "id": "em.h.004",
+            "expect": "low",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7321
+          },
+          {
+            "i": 48,
+            "id": "em.h.027",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7890
+          },
+          {
+            "i": 49,
+            "id": "em.h.030",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 8205
+          },
+          {
+            "i": 50,
+            "id": "em.s.005",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 6699
+          },
+          {
+            "i": 51,
+            "id": "em.s.013",
+            "expect": "critical",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7070
+          },
+          {
+            "i": 52,
+            "id": "em.h.001",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7331
+          },
+          {
+            "i": 53,
+            "id": "em.s.023",
+            "expect": "medium",
+            "actual": "high",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6754
+          },
+          {
+            "i": 54,
+            "id": "em.s.003",
+            "expect": "safe",
+            "actual": "safe",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7531
+          },
+          {
+            "i": 55,
+            "id": "em.h.026",
+            "expect": "high",
+            "actual": "high",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7621
+          },
+          {
+            "i": 56,
+            "id": "em.s.020",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 6486
+          },
+          {
+            "i": 57,
+            "id": "em.h.008",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7702
+          },
+          {
+            "i": 58,
+            "id": "em.s.030",
+            "expect": "critical",
+            "actual": "medium",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 7021
+          },
+          {
+            "i": 59,
+            "id": "em.h.017",
+            "expect": "medium",
+            "actual": "medium",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7545
+          },
+          {
+            "i": 60,
+            "id": "em.h.021",
+            "expect": "low",
+            "actual": "low",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 7177
+          }
+        ],
+        "summary": {
+          "n": 60,
+          "accuracy": 0.6333,
+          "parse_fail_rate": 0.05,
+          "latency_p50_ms": 7353,
+          "latency_p95_ms": 8272
+        },
+        "elapsed_total_s": 459.63
+      }
+    }
+  }
+}

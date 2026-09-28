@@ -1,0 +1,43 @@
+{
+  "generated_at": "2026-09-23",
+  "seed": 42,
+  "summary": {
+    "disk_cleanup": {
+      "holdout": 30,
+      "synthetic": 30,
+      "total": 60,
+      "train_remaining_after_exclusion": 173
+    },
+    "tempfile": {
+      "holdout": 30,
+      "synthetic": 30,
+      "total": 60,
+      "train_remaining_after_exclusion": 236
+    },
+    "email": {
+      "holdout": 30,
+      "synthetic": 30,
+      "total": 60,
+      "train_remaining_after_exclusion": 432
+    },
+    "log": {
+      "holdout": 30,
+      "synthetic": 30,
+      "total": 60,
+      "train_remaining_after_exclusion": 460
+    },
+    "perf": {
+      "holdout": 30,
+      "synthetic": 30,
+      "total": 60,
+      "train_remaining_after_exclusion": 1015
+    }
+  },
+  "exclude_files": {
+    "disk_cleanup": "disk_cleanup_holdout_train_exclude.json",
+    "tempfile": "tempfile_holdout_train_exclude.json",
+    "email": "email_holdout_train_exclude.json",
+    "log": "log_holdout_train_exclude.json",
+    "perf": "perf_holdout_train_exclude.json"
+  }
+}

@@ -44,7 +44,30 @@ async def stream_chat(
     跨平台故障转移:失败的平台拉黑,下一个 candidate 续流(用户能感觉到风格跳变)。
     """
     text_for_classify = " ".join(m.get("content", "") for m in messages[-3:])
+    # **M3.58 fallback 链**(2026-09-23):
+    #   1. fastlane regex 主通道(M3.57 已加固:code_call/code_qa 拆分 + IME 兜底)
+    #   2. 当 regex 兜底到 'general'(无任何锚点命中)且文本 < 200 字符时,
+    #      用本地 0.6B LLM task_conf 二次校验 — 校准 regex 的"啥都没命中→general"误判
+    #   3. LLM 抛错或不可用时,沿用 regex 结果
     task_type = classify_task(text_for_classify)
+    if task_type == "general" and len(text_for_classify) < 200:
+        try:
+            from classify_task_local import classify_task_local
+            local_out = classify_task_local(text_for_classify, use_conf=True)
+            local_task = local_out.get("task_type", "general")
+            local_conf = local_out.get("action_conf", 0.0)
+            # LLM 给出明确非 general 且 conf >= 0.50 → 信任 LLM
+            if local_task != "general" and local_conf >= 0.5:
+                task_type = local_task
+                log.info(
+                    "classify_task: regex=general, LLM=%s(conf=%.2f),采纳 LLM",
+                    local_task, local_conf,
+                )
+            elif local_task == "general" and local_conf >= 0.7:
+                # LLM 强 general → 信任
+                task_type = "general"
+        except Exception as e:  # noqa: BLE001
+            log.warning("classify_task_local 降级失败: %s", e)
 
     router = PrisirRouter()
     try:
@@ -55,6 +78,29 @@ async def stream_chat(
     if not candidates:
         yield ("err", "无可用模型(已配 key 但 platform_cfg 装配失败)")
         return
+
+    # M3.36.A (2026-09-28):colibri 本地推理引擎兜底注入
+    #   - 零 key(candidates 为空分支不会到这里,但保留兜底)
+    #     / 用户设 colibri_first=True → 排第 1
+    #   - 否则 → 排末尾兜底(云端全挂时接管)
+    # 注入失败/引擎未就绪 → 直接跳过,不抛
+    try:
+        from .colibri_adapter import inject_into_candidates, is_colibri_ready
+        from .colibri_state import load_state
+        colibri_first = bool(load_state().dismissed is False
+                              and not any(
+                                  c.get("platform") in
+                                  ("openai", "anthropic", "qwen", "deepseek",
+                                   "minimaxi", "minimax", "yunbailian", "agnes",
+                                   "ollama", "moonshot", "zhipu", "gemini", "grok",
+                                   "mistral", "groq", "openrouter", "doubao",
+                                   "bailian")
+                                  for c in candidates))
+        if is_colibri_ready():
+            candidates = inject_into_candidates(
+                candidates, colibri_first=colibri_first, task_type=task_type)
+    except Exception as e:  # noqa: BLE001
+        log.warning("colibri 注入失败(不影响主流程): %s", e)
 
     excl: set = set()
     last_err: Optional[Exception] = None

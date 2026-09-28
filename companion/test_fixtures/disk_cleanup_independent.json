@@ -1,0 +1,842 @@
+[
+  {
+    "id": "dc.h.010",
+    "scenario": "disk_cleanup",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "文件路径: Windows\\Installer\\{8D7ABD3D-5154-4494-98BA-061AE24A32DA}\\ProductICO\n扩展名: (无)\n大小: 117KB\n年龄: 556 天\n问: 这个 Windows 系统文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_disk_cleanup.jsonl 抽出 (seed=42, idx=10) — 训练时排除"
+  },
+  {
+    "id": "dc.s.028",
+    "scenario": "disk_cleanup",
+    "expect": "critical",
+    "risk_label": "critical",
+    "_action": "keep",
+    "text": "文件路径: C:\\Windows\\System32\\drivers\\etc\\hosts\n扩展名: (无)\n大小: 1KB\n年龄: 180 天",
+    "tags": [
+      "synthetic",
+      "critical"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "dc.h.013",
+    "scenario": "disk_cleanup",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "文件路径: Windows\\Logs\\WindowsUpdate\\WindowsUpdate.20260915.144313.694.1.etl\n扩展名: .etl\n大小: 16KB\n年龄: 8 天\n问: 这个 Windows 系统文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_disk_cleanup.jsonl 抽出 (seed=42, idx=13) — 训练时排除"
+  },
+  {
+    "id": "dc.s.007",
+    "scenario": "disk_cleanup",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "文件路径: C:\\Windows\\Installer\\$PatchCache$\\Managed\\000021599E4090C00B11B1119CC78B41C0C0C0C0\n扩展名: (无)\n大小: 168MB\n年龄: 60 天",
+    "tags": [
+      "synthetic",
+      "medium"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "dc.s.005",
+    "scenario": "disk_cleanup",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "文件路径: C:\\Windows\\Logs\\DISM\\dism.log\n扩展名: .log\n大小: 4MB\n年龄: 14 天",
+    "tags": [
+      "synthetic",
+      "low"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "dc.s.029",
+    "scenario": "disk_cleanup",
+    "expect": "critical",
+    "risk_label": "critical",
+    "_action": "keep",
+    "text": "文件路径: C:\\Windows\\System32\\drivers\\etc\\hosts\n扩展名: (无)\n大小: 1KB\n年龄: 180 天",
+    "tags": [
+      "synthetic",
+      "critical"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "dc.s.001",
+    "scenario": "disk_cleanup",
+    "expect": "safe",
+    "risk_label": "safe",
+    "_action": "delete",
+    "text": "文件路径: C:\\Users\\Administrator\\AppData\\Local\\Temp\\matplotlib\\fontList.cache\n扩展名: .cache\n大小: 12KB\n年龄: 3 天",
+    "tags": [
+      "synthetic",
+      "safe"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "dc.s.030",
+    "scenario": "disk_cleanup",
+    "expect": "critical",
+    "risk_label": "critical",
+    "_action": "keep",
+    "text": "文件路径: C:\\Windows\\System32\\drivers\\etc\\hosts\n扩展名: (无)\n大小: 1KB\n年龄: 180 天",
+    "tags": [
+      "synthetic",
+      "critical"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "dc.s.010",
+    "scenario": "disk_cleanup",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "review",
+    "text": "文件路径: C:\\Windows\\WinSxS\\x86_microsoft.windows.gdiplus_6595b64144ccf1df_1.1.7601.24308_none_5c0a2b0763f3b07e\n扩展名: (无)\n大小: 2MB\n年龄: 90 天",
+    "tags": [
+      "synthetic",
+      "high"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "dc.h.021",
+    "scenario": "disk_cleanup",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "文件路径: C:\\Windows\\Installer\\39eed.msi\n扩展名: .msi\n大小: 144KB\n年龄: 3352 天\n问: 这个 Windows 系统文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_disk_cleanup.jsonl 抽出 (seed=42, idx=21) — 训练时排除"
+  },
+  {
+    "id": "dc.h.012",
+    "scenario": "disk_cleanup",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "文件路径: Windows\\Logs\\CBS\\CbsPersist_20260914070800.cab\n扩展名: .cab\n大小: 567KB\n年龄: 8 天\n问: 这个 Windows 系统文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_disk_cleanup.jsonl 抽出 (seed=42, idx=12) — 训练时排除"
+  },
+  {
+    "id": "dc.h.023",
+    "scenario": "disk_cleanup",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "文件路径: Windows\\Logs\\waasmedic\\waasmedic.20260914_094226_421.etl\n扩展名: .etl\n大小: 12KB\n年龄: 8 天\n问: 这个 Windows 系统文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_disk_cleanup.jsonl 抽出 (seed=42, idx=23) — 训练时排除"
+  },
+  {
+    "id": "dc.h.006",
+    "scenario": "disk_cleanup",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "文件路径: Windows\\Logs\\waasmedic\\waasmedic.20260917_080024_914.etl\n扩展名: .etl\n大小: 12KB\n年龄: 5 天\n问: 这个 Windows 系统文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_disk_cleanup.jsonl 抽出 (seed=42, idx=6) — 训练时排除"
+  },
+  {
+    "id": "dc.h.027",
+    "scenario": "disk_cleanup",
+    "expect": "critical",
+    "risk_label": "critical",
+    "_action": "keep",
+    "text": "文件路径: Windows\\WinSxS\\Backup\\amd64_microsoft-windows-u..rservice-extensions_31bf3856ad364e35_10.0.19041.5794_none_4121f7c5db79a6bc_umpoext.dll_fd62cdf4\n扩展名: .dll_fd62cdf4\n大小: 68KB\n年龄: 452 天\n问: 这个 Windows 系统文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_disk_cleanup.jsonl 抽出 (seed=42, idx=27) — 训练时排除"
+  },
+  {
+    "id": "dc.h.011",
+    "scenario": "disk_cleanup",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "文件路径: Windows\\Logs\\waasmediccapsule\\WaasRemediation.010.etl\n扩展名: .etl\n大小: 192KB\n年龄: 6 天\n问: 这个 Windows 系统文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_disk_cleanup.jsonl 抽出 (seed=42, idx=11) — 训练时排除"
+  },
+  {
+    "id": "dc.h.017",
+    "scenario": "disk_cleanup",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "文件路径: C:\\Windows\\Logs\\StorGroupPolicy.log\n扩展名: .log\n大小: 153KB\n年龄: 0 天\n问: 这个 Windows 系统文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_disk_cleanup.jsonl 抽出 (seed=42, idx=17) — 训练时排除"
+  },
+  {
+    "id": "dc.s.026",
+    "scenario": "disk_cleanup",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "delete",
+    "text": "文件路径: C:\\Windows\\Temp\\WMSvcInsTmp.log\n扩展名: .log\n大小: 12MB\n年龄: 90 天",
+    "tags": [
+      "synthetic",
+      "high"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "dc.h.028",
+    "scenario": "disk_cleanup",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "文件路径: Windows\\Logs\\waasmediccapsule\\WaasRemediation.004.etl\n扩展名: .etl\n大小: 192KB\n年龄: 2 天\n问: 这个 Windows 系统文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_disk_cleanup.jsonl 抽出 (seed=42, idx=28) — 训练时排除"
+  },
+  {
+    "id": "dc.h.014",
+    "scenario": "disk_cleanup",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "文件路径: Windows\\Logs\\SIH\\SIH.20260917.204336.783.1.etl\n扩展名: .etl\n大小: 8KB\n年龄: 5 天\n问: 这个 Windows 系统文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_disk_cleanup.jsonl 抽出 (seed=42, idx=14) — 训练时排除"
+  },
+  {
+    "id": "dc.h.030",
+    "scenario": "disk_cleanup",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "文件路径: Windows\\Logs\\waasmedic\\waasmedic.20260912_154659_504.etl\n扩展名: .etl\n大小: 12KB\n年龄: 10 天\n问: 这个 Windows 系统文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_disk_cleanup.jsonl 抽出 (seed=42, idx=30) — 训练时排除"
+  },
+  {
+    "id": "dc.s.021",
+    "scenario": "disk_cleanup",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "文件路径: C:\\Windows\\Logs\\cbp.log\n扩展名: .log\n大小: 320KB\n年龄: 5 天",
+    "tags": [
+      "synthetic",
+      "low"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "dc.s.022",
+    "scenario": "disk_cleanup",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "文件路径: C:\\Windows\\Installer\\SourceHash{ABCD-1234-5678}\n扩展名: (无)\n大小: 64KB\n年龄: 45 天",
+    "tags": [
+      "synthetic",
+      "medium"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "dc.h.025",
+    "scenario": "disk_cleanup",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "文件路径: C:\\Windows\\Installer\\9607be8a.msi\n扩展名: .msi\n大小: 5.4MB\n年龄: 595 天\n问: 这个 Windows 系统文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_disk_cleanup.jsonl 抽出 (seed=42, idx=25) — 训练时排除"
+  },
+  {
+    "id": "dc.h.019",
+    "scenario": "disk_cleanup",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "文件路径: Windows\\Logs\\SIH\\SIH.20260920.163827.362.1.etl\n扩展名: .etl\n大小: 8KB\n年龄: 2 天\n问: 这个 Windows 系统文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_disk_cleanup.jsonl 抽出 (seed=42, idx=19) — 训练时排除"
+  },
+  {
+    "id": "dc.s.025",
+    "scenario": "disk_cleanup",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "delete",
+    "text": "文件路径: C:\\Windows\\Temp\\WMSvcInsTmp.log\n扩展名: .log\n大小: 12MB\n年龄: 90 天",
+    "tags": [
+      "synthetic",
+      "high"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "dc.s.003",
+    "scenario": "disk_cleanup",
+    "expect": "safe",
+    "risk_label": "safe",
+    "_action": "delete",
+    "text": "文件路径: C:\\Users\\Administrator\\AppData\\Local\\Temp\\matplotlib\\fontList.cache\n扩展名: .cache\n大小: 12KB\n年龄: 3 天",
+    "tags": [
+      "synthetic",
+      "safe"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "dc.h.018",
+    "scenario": "disk_cleanup",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "review",
+    "text": "文件路径: Windows\\System32\\catroot2\\edbres00001.jrs\n扩展名: .jrs\n大小: 2.0MB\n年龄: 7 天\n问: 这个 Windows 系统文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_disk_cleanup.jsonl 抽出 (seed=42, idx=18) — 训练时排除"
+  },
+  {
+    "id": "dc.h.007",
+    "scenario": "disk_cleanup",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "文件路径: C:\\Windows\\Installer\\1e2f93f.msi\n扩展名: .msi\n大小: 208KB\n年龄: 305 天\n问: 这个 Windows 系统文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_disk_cleanup.jsonl 抽出 (seed=42, idx=7) — 训练时排除"
+  },
+  {
+    "id": "dc.s.002",
+    "scenario": "disk_cleanup",
+    "expect": "safe",
+    "risk_label": "safe",
+    "_action": "delete",
+    "text": "文件路径: C:\\Users\\Administrator\\AppData\\Local\\Temp\\matplotlib\\fontList.cache\n扩展名: .cache\n大小: 12KB\n年龄: 3 天",
+    "tags": [
+      "synthetic",
+      "safe"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "dc.s.023",
+    "scenario": "disk_cleanup",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "文件路径: C:\\Windows\\Installer\\SourceHash{ABCD-1234-5678}\n扩展名: (无)\n大小: 64KB\n年龄: 45 天",
+    "tags": [
+      "synthetic",
+      "medium"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "dc.h.009",
+    "scenario": "disk_cleanup",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "文件路径: C:\\Windows\\Installer\\5a9317c.msi\n扩展名: .msi\n大小: 440KB\n年龄: 161 天\n问: 这个 Windows 系统文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_disk_cleanup.jsonl 抽出 (seed=42, idx=9) — 训练时排除"
+  },
+  {
+    "id": "dc.s.020",
+    "scenario": "disk_cleanup",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "文件路径: C:\\Windows\\Logs\\cbp.log\n扩展名: .log\n大小: 320KB\n年龄: 5 天",
+    "tags": [
+      "synthetic",
+      "low"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "dc.s.014",
+    "scenario": "disk_cleanup",
+    "expect": "critical",
+    "risk_label": "critical",
+    "_action": "keep",
+    "text": "文件路径: C:\\Windows\\System32\\config\\SOFTWARE\n扩展名: (无)\n大小: 128MB\n年龄: 365 天",
+    "tags": [
+      "synthetic",
+      "critical"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "dc.s.017",
+    "scenario": "disk_cleanup",
+    "expect": "safe",
+    "risk_label": "safe",
+    "_action": "delete",
+    "text": "文件路径: C:\\Users\\Administrator\\AppData\\Local\\Microsoft\\Windows\\Explorer\\thumbcache_256.db\n扩展名: .db\n大小: 8MB\n年龄: 7 天",
+    "tags": [
+      "synthetic",
+      "safe"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "dc.h.003",
+    "scenario": "disk_cleanup",
+    "expect": "critical",
+    "risk_label": "critical",
+    "_action": "keep",
+    "text": "文件路径: Windows\\WinSxS\\Backup\\amd64_microsoft-windows-rasautodial_31bf3856ad364e35_10.0.19041.6328_none_8490dd161a905126_rasauto.dll_17a2420d\n扩展名: .dll_17a2420d\n大小: 45KB\n年龄: 329 天\n问: 这个 Windows 系统文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_disk_cleanup.jsonl 抽出 (seed=42, idx=3) — 训练时排除"
+  },
+  {
+    "id": "dc.s.009",
+    "scenario": "disk_cleanup",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "文件路径: C:\\Windows\\Installer\\$PatchCache$\\Managed\\000021599E4090C00B11B1119CC78B41C0C0C0C0\n扩展名: (无)\n大小: 168MB\n年龄: 60 天",
+    "tags": [
+      "synthetic",
+      "medium"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "dc.s.011",
+    "scenario": "disk_cleanup",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "review",
+    "text": "文件路径: C:\\Windows\\WinSxS\\x86_microsoft.windows.gdiplus_6595b64144ccf1df_1.1.7601.24308_none_5c0a2b0763f3b07e\n扩展名: (无)\n大小: 2MB\n年龄: 90 天",
+    "tags": [
+      "synthetic",
+      "high"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "dc.h.004",
+    "scenario": "disk_cleanup",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "文件路径: C:\\Windows\\Installer\\9607be94.msi\n扩展名: .msi\n大小: 3.4MB\n年龄: 595 天\n问: 这个 Windows 系统文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_disk_cleanup.jsonl 抽出 (seed=42, idx=4) — 训练时排除"
+  },
+  {
+    "id": "dc.s.018",
+    "scenario": "disk_cleanup",
+    "expect": "safe",
+    "risk_label": "safe",
+    "_action": "delete",
+    "text": "文件路径: C:\\Users\\Administrator\\AppData\\Local\\Microsoft\\Windows\\Explorer\\thumbcache_256.db\n扩展名: .db\n大小: 8MB\n年龄: 7 天",
+    "tags": [
+      "synthetic",
+      "safe"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "dc.h.001",
+    "scenario": "disk_cleanup",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "文件路径: C:\\Windows\\Installer\\SourceHash{5AB1AD44-9DCC-4193-8FE2-249DE5567FC4}\n扩展名: (无)\n大小: 20KB\n年龄: 161 天\n问: 这个 Windows 系统文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_disk_cleanup.jsonl 抽出 (seed=42, idx=1) — 训练时排除"
+  },
+  {
+    "id": "dc.s.027",
+    "scenario": "disk_cleanup",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "delete",
+    "text": "文件路径: C:\\Windows\\Temp\\WMSvcInsTmp.log\n扩展名: .log\n大小: 12MB\n年龄: 90 天",
+    "tags": [
+      "synthetic",
+      "high"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "dc.s.015",
+    "scenario": "disk_cleanup",
+    "expect": "critical",
+    "risk_label": "critical",
+    "_action": "keep",
+    "text": "文件路径: C:\\Windows\\System32\\config\\SOFTWARE\n扩展名: (无)\n大小: 128MB\n年龄: 365 天",
+    "tags": [
+      "synthetic",
+      "critical"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "dc.s.019",
+    "scenario": "disk_cleanup",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "文件路径: C:\\Windows\\Logs\\cbp.log\n扩展名: .log\n大小: 320KB\n年龄: 5 天",
+    "tags": [
+      "synthetic",
+      "low"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "dc.s.006",
+    "scenario": "disk_cleanup",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "文件路径: C:\\Windows\\Logs\\DISM\\dism.log\n扩展名: .log\n大小: 4MB\n年龄: 14 天",
+    "tags": [
+      "synthetic",
+      "low"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "dc.s.008",
+    "scenario": "disk_cleanup",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "文件路径: C:\\Windows\\Installer\\$PatchCache$\\Managed\\000021599E4090C00B11B1119CC78B41C0C0C0C0\n扩展名: (无)\n大小: 168MB\n年龄: 60 天",
+    "tags": [
+      "synthetic",
+      "medium"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "dc.h.002",
+    "scenario": "disk_cleanup",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "文件路径: C:\\Windows\\Installer\\SourceHash{7B927FDC-8F38-4DF7-9EF2-F34ED59CE33D}\n扩展名: (无)\n大小: 20KB\n年龄: 133 天\n问: 这个 Windows 系统文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_disk_cleanup.jsonl 抽出 (seed=42, idx=2) — 训练时排除"
+  },
+  {
+    "id": "dc.h.022",
+    "scenario": "disk_cleanup",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "文件路径: Windows\\Logs\\PLUG\\RUXIMLog.036.etl\n扩展名: .etl\n大小: 128KB\n年龄: 5 天\n问: 这个 Windows 系统文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_disk_cleanup.jsonl 抽出 (seed=42, idx=22) — 训练时排除"
+  },
+  {
+    "id": "dc.h.005",
+    "scenario": "disk_cleanup",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "文件路径: C:\\Windows\\Installer\\SourceHash{77E28521-C063-BF41-60C0-0140F5C2F811}\n扩展名: (无)\n大小: 20KB\n年龄: 161 天\n问: 这个 Windows 系统文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_disk_cleanup.jsonl 抽出 (seed=42, idx=5) — 训练时排除"
+  },
+  {
+    "id": "dc.h.015",
+    "scenario": "disk_cleanup",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "文件路径: C:\\Windows\\Installer\\SourceHash{D97824BC-1F9C-9A98-A458-5B0D06ECB755}\n扩展名: (无)\n大小: 20KB\n年龄: 161 天\n问: 这个 Windows 系统文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_disk_cleanup.jsonl 抽出 (seed=42, idx=15) — 训练时排除"
+  },
+  {
+    "id": "dc.h.016",
+    "scenario": "disk_cleanup",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "文件路径: Windows\\Logs\\waasmedic\\waasmedic.20260914_161002_569.etl\n扩展名: .etl\n大小: 12KB\n年龄: 8 天\n问: 这个 Windows 系统文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_disk_cleanup.jsonl 抽出 (seed=42, idx=16) — 训练时排除"
+  },
+  {
+    "id": "dc.h.008",
+    "scenario": "disk_cleanup",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "文件路径: Windows\\Logs\\waasmedic\\waasmedic.20260917_191425_660.etl\n扩展名: .etl\n大小: 12KB\n年龄: 5 天\n问: 这个 Windows 系统文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_disk_cleanup.jsonl 抽出 (seed=42, idx=8) — 训练时排除"
+  },
+  {
+    "id": "dc.s.024",
+    "scenario": "disk_cleanup",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "文件路径: C:\\Windows\\Installer\\SourceHash{ABCD-1234-5678}\n扩展名: (无)\n大小: 64KB\n年龄: 45 天",
+    "tags": [
+      "synthetic",
+      "medium"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "dc.s.004",
+    "scenario": "disk_cleanup",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "文件路径: C:\\Windows\\Logs\\DISM\\dism.log\n扩展名: .log\n大小: 4MB\n年龄: 14 天",
+    "tags": [
+      "synthetic",
+      "low"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "dc.h.029",
+    "scenario": "disk_cleanup",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "文件路径: Windows\\Logs\\waasmedic\\waasmedic.20260912_111609_308.etl\n扩展名: .etl\n大小: 12KB\n年龄: 10 天\n问: 这个 Windows 系统文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_disk_cleanup.jsonl 抽出 (seed=42, idx=29) — 训练时排除"
+  },
+  {
+    "id": "dc.h.024",
+    "scenario": "disk_cleanup",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "文件路径: Windows\\Installer\\{D7B591D8-1091-4A00-A0B3-5301C45E5D51}\\Setup.ico\n扩展名: .ico\n大小: 279KB\n年龄: 630 天\n问: 这个 Windows 系统文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_disk_cleanup.jsonl 抽出 (seed=42, idx=24) — 训练时排除"
+  },
+  {
+    "id": "dc.s.012",
+    "scenario": "disk_cleanup",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "review",
+    "text": "文件路径: C:\\Windows\\WinSxS\\x86_microsoft.windows.gdiplus_6595b64144ccf1df_1.1.7601.24308_none_5c0a2b0763f3b07e\n扩展名: (无)\n大小: 2MB\n年龄: 90 天",
+    "tags": [
+      "synthetic",
+      "high"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "dc.s.013",
+    "scenario": "disk_cleanup",
+    "expect": "critical",
+    "risk_label": "critical",
+    "_action": "keep",
+    "text": "文件路径: C:\\Windows\\System32\\config\\SOFTWARE\n扩展名: (无)\n大小: 128MB\n年龄: 365 天",
+    "tags": [
+      "synthetic",
+      "critical"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "dc.h.026",
+    "scenario": "disk_cleanup",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "文件路径: C:\\Windows\\Installer\\5a93127.msi\n扩展名: .msi\n大小: 436KB\n年龄: 161 天\n问: 这个 Windows 系统文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_disk_cleanup.jsonl 抽出 (seed=42, idx=26) — 训练时排除"
+  },
+  {
+    "id": "dc.h.020",
+    "scenario": "disk_cleanup",
+    "expect": "critical",
+    "risk_label": "critical",
+    "_action": "keep",
+    "text": "文件路径: Windows\\WinSxS\\Backup\\amd64_microsoft-windows-i..oexistencemigration_31bf3856ad364e35_10.0.19041.5794_none_86760cc231b15ae3.manifest\n扩展名: .manifest\n大小: 10KB\n年龄: 493 天\n问: 这个 Windows 系统文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_disk_cleanup.jsonl 抽出 (seed=42, idx=20) — 训练时排除"
+  },
+  {
+    "id": "dc.s.016",
+    "scenario": "disk_cleanup",
+    "expect": "safe",
+    "risk_label": "safe",
+    "_action": "delete",
+    "text": "文件路径: C:\\Users\\Administrator\\AppData\\Local\\Microsoft\\Windows\\Explorer\\thumbcache_256.db\n扩展名: .db\n大小: 8MB\n年龄: 7 天",
+    "tags": [
+      "synthetic",
+      "safe"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  }
+]

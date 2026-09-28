@@ -217,11 +217,15 @@ def _ensure_defaults() -> None:
     })
 
     # BGM providers
+    # ⚠ OM-P4-fix(2026-09-28):Pixabay 没有音频 API(/api/audio/ 403),
+    # 所以 pixabay_music 不能真 fetch — 仅作为「理论档位」占位
     register_provider("pixabay_music", {
         "tag": "music", "cost_per_call": 0.0, "requires_key": True,
         "quality": 0.75, "speed": 0.80, "cost": 1.0,
-        "availability": 1.0, "quota": 0.85,
-        "description": "Pixabay Music 免版税,需 key 注册",
+        # availability 降到 0.0 → pick_best 自动判定 ineligible
+        # 用户配 PIXABAY_API_KEY 也不会被误选 → 落到 fma_music / local_silence
+        "availability": 0.0, "quota": 0.0,
+        "description": "Pixabay Music 占位(Pixabay 无音频 API,不可真调,2026-09-28 标记)",
     })
     register_provider("fma_music", {
         "tag": "music", "cost_per_call": 0.0, "requires_key": False,

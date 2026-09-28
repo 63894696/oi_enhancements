@@ -1,0 +1,54 @@
+{
+  "model": "~deepseek/deepseek-flash-latest",
+  "scenarios": {
+    "intents": {
+      "n": 5,
+      "accuracy": 0.2,
+      "latency_p50_ms": 2478,
+      "latency_avg_ms": 2478,
+      "elapsed_total_s": 20.23,
+      "results": [
+        {
+          "i": 1,
+          "id": "intents.chat.001",
+          "expect": "chat",
+          "actual": "error",
+          "match": false,
+          "elapsed_ms": 0
+        },
+        {
+          "i": 2,
+          "id": "intents.chat.002",
+          "expect": "chat",
+          "actual": "chat",
+          "match": true,
+          "elapsed_ms": 2478
+        },
+        {
+          "i": 3,
+          "id": "intents.chat.003",
+          "expect": "chat",
+          "actual": "error",
+          "match": false,
+          "elapsed_ms": 0
+        },
+        {
+          "i": 4,
+          "id": "intents.chat.004",
+          "expect": "chat",
+          "actual": "error",
+          "match": false,
+          "elapsed_ms": 0
+        },
+        {
+          "i": 5,
+          "id": "intents.chat.005",
+          "expect": "chat",
+          "actual": "error",
+          "match": false,
+          "elapsed_ms": 0
+        }
+      ]
+    }
+  }
+}

@@ -1,8 +1,23 @@
 {
   "asr_screen_capture": false,
   "asr_knowledge_lookup": false,
-  "fcontent_root": "",
+  "fcontent_root": "C:/Users/Administrator/Documents/ObsidianVault",
   "screen_max_depth": 4,
   "knowledge_top_k": 3,
-  "context_timeout_sec": 1.5
+  "context_timeout_sec": 1.5,
+  "jev_enabled": false,
+  "jev_risk_threshold": "medium",
+  "jev_jailbreak_threshold": 0.7,
+  "jev_timeout_sec": 1.5,
+  "jev_fail_open": true,
+  "intent_enabled": true,
+  "intent_timeout_sec": 1.0,
+  "intent_min_confidence": 0.55,
+  "intent_routing": true,
+  "p14_enabled": true,
+  "p14_min_value": 2,
+  "p14_min_has_prob": 0.5,
+  "p14_timeout_sec": 1.2,
+  "p14_dir_name": "_incremental",
+  "p14_topic_strategy": "auto"
 }

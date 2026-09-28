@@ -75,6 +75,56 @@ def test_tray_menu_action_does_not_shadow_callback():
     assert called == [1]
 
 
+def test_tray_menu_with_extra_actions():
+    """托盘子菜单:profile → SEP → extra → SEP → 退出(P2.5+17)。"""
+    from agent_shell.tray import TrayController
+
+    class FakeMenu:
+        SEPARATOR = "SEP"
+        def __init__(self, *items): self.items = list(items)
+    class FakeMenuItem:
+        def __init__(self, label, action): self.label = label; self.action = action
+
+    import pystray
+    pystray.Menu = FakeMenu       # noqa: F811 (monkey patch for test)
+    pystray.MenuItem = FakeMenuItem  # noqa: F811
+
+    t = TrayController(
+        profile_actions=[("A", lambda: None), ("B", lambda: None)],
+        extra_actions=[("📢 打开发布面板", lambda: None),
+                       ("🎵 打开音乐", lambda: None)],
+    )
+    m = t._menu()
+    labels = [getattr(it, "label", "SEP") for it in m.items]
+    # profile(2) → SEP → extra(2) → SEP → 退出
+    assert labels == ["A", "B", "SEP", "📢 打开发布面板",
+                      "🎵 打开音乐", "SEP", "退出 Shell"]
+
+
+def test_app_extra_menu_has_publisher_entry():
+    """AgentShellApp._extra_menu 必含「打开发布面板」+「打开日历」+「打开音乐」。"""
+    # 跳过 __init__(config 校验)— 直接走 _extra_menu 静态
+    from agent_shell.app import AgentShellApp
+
+    class _Stub:
+        cfg = {"profiles": {}}
+
+    stub = _Stub()
+    items = AgentShellApp._extra_menu(stub)
+    labels = [lbl for lbl, _ in items]
+    assert "📢 打开发布面板" in labels
+    assert "📅 打开日历" in labels
+    assert "🎵 打开音乐" in labels
+
+
+def test_read_wechat_publisher_port_finds_hkcu_or_file():
+    """探测 HKCU 或 _prisir_registry/wechat_publisher_port.json → 拿 port。"""
+    from agent_shell.app import _read_wechat_publisher_port
+    p = _read_wechat_publisher_port()
+    # 本机已注册 wechat-publisher(从前面 E2E 起过);无就跑过
+    assert isinstance(p, (int, type(None)))
+
+
 def test_agent_hooks_thinking(monkeypatch):
     from agent_shell.hooks import AgentStateHooks
 

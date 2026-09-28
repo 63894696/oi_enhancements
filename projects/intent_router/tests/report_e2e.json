@@ -1,0 +1,130 @@
+{
+  "summary": {
+    "pass": 10,
+    "total": 10,
+    "pass_rate": 1.0
+  },
+  "route_map_size": 17,
+  "results": [
+    {
+      "idx": 1,
+      "text": "清理 D 盘垃圾",
+      "desc": "中文磁盘清理",
+      "passed": true,
+      "intent": "tool_call",
+      "task": "fast",
+      "executor": "perf_guard",
+      "confidence": 0.3953,
+      "intent_conf": 0.6287,
+      "task_conf": 0.6287
+    },
+    {
+      "idx": 2,
+      "text": "rm -rf C:/Windows",
+      "desc": "危险命令 → disk_cleanup",
+      "passed": true,
+      "intent": "tool_call",
+      "task": "general",
+      "executor": "companion_tool_call",
+      "confidence": 0.5175,
+      "intent_conf": 0.7194,
+      "task_conf": 0.7194
+    },
+    {
+      "idx": 3,
+      "text": "查最近 1h 性能",
+      "desc": "perf 监控查询",
+      "passed": true,
+      "intent": "tool_call",
+      "task": "fast",
+      "executor": "perf_guard",
+      "confidence": 0.393,
+      "intent_conf": 0.6269,
+      "task_conf": 0.6269
+    },
+    {
+      "idx": 4,
+      "text": "你好",
+      "desc": "简单聊天",
+      "passed": true,
+      "intent": "chat",
+      "task": "fast",
+      "executor": "companion_jev",
+      "confidence": 0.3853,
+      "intent_conf": 0.6207,
+      "task_conf": 0.6207
+    },
+    {
+      "idx": 5,
+      "text": "帮我写个 Python 函数计算斐波那契",
+      "desc": "code_call 类任务",
+      "passed": true,
+      "intent": "code",
+      "task": "code_call",
+      "executor": "ide_tool",
+      "confidence": 0.9975,
+      "intent_conf": 0.9975,
+      "task_conf": 1.0
+    },
+    {
+      "idx": 6,
+      "text": "什么是装饰器?",
+      "desc": "code_qa 类知识问答",
+      "passed": true,
+      "intent": "search",
+      "task": "code_qa",
+      "executor": "rag",
+      "confidence": 0.0035,
+      "intent_conf": 0.0035,
+      "task_conf": 1.0
+    },
+    {
+      "idx": 7,
+      "text": "搜索一下今天的新闻",
+      "desc": "web 搜索",
+      "passed": true,
+      "intent": "search",
+      "task": "fast",
+      "executor": "fastlane",
+      "confidence": 0.0025,
+      "intent_conf": 0.0025,
+      "task_conf": 1.0
+    },
+    {
+      "idx": 8,
+      "text": "查 git 命令用法",
+      "desc": "fast-path 命令查询",
+      "passed": true,
+      "intent": "code",
+      "task": "code_qa",
+      "executor": "rag",
+      "confidence": 0.9987,
+      "intent_conf": 0.9975,
+      "task_conf": 1.0012
+    },
+    {
+      "idx": 9,
+      "text": "扮演一个中世纪骑士和我对话",
+      "desc": "roleplay 角色扮演",
+      "passed": true,
+      "intent": "chat",
+      "task": "fast",
+      "executor": "companion_jev",
+      "confidence": 0.4857,
+      "intent_conf": 0.6969,
+      "task_conf": 0.6969
+    },
+    {
+      "idx": 10,
+      "text": "查看今天的日志有没有错误",
+      "desc": "log 查询",
+      "passed": true,
+      "intent": "code",
+      "task": "code_call",
+      "executor": "ide_tool",
+      "confidence": 0.9985,
+      "intent_conf": 0.9985,
+      "task_conf": 1.0
+    }
+  ]
+}

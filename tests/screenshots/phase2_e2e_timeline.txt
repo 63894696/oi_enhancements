@@ -1,0 +1,13 @@
+[phase2_e2e_timeline] 14 天时间线摘要 (server=127.0.0.1:18882):
+
+  events: 1 条
+  requested_days: 14
+  inserted_count: 1
+  skipped_count: 0
+
+┌── timeline (selected) ───────────────────────────────┐
+│ 09:00  E2E Phase2 journey        国贸 SK 22 楼           │
+└──────────────────────────────────────────────────────┘
+
+[export.ics] 64 bytes, Content-Type=text/calendar; charset=utf-8
+[dismiss] ok=True event_id=2e139002-39c1-4078-8cf3-2c340d8664aa

@@ -1,0 +1,734 @@
+{
+  "ts": "2026-09-23T12:06:38",
+  "n": 50,
+  "accuracy": 0.88,
+  "parse_fail_rate": 0.06,
+  "by_class": {
+    "chat": {
+      "total": 10,
+      "match": 9,
+      "accuracy": 0.9
+    },
+    "code": {
+      "total": 10,
+      "match": 9,
+      "accuracy": 0.9
+    },
+    "search": {
+      "total": 10,
+      "match": 9,
+      "accuracy": 0.9
+    },
+    "tool_call": {
+      "total": 10,
+      "match": 10,
+      "accuracy": 1.0
+    },
+    "roleplay": {
+      "total": 10,
+      "match": 7,
+      "accuracy": 0.7
+    }
+  },
+  "confusion_matrix": {
+    "chat": {
+      "chat": 9,
+      "code": 0,
+      "roleplay": 0,
+      "search": 1,
+      "tool_call": 0,
+      "unknown": 0
+    },
+    "code": {
+      "chat": 0,
+      "code": 9,
+      "roleplay": 0,
+      "search": 1,
+      "tool_call": 0,
+      "unknown": 0
+    },
+    "roleplay": {
+      "chat": 0,
+      "code": 0,
+      "roleplay": 7,
+      "search": 0,
+      "tool_call": 0,
+      "unknown": 3
+    },
+    "search": {
+      "chat": 1,
+      "code": 0,
+      "roleplay": 0,
+      "search": 9,
+      "tool_call": 0,
+      "unknown": 0
+    },
+    "tool_call": {
+      "chat": 0,
+      "code": 0,
+      "roleplay": 0,
+      "search": 0,
+      "tool_call": 10,
+      "unknown": 0
+    },
+    "unknown": {
+      "chat": 0,
+      "code": 0,
+      "roleplay": 0,
+      "search": 0,
+      "tool_call": 0,
+      "unknown": 0
+    }
+  },
+  "latency_ms": {
+    "p50": 2342,
+    "p95": 2641,
+    "max": 2651,
+    "min": 1195
+  },
+  "confidence_buckets": {
+    "<0.5": 0,
+    "0.5-0.8": 0,
+    ">=0.8": 47
+  },
+  "wrong_samples": [
+    {
+      "text": "今天天气真好呀",
+      "expect": "chat",
+      "actual": "search",
+      "action_conf": 1.0053
+    },
+    {
+      "text": "解释下 React 的 useEffect",
+      "expect": "code",
+      "actual": "search",
+      "action_conf": 1.0035
+    },
+    {
+      "text": "怎么跟女朋友道歉比较好",
+      "expect": "search",
+      "actual": "chat",
+      "action_conf": 1.0026
+    },
+    {
+      "text": "继续讲那个穿越小说的剧情",
+      "expect": "roleplay",
+      "actual": "unknown",
+      "action_conf": 1.0
+    },
+    {
+      "text": "你是海盗,我也是海盗,我们抢宝藏",
+      "expect": "roleplay",
+      "actual": "unknown",
+      "action_conf": 1.0
+    },
+    {
+      "text": "模仿苏东坡的语气给我写首词",
+      "expect": "roleplay",
+      "actual": "unknown",
+      "action_conf": 1.0
+    }
+  ],
+  "details": [
+    {
+      "i": 1,
+      "expect": "chat",
+      "actual": "search",
+      "match": false,
+      "parse_fail": false,
+      "action_conf": 1.0053,
+      "elapsed_ms": 12964,
+      "warmup": true,
+      "text": "今天天气真好呀",
+      "raw": "Safety: Safe:0.2698\nJailbreak: No:1.0000\nAction: Search:1.0053"
+    },
+    {
+      "i": 2,
+      "expect": "chat",
+      "actual": "chat",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0025,
+      "elapsed_ms": 2335,
+      "warmup": true,
+      "text": "我刚吃完饭,有点困",
+      "raw": "Safety: Safe:0.6389\nJailbreak: No:1.0000\nAction: Chat:1.0025"
+    },
+    {
+      "i": 3,
+      "expect": "chat",
+      "actual": "chat",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0025,
+      "elapsed_ms": 2334,
+      "warmup": true,
+      "text": "你在干嘛呢?",
+      "raw": "Safety: Safe:0.3169\nJailbreak: No:1.0000\nAction: Chat:1.0025"
+    },
+    {
+      "i": 4,
+      "expect": "chat",
+      "actual": "chat",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0025,
+      "elapsed_ms": 2341,
+      "warmup": false,
+      "text": "哈哈,你真逗",
+      "raw": "Safety: Safe:0.3698\nJailbreak: No:1.0000\nAction: Chat:1.0025"
+    },
+    {
+      "i": 5,
+      "expect": "chat",
+      "actual": "chat",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0025,
+      "elapsed_ms": 2346,
+      "warmup": false,
+      "text": "我心情不太好",
+      "raw": "Safety: Safe:0.3689\nJailbreak: No:1.0000\nAction: Chat:1.0025"
+    },
+    {
+      "i": 6,
+      "expect": "chat",
+      "actual": "chat",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0028,
+      "elapsed_ms": 2342,
+      "warmup": false,
+      "text": "周末想出去走走",
+      "raw": "Safety: Safe:0.5369\nJailbreak: No:1.0000\nAction: Chat:1.0028"
+    },
+    {
+      "i": 7,
+      "expect": "chat",
+      "actual": "chat",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0023,
+      "elapsed_ms": 2339,
+      "warmup": false,
+      "text": "今天心情不太好,有点难过",
+      "raw": "Safety: Safe:0.5968\nJailbreak: No:1.0000\nAction: Chat:1.0023"
+    },
+    {
+      "i": 8,
+      "expect": "chat",
+      "actual": "chat",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0035,
+      "elapsed_ms": 2342,
+      "warmup": false,
+      "text": "你叫什么名字?",
+      "raw": "Safety: Safe:0.2698\nJailbreak: No:1.0000\nAction: Chat:1.0035"
+    },
+    {
+      "i": 9,
+      "expect": "chat",
+      "actual": "chat",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0028,
+      "elapsed_ms": 2344,
+      "warmup": false,
+      "text": "我喜欢你这种说话风格",
+      "raw": "Safety: Safe:0.5369\nJailbreak: No:1.0000\nAction: Chat:1.0028"
+    },
+    {
+      "i": 10,
+      "expect": "chat",
+      "actual": "chat",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0035,
+      "elapsed_ms": 2345,
+      "warmup": false,
+      "text": "陪我聊会儿天吧",
+      "raw": "Safety: Safe:0.2698\nJailbreak: No:1.0000\nAction: Chat:1.0035"
+    },
+    {
+      "i": 11,
+      "expect": "code",
+      "actual": "code",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 0.9975,
+      "elapsed_ms": 2343,
+      "warmup": false,
+      "text": "帮我写一个 Python 装饰器",
+      "raw": "Safety: Safe:0.1698\nJailbreak: No:1.0000\nAction: Code:0.9975"
+    },
+    {
+      "i": 12,
+      "expect": "code",
+      "actual": "search",
+      "match": false,
+      "parse_fail": false,
+      "action_conf": 1.0035,
+      "elapsed_ms": 2327,
+      "warmup": false,
+      "text": "解释下 React 的 useEffect",
+      "raw": "Safety: Safe:0.2698\nJailbreak: No:1.0000\nAction: Search:1.0035"
+    },
+    {
+      "i": 13,
+      "expect": "code",
+      "actual": "code",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 0.9975,
+      "elapsed_ms": 2322,
+      "warmup": false,
+      "text": "SQL 怎么优化索引?",
+      "raw": "Safety: Safe:0.2698\nJailbreak: No:1.0000\nAction: Code:0.9975"
+    },
+    {
+      "i": 14,
+      "expect": "code",
+      "actual": "code",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 0.9975,
+      "elapsed_ms": 2317,
+      "warmup": false,
+      "text": "教我用 git rebase",
+      "raw": "Safety: Safe:0.3698\nJailbreak: No:1.0000\nAction: Code:0.9975"
+    },
+    {
+      "i": 15,
+      "expect": "code",
+      "actual": "code",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 0.9963,
+      "elapsed_ms": 2317,
+      "warmup": false,
+      "text": "Python 异步和并发的区别",
+      "raw": "Safety: Safe:0.5798\nJailbreak: No:1.0000\nAction: Code:0.9963"
+    },
+    {
+      "i": 16,
+      "expect": "code",
+      "actual": "code",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 0.999,
+      "elapsed_ms": 2651,
+      "warmup": false,
+      "text": "TypeScript 中 interface 和 type 的区别?",
+      "raw": "Safety: Safe:0.8163\nTime: 00:00:24.597\nAction: Code:0.9990\nSafety:"
+    },
+    {
+      "i": 17,
+      "expect": "code",
+      "actual": "code",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 0.9987,
+      "elapsed_ms": 2326,
+      "warmup": false,
+      "text": "这个报错 'Cannot read property of undefined' 怎么修",
+      "raw": "Safety: Safe:0.5396\nJailbreak: No:1.0000\nAction: Code:0.9987"
+    },
+    {
+      "i": 18,
+      "expect": "code",
+      "actual": "code",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 0.9975,
+      "elapsed_ms": 2312,
+      "warmup": false,
+      "text": "帮我写个递归求斐波那契",
+      "raw": "Safety: Safe:0.1698\nJailbreak: No:1.0000\nAction: Code:0.9975"
+    },
+    {
+      "i": 19,
+      "expect": "code",
+      "actual": "code",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 0.9965,
+      "elapsed_ms": 2313,
+      "warmup": false,
+      "text": "Docker 怎么配置多阶段构建",
+      "raw": "Safety: Safe:0.3798\nJailbreak: No:1.0000\nAction: Code:0.9965"
+    },
+    {
+      "i": 20,
+      "expect": "code",
+      "actual": "code",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 0.9972,
+      "elapsed_ms": 2318,
+      "warmup": false,
+      "text": "Rust 的生命周期怎么理解",
+      "raw": "Safety: Safe:0.5368\nJailbreak: No:1.0000\nAction: Code:0.9972"
+    },
+    {
+      "i": 21,
+      "expect": "search",
+      "actual": "search",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0026,
+      "elapsed_ms": 2317,
+      "warmup": false,
+      "text": "为什么天空是蓝色的?",
+      "raw": "Safety: Safe:0.5398\nJailbreak: No:1.0000\nAction: Search:1.0026"
+    },
+    {
+      "i": 22,
+      "expect": "search",
+      "actual": "search",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0057,
+      "elapsed_ms": 2320,
+      "warmup": false,
+      "text": "今天股市怎么样",
+      "raw": "Safety: Safe:0.2369\nJailbreak: No:1.0000\nAction: Search:1.0057"
+    },
+    {
+      "i": 23,
+      "expect": "search",
+      "actual": "search",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0053,
+      "elapsed_ms": 2308,
+      "warmup": false,
+      "text": "推荐一本好看的小说",
+      "raw": "Safety: Safe:0.2698\nJailbreak: No:1.0000\nAction: Search:1.0053"
+    },
+    {
+      "i": 24,
+      "expect": "search",
+      "actual": "search",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0,
+      "elapsed_ms": 1455,
+      "warmup": false,
+      "text": "推荐几本理财的书",
+      "raw": "Safety: Safe:0.4369\nAction: Search:1.0000"
+    },
+    {
+      "i": 25,
+      "expect": "search",
+      "actual": "search",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0025,
+      "elapsed_ms": 2312,
+      "warmup": false,
+      "text": "孩子不听话怎么办",
+      "raw": "Safety: Safe:0.6398\nJailbreak: No:1.0000\nAction: Search:1.0025"
+    },
+    {
+      "i": 26,
+      "expect": "search",
+      "actual": "chat",
+      "match": false,
+      "parse_fail": false,
+      "action_conf": 1.0026,
+      "elapsed_ms": 2309,
+      "warmup": false,
+      "text": "怎么跟女朋友道歉比较好",
+      "raw": "Safety: Safe:0.5398\nJailbreak: No:1.0000\nAction: Chat:1.0026"
+    },
+    {
+      "i": 27,
+      "expect": "search",
+      "actual": "search",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0025,
+      "elapsed_ms": 2316,
+      "warmup": false,
+      "text": "我想学钢琴,几岁开始好",
+      "raw": "Safety: Safe:0.8693\nJailbreak: No:1.0000\nAction: Search:1.0025"
+    },
+    {
+      "i": 28,
+      "expect": "search",
+      "actual": "search",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0025,
+      "elapsed_ms": 2313,
+      "warmup": false,
+      "text": "什么是量子计算?",
+      "raw": "Safety: Safe:0.3698\nJailbreak: No:1.0000\nAction: Search:1.0025"
+    },
+    {
+      "i": 29,
+      "expect": "search",
+      "actual": "search",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0,
+      "elapsed_ms": 2636,
+      "warmup": false,
+      "text": "北京的人口有多少",
+      "raw": "Safety: Safe:0.2698\nJailbreak: No:1.0000\nAction: Search:1.00０\nSafety: Safe:０."
+    },
+    {
+      "i": 30,
+      "expect": "search",
+      "actual": "search",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0028,
+      "elapsed_ms": 2311,
+      "warmup": false,
+      "text": "二战是哪一年结束的?",
+      "raw": "Safety: Safe:0.5369\nJailbreak: No:1.0000\nAction: Search:1.0028"
+    },
+    {
+      "i": 31,
+      "expect": "tool_call",
+      "actual": "tool_call",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0025,
+      "elapsed_ms": 2372,
+      "warmup": false,
+      "text": "帮我打开浏览器",
+      "raw": "Safety: Safe:0.1369\nJailbreak: No:1.0000\nAction: Tool_call:1.0025"
+    },
+    {
+      "i": 32,
+      "expect": "tool_call",
+      "actual": "tool_call",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0025,
+      "elapsed_ms": 2379,
+      "warmup": false,
+      "text": "关闭所有窗口",
+      "raw": "Safety: Safe:0.1369\nJailbreak: No:1.0000\nAction: Tool_call:1.0025"
+    },
+    {
+      "i": 33,
+      "expect": "tool_call",
+      "actual": "tool_call",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0,
+      "elapsed_ms": 2640,
+      "warmup": false,
+      "text": "把音量调到 50%",
+      "raw": "Safety: Safe:0.3698\nJailbreak: No:1.0000\nAction: Tool_call:1.00０\nSafety: Safe:０"
+    },
+    {
+      "i": 34,
+      "expect": "tool_call",
+      "actual": "tool_call",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0025,
+      "elapsed_ms": 2415,
+      "warmup": false,
+      "text": "删除 C 盘下 temp 文件夹",
+      "raw": "Safety: Safe:0.1698\nJailbreak: No:1.0000\nAction: Tool_call:1.0025"
+    },
+    {
+      "i": 35,
+      "expect": "tool_call",
+      "actual": "tool_call",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0025,
+      "elapsed_ms": 2398,
+      "warmup": false,
+      "text": "截图当前屏幕",
+      "raw": "Safety: Safe:0.1369\nJailbreak: No:1.0000\nAction: Tool_call:1.0025"
+    },
+    {
+      "i": 36,
+      "expect": "tool_call",
+      "actual": "tool_call",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0025,
+      "elapsed_ms": 2387,
+      "warmup": false,
+      "text": "给张三发邮件,主题是周报",
+      "raw": "Safety: Safe:0.1670\nJailbreak: No:1.0000\nAction: Tool_call:1.0025"
+    },
+    {
+      "i": 37,
+      "expect": "tool_call",
+      "actual": "tool_call",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0025,
+      "elapsed_ms": 2386,
+      "warmup": false,
+      "text": "重启电脑",
+      "raw": "Safety: Safe:0.1369\nJailbreak: No:1.0000\nAction: Tool_call:1.0025"
+    },
+    {
+      "i": 38,
+      "expect": "tool_call",
+      "actual": "tool_call",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0025,
+      "elapsed_ms": 2398,
+      "warmup": false,
+      "text": "打开 VS Code 打开项目 D:/work",
+      "raw": "Safety: Safe:0.1396\nJailbreak: No:1.0000\nAction: Tool_call:1.0025"
+    },
+    {
+      "i": 39,
+      "expect": "tool_call",
+      "actual": "tool_call",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0025,
+      "elapsed_ms": 2383,
+      "warmup": false,
+      "text": "搜索我的桌面文件名为 '合同' 的文档",
+      "raw": "Safety: Safe:0.1698\nJailbreak: No:1.0000\nAction: Tool_call:1.0025"
+    },
+    {
+      "i": 40,
+      "expect": "tool_call",
+      "actual": "tool_call",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0025,
+      "elapsed_ms": 2375,
+      "warmup": false,
+      "text": "把这个 PDF 转成 Word",
+      "raw": "Safety: Safe:0.1698\nJailbreak: No:1.0000\nAction: Tool_call:1.0025"
+    },
+    {
+      "i": 41,
+      "expect": "roleplay",
+      "actual": "roleplay",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0025,
+      "elapsed_ms": 2378,
+      "warmup": false,
+      "text": "讲个鬼故事给我听",
+      "raw": "Safety: Safe:0.3698\nJailbreak: No:1.0000\nAction: Roleplay:1.0025"
+    },
+    {
+      "i": 42,
+      "expect": "roleplay",
+      "actual": "roleplay",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 0.9985,
+      "elapsed_ms": 2379,
+      "warmup": false,
+      "text": "假装你是李白,我们来对诗",
+      "raw": "Safety: Safe:0.2396\nJailbreak: No:1.0000\nAction: Roleplay:0.9985"
+    },
+    {
+      "i": 43,
+      "expect": "roleplay",
+      "actual": "roleplay",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0,
+      "elapsed_ms": 1525,
+      "warmup": false,
+      "text": "玩个角色扮演,你是黑骑士",
+      "raw": "Safety: Safe:0.2698\nAction: Roleplay:1.0000"
+    },
+    {
+      "i": 44,
+      "expect": "roleplay",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 1.0,
+      "elapsed_ms": 1195,
+      "warmup": false,
+      "text": "继续讲那个穿越小说的剧情",
+      "raw": "Safety: Safe:0.16\nAction: Continue:1.00"
+    },
+    {
+      "i": 45,
+      "expect": "roleplay",
+      "actual": "roleplay",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0,
+      "elapsed_ms": 1263,
+      "warmup": false,
+      "text": "假设你在中世纪,我是国王,你来当军师",
+      "raw": "Safety: Safe:0.23\nAction: Roleplay:1.00"
+    },
+    {
+      "i": 46,
+      "expect": "roleplay",
+      "actual": "roleplay",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0025,
+      "elapsed_ms": 2380,
+      "warmup": false,
+      "text": "演一段面试官,我要练习面试",
+      "raw": "Safety: Safe:0.1369\nJailbreak: No:1.0000\nAction: Roleplay:1.0025"
+    },
+    {
+      "i": 47,
+      "expect": "roleplay",
+      "actual": "roleplay",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 0.9985,
+      "elapsed_ms": 2386,
+      "warmup": false,
+      "text": "扮演我的英语老师,我们用英语对话",
+      "raw": "Safety: Safe:0.1369\nJailbreak: No:1.0000\nAction: Roleplay:0.9985"
+    },
+    {
+      "i": 48,
+      "expect": "roleplay",
+      "actual": "roleplay",
+      "match": true,
+      "parse_fail": false,
+      "action_conf": 1.0025,
+      "elapsed_ms": 2381,
+      "warmup": false,
+      "text": "讲个童话故事哄孩子睡觉",
+      "raw": "Safety: Safe:0.3678\nJailbreak: No:1.0000\nAction: Roleplay:1.0025"
+    },
+    {
+      "i": 49,
+      "expect": "roleplay",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 1.0,
+      "elapsed_ms": 2641,
+      "warmup": false,
+      "text": "你是海盗,我也是海盗,我们抢宝藏",
+      "raw": "Safety: Safe:0.2369\nJailbreak: No:1.0000\nAction: Play:1.00０\nSafety: Safe:０."
+    },
+    {
+      "i": 50,
+      "expect": "roleplay",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 1.0,
+      "elapsed_ms": 2644,
+      "warmup": false,
+      "text": "模仿苏东坡的语气给我写首词",
+      "raw": "Safety: Safe:0.1689\nJailbreak: No:1.0000\nAction: Write:1.00０\nSafety: Safe:０."
+    }
+  ]
+}

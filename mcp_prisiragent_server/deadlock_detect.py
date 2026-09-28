@@ -275,6 +275,10 @@ def detect_deadlocks() -> str:
     return json.dumps(report, ensure_ascii=False, indent=2)
 
 
+# M3.87 P0-1:删除 detect_deadlocks_with_laya() — M3.82 验证 laya deadlock 4 分类
+# 永远 "stalled" bias, ACC 0%。纯干扰信号。heuristic 100% 准确已够用。
+
+
 def get_task_chain(task_id: int) -> str:
     """MCP tool: 获取任务依赖链."""
     chain = _detector.get_dependency_chain(task_id)

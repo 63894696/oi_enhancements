@@ -1,0 +1,842 @@
+[
+  {
+    "id": "tf.h.029",
+    "scenario": "tempfile",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "keep",
+    "text": "文件路径: prisir-train-assets\\models\\Qwen3Guard-Gen-0.6B\\configuration.json\n扩展名: .json\n大小: 0KB\n年龄: 0 天\n问: 这个文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_tempfile.jsonl 抽出 (seed=42, idx=29) — 训练时排除"
+  },
+  {
+    "id": "tf.h.023",
+    "scenario": "tempfile",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "keep",
+    "text": "文件路径: D:\\Agent-First OS\\.tmp_ar0330.c\n扩展名: .c\n大小: 27KB\n年龄: 17 天\n问: 这个文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_tempfile.jsonl 抽出 (seed=42, idx=23) — 训练时排除"
+  },
+  {
+    "id": "tf.h.002",
+    "scenario": "tempfile",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "keep",
+    "text": "文件路径: Projects\\ihour-reborn\\shared\\src\\commonMain\\kotlin\\com\\ihourreborn\\model\\Source.kt\n扩展名: .kt\n大小: 0KB\n年龄: 56 天\n问: 这个文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_tempfile.jsonl 抽出 (seed=42, idx=2) — 训练时排除"
+  },
+  {
+    "id": "tf.s.016",
+    "scenario": "tempfile",
+    "expect": "safe",
+    "risk_label": "safe",
+    "_action": "delete",
+    "text": "路径: D:\\dev\\test\\.pytest_cache\\v\\cache\\nodeids\n类型: pytest 缓存\n大小: 8KB\n年龄: 2 天",
+    "tags": [
+      "synthetic",
+      "safe"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "tf.s.018",
+    "scenario": "tempfile",
+    "expect": "safe",
+    "risk_label": "safe",
+    "_action": "delete",
+    "text": "路径: D:\\dev\\test\\.pytest_cache\\v\\cache\\nodeids\n类型: pytest 缓存\n大小: 8KB\n年龄: 2 天",
+    "tags": [
+      "synthetic",
+      "safe"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "tf.s.004",
+    "scenario": "tempfile",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "路径: D:\\projects\\web\\dist\\.temp\\inline-abc123.js\n类型: 编译临时\n大小: 256KB\n年龄: 1 天",
+    "tags": [
+      "synthetic",
+      "low"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "tf.s.014",
+    "scenario": "tempfile",
+    "expect": "critical",
+    "risk_label": "critical",
+    "_action": "keep",
+    "text": "路径: D:\\work\\prod-data\\uploads\\2026-09\\user_42.pdf\n类型: 用户上传\n大小: 12MB\n年龄: 5 天",
+    "tags": [
+      "synthetic",
+      "critical"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "tf.s.021",
+    "scenario": "tempfile",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "路径: D:\\builds\\target\\debug\\.fingerprint\\serde-abc123\n类型: 编译中间\n大小: 64KB\n年龄: 7 天",
+    "tags": [
+      "synthetic",
+      "low"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "tf.s.008",
+    "scenario": "tempfile",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "路径: D:\\work\\api\\venv\\Lib\\__pycache__\\models.cpython-312.pyc\n类型: Python 字节码\n大小: 64KB\n年龄: 14 天",
+    "tags": [
+      "synthetic",
+      "medium"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "tf.s.011",
+    "scenario": "tempfile",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "delete",
+    "text": "路径: D:\\projects\\legacy\\.cache\\pip\\http\\2\\c\\b\\3\\a\\hash.json\n类型: pip 缓存\n大小: 4MB\n年龄: 60 天",
+    "tags": [
+      "synthetic",
+      "high"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "tf.s.005",
+    "scenario": "tempfile",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "路径: D:\\projects\\web\\dist\\.temp\\inline-abc123.js\n类型: 编译临时\n大小: 256KB\n年龄: 1 天",
+    "tags": [
+      "synthetic",
+      "low"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "tf.s.030",
+    "scenario": "tempfile",
+    "expect": "critical",
+    "risk_label": "critical",
+    "_action": "keep",
+    "text": "路径: D:\\db\\postgres\\data\\base\\16400\\12345\n类型: 数据库文件\n大小: 8KB\n年龄: 180 天",
+    "tags": [
+      "synthetic",
+      "critical"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "tf.h.004",
+    "scenario": "tempfile",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "keep",
+    "text": "文件路径: D:\\Agent-First OS\\.claude\\settings.local.json\n扩展名: .json\n大小: 34KB\n年龄: 0 天\n问: 这个文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_tempfile.jsonl 抽出 (seed=42, idx=4) — 训练时排除"
+  },
+  {
+    "id": "tf.h.005",
+    "scenario": "tempfile",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "文件路径: Projects\\babelspan\\apps\\public\\dist\\w\\645-chou-satsujin-jiken.html\n扩展名: .html\n大小: 10KB\n年龄: 0 天\n问: 这个文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_tempfile.jsonl 抽出 (seed=42, idx=5) — 训练时排除"
+  },
+  {
+    "id": "tf.h.018",
+    "scenario": "tempfile",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "文件路径: Projects\\babelspan\\apps\\public\\dist\\w\\2420-before-i-go-to-sleep.html\n扩展名: .html\n大小: 8KB\n年龄: 0 天\n问: 这个文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_tempfile.jsonl 抽出 (seed=42, idx=18) — 训练时排除"
+  },
+  {
+    "id": "tf.h.008",
+    "scenario": "tempfile",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "文件路径: Projects\\babelspan\\apps\\public\\dist\\w\\da-di-de-cheng-zhang.html\n扩展名: .html\n大小: 10KB\n年龄: 0 天\n问: 这个文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_tempfile.jsonl 抽出 (seed=42, idx=8) — 训练时排除"
+  },
+  {
+    "id": "tf.s.002",
+    "scenario": "tempfile",
+    "expect": "safe",
+    "risk_label": "safe",
+    "_action": "delete",
+    "text": "路径: D:\\work\\my-app\\node_modules\\.cache\\webpack\\client\\default\\0.pack\n类型: 缓存文件\n大小: 8MB\n年龄: 3 天",
+    "tags": [
+      "synthetic",
+      "safe"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "tf.h.011",
+    "scenario": "tempfile",
+    "expect": "critical",
+    "risk_label": "critical",
+    "_action": "keep",
+    "text": "文件路径: Users\\Administrator\\.config\\git\\credentials\n扩展名: (无)\n大小: 0KB\n年龄: 94 天\n问: 这个文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_tempfile.jsonl 抽出 (seed=42, idx=11) — 训练时排除"
+  },
+  {
+    "id": "tf.s.009",
+    "scenario": "tempfile",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "路径: D:\\work\\api\\venv\\Lib\\__pycache__\\models.cpython-312.pyc\n类型: Python 字节码\n大小: 64KB\n年龄: 14 天",
+    "tags": [
+      "synthetic",
+      "medium"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "tf.h.010",
+    "scenario": "tempfile",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "文件路径: Projects\\babelspan\\apps\\public\\dist\\w\\2394-embassytown.html\n扩展名: .html\n大小: 8KB\n年龄: 0 天\n问: 这个文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_tempfile.jsonl 抽出 (seed=42, idx=10) — 训练时排除"
+  },
+  {
+    "id": "tf.h.003",
+    "scenario": "tempfile",
+    "expect": "critical",
+    "risk_label": "critical",
+    "_action": "keep",
+    "text": "文件路径: Users\\Administrator\\.ssh\\known_hosts.old\n扩展名: .old\n大小: 5KB\n年龄: 23 天\n问: 这个文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_tempfile.jsonl 抽出 (seed=42, idx=3) — 训练时排除"
+  },
+  {
+    "id": "tf.s.027",
+    "scenario": "tempfile",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "delete",
+    "text": "路径: D:\\work\\.npm\\_cacache\\content-v2\\sha512\\ab\\cd\\hash\n类型: npm 缓存\n大小: 24MB\n年龄: 90 天",
+    "tags": [
+      "synthetic",
+      "high"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "tf.h.006",
+    "scenario": "tempfile",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "文件路径: Projects\\babelspan\\catalog\\outreach\\video-v0\\renders\\assembly_v1\\scored_04_outer.mp4\n扩展名: .mp4\n大小: 9.4MB\n年龄: 57 天\n问: 这个文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_tempfile.jsonl 抽出 (seed=42, idx=6) — 训练时排除"
+  },
+  {
+    "id": "tf.h.024",
+    "scenario": "tempfile",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "keep",
+    "text": "文件路径: Projects\\babelspan\\experiments\\print-v0\\_samples_en\\cult-of-the-presidency\\end.txt\n扩展名: .txt\n大小: 3KB\n年龄: 8 天\n问: 这个文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_tempfile.jsonl 抽出 (seed=42, idx=24) — 训练时排除"
+  },
+  {
+    "id": "tf.h.016",
+    "scenario": "tempfile",
+    "expect": "critical",
+    "risk_label": "critical",
+    "_action": "keep",
+    "text": "文件路径: Users\\Administrator\\.ssh\\id_rsa\n扩展名: (无)\n大小: 3KB\n年龄: 146 天\n问: 这个文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_tempfile.jsonl 抽出 (seed=42, idx=16) — 训练时排除"
+  },
+  {
+    "id": "tf.h.017",
+    "scenario": "tempfile",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "文件路径: Projects\\babelspan\\catalog\\outreach\\wechat-v0\\covers\\003-after-xenocide-cover-v2c.png\n扩展名: .png\n大小: 917KB\n年龄: 14 天\n问: 这个文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_tempfile.jsonl 抽出 (seed=42, idx=17) — 训练时排除"
+  },
+  {
+    "id": "tf.h.007",
+    "scenario": "tempfile",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "文件路径: Projects\\ihour-reborn\\shared\\build\\classes\\kotlin\\jvm\\main\\com\\ihourreborn\\db\\Classification_rule.class\n扩展名: .class\n大小: 4KB\n年龄: 55 天\n问: 这个文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_tempfile.jsonl 抽出 (seed=42, idx=7) — 训练时排除"
+  },
+  {
+    "id": "tf.h.022",
+    "scenario": "tempfile",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "keep",
+    "text": "文件路径: D:\\Agent-First OS\\.tmp_ov883x.c\n扩展名: .c\n大小: 43KB\n年龄: 17 天\n问: 这个文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_tempfile.jsonl 抽出 (seed=42, idx=22) — 训练时排除"
+  },
+  {
+    "id": "tf.h.030",
+    "scenario": "tempfile",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "keep",
+    "text": "文件路径: D:\\Agent-First OS\\ms_out.json\n扩展名: .json\n大小: 0KB\n年龄: 13 天\n问: 这个文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_tempfile.jsonl 抽出 (seed=42, idx=30) — 训练时排除"
+  },
+  {
+    "id": "tf.s.001",
+    "scenario": "tempfile",
+    "expect": "safe",
+    "risk_label": "safe",
+    "_action": "delete",
+    "text": "路径: D:\\work\\my-app\\node_modules\\.cache\\webpack\\client\\default\\0.pack\n类型: 缓存文件\n大小: 8MB\n年龄: 3 天",
+    "tags": [
+      "synthetic",
+      "safe"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "tf.h.015",
+    "scenario": "tempfile",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "文件路径: Projects\\babelspan\\.tmp\\moneyprinterturbo-research\\MoneyPrinterTurbo-main\\docs\\sponsors\\0029-logo.jpg\n扩展名: .jpg\n大小: 16KB\n年龄: 57 天\n问: 这个文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_tempfile.jsonl 抽出 (seed=42, idx=15) — 训练时排除"
+  },
+  {
+    "id": "tf.s.023",
+    "scenario": "tempfile",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "路径: D:\\projects\\app\\logs\\app-2026-09-15.log\n类型: 应用日志\n大小: 32MB\n年龄: 30 天",
+    "tags": [
+      "synthetic",
+      "medium"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "tf.h.028",
+    "scenario": "tempfile",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "文件路径: Projects\\babelspan\\catalog\\outreach\\video-v0\\renders\\assembly_v2\\_chunk_08_takeaway_0.mp4\n扩展名: .mp4\n大小: 425KB\n年龄: 57 天\n问: 这个文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_tempfile.jsonl 抽出 (seed=42, idx=28) — 训练时排除"
+  },
+  {
+    "id": "tf.h.014",
+    "scenario": "tempfile",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "文件路径: Projects\\babelspan\\catalog\\outreach\\video-v0\\renders\\assembly_v2\\seg_05_prose.mp4\n扩展名: .mp4\n大小: 1.8MB\n年龄: 57 天\n问: 这个文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_tempfile.jsonl 抽出 (seed=42, idx=14) — 训练时排除"
+  },
+  {
+    "id": "tf.s.020",
+    "scenario": "tempfile",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "路径: D:\\builds\\target\\debug\\.fingerprint\\serde-abc123\n类型: 编译中间\n大小: 64KB\n年龄: 7 天",
+    "tags": [
+      "synthetic",
+      "low"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "tf.s.012",
+    "scenario": "tempfile",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "delete",
+    "text": "路径: D:\\projects\\legacy\\.cache\\pip\\http\\2\\c\\b\\3\\a\\hash.json\n类型: pip 缓存\n大小: 4MB\n年龄: 60 天",
+    "tags": [
+      "synthetic",
+      "high"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "tf.h.001",
+    "scenario": "tempfile",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "文件路径: Projects\\babelspan\\catalog\\outreach\\wechat-v0\\brand-assets\\covers\\cover-base-v2-cosmos-book-harbor-1080x460.png\n扩展名: .png\n大小: 773KB\n年龄: 58 天\n问: 这个文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_tempfile.jsonl 抽出 (seed=42, idx=1) — 训练时排除"
+  },
+  {
+    "id": "tf.s.019",
+    "scenario": "tempfile",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "路径: D:\\builds\\target\\debug\\.fingerprint\\serde-abc123\n类型: 编译中间\n大小: 64KB\n年龄: 7 天",
+    "tags": [
+      "synthetic",
+      "low"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "tf.s.022",
+    "scenario": "tempfile",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "路径: D:\\projects\\app\\logs\\app-2026-09-15.log\n类型: 应用日志\n大小: 32MB\n年龄: 30 天",
+    "tags": [
+      "synthetic",
+      "medium"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "tf.s.026",
+    "scenario": "tempfile",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "delete",
+    "text": "路径: D:\\work\\.npm\\_cacache\\content-v2\\sha512\\ab\\cd\\hash\n类型: npm 缓存\n大小: 24MB\n年龄: 90 天",
+    "tags": [
+      "synthetic",
+      "high"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "tf.s.007",
+    "scenario": "tempfile",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "路径: D:\\work\\api\\venv\\Lib\\__pycache__\\models.cpython-312.pyc\n类型: Python 字节码\n大小: 64KB\n年龄: 14 天",
+    "tags": [
+      "synthetic",
+      "medium"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "tf.s.010",
+    "scenario": "tempfile",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "delete",
+    "text": "路径: D:\\projects\\legacy\\.cache\\pip\\http\\2\\c\\b\\3\\a\\hash.json\n类型: pip 缓存\n大小: 4MB\n年龄: 60 天",
+    "tags": [
+      "synthetic",
+      "high"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "tf.h.012",
+    "scenario": "tempfile",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "文件路径: Projects\\ihour-reborn\\.gradle\\8.10.2\\dependencies-accessors\\269132dd78a2cfc275d891ef71982e2758194d1f\\classes\\org\\gradle\\accessors\\dm\\LibrariesForLibs$BundleAccessors.class\n扩展名: .class\n大小: 1KB\n年龄: 56 天\n问: 这个文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_tempfile.jsonl 抽出 (seed=42, idx=12) — 训练时排除"
+  },
+  {
+    "id": "tf.h.025",
+    "scenario": "tempfile",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "文件路径: D:\\Agent-First OS\\tfcat_dump.cs\n扩展名: .cs\n大小: 2KB\n年龄: 23 天\n问: 这个文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_tempfile.jsonl 抽出 (seed=42, idx=25) — 训练时排除"
+  },
+  {
+    "id": "tf.s.025",
+    "scenario": "tempfile",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "delete",
+    "text": "路径: D:\\work\\.npm\\_cacache\\content-v2\\sha512\\ab\\cd\\hash\n类型: npm 缓存\n大小: 24MB\n年龄: 90 天",
+    "tags": [
+      "synthetic",
+      "high"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "tf.s.024",
+    "scenario": "tempfile",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "路径: D:\\projects\\app\\logs\\app-2026-09-15.log\n类型: 应用日志\n大小: 32MB\n年龄: 30 天",
+    "tags": [
+      "synthetic",
+      "medium"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "tf.h.013",
+    "scenario": "tempfile",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "文件路径: Projects\\babelspan\\catalog\\outreach\\wechat-v0\\covers\\005-taken-children-half-right-v9.png\n扩展名: .png\n大小: 1.4MB\n年龄: 12 天\n问: 这个文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_tempfile.jsonl 抽出 (seed=42, idx=13) — 训练时排除"
+  },
+  {
+    "id": "tf.h.009",
+    "scenario": "tempfile",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "文件路径: Projects\\babelspan\\apps\\public\\dist\\w\\la-homer-odyssea-2-didot.html\n扩展名: .html\n大小: 15KB\n年龄: 0 天\n问: 这个文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_tempfile.jsonl 抽出 (seed=42, idx=9) — 训练时排除"
+  },
+  {
+    "id": "tf.s.006",
+    "scenario": "tempfile",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "路径: D:\\projects\\web\\dist\\.temp\\inline-abc123.js\n类型: 编译临时\n大小: 256KB\n年龄: 1 天",
+    "tags": [
+      "synthetic",
+      "low"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "tf.h.019",
+    "scenario": "tempfile",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "文件路径: Projects\\babelspan\\.tmp\\moneyprinterturbo-research\\MoneyPrinterTurbo-main\\docs\\sponsors\\volcengine-logo.svg\n扩展名: .svg\n大小: 2KB\n年龄: 57 天\n问: 这个文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_tempfile.jsonl 抽出 (seed=42, idx=19) — 训练时排除"
+  },
+  {
+    "id": "tf.s.015",
+    "scenario": "tempfile",
+    "expect": "critical",
+    "risk_label": "critical",
+    "_action": "keep",
+    "text": "路径: D:\\work\\prod-data\\uploads\\2026-09\\user_42.pdf\n类型: 用户上传\n大小: 12MB\n年龄: 5 天",
+    "tags": [
+      "synthetic",
+      "critical"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "tf.h.026",
+    "scenario": "tempfile",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "keep",
+    "text": "文件路径: D:\\HoverNotes\\ElevenLabs AI顶级语音克隆模型.md\n扩展名: .md\n大小: 24KB\n年龄: 101 天\n问: 这个文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_tempfile.jsonl 抽出 (seed=42, idx=26) — 训练时排除"
+  },
+  {
+    "id": "tf.h.021",
+    "scenario": "tempfile",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "keep",
+    "text": "文件路径: Projects\\ihour-reborn\\desktop\\src\\jvmMain\\kotlin\\com\\ihourreborn\\ui\\AppState.kt\n扩展名: .kt\n大小: 1KB\n年龄: 56 天\n问: 这个文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_tempfile.jsonl 抽出 (seed=42, idx=21) — 训练时排除"
+  },
+  {
+    "id": "tf.h.027",
+    "scenario": "tempfile",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "文件路径: Projects\\babelspan\\apps\\public\\dist\\w\\106-adventures-of-huckleberry-finn.html\n扩展名: .html\n大小: 12KB\n年龄: 0 天\n问: 这个文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_tempfile.jsonl 抽出 (seed=42, idx=27) — 训练时排除"
+  },
+  {
+    "id": "tf.s.013",
+    "scenario": "tempfile",
+    "expect": "critical",
+    "risk_label": "critical",
+    "_action": "keep",
+    "text": "路径: D:\\work\\prod-data\\uploads\\2026-09\\user_42.pdf\n类型: 用户上传\n大小: 12MB\n年龄: 5 天",
+    "tags": [
+      "synthetic",
+      "critical"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "tf.s.029",
+    "scenario": "tempfile",
+    "expect": "critical",
+    "risk_label": "critical",
+    "_action": "keep",
+    "text": "路径: D:\\db\\postgres\\data\\base\\16400\\12345\n类型: 数据库文件\n大小: 8KB\n年龄: 180 天",
+    "tags": [
+      "synthetic",
+      "critical"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "tf.s.003",
+    "scenario": "tempfile",
+    "expect": "safe",
+    "risk_label": "safe",
+    "_action": "delete",
+    "text": "路径: D:\\work\\my-app\\node_modules\\.cache\\webpack\\client\\default\\0.pack\n类型: 缓存文件\n大小: 8MB\n年龄: 3 天",
+    "tags": [
+      "synthetic",
+      "safe"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "tf.h.020",
+    "scenario": "tempfile",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "delete",
+    "text": "文件路径: Projects\\babelspan\\apps\\public\\dist\\assets\\og\\print-v0.the-magus.png\n扩展名: .png\n大小: 28KB\n年龄: 0 天\n问: 这个文件是否可以安全清理?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_tempfile.jsonl 抽出 (seed=42, idx=20) — 训练时排除"
+  },
+  {
+    "id": "tf.s.028",
+    "scenario": "tempfile",
+    "expect": "critical",
+    "risk_label": "critical",
+    "_action": "keep",
+    "text": "路径: D:\\db\\postgres\\data\\base\\16400\\12345\n类型: 数据库文件\n大小: 8KB\n年龄: 180 天",
+    "tags": [
+      "synthetic",
+      "critical"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  },
+  {
+    "id": "tf.s.017",
+    "scenario": "tempfile",
+    "expect": "safe",
+    "risk_label": "safe",
+    "_action": "delete",
+    "text": "路径: D:\\dev\\test\\.pytest_cache\\v\\cache\\nodeids\n类型: pytest 缓存\n大小: 8KB\n年龄: 2 天",
+    "tags": [
+      "synthetic",
+      "safe"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造分布外样例"
+  }
+]

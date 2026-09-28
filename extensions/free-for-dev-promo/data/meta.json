@@ -1,0 +1,10 @@
+{
+  "source": "https://github.com/ripienaar/free-for-dev",
+  "snapshot_date": "2026-09-27",
+  "total_categories": 57,
+  "total_services": 1324,
+  "level1_count": 1233,
+  "level2_count": 91,
+  "license_note": "Data 来源 ripienaar/free-for-dev 公共协作;二次使用属各服务方各自条款",
+  "agents_note": "原仓库 AGENTS.md 禁止 AI 贡献,本扩展只读快照,绝不发起 PR/issue/comment"
+}

@@ -1,0 +1,357 @@
+{
+  "ts": "2026-09-23T13:04:48Z",
+  "scenarios": {
+    "task": {
+      "jev": {
+        "n": 20,
+        "accuracy": 0.0,
+        "latency_p50_ms": 2914,
+        "elapsed_total_s": 63.98,
+        "results": [
+          {
+            "i": 1,
+            "id": "task.code_call.001",
+            "expect": "code_call",
+            "actual": "unknown",
+            "match": false,
+            "elapsed_ms": 4590
+          },
+          {
+            "i": 2,
+            "id": "task.code_call.002",
+            "expect": "code_call",
+            "actual": "unknown",
+            "match": false,
+            "elapsed_ms": 3406
+          },
+          {
+            "i": 3,
+            "id": "task.code_call.003",
+            "expect": "code_call",
+            "actual": "unknown",
+            "match": false,
+            "elapsed_ms": 3327
+          },
+          {
+            "i": 4,
+            "id": "task.code_call.004",
+            "expect": "code_call",
+            "actual": "unknown",
+            "match": false,
+            "elapsed_ms": 2965
+          },
+          {
+            "i": 5,
+            "id": "task.code_call.005",
+            "expect": "code_call",
+            "actual": "unknown",
+            "match": false,
+            "elapsed_ms": 2771
+          },
+          {
+            "i": 6,
+            "id": "task.code_call.006",
+            "expect": "code_call",
+            "actual": "unknown",
+            "match": false,
+            "elapsed_ms": 2769
+          },
+          {
+            "i": 7,
+            "id": "task.code_call.007",
+            "expect": "code_call",
+            "actual": "unknown",
+            "match": false,
+            "elapsed_ms": 3348
+          },
+          {
+            "i": 8,
+            "id": "task.code_call.008",
+            "expect": "code_call",
+            "actual": "unknown",
+            "match": false,
+            "elapsed_ms": 2679
+          },
+          {
+            "i": 9,
+            "id": "task.code_call.009",
+            "expect": "code_call",
+            "actual": "unknown",
+            "match": false,
+            "elapsed_ms": 4036
+          },
+          {
+            "i": 10,
+            "id": "task.code_call.010",
+            "expect": "code_call",
+            "actual": "unknown",
+            "match": false,
+            "elapsed_ms": 2788
+          },
+          {
+            "i": 11,
+            "id": "task.code_call.011",
+            "expect": "code_call",
+            "actual": "unknown",
+            "match": false,
+            "elapsed_ms": 2776
+          },
+          {
+            "i": 12,
+            "id": "task.code_call.012",
+            "expect": "code_call",
+            "actual": "unknown",
+            "match": false,
+            "elapsed_ms": 2887
+          },
+          {
+            "i": 13,
+            "id": "task.code_qa.001",
+            "expect": "code_qa",
+            "actual": "unknown",
+            "match": false,
+            "elapsed_ms": 3526
+          },
+          {
+            "i": 14,
+            "id": "task.code_qa.002",
+            "expect": "code_qa",
+            "actual": "unknown",
+            "match": false,
+            "elapsed_ms": 2789
+          },
+          {
+            "i": 15,
+            "id": "task.code_qa.003",
+            "expect": "code_qa",
+            "actual": "unknown",
+            "match": false,
+            "elapsed_ms": 2698
+          },
+          {
+            "i": 16,
+            "id": "task.code_qa.004",
+            "expect": "code_qa",
+            "actual": "unknown",
+            "match": false,
+            "elapsed_ms": 2912
+          },
+          {
+            "i": 17,
+            "id": "task.code_qa.005",
+            "expect": "code_qa",
+            "actual": "unknown",
+            "match": false,
+            "elapsed_ms": 4053
+          },
+          {
+            "i": 18,
+            "id": "task.code_qa.006",
+            "expect": "code_qa",
+            "actual": "unknown",
+            "match": false,
+            "elapsed_ms": 2725
+          },
+          {
+            "i": 19,
+            "id": "task.code_qa.007",
+            "expect": "code_qa",
+            "actual": "unknown",
+            "match": false,
+            "elapsed_ms": 4012
+          },
+          {
+            "i": 20,
+            "id": "task.code_qa.008",
+            "expect": "code_qa",
+            "actual": "unknown",
+            "match": false,
+            "elapsed_ms": 2914
+          }
+        ]
+      },
+      "local": {
+        "n": 20,
+        "accuracy": 0.9,
+        "latency_p50_ms": 4483,
+        "elapsed_total_s": 107.13,
+        "results": [
+          {
+            "i": 1,
+            "id": "task.code_call.001",
+            "expect": "code_call",
+            "actual": "general",
+            "match": false,
+            "elapsed_ms": 19800
+          },
+          {
+            "i": 2,
+            "id": "task.code_call.002",
+            "expect": "code_call",
+            "actual": "code_call",
+            "match": true,
+            "elapsed_ms": 5617
+          },
+          {
+            "i": 3,
+            "id": "task.code_call.003",
+            "expect": "code_call",
+            "actual": "code_call",
+            "match": true,
+            "elapsed_ms": 4384
+          },
+          {
+            "i": 4,
+            "id": "task.code_call.004",
+            "expect": "code_call",
+            "actual": "code_call",
+            "match": true,
+            "elapsed_ms": 4427
+          },
+          {
+            "i": 5,
+            "id": "task.code_call.005",
+            "expect": "code_call",
+            "actual": "code_call",
+            "match": true,
+            "elapsed_ms": 4448
+          },
+          {
+            "i": 6,
+            "id": "task.code_call.006",
+            "expect": "code_call",
+            "actual": "code_call",
+            "match": true,
+            "elapsed_ms": 4373
+          },
+          {
+            "i": 7,
+            "id": "task.code_call.007",
+            "expect": "code_call",
+            "actual": "code_call",
+            "match": true,
+            "elapsed_ms": 4483
+          },
+          {
+            "i": 8,
+            "id": "task.code_call.008",
+            "expect": "code_call",
+            "actual": "code_call",
+            "match": true,
+            "elapsed_ms": 4383
+          },
+          {
+            "i": 9,
+            "id": "task.code_call.009",
+            "expect": "code_call",
+            "actual": "code_call",
+            "match": true,
+            "elapsed_ms": 4883
+          },
+          {
+            "i": 10,
+            "id": "task.code_call.010",
+            "expect": "code_call",
+            "actual": "code_call",
+            "match": true,
+            "elapsed_ms": 4472
+          },
+          {
+            "i": 11,
+            "id": "task.code_call.011",
+            "expect": "code_call",
+            "actual": "code_call",
+            "match": true,
+            "elapsed_ms": 3935
+          },
+          {
+            "i": 12,
+            "id": "task.code_call.012",
+            "expect": "code_call",
+            "actual": "code_call",
+            "match": true,
+            "elapsed_ms": 4410
+          },
+          {
+            "i": 13,
+            "id": "task.code_qa.001",
+            "expect": "code_qa",
+            "actual": "code_qa",
+            "match": true,
+            "elapsed_ms": 4972
+          },
+          {
+            "i": 14,
+            "id": "task.code_qa.002",
+            "expect": "code_qa",
+            "actual": "code_qa",
+            "match": true,
+            "elapsed_ms": 4675
+          },
+          {
+            "i": 15,
+            "id": "task.code_qa.003",
+            "expect": "code_qa",
+            "actual": "general",
+            "match": false,
+            "elapsed_ms": 4379
+          },
+          {
+            "i": 16,
+            "id": "task.code_qa.004",
+            "expect": "code_qa",
+            "actual": "code_qa",
+            "match": true,
+            "elapsed_ms": 4910
+          },
+          {
+            "i": 17,
+            "id": "task.code_qa.005",
+            "expect": "code_qa",
+            "actual": "code_qa",
+            "match": true,
+            "elapsed_ms": 4777
+          },
+          {
+            "i": 18,
+            "id": "task.code_qa.006",
+            "expect": "code_qa",
+            "actual": "code_qa",
+            "match": true,
+            "elapsed_ms": 4626
+          },
+          {
+            "i": 19,
+            "id": "task.code_qa.007",
+            "expect": "code_qa",
+            "actual": "code_qa",
+            "match": true,
+            "elapsed_ms": 4474
+          },
+          {
+            "i": 20,
+            "id": "task.code_qa.008",
+            "expect": "code_qa",
+            "actual": "code_qa",
+            "match": true,
+            "elapsed_ms": 4694
+          }
+        ]
+      },
+      "delta_local_minus_jev": 0.9
+    }
+  },
+  "summary": {
+    "task": {
+      "delta_local_minus_jev": 0.9,
+      "local_acc": 0.9,
+      "jev_acc": 0.0,
+      "local_loses": false
+    }
+  },
+  "fallback_value": {
+    "scenarios_total": 1,
+    "local_beats_jev": 1,
+    "delta_avg": 0.9
+  }
+}

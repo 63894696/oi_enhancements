@@ -1,0 +1,197 @@
+[
+  {
+    "scenario": "log",
+    "preset": "triage",
+    "total": 3,
+    "correct": 0,
+    "parse_fail": 0,
+    "overall_acc": 0.0,
+    "per_label_acc": {
+      "safe": 0.0,
+      "low": 0,
+      "medium": 0,
+      "high": 0,
+      "critical": 0.0
+    },
+    "per_label_total": {
+      "safe": 1,
+      "low": 0,
+      "medium": 0,
+      "high": 0,
+      "critical": 2
+    },
+    "avg_latency_ms": 700.7,
+    "p50_latency_ms": 723.6,
+    "errors": [
+      {
+        "id": "lg.s.029",
+        "expect": "critical",
+        "got": "medium"
+      },
+      {
+        "id": "lg.h.009",
+        "expect": "critical",
+        "got": "medium"
+      },
+      {
+        "id": "lg.s.003",
+        "expect": "safe",
+        "got": "low"
+      }
+    ],
+    "elapsed_total_s": 2.1
+  },
+  {
+    "scenario": "email",
+    "preset": "email",
+    "total": 3,
+    "correct": 0,
+    "parse_fail": 0,
+    "overall_acc": 0.0,
+    "per_label_acc": {
+      "safe": 0.0,
+      "low": 0,
+      "medium": 0.0,
+      "high": 0,
+      "critical": 0
+    },
+    "per_label_total": {
+      "safe": 1,
+      "low": 0,
+      "medium": 2,
+      "high": 0,
+      "critical": 0
+    },
+    "avg_latency_ms": 1203.2,
+    "p50_latency_ms": 1426.4,
+    "errors": [
+      {
+        "id": "em.h.012",
+        "expect": "medium",
+        "got": "high"
+      },
+      {
+        "id": "em.s.024",
+        "expect": "medium",
+        "got": "high"
+      },
+      {
+        "id": "em.s.016",
+        "expect": "safe",
+        "got": "low"
+      }
+    ],
+    "elapsed_total_s": 3.6
+  },
+  {
+    "scenario": "disk_cleanup",
+    "preset": "triage",
+    "total": 3,
+    "correct": 1,
+    "parse_fail": 0,
+    "overall_acc": 0.3333,
+    "per_label_acc": {
+      "safe": 0,
+      "low": 0.0,
+      "medium": 1.0,
+      "high": 0,
+      "critical": 0.0
+    },
+    "per_label_total": {
+      "safe": 0,
+      "low": 1,
+      "medium": 1,
+      "high": 0,
+      "critical": 1
+    },
+    "avg_latency_ms": 643.1,
+    "p50_latency_ms": 664.9,
+    "errors": [
+      {
+        "id": "dc.s.028",
+        "expect": "critical",
+        "got": "medium"
+      },
+      {
+        "id": "dc.h.013",
+        "expect": "low",
+        "got": "high"
+      }
+    ],
+    "elapsed_total_s": 1.9
+  },
+  {
+    "scenario": "perf",
+    "preset": "triage",
+    "total": 3,
+    "correct": 2,
+    "parse_fail": 0,
+    "overall_acc": 0.6667,
+    "per_label_acc": {
+      "safe": 0,
+      "low": 0,
+      "medium": 1.0,
+      "high": 0.5,
+      "critical": 0
+    },
+    "per_label_total": {
+      "safe": 0,
+      "low": 0,
+      "medium": 1,
+      "high": 2,
+      "critical": 0
+    },
+    "avg_latency_ms": 966.1,
+    "p50_latency_ms": 1143.9,
+    "errors": [
+      {
+        "id": "perf.h.009",
+        "expect": "high",
+        "got": "medium"
+      }
+    ],
+    "elapsed_total_s": 2.9
+  },
+  {
+    "scenario": "tempfile",
+    "preset": "guard",
+    "total": 3,
+    "correct": 0,
+    "parse_fail": 0,
+    "overall_acc": 0.0,
+    "per_label_acc": {
+      "safe": 0,
+      "low": 0,
+      "medium": 0,
+      "high": 0.0,
+      "critical": 0
+    },
+    "per_label_total": {
+      "safe": 0,
+      "low": 0,
+      "medium": 0,
+      "high": 3,
+      "critical": 0
+    },
+    "avg_latency_ms": 477.7,
+    "p50_latency_ms": 471.3,
+    "errors": [
+      {
+        "id": "tf.h.029",
+        "expect": "high",
+        "got": "medium"
+      },
+      {
+        "id": "tf.h.023",
+        "expect": "high",
+        "got": "medium"
+      },
+      {
+        "id": "tf.h.002",
+        "expect": "high",
+        "got": "medium"
+      }
+    ],
+    "elapsed_total_s": 1.4
+  }
+]

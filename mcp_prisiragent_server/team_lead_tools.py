@@ -57,25 +57,545 @@ def _err(stage: str, exc: Exception) -> str:
 
 
 def _load_routing() -> dict:
-    """读 routing.yaml —— 用 PyYAML(全局已装 6.0.3,无新增依赖)"""
+    """读 routing.yaml —— 用 PyYAML(全局已装 6.0.3,无新增依赖)
+
+    注:文件不存在时返空 dict,让 caller 走 laya 兜底(M3.76 设计)
+    """
     if not ROUTING_PATH.exists():
-        raise FileNotFoundError(f"routing table not found: {ROUTING_PATH}")
+        return {"rules": [], "model_pool": {}, "version": None,
+                "_missing": True, "_path": str(ROUTING_PATH)}
 
     with ROUTING_PATH.open(encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        data = yaml.safe_load(f) or {}
+        if not isinstance(data, dict):
+            return {"rules": [], "model_pool": {}, "version": None,
+                    "_corrupt": True}
+        data.setdefault("rules", [])
+        data.setdefault("model_pool", {})
+        return data
+
+
+# ── laya 兜底层(M3.76 新增) ──────────────────────────
+_LAYA_OK = False           # 启动时探测一次 laya 是否可用
+_LAYA_ROUTER = None
+_LAYA_ROUTER_QS = None
+_LAYA_ROUTER_LOADED = False
+
+
+def _probe_laya() -> None:
+    """启动时探测 laya 是否可用。设置 _LAYA_OK。失败不抛异常。"""
+    global _LAYA_OK
+    try:
+        import laya  # noqa: F401
+        _LAYA_OK = True
+    except Exception:
+        _LAYA_OK = False
+
+
+def _ensure_laya_router():
+    """懒加载 laya Router + router_questions preset(M3.73 同款)。
+    失败返回 (None, None),不抛异常。
+
+    设计:首次调用时若 _LAYA_OK 未探测,先调 _probe_laya()。
+    这样直接调 _laya_route_to_prisir() 的外部调用也能正常用。
+    """
+    global _LAYA_ROUTER, _LAYA_ROUTER_QS, _LAYA_ROUTER_LOADED
+    if not _LAYA_OK and not _LAYA_ROUTER_LOADED:
+        # 首次进入,先探测一次
+        _probe_laya()
+    if not _LAYA_OK:
+        return None, None
+    if _LAYA_ROUTER_LOADED:
+        return _LAYA_ROUTER, _LAYA_ROUTER_QS
+    try:
+        from laya import Router as _LR, router_questions as _rq
+        _LAYA_ROUTER = _LR(default="multilingual", preload=True)
+        _LAYA_ROUTER_QS = _rq()
+    except Exception as e:  # noqa: BLE001
+        print(f"[team_lead] laya 加载失败: {e}", file=sys.stderr)
+        _LAYA_ROUTER = None
+        _LAYA_ROUTER_QS = None
+    _LAYA_ROUTER_LOADED = True
+    return _LAYA_ROUTER, _LAYA_ROUTER_QS
+
+
+# laya 4 维 (domain/difficulty/needs_tools/is_sensitive) → PrisirAI intent 翻译表
+# 与 M3.73 intent_router 同思路,但目标从 (intent, task) 变成 PrisirAI 15 intent
+_LAYA_INTENT_MAP = {
+    # domain=code → 在路由 yaml 内进一步用关键词细分
+    "code_python":        ("python_review",     ["python", "异步", "async", "await", "协程", "依赖", "pip"]),
+    "code_security":      ("security",          ["secret", "auth", "注入", "xss", "csrf", "密码", "token", "vulnerability", "ssl"]),
+    "code_architecture":  ("architecture",      ["架构", "architecture", "蓝图", "选型", "微服务", "gateway"]),
+    "code_llm_integration": ("llm_integration", ["llm", "vendor", "streaming", "prompt", "mcp_oiagent", "rag"]),
+    "code_review":        ("code_review",       ["审查", "review", "找 bug", "找bug", "bug", "漏洞"]),
+    "code_harness":       ("harness_code_review", ["harness", "cursor harness", "l4 模式", "pattern guided"]),
+    "code_implement":     ("code_implement",    None),  # 默认 fallback
+    # domain=writing
+    "plan":               ("plan",              ["计划", "plan", "路线图", "步骤", "拆解", "阶段"]),
+    "content":            ("content",           ["tts", "语音", "字幕", "视频", "会议", "transcript", "dubbing"]),
+    # domain=factual_lookup
+    "search":             ("search",            ["论文", "文献", "paper", "citation", "学术", "sciverse"]),
+    "explore_text":       ("explore",           ["搜", "找", "where", "列", "看看", "在哪"]),
+    # domain=data_analysis
+    "process_control":    ("process_control",   ["进程", "cpu", "kill", "调度", "watchdog", "probalance", "ananicy", "processlasso"]),
+    # domain=other / general_knowledge
+    "vision":             ("vision",            ["图片", "截图", "visual", "image", "ocr", "看图", "识别"]),
+    "default":            ("default",           None),
+}
+
+# 强制 override(M3.73 OPS_HINTS 同款,避免 laya 把"清理 D 盘"误判 code)
+# 在 laya 分流之前先扫一遍,命中关键词 → 直接 intent(不再走 laya 分流)
+# 词典顺序:覆盖 > 窄,优先 process_control(运维);其它走 plan/search/security
+_OPS_FORCE_OVERRIDE = {
+    "process_control": [
+        "进程", "kill ", "kill-", "kill进程",
+        "watchdog", "调度", "probalance", "ananicy", "processlasso",
+        "清理", "盘", "垃圾", "卸载", "删除文件", "磁盘",
+        "rm ", "rm-", "del ", "del-",
+        "性能", "监控", "cpu", "内存", "端口",
+        "registry", "注册表", "防火墙", "网络", "开机", "蓝屏", "重启", "关机",
+        "备份", "还原", "服务",
+    ],
+    "plan":            ["计划", "plan", "步骤", "拆解", "阶段", "路线图"],
+    "search":          ["论文", "sciverse", "文献", "paper", "citation", "学术"],
+    "security":        ["漏洞", "注入", "vulnerability", "secret", "auth", "xss", "csrf"],
+}
+
+
+def _laya_route_to_prisir(task_text: str, laya_floor: float = 0.60) -> dict:
+    """laya router_questions() 4 维 → PrisirAI intent。
+
+    返回 dict,见下方 schema。注意:**不抛异常**,失败返 available=True 但 intent=None。
+    """
+    base = {
+        "intent": None, "conf": 0.0, "latency_ms": 0.0,
+        "domain": "", "needs_tools": 0.0, "is_sensitive": 0.0,
+        "difficulty": 0.0, "available": False, "matched_via": None,
+        "error": None,
+    }
+    router, qs = _ensure_laya_router()
+    if router is None:
+        return {**base, "error": "no_laya"}
+    t0 = time.time()
+    try:
+        state = {"request": (task_text or "")[:800]}
+        res = router.predict(state, qs)
+        elapsed_ms = (time.time() - t0) * 1000
+        answers = res.get("answers") or {}
+        if not answers:
+            return {**base, "available": True, "error": "empty",
+                    "latency_ms": elapsed_ms}
+        domain = (answers.get("domain", {}).get("choice") or "").strip()
+        domain_probs = answers.get("domain", {}).get("probabilities") or {}
+        conf = answers.get("domain", {}).get("answer_confidence", 0.0) or 0.0
+        if not conf and domain_probs:
+            conf = max(domain_probs.values()) if domain_probs else 0.0
+        diff = answers.get("difficulty", {}).get("score", 0.0) or 0.0
+        needs_tools = answers.get("needs_tools", {}).get("noul", 0.0) or 0.0
+        is_sensitive = answers.get("is_sensitive", {}).get("noul", 0.0) or 0.0
+
+        text_lower = (task_text or "").lower()
+
+        # 阶段 A:强制 override(laya 误判救援)
+        for intent, kws in _OPS_FORCE_OVERRIDE.items():
+            if any(kw in text_lower for kw in kws):
+                return {
+                    **base, "intent": intent, "conf": 1.0,
+                    "domain": domain, "difficulty": diff,
+                    "needs_tools": needs_tools, "is_sensitive": is_sensitive,
+                    "available": True, "matched_via": "override",
+                    "latency_ms": elapsed_ms,
+                }
+
+        # 阶段 B:laya domain 分流
+        if domain == "code":
+            for intent_key in ("code_python", "code_security", "code_architecture",
+                               "code_llm_integration", "code_harness", "code_review"):
+                intent_name, kws = _LAYA_INTENT_MAP[intent_key]
+                if kws and any(kw in text_lower for kw in kws):
+                    return {**base, "intent": intent_name, "conf": conf,
+                            "domain": domain, "difficulty": diff,
+                            "needs_tools": needs_tools, "is_sensitive": is_sensitive,
+                            "available": True, "matched_via": "laya_code",
+                            "latency_ms": elapsed_ms}
+            return {**base, "intent": "code_implement", "conf": conf,
+                    "domain": domain, "difficulty": diff,
+                    "needs_tools": needs_tools, "is_sensitive": is_sensitive,
+                    "available": True, "matched_via": "laya_code_default",
+                    "latency_ms": elapsed_ms}
+
+        elif domain == "writing":
+            for intent_key in ("plan", "content"):
+                intent_name, kws = _LAYA_INTENT_MAP[intent_key]
+                if kws and any(kw in text_lower for kw in kws):
+                    return {**base, "intent": intent_name, "conf": conf,
+                            "domain": domain, "difficulty": diff,
+                            "needs_tools": needs_tools, "is_sensitive": is_sensitive,
+                            "available": True, "matched_via": "laya_writing",
+                            "latency_ms": elapsed_ms}
+            return {**base, "intent": "plan", "conf": conf,
+                    "domain": domain, "difficulty": diff,
+                    "needs_tools": needs_tools, "is_sensitive": is_sensitive,
+                    "available": True, "matched_via": "laya_writing_default",
+                    "latency_ms": elapsed_ms}
+
+        elif domain == "factual_lookup":
+            intent_name, kws = _LAYA_INTENT_MAP["search"]
+            if kws and any(kw in text_lower for kw in kws):
+                return {**base, "intent": "search", "conf": conf,
+                        "domain": domain, "difficulty": diff,
+                        "needs_tools": needs_tools, "is_sensitive": is_sensitive,
+                        "available": True, "matched_via": "laya_factual",
+                        "latency_ms": elapsed_ms}
+            return {**base, "intent": "explore", "conf": conf,
+                    "domain": domain, "difficulty": diff,
+                    "needs_tools": needs_tools, "is_sensitive": is_sensitive,
+                    "available": True, "matched_via": "laya_factual_default",
+                    "latency_ms": elapsed_ms}
+
+        elif domain == "data_analysis":
+            intent_name, kws = _LAYA_INTENT_MAP["process_control"]
+            if kws and any(kw in text_lower for kw in kws):
+                return {**base, "intent": "process_control", "conf": conf,
+                        "domain": domain, "difficulty": diff,
+                        "needs_tools": needs_tools, "is_sensitive": is_sensitive,
+                        "available": True, "matched_via": "laya_data",
+                        "latency_ms": elapsed_ms}
+            return {**base, "intent": "explore", "conf": conf,
+                    "domain": domain, "difficulty": diff,
+                    "needs_tools": needs_tools, "is_sensitive": is_sensitive,
+                    "available": True, "matched_via": "laya_data_default",
+                    "latency_ms": elapsed_ms}
+
+        elif domain in ("other", "general_knowledge"):
+            intent_name, kws = _LAYA_INTENT_MAP["vision"]
+            if kws and any(kw in text_lower for kw in kws):
+                return {**base, "intent": "vision", "conf": conf,
+                        "domain": domain, "difficulty": diff,
+                        "needs_tools": needs_tools, "is_sensitive": is_sensitive,
+                        "available": True, "matched_via": "laya_vision",
+                        "latency_ms": elapsed_ms}
+
+        # 兜底:不识别 / 置信度太低
+        if conf < laya_floor:
+            return {**base, "conf": conf, "domain": domain, "difficulty": diff,
+                    "needs_tools": needs_tools, "is_sensitive": is_sensitive,
+                    "available": True, "error": f"conf<{laya_floor}",
+                    "latency_ms": elapsed_ms}
+        return {**base, "intent": "default", "conf": conf,
+                "domain": domain, "difficulty": diff,
+                "needs_tools": needs_tools, "is_sensitive": is_sensitive,
+                "available": True, "matched_via": "laya_default",
+                "latency_ms": elapsed_ms}
+
+    except Exception as e:  # noqa: BLE001
+        return {**base, "available": True, "error": str(e)[:200],
+                "latency_ms": (time.time() - t0) * 1000}
+
+
+# ============================================================
+# M3.84 二次分流换 head(laya 优先 + 关键词 fallback)
+# ============================================================
+# M3.82 关键教训:laya zero-shot 在结构化多类细分上 0% ACC,
+# 但 laya.guard_questions()(参考 M3.72 safe_exec)对部分 case 仍
+# 有 signal(M3.76 dispatch 真推理 0.87 conf on Python 任务)。
+#
+# 设计:**laya fast-path + 关键词 fallback race**
+#   1. laya 真推理(~500ms)先出 head 结果
+#   2. conf ≥ 0.7 且**不命中** _OPS_FORCE_OVERRIDE  → 采纳 laya head
+#   3. conf < 0.7 OR 命中 _OPS_FORCE_OVERRIDE      → 走旧关键词路径
+#   4. 旧路径不动(_LAYA_INTENT_MAP / 阶段 B 各分支完整保留)
+#
+# 数据生成:data_prep_dispatch_route.py(800 train + 200 eval,8 类均衡)
+# 决策依据:见 M3.84 memory(laya head ACC < 60% 触发 hybrid fallback)
+
+# 8 类意图字符串(与 data_prep_dispatch_route.py 对齐)
+_INTENT_VIA_HEAD_8 = {
+    "chat", "code", "search", "tool_call",
+    "roleplay", "plan", "security", "ops",
+}
+
+# laya head 翻译表(8 类 → PrisirAI 15 intent,routing.yaml 对齐)
+_INTENT_HEAD_TO_PRISIR = {
+    "chat":       "default",       # 闲聊 → Explore default
+    "code":       "code_implement",
+    "search":     "search",
+    "tool_call":  "default",       # 工具调用 → 默认动作
+    "roleplay":   "content",
+    "plan":       "plan",
+    "security":   "security",
+    "ops":        "process_control",
+}
+
+# head conf 阈值(M3.82 laya conf < 0.7 必走 fallback)
+_HEAD_CONF_THRESHOLD = 0.7
+
+
+# M3.87 P1-1:以下函数已弃用 — M3.84 验证 laya head 46% ACC < 50% 不如掷骰子。
+# dispatch_impl 不再调用它,保留函数体以便未来 GPU 环境训出 ≥80% ACC head 时启用。
+def _laya_route_to_prisir_head(task_text: str, laya_floor: float = 0.60) -> dict:  # noqa: F841
+    """M3.84 二次分流换 head:用 laya router 推断 8 类意图 → PrisirAI intent。
+
+    失败/低 conf/无 laya → 返回 head_result=None(由 caller 走关键词 fallback)。
+
+    设计要点:
+      - **不动 _LAYA_INTENT_MAP / _OPS_FORCE_OVERRIDE**(M3.73 防误判保留)
+      - 用 laya.router_questions() 4 维(domain/difficulty/needs_tools/is_sensitive)
+        启发式映射到 8 类:
+          * domain=code + has tool_call 信号 → code
+          * domain=writing + plan 关键词 → plan
+          * domain=data_analysis → ops
+          * domain=factual_lookup → search
+          * 其他靠 needs_tools + is_sensitive + difficulty 推断
+      - 命中 _OPS_FORCE_OVERRIDE 任一关键词 → head_result=None
+        (因为 override 是已知误判救援,不让 head 覆盖)
+      - conf < laya_floor → head_result=None
+
+    返回 dict schema(与 _laya_route_to_prisir 对齐):
+      {
+        "intent": "code" | "ops" | None,
+        "conf": 0.0-1.0,
+        "head_label": "code" | None,
+        "domain": "...", "needs_tools": ..., "is_sensitive": ..., "difficulty": ...,
+        "available": True/False,
+        "matched_via": "head" | None,
+        "error": "..." | None,
+        "latency_ms": float,
+      }
+    """
+    base = {
+        "intent": None, "conf": 0.0, "head_label": None,
+        "domain": "", "needs_tools": 0.0, "is_sensitive": 0.0,
+        "difficulty": 0.0, "available": False, "matched_via": None,
+        "error": None, "latency_ms": 0.0,
+    }
+    router, qs = _ensure_laya_router()
+    if router is None:
+        return {**base, "error": "no_laya"}
+    text = (task_text or "").strip()
+    if not text:
+        return {**base, "error": "empty_text"}
+    text_lower = text.lower()
+    t0 = time.time()
+    try:
+        state = {"request": text[:800]}
+        res = router.predict(state, qs)
+        elapsed_ms = (time.time() - t0) * 1000
+        answers = res.get("answers") or {}
+        if not answers:
+            return {**base, "available": True, "error": "empty_answers",
+                    "latency_ms": elapsed_ms}
+        domain = (answers.get("domain", {}).get("choice") or "").strip()
+        domain_probs = answers.get("domain", {}).get("probabilities") or {}
+        conf = answers.get("domain", {}).get("answer_confidence", 0.0) or 0.0
+        if not conf and domain_probs:
+            conf = max(domain_probs.values()) if domain_probs else 0.0
+        diff = answers.get("difficulty", {}).get("score", 0.0) or 0.0
+        needs_tools = answers.get("needs_tools", {}).get("noul", 0.0) or 0.0
+        is_sensitive = answers.get("is_sensitive", {}).get("noul", 0.0) or 0.0
+
+        # ── Phase A:_OPS_FORCE_OVERRIDE 优先(M3.73 防误判)──
+        # 任何 override 关键词命中 → head 不参与,直接 fallback
+        for intent_name, kws in _OPS_FORCE_OVERRIDE.items():
+            if any(kw.lower() in text_lower for kw in kws):
+                return {
+                    **base,
+                    "available": True,
+                    "matched_via": "override_skip_head",
+                    "domain": domain, "conf": conf,
+                    "difficulty": diff, "needs_tools": needs_tools,
+                    "is_sensitive": is_sensitive,
+                    "latency_ms": elapsed_ms,
+                }
+
+        # ── Phase B:laya 4 维 → 8 类意图启发式 ──
+        head_label = _map_laya_to_head_label(
+            text_lower, domain, diff, needs_tools, is_sensitive
+        )
+        if head_label is None:
+            return {
+                **base, "available": True,
+                "domain": domain, "conf": conf,
+                "difficulty": diff, "needs_tools": needs_tools,
+                "is_sensitive": is_sensitive,
+                "matched_via": "head_no_decision",
+                "latency_ms": elapsed_ms,
+            }
+
+        # ── Phase C:conf 阈值 ──
+        # 注意:domain_probs max 是 0~1 的概率(M3.76 实测 Python 任务 conf=0.87)
+        if conf < laya_floor:
+            return {
+                **base, "available": True,
+                "head_label": head_label, "domain": domain, "conf": conf,
+                "difficulty": diff, "needs_tools": needs_tools,
+                "is_sensitive": is_sensitive,
+                "matched_via": "head_low_conf",
+                "latency_ms": elapsed_ms,
+            }
+
+        # head 决策 → PrisirAI intent
+        prisir_intent = _INTENT_HEAD_TO_PRISIR.get(head_label, "default")
+        return {
+            **base,
+            "intent": prisir_intent,
+            "conf": conf,
+            "head_label": head_label,
+            "domain": domain,
+            "difficulty": diff,
+            "needs_tools": needs_tools,
+            "is_sensitive": is_sensitive,
+            "available": True,
+            "matched_via": "head",
+            "latency_ms": elapsed_ms,
+        }
+
+    except Exception as e:  # noqa: BLE001
+        return {
+            **base, "available": True, "error": str(e)[:200],
+            "latency_ms": (time.time() - t0) * 1000,
+        }
+
+
+def _map_laya_to_head_label(
+    text_lower: str, domain: str, difficulty: float,
+    needs_tools: float, is_sensitive: float,
+) -> str | None:
+    """laya 4 维信号 + 文本 keyword → 8 类意图 label。
+
+    启发式(参考 M3.71 laya 弱信号 + M3.50 intents 关键词):
+      - domain=code + Python/review/bug/debug 类词 → code
+      - domain=code + 无 keyword + needs_tools 高 → code
+      - domain=writing + plan/checklist/roadmap 类词 → plan
+      - domain=writing + needs_tools 高 → roleplay 兜底
+      - domain=data_analysis → ops
+      - domain=factual_lookup + 学术/paper → search
+      - domain=factual_lookup + how/why/recommend → search
+      - domain=other + needs_tools 高 → tool_call
+      - domain=other + is_sensitive 高 → security
+      - domain=other + 闲聊词 → chat
+      - 其它 → None(让 fallback 决策)
+    """
+    # 关键词辅助(laya domain 失真时还能 fallback 到文本)
+    has = lambda kws: any(kw.lower() in text_lower for kw in kws)
+
+    # ── ops 优先(M3.73 防 laya 把 "清理 D 盘" 误判 code)──
+    if has(_HEAD_OPS_KW):
+        return "ops"
+
+    # ── security ──
+    if has(_HEAD_SECURITY_KW):
+        return "security"
+
+    # ── plan ──
+    if has(_HEAD_PLAN_KW):
+        return "plan"
+
+    # ── roleplay ──
+    if has(_HEAD_ROLEPLAY_KW):
+        return "roleplay"
+
+    # ── tool_call ──
+    if has(_HEAD_TOOL_CALL_KW):
+        return "tool_call"
+
+    # ── chat ──
+    if has(_HEAD_CHAT_KW):
+        return "chat"
+
+    # ── search / code 走 domain 判断 ──
+    if domain == "code":
+        # 即使没关键词,只要是 code 域就归 code(M3.76 实测 Python 任务 conf=0.87)
+        return "code"
+    if domain == "factual_lookup":
+        return "search"
+    if domain == "writing":
+        # 写但非 plan/roleplay 关键词 → 默认 plan
+        return "plan"
+    if domain == "data_analysis":
+        return "ops"
+
+    # ── other / general_knowledge ──
+    # 靠 needs_tools + is_sensitive + 难度区分
+    if is_sensitive >= 0.5:
+        return "security"
+    if needs_tools >= 0.5:
+        return "tool_call"
+    if difficulty >= 2.0:
+        return "search"  # 难问题偏 search
+
+    # 实在分不出来 → None,让 caller 走关键词 fallback
+    return None
+
+
+# head 路径精简关键词(与 _OPS_FORCE_OVERRIDE 同源,但 head 用的是
+# 8 类精简版,避免重复扫描整个 M3.50/M3.73 词典)
+_HEAD_OPS_KW = [
+    "进程", "kill ", "kill-", "watchdog", "调度",
+    "清理", "磁盘", "垃圾", "卸载", "rm ", "del ",
+    "性能", "监控", "cpu", "内存", "端口", "蓝屏", "重启",
+    "注册表", "防火墙", "开机", "服务",
+]
+_HEAD_SECURITY_KW = [
+    "漏洞", "注入", "vulnerability", "secret", "auth", "xss", "csrf",
+    "密码", "token", "ssl", "审计", "权限", "威胁", "渗透",
+    "rbac", "encrypt", "decrypt", "pentest", "ctf",
+]
+_HEAD_PLAN_KW = [
+    "计划", "plan", "路线图", "步骤", "拆解", "阶段",
+    "roadmap", "规划", "方案", "sprint", "里程碑", "milestone",
+    "checklist", "todo", "排期", "策略",
+]
+_HEAD_ROLEPLAY_KW = [
+    "扮演", "假装", "讲个", "讲故事", "继续讲", "演一段",
+    "模仿", "当军师", "角色扮演", "面试官",
+]
+_HEAD_TOOL_CALL_KW = [
+    "帮我打开", "帮我关闭", "帮我重启", "帮我删除",
+    "帮我截图", "帮我设置", "帮我调到", "帮我发",
+    "重启电脑", "截图当前屏幕", "把音量调到",
+    "发邮件", "调亮度", "调音量",
+]
+_HEAD_CHAT_KW = [
+    "你好", "今天", "周末", "心情", "哈哈", "真逗", "陪",
+    "聊聊", "想你", "喜欢", "叫啥", "叫什么",
+    "想你了", "最近", "过得", "辛苦", "开心", "难过",
+    "早安", "晚安", "吃饭", "睡觉",
+]
 
 
 # ── dispatch ─────────────────────────────────────────
-def _match_rule(rules: list, task_text: str) -> dict:
-    """关键词匹配 —— 命中第一条即返回"""
-    task_lower = task_text.lower()
+def _match_rule(rules: list, task_text: str, laya_floor: float = 0.60,
+                no_laya: bool = False, laya_result: dict | None = None) -> dict:
+    """regex fast-path + laya 兜底(M3.76)。
 
+    三阶段:
+      1. regex 匹配:命中 routing.yaml keywords → matched_via=regex
+      2. laya 兜底:regex 未命中 + laya 可用 + conf >= laya_floor → matched_via=laya*
+      3. 默认 fallback:yaml default rule 或 Explore 兜底 → matched_via=default
+
+    返回 dict 含 {agent, pool, mode, intent, matched_via, laya_result, task, ...}
+    """
+    task_lower = (task_text or "").lower()
+    default_rule = None
+    rules_by_intent: dict[str, dict] = {}
+
+    # 第一遍扫描:收集 default rule + intent→rule 索引
     for rule in rules:
         if "default" in rule:
-            continue  # 默认规则最后处理
+            default_rule = rule
+            continue
         match = rule.get("match", {})
-        keywords = match.get("keywords", [])
-        for kw in keywords:
+        intent_name = match.get("intent")
+        if intent_name and intent_name not in rules_by_intent:
+            rules_by_intent[intent_name] = rule
+
+    # 阶段 1:regex 匹配(命中第一条即返回)
+    for rule in rules:
+        if "default" in rule:
+            continue
+        match = rule.get("match", {})
+        for kw in match.get("keywords", []):
             if kw.lower() in task_lower:
                 return {
                     "agent": rule.get("agent"),
@@ -83,44 +603,110 @@ def _match_rule(rules: list, task_text: str) -> dict:
                     "mode": rule.get("mode"),
                     "intent": match.get("intent"),
                     "matched_keyword": kw,
+                    "matched_via": "regex",
                     "rule_hit": True,
-                    "agent_config": rule.get("agent_config"),  # CrewAI 三件套
+                    "agent_config": rule.get("agent_config"),
                     "extra": rule.get("extra"),
+                    "laya_result": None,
+                    "task": task_text,
                 }
 
-    # default 兜底
-    for rule in rules:
-        if "default" in rule:
+    # 阶段 2:laya 兜底(regex 没命中,且 laya 可用)
+    if not no_laya and laya_result is not None:
+        lr_intent = laya_result.get("intent")
+        if lr_intent and lr_intent != "default" and lr_intent in rules_by_intent:
+            rule = rules_by_intent[lr_intent]
             return {
-                "agent": rule["default"].get("agent"),
-                "pool": rule["default"].get("pool"),
-                "mode": rule["default"].get("mode"),
-                "intent": "default",
+                "agent": rule.get("agent"),
+                "pool": rule.get("pool"),
+                "mode": rule.get("mode"),
+                "intent": lr_intent,
                 "matched_keyword": None,
+                "matched_via": laya_result.get("matched_via") or "laya",
                 "rule_hit": False,
-                "agent_config": rule["default"].get("agent_config"),
-                "extra": rule["default"].get("extra"),
+                "agent_config": rule.get("agent_config"),
+                "extra": rule.get("extra"),
+                "laya_result": laya_result,
+                "task": task_text,
             }
-    raise ValueError("no default rule in routing.yaml")
+
+    # 阶段 3:默认 fallback(yaml default rule 或 Explore 兜底)
+    if default_rule is not None:
+        return {
+            "agent": default_rule["default"].get("agent"),
+            "pool": default_rule["default"].get("pool"),
+            "mode": default_rule["default"].get("mode"),
+            "intent": "default",
+            "matched_keyword": None,
+            "matched_via": "default",
+            "rule_hit": False,
+            "agent_config": default_rule["default"].get("agent_config"),
+            "extra": default_rule["default"].get("extra"),
+            "laya_result": laya_result,
+            "task": task_text,
+        }
+    # yaml 完全没有 default rule → 硬兜底 Explore
+    return {
+        "agent": "Explore",
+        "pool": "cheap_lottery",
+        "mode": "engineer",
+        "intent": "default",
+        "matched_keyword": None,
+        "matched_via": "default",
+        "rule_hit": False,
+        "agent_config": None,
+        "extra": None,
+        "laya_result": laya_result,
+        "task": task_text,
+    }
 
 
-def dispatch_impl(task: str) -> str:
+def dispatch_impl(task: str, laya_floor: float = 0.60,
+                  no_laya: bool = False) -> str:
     """按任务描述查 routing.yaml,返回派单决策(agent / pool / mode)
 
-    B1:失败时降级到默认 agent,不抛异常
+    M3.76 升级:
+      - 新增 laya 兜底:regex 没命中 → laya router 4 维 → PrisirAI intent
+      - 新增参数 laya_floor / no_laya 透传给 _match_rule
+      - 保留 B1 降级语义(失败 → Explore)
+
+    返回 JSON 字符串,字段:
+      ok, agent, pool, mode, intent, matched_via, matched_keyword,
+      rule_hit, agent_config, extra, laya_result, task, pool_models,
+      routing_version, laya_floor, no_laya, error(可选)
     """
     try:
         if not task or not task.strip():
             raise ValueError("task 不能为空")
 
+        # 探测 laya 可用性(首次,O(1),不阻塞)
+        if not no_laya and not _LAYA_ROUTER_LOADED:
+            _probe_laya()
+
         routing = _load_routing()
         rules = routing.get("rules", [])
         pools = routing.get("model_pool", {})
 
-        decision = _match_rule(rules, task)
+        # 阶段 1.5:laya 推理(在 regex 之前并行无意义,顺序即可)
+        # regex 命中概率高 → 先 regex 后 laya,避免不必要推理
+        laya_result = None
+        if not no_laya:
+            # M3.87 P1-1:去掉 M3.84 laya head 二次分流(46% ACC < 50% 不如掷骰子)
+            # 直接走旧 _laya_route_to_prisir (regex + laya router 4 维)
+            laya_result = _laya_route_to_prisir(task, laya_floor)
+            # 留 head_result=None 字段以保持输出 schema 向后兼容
+            if isinstance(laya_result, dict):
+                laya_result["head_result"] = None
+
+        decision = _match_rule(rules, task, laya_floor=laya_floor,
+                               no_laya=no_laya, laya_result=laya_result)
         decision["task"] = task
-        decision["pool_models"] = pools.get(decision["pool"], [])
+        decision["pool_models"] = pools.get(decision.get("pool"), [])
         decision["routing_version"] = routing.get("version")
+        decision["laya_floor"] = laya_floor
+        decision["no_laya"] = no_laya
+        if routing.get("_missing"):
+            decision["routing_missing"] = True
 
         # 写 trace
         _append_trace(
@@ -138,12 +724,15 @@ def dispatch_impl(task: str) -> str:
             "mode": "engineer",
             "intent": "default",
             "matched_keyword": None,
+            "matched_via": "default",
             "rule_hit": False,
             "agent_config": None,
             "extra": None,
             "task": task,
             "pool_models": [],
             "routing_version": None,
+            "laya_floor": laya_floor,
+            "no_laya": no_laya,
             "fallback": True,
             "error": str(e),
         }
@@ -551,15 +1140,16 @@ def _ingest_trace_async(record: dict) -> None:
     """后台跑 cognee.remember,失败 fallback
 
     设计:不抛异常,不阻塞主流程。失败时:
-    1. 尝试写 cognee-ready jsonl(等 cognee 库修了 Python 3.12 兼容后再批量 ingest)
-    2. stderr 一行警告,不影响主 trace jsonl
+    1. cognee 真实调通(2026-09-25 验证:cognee 1.2.2 在 Python 3.12.9 上 import + run 都 OK)
+    2. 同时写 cognee-ready jsonl 作 future batch ingest 备份
+    3. 任意一路失败 → stderr 警告(不静默吞),不影响主 trace jsonl
     """
     import threading
 
     def _do():
         # ── 双轨:既调 cognee,也写 cognee-ready jsonl,任一失败不影响另一个 ──
 
-        # 1. 调 cognee(当前 Python 3.12 上 tenacity 库不兼容,会失败)
+        # 1. 调 cognee(M3.86 验证可工作,改静默为显式 warn)
         try:
             sys.path.insert(0, str(Path(__file__).parent))
             from cognee_tools import cognee_remember_impl
@@ -571,8 +1161,8 @@ def _ingest_trace_async(record: dict) -> None:
             if '"ok": true' not in r and '"ok":true' not in r:
                 print(f"[trace-ingest] cognee ingest 非 ok 返回: {r[:200]}", file=sys.stderr)
         except Exception as e:
-            # 不报警:cognee 库当前 Python 3.12 上 broken,等修了再启用
-            pass
+            # M3.86 修复:不再静默吞,真实失败要可见
+            print(f"[trace-ingest] cognee ingest 异常(已降级到 cognee_ready jsonl): {type(e).__name__}: {e}", file=sys.stderr)
 
         # 2. 写 cognee-ready jsonl(以后批量 ingest 用)
         try:
@@ -673,8 +1263,12 @@ def _cli():
     p = argparse.ArgumentParser(description="prisiragent-team-lead CLI")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    p_d = sub.add_parser("dispatch", help="查 routing.yaml 派单")
+    p_d = sub.add_parser("dispatch", help="查 routing.yaml 派单 (M3.76 laya 兜底)")
     p_d.add_argument("task", help="任务描述")
+    p_d.add_argument("--no-laya", action="store_true",
+                     help="禁用 laya 兜底,纯 regex dispatch")
+    p_d.add_argument("--laya-floor", type=float, default=0.60,
+                     help="laya domain 置信度阈值(默认 0.60)")
 
     p_r = sub.add_parser("race", help="Race 模式并发多模型")
     p_r.add_argument("prompt", help="prompt")
@@ -687,8 +1281,16 @@ def _cli():
 
     args = p.parse_args()
 
+    # M3.76:CLI 启动时探测一次 laya(诊断信息)
     if args.cmd == "dispatch":
-        print(dispatch_impl(args.task))
+        if not args.no_laya:
+            _probe_laya()
+        print(f"[team_lead] laya available: {_LAYA_OK} "
+              f"(routing.yaml missing: {not ROUTING_PATH.exists()})",
+              file=sys.stderr)
+        print(dispatch_impl(args.task,
+                            laya_floor=args.laya_floor,
+                            no_laya=args.no_laya))
     elif args.cmd == "race":
         print(race_impl(args.prompt, models=args.models, timeout_s=args.timeout))
     elif args.cmd == "trace":

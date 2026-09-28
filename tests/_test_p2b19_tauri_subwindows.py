@@ -35,7 +35,7 @@ def _read(p: Path) -> str:
 # 路径
 # ----------------------------------------------------------------------
 LIB_RS = REPO_ROOT / "prisiragent-tauri" / "src-tauri" / "src" / "lib.rs"
-WINDOWS_RS = REPO_ROOT / "prisiragent-tauri" / "src-tauri" / "src" / "windows.rs"
+WINDOWS_RS = REPO_ROOT / "prisiragent-tauri" / "src-tauri" / "src" / "subwin.rs"  # P2.5+20 rename:避开与 windows-sys crate 的冲突
 TAURI_CONF = REPO_ROOT / "prisiragent-tauri" / "src-tauri" / "tauri.conf.json"
 WEB_PY = REPO_ROOT / "prisIragent_web.py"
 
@@ -130,11 +130,14 @@ def s6_windows_rs_5_commands():
 # ----------------------------------------------------------------------
 # S7-S13: lib.rs 改造
 # ----------------------------------------------------------------------
-def s7_lib_rs_mod_windows_declared():
-    """S7:lib.rs mod windows; 声明。"""
+def s7_lib_rs_mod_subwin_declared():
+    """S7:lib.rs mod subwin; 声明(P2.5+20 重命名避开与 windows-sys crate 命名冲突)。"""
     text = _read(LIB_RS)
-    assert "mod windows;" in text, "lib.rs 缺 mod windows; 声明"
-    print("✓ lib.rs mod windows; 已声明")
+    assert "mod subwin;" in text, "lib.rs 缺 mod subwin; 声明"
+    # 不能是 mod windows;(会让 Windows crate path 被遮蔽)
+    assert "mod windows;" not in text or text.count("mod windows;") == 0, \
+        "lib.rs 仍存在 mod windows; — 会与 windows-sys crate 命名冲突"
+    print("✓ lib.rs mod subwin; 已声明(避开 windows-sys crate)")
 
 
 def s8_lib_rs_invoke_handler_5_commands():
@@ -159,10 +162,10 @@ def s8_lib_rs_invoke_handler_5_commands():
 def s9_lib_rs_setup_binds_close_to_tray():
     """S9:lib.rs setup 末尾调 4 子窗 bind_close_to_tray。"""
     text = _read(LIB_RS)
-    assert "windows::bind_close_to_tray" in text, \
+    assert "subwin::bind_close_to_tray" in text, \
         "lib.rs 缺 bind_close_to_tray 调用"
     # SUBWINDOW_LABELS 循环调
-    assert "windows::SUBWINDOW_LABELS" in text, \
+    assert "subwin::SUBWINDOW_LABELS" in text, \
         "lib.rs setup 未用 SUBWINDOW_LABELS 循环调 bind_close_to_tray"
     print("✓ lib.rs setup 末尾用 SUBWINDOW_LABELS 循环调 bind_close_to_tray")
 
@@ -188,9 +191,9 @@ def s11_lib_rs_tray_workflow_item_added():
 
 
 def s12_lib_rs_tray_click_calls_windows_open():
-    """S12:lib.rs 4 子窗 tray click handler 调 windows::open_window。"""
+    """S12:lib.rs 4 子窗 tray click handler 调 subwin::open_window。"""
     text = _read(LIB_RS)
-    # 4 个 tray click 分支各调 windows::open_window
+    # 4 个 tray click 分支各调 subwin::open_window
     for label in ("companion-window", "music-window", "calendar-window", "workflow-window"):
         # 找 on_menu_event 分支的 label 对应 handler
         if label == "calendar-window":
@@ -204,9 +207,9 @@ def s12_lib_rs_tray_click_calls_windows_open():
         idx = text.find(f'"{branch_id}" =>')
         assert idx >= 0, f"tray 缺 click 分支 {branch_id}"
         seg = text[idx:idx + 1500]
-        assert f'windows::open_window(app, "{label}")' in seg, \
-            f"{branch_id} 分支未调 windows::open_window('{label}')"
-    print("✓ lib.rs 4 子窗 tray click handler 全调 windows::open_window")
+        assert f'subwin::open_window(app, "{label}")' in seg, \
+            f"{branch_id} 分支未调 subwin::open_window('{label}')"
+    print("✓ lib.rs 4 子窗 tray click handler 全调 subwin::open_window")
 
 
 def s13_lib_rs_tray_click_has_fallback():
@@ -264,11 +267,11 @@ def s15_py_compile_and_syntax_sanity():
     # windows.rs 不能有 cargo crate 这种错配(常见 typo)
     text = _read(WINDOWS_RS)
     assert "cargo" not in text, "windows.rs 出现 cargo 错配"
-    # lib.rs 不能有意外的双 mod 声明
+    # lib.rs 不能有意外的双 mod 声明(subwin 而非 windows;后者会跟 windows-sys crate 冲突)
     lib_text = _read(LIB_RS)
-    assert lib_text.count("mod windows;") == 1, \
-        f"lib.rs mod windows; 出现 {lib_text.count('mod windows;')} 次(应 1 次)"
-    print("✓ py_compile + windows.rs / lib.rs 语法 sanity 通过")
+    assert lib_text.count("mod subwin;") == 1, \
+        f"lib.rs mod subwin; 出现 {lib_text.count('mod subwin;')} 次(应 1 次)"
+    print("✓ py_compile + subwin.rs / lib.rs 语法 sanity 通过")
 
 
 # ----------------------------------------------------------------------
@@ -281,7 +284,7 @@ SECTIONS = [
     s4_windows_rs_exists_with_url_branches,
     s5_windows_rs_close_to_tray_helpers,
     s6_windows_rs_5_commands,
-    s7_lib_rs_mod_windows_declared,
+    s7_lib_rs_mod_subwin_declared,
     s8_lib_rs_invoke_handler_5_commands,
     s9_lib_rs_setup_binds_close_to_tray,
     s10_lib_rs_pub_crate_exposes_for_windows,

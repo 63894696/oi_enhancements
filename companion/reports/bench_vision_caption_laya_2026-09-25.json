@@ -1,0 +1,111 @@
+{
+  "input": "data_vision_caption.jsonl",
+  "total": 500,
+  "agree": 285,
+  "disagree": 215,
+  "parse_fail": 0,
+  "acc": 0.57,
+  "avg_latency_ms": 154.3,
+  "p50_latency_ms": 135.1,
+  "per_label_acc": {
+    "app": 0.568,
+    "focused": 0.6,
+    "code": 0.832,
+    "dialog": 0.28
+  },
+  "per_label_total": {
+    "app": 125,
+    "focused": 125,
+    "code": 125,
+    "dialog": 125
+  },
+  "confusion_matrix": {
+    "app": {
+      "app": 71,
+      "focused": 20,
+      "code": 26,
+      "dialog": 8
+    },
+    "focused": {
+      "app": 19,
+      "focused": 75,
+      "code": 27,
+      "dialog": 4
+    },
+    "code": {
+      "app": 8,
+      "focused": 9,
+      "code": 104,
+      "dialog": 4
+    },
+    "dialog": {
+      "app": 41,
+      "focused": 23,
+      "code": 26,
+      "dialog": 35
+    }
+  },
+  "errors_sample": [
+    {
+      "text": "屏幕上看到,Edge 浏览器打开 Microsoft 365 主页,显示应用图标网格分辨率 1920",
+      "expect": "app",
+      "got": "code",
+      "conf": 0.595
+    },
+    {
+      "text": "视觉观察:屏幕上显示 Git 合并冲突对话框,'Conflict detected. Choose:",
+      "expect": "dialog",
+      "got": "focused",
+      "conf": 0.474
+    },
+    {
+      "text": "用户正在操作电脑,显示 Bash 脚本,#! /bin/bash 开头,后面是 if [ -f fi",
+      "expect": "code",
+      "got": "focused",
+      "conf": 0.49
+    },
+    {
+      "text": "屏幕上显示 Windows 运行对话框(R + 输命令),光标在输入框",
+      "expect": "focused",
+      "got": "dialog",
+      "conf": 0.648
+    },
+    {
+      "text": "屏幕上看到,Chrome 提示 'Password compromised. Change pass",
+      "expect": "dialog",
+      "got": "app",
+      "conf": 0.529
+    },
+    {
+      "text": "屏幕上看到,显示 Markdown 文档,# Title, ## Section, 然后 - bul",
+      "expect": "code",
+      "got": "focused",
+      "conf": 0.974
+    },
+    {
+      "text": "截图显示,屏幕上显示 PowerPoint 'Do you want to recover unsa",
+      "expect": "dialog",
+      "got": "app",
+      "conf": 0.66
+    },
+    {
+      "text": "视觉观察:VS Code 中文件名是 main.py,光标在第 42 行第 8 列位置屏幕部分内容被",
+      "expect": "focused",
+      "got": "code",
+      "conf": 0.983
+    },
+    {
+      "text": "视觉观察:屏幕上显示 macOS 'App is from an unidentified deve",
+      "expect": "dialog",
+      "got": "app",
+      "conf": 0.951
+    },
+    {
+      "text": "屏幕上看到,VS Code 中 Quick Open 文件选择框打开,显示文件列表等待键盘输入颜色主",
+      "expect": "focused",
+      "got": "code",
+      "conf": 0.903
+    }
+  ],
+  "elapsed_s": 77.2
+}

@@ -1,0 +1,894 @@
+{
+  "model": "official AgentJev zero-shot (HTTP 127.0.0.1:18765)",
+  "n": 50,
+  "correct": 20,
+  "ok_count": 50,
+  "accuracy_all": 0.4,
+  "accuracy_real": 0.4,
+  "per_class": {
+    "safe": {
+      "correct": 2,
+      "total": 10,
+      "ok": 10,
+      "accuracy": 0.2
+    },
+    "low": {
+      "correct": 0,
+      "total": 10,
+      "ok": 10,
+      "accuracy": 0.0
+    },
+    "medium": {
+      "correct": 10,
+      "total": 10,
+      "ok": 10,
+      "accuracy": 1.0
+    },
+    "high": {
+      "correct": 0,
+      "total": 10,
+      "ok": 10,
+      "accuracy": 0.0
+    },
+    "critical": {
+      "correct": 8,
+      "total": 10,
+      "ok": 10,
+      "accuracy": 0.8
+    }
+  },
+  "confusion": {},
+  "total_s": 10.1,
+  "records": [
+    {
+      "i": 1,
+      "truth": "safe",
+      "pred": "medium",
+      "ok": true,
+      "top_prob": 0.3444848358631134,
+      "dist": {
+        "safe": 0.2811603248119354,
+        "low": 0.2138955146074295,
+        "medium": 0.3444848358631134,
+        "high": 0.09869655966758728,
+        "critical": 0.0617627315223217
+      },
+      "wall_ms": 264.8,
+      "server_wall_ms": 260.85,
+      "error": null
+    },
+    {
+      "i": 2,
+      "truth": "safe",
+      "pred": "low",
+      "ok": true,
+      "top_prob": 0.4830692708492279,
+      "dist": {
+        "safe": 0.26212772727012634,
+        "low": 0.4830692708492279,
+        "medium": 0.19479680061340332,
+        "high": 0.034653354436159134,
+        "critical": 0.025352932512760162
+      },
+      "wall_ms": 182.3,
+      "server_wall_ms": 180.23,
+      "error": null
+    },
+    {
+      "i": 3,
+      "truth": "safe",
+      "pred": "low",
+      "ok": true,
+      "top_prob": 0.37552380561828613,
+      "dist": {
+        "safe": 0.28694167733192444,
+        "low": 0.37552380561828613,
+        "medium": 0.28166666626930237,
+        "high": 0.03658757358789444,
+        "critical": 0.019280295819044113
+      },
+      "wall_ms": 173.0,
+      "server_wall_ms": 170.94,
+      "error": null
+    },
+    {
+      "i": 4,
+      "truth": "safe",
+      "pred": "low",
+      "ok": true,
+      "top_prob": 0.6580927968025208,
+      "dist": {
+        "safe": 0.16704313457012177,
+        "low": 0.6580927968025208,
+        "medium": 0.125599205493927,
+        "high": 0.030302220955491066,
+        "critical": 0.018962644040584564
+      },
+      "wall_ms": 170.3,
+      "server_wall_ms": 168.5,
+      "error": null
+    },
+    {
+      "i": 5,
+      "truth": "safe",
+      "pred": "low",
+      "ok": true,
+      "top_prob": 0.6304008960723877,
+      "dist": {
+        "safe": 0.20829057693481445,
+        "low": 0.6304008960723877,
+        "medium": 0.11844882369041443,
+        "high": 0.023598890751600266,
+        "critical": 0.01926085166633129
+      },
+      "wall_ms": 168.5,
+      "server_wall_ms": 166.87,
+      "error": null
+    },
+    {
+      "i": 6,
+      "truth": "safe",
+      "pred": "safe",
+      "ok": true,
+      "top_prob": 0.4944372773170471,
+      "dist": {
+        "safe": 0.4944372773170471,
+        "low": 0.36173802614212036,
+        "medium": 0.11075565963983536,
+        "high": 0.021303877234458923,
+        "critical": 0.011765118688344955
+      },
+      "wall_ms": 155.1,
+      "server_wall_ms": 153.4,
+      "error": null
+    },
+    {
+      "i": 7,
+      "truth": "safe",
+      "pred": "safe",
+      "ok": true,
+      "top_prob": 0.3213122487068176,
+      "dist": {
+        "safe": 0.3213122487068176,
+        "low": 0.3102123737335205,
+        "medium": 0.29542914032936096,
+        "high": 0.04860573261976242,
+        "critical": 0.024440497159957886
+      },
+      "wall_ms": 174.2,
+      "server_wall_ms": 172.58,
+      "error": null
+    },
+    {
+      "i": 8,
+      "truth": "safe",
+      "pred": "medium",
+      "ok": true,
+      "top_prob": 0.3602093756198883,
+      "dist": {
+        "safe": 0.34505945444107056,
+        "low": 0.19431838393211365,
+        "medium": 0.3602093756198883,
+        "high": 0.06611350178718567,
+        "critical": 0.03429923579096794
+      },
+      "wall_ms": 175.1,
+      "server_wall_ms": 173.47,
+      "error": null
+    },
+    {
+      "i": 9,
+      "truth": "safe",
+      "pred": "low",
+      "ok": true,
+      "top_prob": 0.3492763042449951,
+      "dist": {
+        "safe": 0.3020521402359009,
+        "low": 0.3492763042449951,
+        "medium": 0.2907645106315613,
+        "high": 0.037512049078941345,
+        "critical": 0.0203949473798275
+      },
+      "wall_ms": 174.1,
+      "server_wall_ms": 172.43,
+      "error": null
+    },
+    {
+      "i": 10,
+      "truth": "safe",
+      "pred": "low",
+      "ok": true,
+      "top_prob": 0.3911348581314087,
+      "dist": {
+        "safe": 0.25008147954940796,
+        "low": 0.3911348581314087,
+        "medium": 0.2836562991142273,
+        "high": 0.04745003953576088,
+        "critical": 0.02767736278474331
+      },
+      "wall_ms": 168.7,
+      "server_wall_ms": 167.11,
+      "error": null
+    },
+    {
+      "i": 11,
+      "truth": "low",
+      "pred": "medium",
+      "ok": true,
+      "top_prob": 0.3089858293533325,
+      "dist": {
+        "safe": 0.1666853427886963,
+        "low": 0.18887925148010254,
+        "medium": 0.3089858293533325,
+        "high": 0.281334787607193,
+        "critical": 0.05411481484770775
+      },
+      "wall_ms": 175.0,
+      "server_wall_ms": 173.36,
+      "error": null
+    },
+    {
+      "i": 12,
+      "truth": "low",
+      "pred": "medium",
+      "ok": true,
+      "top_prob": 0.5600959658622742,
+      "dist": {
+        "safe": 0.06955866515636444,
+        "low": 0.17762430012226105,
+        "medium": 0.5600959658622742,
+        "high": 0.1346026211977005,
+        "critical": 0.05811845138669014
+      },
+      "wall_ms": 155.6,
+      "server_wall_ms": 154.01,
+      "error": null
+    },
+    {
+      "i": 13,
+      "truth": "low",
+      "pred": "medium",
+      "ok": true,
+      "top_prob": 0.486687034368515,
+      "dist": {
+        "safe": 0.04285977780818939,
+        "low": 0.12795566022396088,
+        "medium": 0.486687034368515,
+        "high": 0.2130335122346878,
+        "critical": 0.12946395576000214
+      },
+      "wall_ms": 155.5,
+      "server_wall_ms": 153.84,
+      "error": null
+    },
+    {
+      "i": 14,
+      "truth": "low",
+      "pred": "medium",
+      "ok": true,
+      "top_prob": 0.4944368600845337,
+      "dist": {
+        "safe": 0.040665194392204285,
+        "low": 0.12822802364826202,
+        "medium": 0.4944368600845337,
+        "high": 0.21141228079795837,
+        "critical": 0.12525761127471924
+      },
+      "wall_ms": 155.9,
+      "server_wall_ms": 154.24,
+      "error": null
+    },
+    {
+      "i": 15,
+      "truth": "low",
+      "pred": "medium",
+      "ok": true,
+      "top_prob": 0.5351734757423401,
+      "dist": {
+        "safe": 0.04862576350569725,
+        "low": 0.1412540078163147,
+        "medium": 0.5351734757423401,
+        "high": 0.17038485407829285,
+        "critical": 0.10456181317567825
+      },
+      "wall_ms": 154.0,
+      "server_wall_ms": 152.24,
+      "error": null
+    },
+    {
+      "i": 16,
+      "truth": "low",
+      "pred": "medium",
+      "ok": true,
+      "top_prob": 0.3104534447193146,
+      "dist": {
+        "safe": 0.17211970686912537,
+        "low": 0.18756543099880219,
+        "medium": 0.3104534447193146,
+        "high": 0.2761230170726776,
+        "critical": 0.053738392889499664
+      },
+      "wall_ms": 176.7,
+      "server_wall_ms": 174.94,
+      "error": null
+    },
+    {
+      "i": 17,
+      "truth": "low",
+      "pred": "medium",
+      "ok": true,
+      "top_prob": 0.5600959658622742,
+      "dist": {
+        "safe": 0.06955866515636444,
+        "low": 0.17762430012226105,
+        "medium": 0.5600959658622742,
+        "high": 0.1346026211977005,
+        "critical": 0.05811845138669014
+      },
+      "wall_ms": 155.9,
+      "server_wall_ms": 154.25,
+      "error": null
+    },
+    {
+      "i": 18,
+      "truth": "low",
+      "pred": "medium",
+      "ok": true,
+      "top_prob": 0.4944368600845337,
+      "dist": {
+        "safe": 0.040665194392204285,
+        "low": 0.12822802364826202,
+        "medium": 0.4944368600845337,
+        "high": 0.21141228079795837,
+        "critical": 0.12525761127471924
+      },
+      "wall_ms": 155.4,
+      "server_wall_ms": 153.79,
+      "error": null
+    },
+    {
+      "i": 19,
+      "truth": "low",
+      "pred": "medium",
+      "ok": true,
+      "top_prob": 0.538835346698761,
+      "dist": {
+        "safe": 0.06128786876797676,
+        "low": 0.19939133524894714,
+        "medium": 0.538835346698761,
+        "high": 0.13919758796691895,
+        "critical": 0.06128786876797676
+      },
+      "wall_ms": 155.3,
+      "server_wall_ms": 153.65,
+      "error": null
+    },
+    {
+      "i": 20,
+      "truth": "low",
+      "pred": "medium",
+      "ok": true,
+      "top_prob": 0.5351734757423401,
+      "dist": {
+        "safe": 0.04862576350569725,
+        "low": 0.1412540078163147,
+        "medium": 0.5351734757423401,
+        "high": 0.17038485407829285,
+        "critical": 0.10456181317567825
+      },
+      "wall_ms": 155.4,
+      "server_wall_ms": 153.87,
+      "error": null
+    },
+    {
+      "i": 21,
+      "truth": "medium",
+      "pred": "medium",
+      "ok": true,
+      "top_prob": 0.46856874227523804,
+      "dist": {
+        "safe": 0.13011683523654938,
+        "low": 0.2714517414569855,
+        "medium": 0.46856874227523804,
+        "high": 0.08907926082611084,
+        "critical": 0.04078345373272896
+      },
+      "wall_ms": 154.7,
+      "server_wall_ms": 153.15,
+      "error": null
+    },
+    {
+      "i": 22,
+      "truth": "medium",
+      "pred": "medium",
+      "ok": true,
+      "top_prob": 0.5205221176147461,
+      "dist": {
+        "safe": 0.11524034291505814,
+        "low": 0.203640416264534,
+        "medium": 0.5205221176147461,
+        "high": 0.10783622413873672,
+        "critical": 0.05276087298989296
+      },
+      "wall_ms": 155.8,
+      "server_wall_ms": 154.2,
+      "error": null
+    },
+    {
+      "i": 23,
+      "truth": "medium",
+      "pred": "medium",
+      "ok": true,
+      "top_prob": 0.5034761428833008,
+      "dist": {
+        "safe": 0.12290111929178238,
+        "low": 0.23299770057201385,
+        "medium": 0.5034761428833008,
+        "high": 0.09798531979322433,
+        "critical": 0.04263972491025925
+      },
+      "wall_ms": 156.3,
+      "server_wall_ms": 154.7,
+      "error": null
+    },
+    {
+      "i": 24,
+      "truth": "medium",
+      "pred": "medium",
+      "ok": true,
+      "top_prob": 0.5098790526390076,
+      "dist": {
+        "safe": 0.11070066690444946,
+        "low": 0.2158963829278946,
+        "medium": 0.5098790526390076,
+        "high": 0.1124439463019371,
+        "critical": 0.05107996240258217
+      },
+      "wall_ms": 155.4,
+      "server_wall_ms": 153.74,
+      "error": null
+    },
+    {
+      "i": 25,
+      "truth": "medium",
+      "pred": "medium",
+      "ok": true,
+      "top_prob": 0.5023167133331299,
+      "dist": {
+        "safe": 0.1032547876238823,
+        "low": 0.23042698204517365,
+        "medium": 0.5023167133331299,
+        "high": 0.1174609437584877,
+        "critical": 0.046540576964616776
+      },
+      "wall_ms": 155.3,
+      "server_wall_ms": 153.67,
+      "error": null
+    },
+    {
+      "i": 26,
+      "truth": "medium",
+      "pred": "medium",
+      "ok": true,
+      "top_prob": 0.4314746558666229,
+      "dist": {
+        "safe": 0.12904711067676544,
+        "low": 0.3250586688518524,
+        "medium": 0.4314746558666229,
+        "high": 0.08075561374425888,
+        "critical": 0.033663950860500336
+      },
+      "wall_ms": 155.0,
+      "server_wall_ms": 153.38,
+      "error": null
+    },
+    {
+      "i": 27,
+      "truth": "medium",
+      "pred": "medium",
+      "ok": true,
+      "top_prob": 0.5240556001663208,
+      "dist": {
+        "safe": 0.0984671339392662,
+        "low": 0.17656821012496948,
+        "medium": 0.5240556001663208,
+        "high": 0.13831955194473267,
+        "critical": 0.06258951872587204
+      },
+      "wall_ms": 156.1,
+      "server_wall_ms": 154.29,
+      "error": null
+    },
+    {
+      "i": 28,
+      "truth": "medium",
+      "pred": "medium",
+      "ok": true,
+      "top_prob": 0.5205221176147461,
+      "dist": {
+        "safe": 0.11524034291505814,
+        "low": 0.203640416264534,
+        "medium": 0.5205221176147461,
+        "high": 0.10783622413873672,
+        "critical": 0.05276087298989296
+      },
+      "wall_ms": 155.0,
+      "server_wall_ms": 153.11,
+      "error": null
+    },
+    {
+      "i": 29,
+      "truth": "medium",
+      "pred": "medium",
+      "ok": true,
+      "top_prob": 0.46856874227523804,
+      "dist": {
+        "safe": 0.13011683523654938,
+        "low": 0.2714517414569855,
+        "medium": 0.46856874227523804,
+        "high": 0.08907926082611084,
+        "critical": 0.04078345373272896
+      },
+      "wall_ms": 157.1,
+      "server_wall_ms": 155.27,
+      "error": null
+    },
+    {
+      "i": 30,
+      "truth": "medium",
+      "pred": "medium",
+      "ok": true,
+      "top_prob": 0.5023167133331299,
+      "dist": {
+        "safe": 0.1032547876238823,
+        "low": 0.23042698204517365,
+        "medium": 0.5023167133331299,
+        "high": 0.1174609437584877,
+        "critical": 0.046540576964616776
+      },
+      "wall_ms": 156.6,
+      "server_wall_ms": 154.85,
+      "error": null
+    },
+    {
+      "i": 31,
+      "truth": "high",
+      "pred": "low",
+      "ok": true,
+      "top_prob": 0.3816765546798706,
+      "dist": {
+        "safe": 0.06834735721349716,
+        "low": 0.3816765546798706,
+        "medium": 0.33938729763031006,
+        "high": 0.11268573999404907,
+        "critical": 0.0979030653834343
+      },
+      "wall_ms": 242.3,
+      "server_wall_ms": 240.44,
+      "error": null
+    },
+    {
+      "i": 32,
+      "truth": "high",
+      "pred": "medium",
+      "ok": true,
+      "top_prob": 0.4346254765987396,
+      "dist": {
+        "safe": 0.02316966839134693,
+        "low": 0.06704366207122803,
+        "medium": 0.4346254765987396,
+        "high": 0.28116390109062195,
+        "critical": 0.19399727880954742
+      },
+      "wall_ms": 242.2,
+      "server_wall_ms": 239.84,
+      "error": null
+    },
+    {
+      "i": 33,
+      "truth": "high",
+      "pred": "low",
+      "ok": true,
+      "top_prob": 0.40457645058631897,
+      "dist": {
+        "safe": 0.07238619029521942,
+        "low": 0.40457645058631897,
+        "medium": 0.3215736150741577,
+        "high": 0.1174943819642067,
+        "critical": 0.08396944403648376
+      },
+      "wall_ms": 243.4,
+      "server_wall_ms": 241.59,
+      "error": null
+    },
+    {
+      "i": 34,
+      "truth": "high",
+      "pred": "medium",
+      "ok": true,
+      "top_prob": 0.4057842493057251,
+      "dist": {
+        "safe": 0.02320791594684124,
+        "low": 0.06114472076296806,
+        "medium": 0.4057842493057251,
+        "high": 0.25642526149749756,
+        "critical": 0.2534378170967102
+      },
+      "wall_ms": 242.0,
+      "server_wall_ms": 240.28,
+      "error": null
+    },
+    {
+      "i": 35,
+      "truth": "high",
+      "pred": "medium",
+      "ok": true,
+      "top_prob": 0.35717281699180603,
+      "dist": {
+        "safe": 0.05461398884654045,
+        "low": 0.27627143263816833,
+        "medium": 0.35717281699180603,
+        "high": 0.16114769876003265,
+        "critical": 0.15079405903816223
+      },
+      "wall_ms": 243.5,
+      "server_wall_ms": 241.74,
+      "error": null
+    },
+    {
+      "i": 36,
+      "truth": "high",
+      "pred": "medium",
+      "ok": true,
+      "top_prob": 0.4346254765987396,
+      "dist": {
+        "safe": 0.02316966839134693,
+        "low": 0.06704366207122803,
+        "medium": 0.4346254765987396,
+        "high": 0.28116390109062195,
+        "critical": 0.19399727880954742
+      },
+      "wall_ms": 242.0,
+      "server_wall_ms": 240.21,
+      "error": null
+    },
+    {
+      "i": 37,
+      "truth": "high",
+      "pred": "low",
+      "ok": true,
+      "top_prob": 0.40876156091690063,
+      "dist": {
+        "safe": 0.07163292914628983,
+        "low": 0.40876156091690063,
+        "medium": 0.32292309403419495,
+        "high": 0.107533760368824,
+        "critical": 0.0891486257314682
+      },
+      "wall_ms": 244.7,
+      "server_wall_ms": 242.63,
+      "error": null
+    },
+    {
+      "i": 38,
+      "truth": "high",
+      "pred": "medium",
+      "ok": true,
+      "top_prob": 0.4346254765987396,
+      "dist": {
+        "safe": 0.02316966839134693,
+        "low": 0.06704366207122803,
+        "medium": 0.4346254765987396,
+        "high": 0.28116390109062195,
+        "critical": 0.19399727880954742
+      },
+      "wall_ms": 242.2,
+      "server_wall_ms": 240.14,
+      "error": null
+    },
+    {
+      "i": 39,
+      "truth": "high",
+      "pred": "low",
+      "ok": true,
+      "top_prob": 0.3816765546798706,
+      "dist": {
+        "safe": 0.06834735721349716,
+        "low": 0.3816765546798706,
+        "medium": 0.33938729763031006,
+        "high": 0.11268573999404907,
+        "critical": 0.0979030653834343
+      },
+      "wall_ms": 244.1,
+      "server_wall_ms": 242.18,
+      "error": null
+    },
+    {
+      "i": 40,
+      "truth": "high",
+      "pred": "medium",
+      "ok": true,
+      "top_prob": 0.4057842493057251,
+      "dist": {
+        "safe": 0.02320791594684124,
+        "low": 0.06114472076296806,
+        "medium": 0.4057842493057251,
+        "high": 0.25642526149749756,
+        "critical": 0.2534378170967102
+      },
+      "wall_ms": 241.8,
+      "server_wall_ms": 239.86,
+      "error": null
+    },
+    {
+      "i": 41,
+      "truth": "critical",
+      "pred": "medium",
+      "ok": true,
+      "top_prob": 0.340756356716156,
+      "dist": {
+        "safe": 0.0392916277050972,
+        "low": 0.1774739772081375,
+        "medium": 0.340756356716156,
+        "high": 0.13821688294410706,
+        "critical": 0.3042612075805664
+      },
+      "wall_ms": 276.4,
+      "server_wall_ms": 274.49,
+      "error": null
+    },
+    {
+      "i": 42,
+      "truth": "critical",
+      "pred": "critical",
+      "ok": true,
+      "top_prob": 0.362253338098526,
+      "dist": {
+        "safe": 0.03140701726078987,
+        "low": 0.11310101300477982,
+        "medium": 0.3524821698665619,
+        "high": 0.1407564878463745,
+        "critical": 0.362253338098526
+      },
+      "wall_ms": 277.3,
+      "server_wall_ms": 275.45,
+      "error": null
+    },
+    {
+      "i": 43,
+      "truth": "critical",
+      "pred": "critical",
+      "ok": true,
+      "top_prob": 0.36848434805870056,
+      "dist": {
+        "safe": 0.04054315388202667,
+        "low": 0.08318915963172913,
+        "medium": 0.3571472764015198,
+        "high": 0.15063609182834625,
+        "critical": 0.36848434805870056
+      },
+      "wall_ms": 276.0,
+      "server_wall_ms": 274.14,
+      "error": null
+    },
+    {
+      "i": 44,
+      "truth": "critical",
+      "pred": "critical",
+      "ok": true,
+      "top_prob": 0.371921181678772,
+      "dist": {
+        "safe": 0.03997335955500603,
+        "low": 0.08074840903282166,
+        "medium": 0.35767310857772827,
+        "high": 0.1496839076280594,
+        "critical": 0.371921181678772
+      },
+      "wall_ms": 275.4,
+      "server_wall_ms": 273.53,
+      "error": null
+    },
+    {
+      "i": 45,
+      "truth": "critical",
+      "pred": "critical",
+      "ok": true,
+      "top_prob": 0.4012015163898468,
+      "dist": {
+        "safe": 0.029752150177955627,
+        "low": 0.08609069883823395,
+        "medium": 0.34856992959976196,
+        "high": 0.13438567519187927,
+        "critical": 0.4012015163898468
+      },
+      "wall_ms": 277.2,
+      "server_wall_ms": 275.29,
+      "error": null
+    },
+    {
+      "i": 46,
+      "truth": "critical",
+      "pred": "critical",
+      "ok": true,
+      "top_prob": 0.3750816881656647,
+      "dist": {
+        "safe": 0.03742939233779907,
+        "low": 0.09409748762845993,
+        "medium": 0.34419429302215576,
+        "high": 0.14919719099998474,
+        "critical": 0.3750816881656647
+      },
+      "wall_ms": 276.9,
+      "server_wall_ms": 275.06,
+      "error": null
+    },
+    {
+      "i": 47,
+      "truth": "critical",
+      "pred": "medium",
+      "ok": true,
+      "top_prob": 0.46185481548309326,
+      "dist": {
+        "safe": 0.031676121056079865,
+        "low": 0.14419810473918915,
+        "medium": 0.46185481548309326,
+        "high": 0.17123949527740479,
+        "critical": 0.19103145599365234
+      },
+      "wall_ms": 275.2,
+      "server_wall_ms": 273.33,
+      "error": null
+    },
+    {
+      "i": 48,
+      "truth": "critical",
+      "pred": "critical",
+      "ok": true,
+      "top_prob": 0.4297230839729309,
+      "dist": {
+        "safe": 0.015215590596199036,
+        "low": 0.08161459863185883,
+        "medium": 0.33352676033973694,
+        "high": 0.13991998136043549,
+        "critical": 0.4297230839729309
+      },
+      "wall_ms": 242.5,
+      "server_wall_ms": 240.55,
+      "error": null
+    },
+    {
+      "i": 49,
+      "truth": "critical",
+      "pred": "critical",
+      "ok": true,
+      "top_prob": 0.4297230839729309,
+      "dist": {
+        "safe": 0.015215590596199036,
+        "low": 0.08161459863185883,
+        "medium": 0.33352676033973694,
+        "high": 0.13991998136043549,
+        "critical": 0.4297230839729309
+      },
+      "wall_ms": 243.6,
+      "server_wall_ms": 241.74,
+      "error": null
+    },
+    {
+      "i": 50,
+      "truth": "critical",
+      "pred": "critical",
+      "ok": true,
+      "top_prob": 0.40693551301956177,
+      "dist": {
+        "safe": 0.03282126784324646,
+        "low": 0.09423241019248962,
+        "medium": 0.3289034068584442,
+        "high": 0.13710734248161316,
+        "critical": 0.40693551301956177
+      },
+      "wall_ms": 280.2,
+      "server_wall_ms": 278.38,
+      "error": null
+    }
+  ]
+}

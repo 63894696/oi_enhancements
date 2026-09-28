@@ -1,0 +1,107 @@
+{
+  "total": 50,
+  "correct": 36,
+  "parse_fail": 0,
+  "overall_acc": 0.72,
+  "per_label_acc": {
+    "stalled": 0,
+    "zero_progress": 0.0,
+    "slow": 0,
+    "ok": 1.0
+  },
+  "per_label_total": {
+    "stalled": 0,
+    "zero_progress": 14,
+    "slow": 0,
+    "ok": 36
+  },
+  "avg_latency_ms": 660.9,
+  "p50_latency_ms": 635.7,
+  "errors": [
+    {
+      "task_id": 72228,
+      "expect": "zero_progress",
+      "got": "ok",
+      "conf": 0.7
+    },
+    {
+      "task_id": 72228,
+      "expect": "zero_progress",
+      "got": "ok",
+      "conf": 0.7
+    },
+    {
+      "task_id": 72228,
+      "expect": "zero_progress",
+      "got": "ok",
+      "conf": 0.7
+    },
+    {
+      "task_id": 72228,
+      "expect": "zero_progress",
+      "got": "ok",
+      "conf": 0.7
+    },
+    {
+      "task_id": 72228,
+      "expect": "zero_progress",
+      "got": "ok",
+      "conf": 0.7
+    },
+    {
+      "task_id": 96022,
+      "expect": "zero_progress",
+      "got": "ok",
+      "conf": 0.7
+    },
+    {
+      "task_id": 96022,
+      "expect": "zero_progress",
+      "got": "ok",
+      "conf": 0.7
+    },
+    {
+      "task_id": 96022,
+      "expect": "zero_progress",
+      "got": "ok",
+      "conf": 0.7
+    },
+    {
+      "task_id": 96022,
+      "expect": "zero_progress",
+      "got": "ok",
+      "conf": 0.7
+    },
+    {
+      "task_id": 85691,
+      "expect": "zero_progress",
+      "got": "ok",
+      "conf": 0.7
+    },
+    {
+      "task_id": 62872,
+      "expect": "zero_progress",
+      "got": "ok",
+      "conf": 0.7
+    },
+    {
+      "task_id": 62872,
+      "expect": "zero_progress",
+      "got": "ok",
+      "conf": 0.7
+    },
+    {
+      "task_id": 62872,
+      "expect": "zero_progress",
+      "got": "ok",
+      "conf": 0.7
+    },
+    {
+      "task_id": 62872,
+      "expect": "zero_progress",
+      "got": "ok",
+      "conf": 0.7
+    }
+  ],
+  "elapsed_total_s": 33.0
+}

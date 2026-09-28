@@ -1,0 +1,16 @@
+feat(p2.5+20): Tauri dev 端到端真跑 — release shell 14.4MB + mock sentinel + 无 panic
+
+docs/p2-5-20-tauri-dev-e2e.md 落盘:
+  - cargo build --release ~2m22s,prisirai-shell.exe 14.4MB
+  - mock 后端 sentinel 路径: _e2e_sentinel_server.py ~50 行替代 prisIragent_web.py 缺模块依赖
+  - 真启 PID 16416 日志 [startWeb] port already up + 主窗加载 http://127.0.0.1:18802/
+  - 无 panic = subwin 模块编译进二进制 + 6 commands 注册 + 4× bind_close_to_tray setup 末尾全成功
+  - 4 坑记录: mod windows; 与 windows-sys crate 命名冲突 → subwin rename
+              label 生命周期 &str 报 borrowed data escapes → 'static str
+              generate_handler! 解析不到子模块函数 → use subwin:: 拉作用域
+              mock sentinel 端口冲突 → Tauri 复用端口走 reusing 分支
+  - 静态扫 15/15 全绿(回归)
+  - 真鼠标点击托盘 7 项 → 子窗独立弹/关/复用验证 留给用户桌面
+  - 完整 PrisirAI 后端模块依赖修复后补真完整 E2E
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>

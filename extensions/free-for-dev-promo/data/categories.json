@@ -1,0 +1,287 @@
+[
+  {
+    "name": "Major Cloud Providers",
+    "slug": "major-cloud-providers",
+    "n_items": 98
+  },
+  {
+    "name": "Cloud management solutions",
+    "slug": "cloud-management-solutions",
+    "n_items": 7
+  },
+  {
+    "name": "Source Code Repos",
+    "slug": "source-code-repos",
+    "n_items": 12
+  },
+  {
+    "name": "APIs, Data, and ML",
+    "slug": "apis-data-and-ml",
+    "n_items": 137
+  },
+  {
+    "name": "Artifact Repos",
+    "slug": "artifact-repos",
+    "n_items": 6
+  },
+  {
+    "name": "Tools for Teams and Collaboration",
+    "slug": "tools-for-teams-and-collaboration",
+    "n_items": 79
+  },
+  {
+    "name": "CMS",
+    "slug": "cms",
+    "n_items": 12
+  },
+  {
+    "name": "Code Generation",
+    "slug": "code-generation",
+    "n_items": 0
+  },
+  {
+    "name": "Code Quality",
+    "slug": "code-quality",
+    "n_items": 24
+  },
+  {
+    "name": "Code Search and Browsing",
+    "slug": "code-search-and-browsing",
+    "n_items": 4
+  },
+  {
+    "name": "CI and CD",
+    "slug": "ci-and-cd",
+    "n_items": 21
+  },
+  {
+    "name": "Testing",
+    "slug": "testing",
+    "n_items": 35
+  },
+  {
+    "name": "Security and PKI",
+    "slug": "security-and-pki",
+    "n_items": 38
+  },
+  {
+    "name": "Authentication, Authorization, and User Management",
+    "slug": "authentication-authorization-and-user-management",
+    "n_items": 28
+  },
+  {
+    "name": "Mobile App Distribution and Feedback",
+    "slug": "mobile-app-distribution-and-feedback",
+    "n_items": 6
+  },
+  {
+    "name": "Management System",
+    "slug": "management-system",
+    "n_items": 8
+  },
+  {
+    "name": "Messaging and Streaming",
+    "slug": "messaging-and-streaming",
+    "n_items": 20
+  },
+  {
+    "name": "Log Management",
+    "slug": "log-management",
+    "n_items": 8
+  },
+  {
+    "name": "Translation Management",
+    "slug": "translation-management",
+    "n_items": 15
+  },
+  {
+    "name": "Monitoring",
+    "slug": "monitoring",
+    "n_items": 60
+  },
+  {
+    "name": "Crash and Exception Handling",
+    "slug": "crash-and-exception-handling",
+    "n_items": 15
+  },
+  {
+    "name": "Search",
+    "slug": "search",
+    "n_items": 4
+  },
+  {
+    "name": "Education and Career Development",
+    "slug": "education-and-career-development",
+    "n_items": 21
+  },
+  {
+    "name": "Email",
+    "slug": "email",
+    "n_items": 74
+  },
+  {
+    "name": "Feature Toggles Management Platforms",
+    "slug": "feature-toggles-management-platforms",
+    "n_items": 8
+  },
+  {
+    "name": "Font",
+    "slug": "font",
+    "n_items": 11
+  },
+  {
+    "name": "Forms",
+    "slug": "forms",
+    "n_items": 35
+  },
+  {
+    "name": "Generative AI",
+    "slug": "generative-ai",
+    "n_items": 21
+  },
+  {
+    "name": "CDN and Protection",
+    "slug": "cdn-and-protection",
+    "n_items": 17
+  },
+  {
+    "name": "PaaS",
+    "slug": "paas",
+    "n_items": 25
+  },
+  {
+    "name": "BaaS",
+    "slug": "baas",
+    "n_items": 21
+  },
+  {
+    "name": "Low-code Platform",
+    "slug": "low-code-platform",
+    "n_items": 10
+  },
+  {
+    "name": "Web Hosting",
+    "slug": "web-hosting",
+    "n_items": 24
+  },
+  {
+    "name": "DNS",
+    "slug": "dns",
+    "n_items": 22
+  },
+  {
+    "name": "Domain",
+    "slug": "domain",
+    "n_items": 4
+  },
+  {
+    "name": "IaaS",
+    "slug": "iaas",
+    "n_items": 4
+  },
+  {
+    "name": "Managed Data Services",
+    "slug": "managed-data-services",
+    "n_items": 26
+  },
+  {
+    "name": "Tunneling, WebRTC, Web Socket Servers and Other Routers",
+    "slug": "tunneling-webrtc-web-socket-servers-and-other-routers",
+    "n_items": 19
+  },
+  {
+    "name": "Issue Tracking and Project Management",
+    "slug": "issue-tracking-and-project-management",
+    "n_items": 60
+  },
+  {
+    "name": "Storage and Media Processing",
+    "slug": "storage-and-media-processing",
+    "n_items": 50
+  },
+  {
+    "name": "Design and UI",
+    "slug": "design-and-ui",
+    "n_items": 33
+  },
+  {
+    "name": "Data Visualization on Maps",
+    "slug": "data-visualization-on-maps",
+    "n_items": 21
+  },
+  {
+    "name": "Package Build System",
+    "slug": "package-build-system",
+    "n_items": 3
+  },
+  {
+    "name": "IDE and Code Editing",
+    "slug": "ide-and-code-editing",
+    "n_items": 40
+  },
+  {
+    "name": "Analytics, Events and Statistics",
+    "slug": "analytics-events-and-statistics",
+    "n_items": 36
+  },
+  {
+    "name": "Visitor Session Recording",
+    "slug": "visitor-session-recording",
+    "n_items": 10
+  },
+  {
+    "name": "International Mobile Number Verification API and SDK",
+    "slug": "international-mobile-number-verification-api-and-sdk",
+    "n_items": 2
+  },
+  {
+    "name": "Payment and Billing Integration",
+    "slug": "payment-and-billing-integration",
+    "n_items": 16
+  },
+  {
+    "name": "Docker Related",
+    "slug": "docker-related",
+    "n_items": 5
+  },
+  {
+    "name": "Dev Blogging Sites",
+    "slug": "dev-blogging-sites",
+    "n_items": 6
+  },
+  {
+    "name": "Commenting Platforms",
+    "slug": "commenting-platforms",
+    "n_items": 4
+  },
+  {
+    "name": "Screenshot APIs",
+    "slug": "screenshot-apis",
+    "n_items": 11
+  },
+  {
+    "name": "Flutter Related and Building IOS Apps without Mac",
+    "slug": "flutter-related-and-building-ios-apps-without-mac",
+    "n_items": 3
+  },
+  {
+    "name": "Privacy Management",
+    "slug": "privacy-management",
+    "n_items": 5
+  },
+  {
+    "name": "Miscellaneous",
+    "slug": "miscellaneous",
+    "n_items": 24
+  },
+  {
+    "name": "Remote Desktop Tools",
+    "slug": "remote-desktop-tools",
+    "n_items": 5
+  },
+  {
+    "name": "Other Free Resources",
+    "slug": "other-free-resources",
+    "n_items": 11
+  }
+]

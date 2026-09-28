@@ -30,7 +30,12 @@ mod calendar;
 mod port_config;
 mod config_loader;
 // P2.5+19:4 子窗独立 WebviewWindow 模型(close→hide 复用 + 端口动态解析)
-mod windows;
+// 命名为 subwin 而非 windows,避开与 Windows crate(win32 API)的命名冲突
+// (lib.rs 内 line 534+ 用 `windows::Win32::Foundation::*` 调 Windows crate)
+mod subwin;
+// P2.5+20:把 5 + 1 commands 提到根命名空间,generate_handler! macro 才能直接引用
+use subwin::{close_all_child_windows_cmd, open_calendar_window_cmd, open_companion_window_cmd,
+             open_workflow_window_cmd, open_music_window_cmd, subwindows_status_cmd};
 
 // ---------- 配置 ----------
 // M3.34(2026-09-19): WEB_PORT / COMPANION_PORT 不再是写死常量。
@@ -883,7 +888,7 @@ pub fn run() {
                         }
                         "companion" => {
                             // P2.5+19: 托盘「启动陪聊」→ 独立 companion-window(走 windows 模块)
-                            if let Err(e) = windows::open_window(app, "companion-window") {
+                            if let Err(e) = subwin::open_window(app, "companion-window") {
                                 log::error!("[companion] open_window err: {}", e);
                                 // 兜底:走老逻辑(主窗 eval 跳转)
                                 let state = app.state::<Arc<AppState>>();
@@ -898,13 +903,13 @@ pub fn run() {
                         }
                         "music" => {
                             // P2.5+19: 托盘「启动音乐播放器」→ 独立 music-window
-                            // 先确保 music web 起(端口动态分配 → 写到 HKCU → windows::open_window 拿到)
+                            // 先确保 music web 起(端口动态分配 → 写到 HKCU → subwin::open_window 拿到)
                             let state = app.state::<Arc<AppState>>();
                             match music::start_music(&state) {
                                 Ok(port) => log::info!("[music] started port={}", port),
                                 Err(e) => log::error!("[music] start err: {}", e),
                             }
-                            if let Err(e) = windows::open_window(app, "music-window") {
+                            if let Err(e) = subwin::open_window(app, "music-window") {
                                 log::error!("[music] open_window err: {}", e);
                                 // 兜底:主窗 eval 跳转 + 歌词浮窗(不变)
                                 let app_handle = app.clone();
@@ -937,7 +942,7 @@ pub fn run() {
                             // P2.5+19: 托盘「📅 打开日历」→ 独立 calendar-window
                             // 兜底链:windows 模块(优先)→ 主窗 eval 跳转(回退)
                             let app_clone = app.clone();
-                            if let Err(e) = windows::open_window(app, "calendar-window") {
+                            if let Err(e) = subwin::open_window(app, "calendar-window") {
                                 log::error!("[calendar] open_window err: {}", e);
                                 std::thread::spawn(move || {
                                     let port = match tauri::async_runtime::block_on(async {
@@ -968,7 +973,7 @@ pub fn run() {
                         }
                         "open_workflow" => {
                             // P2.5+19: 托盘「🔀 打开工作流(独立窗)」→ 独立 workflow-window
-                            if let Err(e) = windows::open_window(app, "workflow-window") {
+                            if let Err(e) = subwin::open_window(app, "workflow-window") {
                                 log::error!("[workflow] open_window err: {}", e);
                                 // 兜底:主窗里跳 #wfmodal fragment
                                 if let Some(win) = app.get_webview_window("main") {
@@ -1038,8 +1043,8 @@ pub fn run() {
             }
 
             // P2.5+19: 4 子窗 close → hide 复用(跟主窗同款模板,quitting 守卫共用)
-            for label in windows::SUBWINDOW_LABELS.iter() {
-                windows::bind_close_to_tray(&app_handle, label);
+            for label in subwin::SUBWINDOW_LABELS.iter() {
+                subwin::bind_close_to_tray(&app_handle, label);
             }
 
             // M3.34(2026-09-19): 等后端就绪后加载 URL + 显式 set_icon + show

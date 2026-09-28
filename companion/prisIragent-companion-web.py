@@ -2841,6 +2841,90 @@ async def api_creds_status(req: web.Request) -> web.Response:
 
 
 # ============================================================
+# M3.36.C (2026-09-28) — colibri 三选一 onboarding 端点
+#   GET  /api/colibri/onboarding        → {ok, should_show, reason, choice}
+#   POST /api/colibri/onboarding/choose → {ok, choice} body={choice: "no_key"|"has_key"|"skip"}
+# 设计原则:零侵入 — 只读 colibri_state,不写其他 settings
+# ============================================================
+async def api_colibri_onboarding(req: web.Request) -> web.Response:
+    """返回前端是否弹引导卡(综合:state.choice / 已下载 / 已有云端 key)。"""
+    try:
+        from companion.colibri_state import (
+            load_state, should_show_onboarding, has_existing_keys, is_model_path_set,
+        )
+        s = load_state()
+        reason = ""
+        if s.onboarding_choice in ("has_key", "skip"):
+            reason = "user_dismissed"
+        elif is_model_path_set(s):
+            reason = "model_downloaded"
+        elif has_existing_keys():
+            reason = "has_existing_keys"
+        else:
+            reason = "first_run"
+        return web.json_response({
+            "ok": True,
+            "should_show": should_show_onboarding(),
+            "reason": reason,
+            "choice": s.onboarding_choice,
+            "downloaded": is_model_path_set(s),
+            "state": s.state,
+        })
+    except Exception as e:  # noqa: BLE001
+        return web.json_response(
+            {"ok": False, "err": f"{type(e).__name__}: {e}"}, status=500)
+
+
+async def api_colibri_onboarding_choose(req: web.Request) -> web.Response:
+    """记录用户三选一选择 + 触发对应副作用。
+
+    choice == "no_key"  → 触发后台下载,前端会轮询 /api/colibri/status
+    choice == "has_key" → 关闭引导,前端引导用户去设置页
+    choice == "skip"    → 关闭引导,下次启动还会弹(因为 onboarding_choice 不持久化 dismiss)
+    """
+    import json as _json
+    try:
+        body = await req.json()
+    except (TypeError, _json.JSONDecodeError):
+        return web.json_response({"ok": False, "err": "bad json"}, status=400)
+    if not isinstance(body, dict):
+        return web.json_response({"ok": False, "err": "bad body"}, status=400)
+    choice = (body.get("choice") or "").strip()
+    if choice not in ("no_key", "has_key", "skip"):
+        return web.json_response(
+            {"ok": False, "err": f"unknown choice: {choice}"}, status=400)
+
+    try:
+        from companion.colibri_state import (
+            load_state, save_state, update_state,
+        )
+        import time as _time
+        # "skip" 不持久化 dismiss(下次还会弹);其他两个持久化 choice
+        if choice == "skip":
+            # 只更新 onboarding_at,onboarding_choice 留空,should_show 仍 True
+            update_state(onboarding_at=int(_time.time()))
+            log.info("[M3.36.C] onboarding skip (next launch will re-prompt)")
+            return web.json_response({"ok": True, "choice": "skip"})
+        # no_key / has_key 都持久化
+        update_state(onboarding_choice=choice, onboarding_at=int(_time.time()))
+        if choice == "no_key":
+            # 触发后台下载(Phase B 完整实现;Phase C 这边只占位)
+            try:
+                from companion.colibri_download import request_download
+                request_download()   # 异步执行,不阻塞响应
+                log.info("[M3.36.C] onboarding no_key → trigger OLMoE download")
+            except ImportError:
+                # Phase B 还没 ship — 优雅降级,只记录选择
+                log.warning("[M3.36.C] colibri_download 未就绪(Phase B 待 ship);仅记录 choice")
+        else:
+            log.info("[M3.36.C] onboarding has_key → user will configure key manually")
+        return web.json_response({"ok": True, "choice": choice})
+    except Exception as e:  # noqa: BLE001
+        return web.json_response(
+            {"ok": False, "err": f"{type(e).__name__}: {e}"}, status=500)
+
+
+# ============================================================
 # M3.27.4 (2026-09-18) — 主面板 k-platform-pick 切 ASR 调用
 # 路径:主面板 18802 /api/asr/active → 转发到此路由
 # 行为:更新 settings.active_provider,只读 settings.active_provider
@@ -3318,6 +3402,8 @@ def make_app() -> web.Application:
     app.router.add_post("/api/dispatch/test", api_dispatch_test)
     # M3.27.2 — 启动探测结果(LLM active/available + ASR local 探测)
     app.router.add_get("/api/creds/status", api_creds_status)
+    # M3.36.C 重构:colibri 引导卡路由已转移到主对话窗口(prisIragent_web.py),
+    # companion(语音对话扩展)不再挂载。函数定义保留供 review。
     # M3.27.4 — 主面板 k-platform-pick 切 ASR(主面板 18802 /api/asr/active 转发到此)
     app.router.add_post("/api/asr/active", api_asr_active)
     # M3.28 Phase 1 PoC — 落雪 LX Music source 协议 → mp3 直链

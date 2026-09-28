@@ -1,0 +1,1021 @@
+{
+  "ts": "2026-09-23T18:49:51",
+  "n": 59,
+  "local": {
+    "label": "local_0.6b",
+    "n": 59,
+    "accuracy": 0.7119,
+    "latency_ms": {
+      "p50": 5090,
+      "p95": 5552,
+      "max": 26369
+    },
+    "by_class": {
+      "code_call": {
+        "total": 12,
+        "match": 11,
+        "accuracy": 0.9167
+      },
+      "code_qa": {
+        "total": 12,
+        "match": 10,
+        "accuracy": 0.8333
+      },
+      "creative": {
+        "total": 10,
+        "match": 7,
+        "accuracy": 0.7
+      },
+      "long": {
+        "total": 1,
+        "match": 1,
+        "accuracy": 1.0
+      },
+      "fast": {
+        "total": 12,
+        "match": 9,
+        "accuracy": 0.75
+      },
+      "general": {
+        "total": 12,
+        "match": 4,
+        "accuracy": 0.3333
+      }
+    },
+    "confusion_matrix": {
+      "code_call": {
+        "code_call": 11,
+        "code_qa": 0,
+        "creative": 0,
+        "long": 0,
+        "fast": 0,
+        "general": 1,
+        "unknown": 0,
+        "error": 0
+      },
+      "code_qa": {
+        "code_call": 0,
+        "code_qa": 10,
+        "creative": 0,
+        "long": 0,
+        "fast": 0,
+        "general": 2,
+        "unknown": 0,
+        "error": 0
+      },
+      "creative": {
+        "code_call": 0,
+        "code_qa": 0,
+        "creative": 7,
+        "long": 0,
+        "fast": 2,
+        "general": 1,
+        "unknown": 0,
+        "error": 0
+      },
+      "long": {
+        "code_call": 0,
+        "code_qa": 0,
+        "creative": 0,
+        "long": 1,
+        "fast": 0,
+        "general": 0,
+        "unknown": 0,
+        "error": 0
+      },
+      "fast": {
+        "code_call": 0,
+        "code_qa": 0,
+        "creative": 0,
+        "long": 0,
+        "fast": 9,
+        "general": 3,
+        "unknown": 0,
+        "error": 0
+      },
+      "general": {
+        "code_call": 0,
+        "code_qa": 0,
+        "creative": 1,
+        "long": 0,
+        "fast": 7,
+        "general": 4,
+        "unknown": 0,
+        "error": 0
+      },
+      "unknown": {
+        "code_call": 0,
+        "code_qa": 0,
+        "creative": 0,
+        "long": 0,
+        "fast": 0,
+        "general": 0,
+        "unknown": 0,
+        "error": 0
+      },
+      "error": {
+        "code_call": 0,
+        "code_qa": 0,
+        "creative": 0,
+        "long": 0,
+        "fast": 0,
+        "general": 0,
+        "unknown": 0,
+        "error": 0
+      }
+    },
+    "wrong_samples": [
+      {
+        "text": "帮我写个快速排序函数",
+        "expect": "code_call",
+        "actual": "general"
+      },
+      {
+        "text": "def 和 function 有什么区别?",
+        "expect": "code_qa",
+        "actual": "general"
+      },
+      {
+        "text": "RESTful API 设计原则有哪些?",
+        "expect": "code_qa",
+        "actual": "general"
+      },
+      {
+        "text": "编个故事哄孩子睡觉",
+        "expect": "creative",
+        "actual": "general"
+      },
+      {
+        "text": "编一个穿越小说开头",
+        "expect": "creative",
+        "actual": "fast"
+      },
+      {
+        "text": "编一个侦探故事开头",
+        "expect": "creative",
+        "actual": "fast"
+      },
+      {
+        "text": "北京到上海多少公里",
+        "expect": "fast",
+        "actual": "general"
+      },
+      {
+        "text": "中国首都是哪里",
+        "expect": "fast",
+        "actual": "general"
+      },
+      {
+        "text": "一杯咖啡多少卡路里",
+        "expect": "fast",
+        "actual": "general"
+      },
+      {
+        "text": "你好呀",
+        "expect": "general",
+        "actual": "fast"
+      },
+      {
+        "text": "在吗",
+        "expect": "general",
+        "actual": "fast"
+      },
+      {
+        "text": "今天心情不太好",
+        "expect": "general",
+        "actual": "fast"
+      },
+      {
+        "text": "工作好累啊",
+        "expect": "general",
+        "actual": "fast"
+      },
+      {
+        "text": "周末想出去走走",
+        "expect": "general",
+        "actual": "fast"
+      },
+      {
+        "text": "孩子不听话怎么办",
+        "expect": "general",
+        "actual": "creative"
+      },
+      {
+        "text": "推荐一部好看的电影",
+        "expect": "general",
+        "actual": "fast"
+      },
+      {
+        "text": "新能源汽车哪个牌子好",
+        "expect": "general",
+        "actual": "fast"
+      }
+    ]
+  },
+  "fastlane": {
+    "label": "fastlane_regex",
+    "n": 59,
+    "accuracy": 0.7119,
+    "latency_ms": {
+      "p50": 0,
+      "p95": 0,
+      "max": 0
+    },
+    "by_class": {
+      "code_call": {
+        "total": 12,
+        "match": 12,
+        "accuracy": 1.0
+      },
+      "code_qa": {
+        "total": 12,
+        "match": 11,
+        "accuracy": 0.9167
+      },
+      "creative": {
+        "total": 10,
+        "match": 0,
+        "accuracy": 0.0
+      },
+      "long": {
+        "total": 1,
+        "match": 0,
+        "accuracy": 0.0
+      },
+      "fast": {
+        "total": 12,
+        "match": 7,
+        "accuracy": 0.5833
+      },
+      "general": {
+        "total": 12,
+        "match": 12,
+        "accuracy": 1.0
+      }
+    },
+    "confusion_matrix": {
+      "code_call": {
+        "code_call": 12,
+        "code_qa": 0,
+        "creative": 0,
+        "long": 0,
+        "fast": 0,
+        "general": 0,
+        "unknown": 0,
+        "error": 0
+      },
+      "code_qa": {
+        "code_call": 1,
+        "code_qa": 11,
+        "creative": 0,
+        "long": 0,
+        "fast": 0,
+        "general": 0,
+        "unknown": 0,
+        "error": 0
+      },
+      "creative": {
+        "code_call": 1,
+        "code_qa": 0,
+        "creative": 0,
+        "long": 0,
+        "fast": 0,
+        "general": 9,
+        "unknown": 0,
+        "error": 0
+      },
+      "long": {
+        "code_call": 1,
+        "code_qa": 0,
+        "creative": 0,
+        "long": 0,
+        "fast": 0,
+        "general": 0,
+        "unknown": 0,
+        "error": 0
+      },
+      "fast": {
+        "code_call": 1,
+        "code_qa": 0,
+        "creative": 0,
+        "long": 0,
+        "fast": 7,
+        "general": 4,
+        "unknown": 0,
+        "error": 0
+      },
+      "general": {
+        "code_call": 0,
+        "code_qa": 0,
+        "creative": 0,
+        "long": 0,
+        "fast": 0,
+        "general": 12,
+        "unknown": 0,
+        "error": 0
+      },
+      "unknown": {
+        "code_call": 0,
+        "code_qa": 0,
+        "creative": 0,
+        "long": 0,
+        "fast": 0,
+        "general": 0,
+        "unknown": 0,
+        "error": 0
+      },
+      "error": {
+        "code_call": 0,
+        "code_qa": 0,
+        "creative": 0,
+        "long": 0,
+        "fast": 0,
+        "general": 0,
+        "unknown": 0,
+        "error": 0
+      }
+    },
+    "wrong_samples": [
+      {
+        "text": "RESTful API 设计原则有哪些?",
+        "expect": "code_qa",
+        "actual": "code_call"
+      },
+      {
+        "text": "写首诗关于秋天的落叶",
+        "expect": "creative",
+        "actual": "general"
+      },
+      {
+        "text": "编个故事哄孩子睡觉",
+        "expect": "creative",
+        "actual": "general"
+      },
+      {
+        "text": "起个产品名叫'智能便签'",
+        "expect": "creative",
+        "actual": "general"
+      },
+      {
+        "text": "想个 slogan 关于云端笔记",
+        "expect": "creative",
+        "actual": "general"
+      },
+      {
+        "text": "写首词赞颂桂花",
+        "expect": "creative",
+        "actual": "general"
+      },
+      {
+        "text": "写一段产品宣传文案",
+        "expect": "creative",
+        "actual": "general"
+      },
+      {
+        "text": "编一个穿越小说开头",
+        "expect": "creative",
+        "actual": "general"
+      },
+      {
+        "text": "写个广告语卖无线耳机",
+        "expect": "creative",
+        "actual": "code_call"
+      },
+      {
+        "text": "编一个侦探故事开头",
+        "expect": "creative",
+        "actual": "general"
+      },
+      {
+        "text": "写首宋词关于元宵",
+        "expect": "creative",
+        "actual": "general"
+      },
+      {
+        "text": "请帮我审阅以下文档内容,提取关键信息并给出修改建议:\n\n本章详细讨论了分布式系统",
+        "expect": "long",
+        "actual": "code_call"
+      },
+      {
+        "text": "今天日期",
+        "expect": "fast",
+        "actual": "general"
+      },
+      {
+        "text": "现在几点了",
+        "expect": "fast",
+        "actual": "general"
+      },
+      {
+        "text": "Python 是什么的缩写",
+        "expect": "fast",
+        "actual": "code_call"
+      },
+      {
+        "text": "AI 的英文全称",
+        "expect": "fast",
+        "actual": "general"
+      },
+      {
+        "text": "中国首都是哪里",
+        "expect": "fast",
+        "actual": "general"
+      }
+    ]
+  },
+  "details": {
+    "local": [
+      {
+        "i": 1,
+        "expect": "code_call",
+        "actual": "general",
+        "match": false,
+        "conf": 0.0,
+        "elapsed_ms": 26369,
+        "ok": true,
+        "text_preview": "帮我写个快速排序函数"
+      },
+      {
+        "i": 2,
+        "expect": "code_call",
+        "actual": "code_call",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 5376,
+        "ok": true,
+        "text_preview": "写一个 Python 装饰器"
+      },
+      {
+        "i": 3,
+        "expect": "code_call",
+        "actual": "code_call",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 5552,
+        "ok": true,
+        "text_preview": "实现一个链表反转"
+      },
+      {
+        "i": 4,
+        "expect": "code_call",
+        "actual": "code_call",
+        "match": true,
+        "conf": 1.0015,
+        "elapsed_ms": 5352,
+        "ok": true,
+        "text_preview": "debug 一下报 null 的 bug"
+      },
+      {
+        "i": 5,
+        "expect": "code_call",
+        "actual": "code_call",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 5487,
+        "ok": true,
+        "text_preview": "写个 bash 脚本批量备份"
+      },
+      {
+        "i": 6,
+        "expect": "code_call",
+        "actual": "code_call",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 5388,
+        "ok": true,
+        "text_preview": "实现一个 LRU 缓存"
+      },
+      {
+        "i": 7,
+        "expect": "code_call",
+        "actual": "code_call",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 5293,
+        "ok": true,
+        "text_preview": "帮我写个 React 组件渲染列表"
+      },
+      {
+        "i": 8,
+        "expect": "code_call",
+        "actual": "code_call",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 4795,
+        "ok": true,
+        "text_preview": "实现一个生产者消费者模型"
+      },
+      {
+        "i": 9,
+        "expect": "code_call",
+        "actual": "code_call",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 5197,
+        "ok": true,
+        "text_preview": "帮我写个爬虫抓取豆瓣电影 Top250"
+      },
+      {
+        "i": 10,
+        "expect": "code_call",
+        "actual": "code_call",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 5053,
+        "ok": true,
+        "text_preview": "写一个 sql 查询最近 7 天登录的用户"
+      },
+      {
+        "i": 11,
+        "expect": "code_call",
+        "actual": "code_call",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 4177,
+        "ok": true,
+        "text_preview": "帮我写一个 docker-compose 多服务编排"
+      },
+      {
+        "i": 12,
+        "expect": "code_call",
+        "actual": "code_call",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 4944,
+        "ok": true,
+        "text_preview": "实现一个最小栈(O(1) getMin)"
+      },
+      {
+        "i": 13,
+        "expect": "code_qa",
+        "actual": "code_qa",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 5005,
+        "ok": true,
+        "text_preview": "什么是装饰器?"
+      },
+      {
+        "i": 14,
+        "expect": "code_qa",
+        "actual": "code_qa",
+        "match": true,
+        "conf": 0.0,
+        "elapsed_ms": 5133,
+        "ok": true,
+        "text_preview": "Python GIL 怎么解决?"
+      },
+      {
+        "i": 15,
+        "expect": "code_qa",
+        "actual": "general",
+        "match": false,
+        "conf": 0.0,
+        "elapsed_ms": 4990,
+        "ok": true,
+        "text_preview": "def 和 function 有什么区别?"
+      },
+      {
+        "i": 16,
+        "expect": "code_qa",
+        "actual": "code_qa",
+        "match": true,
+        "conf": 0.0,
+        "elapsed_ms": 5148,
+        "ok": true,
+        "text_preview": "闭包的原理是什么?"
+      },
+      {
+        "i": 17,
+        "expect": "code_qa",
+        "actual": "code_qa",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 5269,
+        "ok": true,
+        "text_preview": "async 跟 await 怎么用?"
+      },
+      {
+        "i": 18,
+        "expect": "code_qa",
+        "actual": "code_qa",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 5017,
+        "ok": true,
+        "text_preview": "sql 索引 explain 怎么看?"
+      },
+      {
+        "i": 19,
+        "expect": "code_qa",
+        "actual": "code_qa",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 4819,
+        "ok": true,
+        "text_preview": "解释一下 Git rebase 的原理"
+      },
+      {
+        "i": 20,
+        "expect": "code_qa",
+        "actual": "code_qa",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 5090,
+        "ok": true,
+        "text_preview": "Python 装饰器和闭包有什么区别?"
+      },
+      {
+        "i": 21,
+        "expect": "code_qa",
+        "actual": "code_qa",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 5343,
+        "ok": true,
+        "text_preview": "什么是协程?跟线程比有什么优劣?"
+      },
+      {
+        "i": 22,
+        "expect": "code_qa",
+        "actual": "code_qa",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 4956,
+        "ok": true,
+        "text_preview": "进程线程协程的区别是什么?"
+      },
+      {
+        "i": 23,
+        "expect": "code_qa",
+        "actual": "code_qa",
+        "match": true,
+        "conf": 0.0,
+        "elapsed_ms": 5219,
+        "ok": true,
+        "text_preview": "Python 多线程为什么慢?GIL 是元凶?"
+      },
+      {
+        "i": 24,
+        "expect": "code_qa",
+        "actual": "general",
+        "match": false,
+        "conf": 0.0,
+        "elapsed_ms": 4930,
+        "ok": true,
+        "text_preview": "RESTful API 设计原则有哪些?"
+      },
+      {
+        "i": 25,
+        "expect": "creative",
+        "actual": "creative",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 5167,
+        "ok": true,
+        "text_preview": "写首诗关于秋天的落叶"
+      },
+      {
+        "i": 26,
+        "expect": "creative",
+        "actual": "general",
+        "match": false,
+        "conf": 0.0,
+        "elapsed_ms": 5412,
+        "ok": true,
+        "text_preview": "编个故事哄孩子睡觉"
+      },
+      {
+        "i": 27,
+        "expect": "creative",
+        "actual": "creative",
+        "match": true,
+        "conf": 0.0,
+        "elapsed_ms": 5479,
+        "ok": true,
+        "text_preview": "起个产品名叫'智能便签'"
+      },
+      {
+        "i": 28,
+        "expect": "creative",
+        "actual": "creative",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 5342,
+        "ok": true,
+        "text_preview": "想个 slogan 关于云端笔记"
+      },
+      {
+        "i": 29,
+        "expect": "creative",
+        "actual": "creative",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 5238,
+        "ok": true,
+        "text_preview": "写首词赞颂桂花"
+      },
+      {
+        "i": 30,
+        "expect": "creative",
+        "actual": "creative",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 5116,
+        "ok": true,
+        "text_preview": "写一段产品宣传文案"
+      },
+      {
+        "i": 31,
+        "expect": "creative",
+        "actual": "fast",
+        "match": false,
+        "conf": 1.0,
+        "elapsed_ms": 5139,
+        "ok": true,
+        "text_preview": "编一个穿越小说开头"
+      },
+      {
+        "i": 32,
+        "expect": "creative",
+        "actual": "creative",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 5234,
+        "ok": true,
+        "text_preview": "写个广告语卖无线耳机"
+      },
+      {
+        "i": 33,
+        "expect": "creative",
+        "actual": "fast",
+        "match": false,
+        "conf": 1.0,
+        "elapsed_ms": 5372,
+        "ok": true,
+        "text_preview": "编一个侦探故事开头"
+      },
+      {
+        "i": 34,
+        "expect": "creative",
+        "actual": "creative",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 5207,
+        "ok": true,
+        "text_preview": "写首宋词关于元宵"
+      },
+      {
+        "i": 35,
+        "expect": "long",
+        "actual": "long",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 25774,
+        "ok": true,
+        "text_preview": "请帮我审阅以下文档内容,提取关键信息并给出修改建议:\n\n本章详细讨论了分布式系统"
+      },
+      {
+        "i": 36,
+        "expect": "fast",
+        "actual": "fast",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 4987,
+        "ok": true,
+        "text_preview": "今天天气怎么样"
+      },
+      {
+        "i": 37,
+        "expect": "fast",
+        "actual": "fast",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 4584,
+        "ok": true,
+        "text_preview": "翻译你好"
+      },
+      {
+        "i": 38,
+        "expect": "fast",
+        "actual": "fast",
+        "match": true,
+        "conf": 0.0,
+        "elapsed_ms": 4724,
+        "ok": true,
+        "text_preview": "VSCode 的缩写是什么"
+      },
+      {
+        "i": 39,
+        "expect": "fast",
+        "actual": "fast",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 4442,
+        "ok": true,
+        "text_preview": "今天日期"
+      },
+      {
+        "i": 40,
+        "expect": "fast",
+        "actual": "fast",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 4497,
+        "ok": true,
+        "text_preview": "现在几点了"
+      },
+      {
+        "i": 41,
+        "expect": "fast",
+        "actual": "general",
+        "match": false,
+        "conf": 1.0012,
+        "elapsed_ms": 4978,
+        "ok": true,
+        "text_preview": "北京到上海多少公里"
+      },
+      {
+        "i": 42,
+        "expect": "fast",
+        "actual": "fast",
+        "match": true,
+        "conf": 0.0,
+        "elapsed_ms": 4843,
+        "ok": true,
+        "text_preview": "Python 是什么的缩写"
+      },
+      {
+        "i": 43,
+        "expect": "fast",
+        "actual": "fast",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 4459,
+        "ok": true,
+        "text_preview": "AI 的英文全称"
+      },
+      {
+        "i": 44,
+        "expect": "fast",
+        "actual": "fast",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 4558,
+        "ok": true,
+        "text_preview": "USD 是什么货币"
+      },
+      {
+        "i": 45,
+        "expect": "fast",
+        "actual": "fast",
+        "match": true,
+        "conf": 0.0,
+        "elapsed_ms": 4645,
+        "ok": true,
+        "text_preview": "WiFi 是什么缩写"
+      },
+      {
+        "i": 46,
+        "expect": "fast",
+        "actual": "general",
+        "match": false,
+        "conf": 0.0,
+        "elapsed_ms": 5077,
+        "ok": true,
+        "text_preview": "中国首都是哪里"
+      },
+      {
+        "i": 47,
+        "expect": "fast",
+        "actual": "general",
+        "match": false,
+        "conf": 0.0,
+        "elapsed_ms": 4813,
+        "ok": true,
+        "text_preview": "一杯咖啡多少卡路里"
+      },
+      {
+        "i": 48,
+        "expect": "general",
+        "actual": "fast",
+        "match": false,
+        "conf": 1.0,
+        "elapsed_ms": 5204,
+        "ok": true,
+        "text_preview": "你好呀"
+      },
+      {
+        "i": 49,
+        "expect": "general",
+        "actual": "fast",
+        "match": false,
+        "conf": 1.0,
+        "elapsed_ms": 4363,
+        "ok": true,
+        "text_preview": "在吗"
+      },
+      {
+        "i": 50,
+        "expect": "general",
+        "actual": "fast",
+        "match": false,
+        "conf": 1.0,
+        "elapsed_ms": 4539,
+        "ok": true,
+        "text_preview": "今天心情不太好"
+      },
+      {
+        "i": 51,
+        "expect": "general",
+        "actual": "fast",
+        "match": false,
+        "conf": 1.0,
+        "elapsed_ms": 4493,
+        "ok": true,
+        "text_preview": "工作好累啊"
+      },
+      {
+        "i": 52,
+        "expect": "general",
+        "actual": "general",
+        "match": true,
+        "conf": 0.0,
+        "elapsed_ms": 5143,
+        "ok": true,
+        "text_preview": "推荐几本好看的书"
+      },
+      {
+        "i": 53,
+        "expect": "general",
+        "actual": "fast",
+        "match": false,
+        "conf": 1.0,
+        "elapsed_ms": 5126,
+        "ok": true,
+        "text_preview": "周末想出去走走"
+      },
+      {
+        "i": 54,
+        "expect": "general",
+        "actual": "creative",
+        "match": false,
+        "conf": 0.0,
+        "elapsed_ms": 5069,
+        "ok": true,
+        "text_preview": "孩子不听话怎么办"
+      },
+      {
+        "i": 55,
+        "expect": "general",
+        "actual": "fast",
+        "match": false,
+        "conf": 1.0,
+        "elapsed_ms": 5055,
+        "ok": true,
+        "text_preview": "推荐一部好看的电影"
+      },
+      {
+        "i": 56,
+        "expect": "general",
+        "actual": "fast",
+        "match": false,
+        "conf": 1.0,
+        "elapsed_ms": 5281,
+        "ok": true,
+        "text_preview": "新能源汽车哪个牌子好"
+      },
+      {
+        "i": 57,
+        "expect": "general",
+        "actual": "general",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 5074,
+        "ok": true,
+        "text_preview": "考研需要准备什么"
+      },
+      {
+        "i": 58,
+        "expect": "general",
+        "actual": "general",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 5198,
+        "ok": true,
+        "text_preview": "推荐几款好用的耳机"
+      },
+      {
+        "i": 59,
+        "expect": "general",
+        "actual": "general",
+        "match": true,
+        "conf": 1.0,
+        "elapsed_ms": 5018,
+        "ok": true,
+        "text_preview": "晚上吃什么好"
+      }
+    ],
+    "fastlane": true
+  }
+}

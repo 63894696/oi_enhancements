@@ -1,0 +1,1742 @@
+[
+  {
+    "id": "perf.s.024",
+    "scenario": "perf",
+    "expect": "medium",
+    "text": "{\"ts\": \"2026-09-23T20:45:00Z\", \"cpu\": {\"pct\": 72, \"count\": 8, \"freq_mhz\": 4200}, \"memory\": {\"used_pct\": 82, \"used_gb\": 33, \"total_gb\": 40, \"available_gb\": 7}, \"net\": {\"n_total\": 6, \"n_up\": 5, \"nics\": [{\"nic\": \"Wi-Fi\", \"isup\": true}, {\"nic\": \"Hyper-V Virtual Ethernet Adapter\", \"isup\": false}]}, \"system\": {\"uptime_s\": 259200, \"user\": \"Administrator\"}, \"crash\": {\"bugcheck_count\": 0, \"kp41_count\": 0}}",
+    "sample": {
+      "ts": "2026-09-23T20:45:00Z",
+      "cpu": {
+        "pct": 72,
+        "count": 8,
+        "freq_mhz": 4200
+      },
+      "memory": {
+        "used_pct": 82,
+        "used_gb": 33,
+        "total_gb": 40,
+        "available_gb": 7
+      },
+      "net": {
+        "n_total": 6,
+        "n_up": 5,
+        "nics": [
+          {
+            "nic": "Wi-Fi",
+            "isup": true
+          },
+          {
+            "nic": "Hyper-V Virtual Ethernet Adapter",
+            "isup": false
+          }
+        ]
+      },
+      "system": {
+        "uptime_s": 259200,
+        "user": "Administrator"
+      },
+      "crash": {
+        "bugcheck_count": 0,
+        "kp41_count": 0
+      }
+    },
+    "tags": [
+      "synthetic",
+      "medium"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造 perf 快照"
+  },
+  {
+    "id": "perf.h.009",
+    "scenario": "perf",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "alert",
+    "text": "性能采样: 6 个 TAP miniport disconnected (tap0901 / tapprotonvpn / vktap), ndis 启动期扫描慢\n问: 这个性能快照的风险等级和推荐处理动作?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_perf_v2.jsonl 抽出 (seed=42, idx=9) — 训练时排除"
+  },
+  {
+    "id": "perf.s.012",
+    "scenario": "perf",
+    "expect": "high",
+    "text": "{\"ts\": \"2026-09-23T13:15:00Z\", \"cpu\": {\"pct\": 92, \"count\": 6, \"freq_mhz\": 3696}, \"memory\": {\"used_pct\": 88, \"used_gb\": 28, \"total_gb\": 32, \"available_gb\": 4}, \"net\": {\"n_total\": 7, \"n_up\": 6, \"nics\": [{\"nic\": \"ProtonVPN TAP\", \"isup\": false}]}, \"system\": {\"uptime_s\": 14400, \"user\": \"Administrator\"}, \"crash\": {\"bugcheck_count\": 0, \"kp41_count\": 0}}",
+    "sample": {
+      "ts": "2026-09-23T13:15:00Z",
+      "cpu": {
+        "pct": 92,
+        "count": 6,
+        "freq_mhz": 3696
+      },
+      "memory": {
+        "used_pct": 88,
+        "used_gb": 28,
+        "total_gb": 32,
+        "available_gb": 4
+      },
+      "net": {
+        "n_total": 7,
+        "n_up": 6,
+        "nics": [
+          {
+            "nic": "ProtonVPN TAP",
+            "isup": false
+          }
+        ]
+      },
+      "system": {
+        "uptime_s": 14400,
+        "user": "Administrator"
+      },
+      "crash": {
+        "bugcheck_count": 0,
+        "kp41_count": 0
+      }
+    },
+    "tags": [
+      "synthetic",
+      "high"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造 perf 快照"
+  },
+  {
+    "id": "perf.h.023",
+    "scenario": "perf",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "keep",
+    "text": "性能采样: cpu 48%, 容器启动一次成功, ISLC 触发 standby 清零\n问: 这个性能快照的风险等级和推荐处理动作?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_perf_v2.jsonl 抽出 (seed=42, idx=23) — 训练时排除"
+  },
+  {
+    "id": "perf.s.028",
+    "scenario": "perf",
+    "expect": "critical",
+    "text": "{\"ts\": \"2026-09-23T22:00:00Z\", \"cpu\": {\"pct\": 100, \"count\": 8, \"freq_mhz\": 4200}, \"memory\": {\"used_pct\": 98, \"used_gb\": 39, \"total_gb\": 40, \"available_gb\": 1}, \"net\": {\"n_total\": 10, \"n_up\": 3, \"nics\": [{\"nic\": \"ProtonVPN TAP\", \"isup\": false}, {\"nic\": \"OpenVPN TAP\", \"isup\": false}, {\"nic\": \"WireGuard Tunnel\", \"isup\": false}]}, \"system\": {\"uptime_s\": 3600, \"user\": \"Administrator\"}, \"crash\": {\"bugcheck_count\": 2, \"kp41_count\": 2}}",
+    "sample": {
+      "ts": "2026-09-23T22:00:00Z",
+      "cpu": {
+        "pct": 100,
+        "count": 8,
+        "freq_mhz": 4200
+      },
+      "memory": {
+        "used_pct": 98,
+        "used_gb": 39,
+        "total_gb": 40,
+        "available_gb": 1
+      },
+      "net": {
+        "n_total": 10,
+        "n_up": 3,
+        "nics": [
+          {
+            "nic": "ProtonVPN TAP",
+            "isup": false
+          },
+          {
+            "nic": "OpenVPN TAP",
+            "isup": false
+          },
+          {
+            "nic": "WireGuard Tunnel",
+            "isup": false
+          }
+        ]
+      },
+      "system": {
+        "uptime_s": 3600,
+        "user": "Administrator"
+      },
+      "crash": {
+        "bugcheck_count": 2,
+        "kp41_count": 2
+      }
+    },
+    "tags": [
+      "synthetic",
+      "critical"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造 perf 快照"
+  },
+  {
+    "id": "perf.s.001",
+    "scenario": "perf",
+    "expect": "safe",
+    "text": "{\"ts\": \"2026-09-23T08:00:00Z\", \"cpu\": {\"pct\": 8, \"count\": 6, \"freq_mhz\": 3696}, \"memory\": {\"used_pct\": 25, \"used_gb\": 8, \"total_gb\": 32, \"available_gb\": 24}, \"net\": {\"n_total\": 3, \"n_up\": 3, \"nics\": []}, \"system\": {\"uptime_s\": 3600, \"user\": \"Administrator\"}, \"crash\": {\"bugcheck_count\": 0, \"kp41_count\": 0}}",
+    "sample": {
+      "ts": "2026-09-23T08:00:00Z",
+      "cpu": {
+        "pct": 8,
+        "count": 6,
+        "freq_mhz": 3696
+      },
+      "memory": {
+        "used_pct": 25,
+        "used_gb": 8,
+        "total_gb": 32,
+        "available_gb": 24
+      },
+      "net": {
+        "n_total": 3,
+        "n_up": 3,
+        "nics": []
+      },
+      "system": {
+        "uptime_s": 3600,
+        "user": "Administrator"
+      },
+      "crash": {
+        "bugcheck_count": 0,
+        "kp41_count": 0
+      }
+    },
+    "tags": [
+      "synthetic",
+      "safe"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造 perf 快照"
+  },
+  {
+    "id": "perf.s.029",
+    "scenario": "perf",
+    "expect": "critical",
+    "text": "{\"ts\": \"2026-09-23T22:00:00Z\", \"cpu\": {\"pct\": 100, \"count\": 8, \"freq_mhz\": 4200}, \"memory\": {\"used_pct\": 98, \"used_gb\": 39, \"total_gb\": 40, \"available_gb\": 1}, \"net\": {\"n_total\": 10, \"n_up\": 3, \"nics\": [{\"nic\": \"ProtonVPN TAP\", \"isup\": false}, {\"nic\": \"OpenVPN TAP\", \"isup\": false}, {\"nic\": \"WireGuard Tunnel\", \"isup\": false}]}, \"system\": {\"uptime_s\": 3600, \"user\": \"Administrator\"}, \"crash\": {\"bugcheck_count\": 2, \"kp41_count\": 2}}",
+    "sample": {
+      "ts": "2026-09-23T22:00:00Z",
+      "cpu": {
+        "pct": 100,
+        "count": 8,
+        "freq_mhz": 4200
+      },
+      "memory": {
+        "used_pct": 98,
+        "used_gb": 39,
+        "total_gb": 40,
+        "available_gb": 1
+      },
+      "net": {
+        "n_total": 10,
+        "n_up": 3,
+        "nics": [
+          {
+            "nic": "ProtonVPN TAP",
+            "isup": false
+          },
+          {
+            "nic": "OpenVPN TAP",
+            "isup": false
+          },
+          {
+            "nic": "WireGuard Tunnel",
+            "isup": false
+          }
+        ]
+      },
+      "system": {
+        "uptime_s": 3600,
+        "user": "Administrator"
+      },
+      "crash": {
+        "bugcheck_count": 2,
+        "kp41_count": 2
+      }
+    },
+    "tags": [
+      "synthetic",
+      "critical"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造 perf 快照"
+  },
+  {
+    "id": "perf.s.008",
+    "scenario": "perf",
+    "expect": "medium",
+    "text": "{\"ts\": \"2026-09-23T11:00:00Z\", \"cpu\": {\"pct\": 65, \"count\": 6, \"freq_mhz\": 3696}, \"memory\": {\"used_pct\": 78, \"used_gb\": 25, \"total_gb\": 32, \"available_gb\": 7}, \"net\": {\"n_total\": 5, \"n_up\": 5, \"nics\": []}, \"system\": {\"uptime_s\": 10800, \"user\": \"Administrator\"}, \"crash\": {\"bugcheck_count\": 0, \"kp41_count\": 0}}",
+    "sample": {
+      "ts": "2026-09-23T11:00:00Z",
+      "cpu": {
+        "pct": 65,
+        "count": 6,
+        "freq_mhz": 3696
+      },
+      "memory": {
+        "used_pct": 78,
+        "used_gb": 25,
+        "total_gb": 32,
+        "available_gb": 7
+      },
+      "net": {
+        "n_total": 5,
+        "n_up": 5,
+        "nics": []
+      },
+      "system": {
+        "uptime_s": 10800,
+        "user": "Administrator"
+      },
+      "crash": {
+        "bugcheck_count": 0,
+        "kp41_count": 0
+      }
+    },
+    "tags": [
+      "synthetic",
+      "medium"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造 perf 快照"
+  },
+  {
+    "id": "perf.h.020",
+    "scenario": "perf",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "alert",
+    "text": "性能采样: 3 个 TAP miniport disconnected (tap0901 / tapprotonvpn / vktap), ndis 启动期扫描慢\n问: 这个性能快照的风险等级和推荐处理动作?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_perf_v2.jsonl 抽出 (seed=42, idx=20) — 训练时排除"
+  },
+  {
+    "id": "perf.s.015",
+    "scenario": "perf",
+    "expect": "critical",
+    "text": "{\"ts\": \"2026-09-23T14:42:00Z\", \"cpu\": {\"pct\": 99, \"count\": 6, \"freq_mhz\": 3696}, \"memory\": {\"used_pct\": 95, \"used_gb\": 30, \"total_gb\": 32, \"available_gb\": 2}, \"net\": {\"n_total\": 9, \"n_up\": 5, \"nics\": [{\"nic\": \"ProtonVPN TAP\", \"isup\": false}, {\"nic\": \"OpenVPN TAP\", \"isup\": false}]}, \"system\": {\"uptime_s\": 800, \"user\": \"Administrator\"}, \"crash\": {\"bugcheck_count\": 1, \"kp41_count\": 1}}",
+    "sample": {
+      "ts": "2026-09-23T14:42:00Z",
+      "cpu": {
+        "pct": 99,
+        "count": 6,
+        "freq_mhz": 3696
+      },
+      "memory": {
+        "used_pct": 95,
+        "used_gb": 30,
+        "total_gb": 32,
+        "available_gb": 2
+      },
+      "net": {
+        "n_total": 9,
+        "n_up": 5,
+        "nics": [
+          {
+            "nic": "ProtonVPN TAP",
+            "isup": false
+          },
+          {
+            "nic": "OpenVPN TAP",
+            "isup": false
+          }
+        ]
+      },
+      "system": {
+        "uptime_s": 800,
+        "user": "Administrator"
+      },
+      "crash": {
+        "bugcheck_count": 1,
+        "kp41_count": 1
+      }
+    },
+    "tags": [
+      "synthetic",
+      "critical"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造 perf 快照"
+  },
+  {
+    "id": "perf.h.022",
+    "scenario": "perf",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "",
+    "text": "性能采样: 时间戳 10:15 UTC, 网络: 6 up / 3 down, CPU 空闲温度 20°C 频率 3.7GHz, BugCheck fingerprint: [CPU 293K (20°C) 空闲, idle 状态 NIC compliance 触发, CPU 频率 800MHz idle]\n问: 这个性能快照的风险等级和推荐处理动作?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_perf_v2.jsonl 抽出 (seed=42, idx=22) — 训练时排除"
+  },
+  {
+    "id": "perf.s.027",
+    "scenario": "perf",
+    "expect": "high",
+    "text": "{\"ts\": \"2026-09-23T21:15:00Z\", \"cpu\": {\"pct\": 88, \"count\": 8, \"freq_mhz\": 4200}, \"memory\": {\"used_pct\": 91, \"used_gb\": 36, \"total_gb\": 40, \"available_gb\": 4}, \"net\": {\"n_total\": 7, \"n_up\": 4, \"nics\": [{\"nic\": \"WireGuard Tunnel\", \"isup\": false}, {\"nic\": \"ProtonVPN TAP\", \"isup\": false}]}, \"system\": {\"uptime_s\": 604800, \"user\": \"Administrator\"}, \"crash\": {\"bugcheck_count\": 0, \"kp41_count\": 1}}",
+    "sample": {
+      "ts": "2026-09-23T21:15:00Z",
+      "cpu": {
+        "pct": 88,
+        "count": 8,
+        "freq_mhz": 4200
+      },
+      "memory": {
+        "used_pct": 91,
+        "used_gb": 36,
+        "total_gb": 40,
+        "available_gb": 4
+      },
+      "net": {
+        "n_total": 7,
+        "n_up": 4,
+        "nics": [
+          {
+            "nic": "WireGuard Tunnel",
+            "isup": false
+          },
+          {
+            "nic": "ProtonVPN TAP",
+            "isup": false
+          }
+        ]
+      },
+      "system": {
+        "uptime_s": 604800,
+        "user": "Administrator"
+      },
+      "crash": {
+        "bugcheck_count": 0,
+        "kp41_count": 1
+      }
+    },
+    "tags": [
+      "synthetic",
+      "high"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造 perf 快照"
+  },
+  {
+    "id": "perf.h.007",
+    "scenario": "perf",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "alert",
+    "text": "性能采样: cpu 85% 持续 25 秒, 内存剩余 3GB, ProBalance 触发, 工作集 trim 后回到 94%\n问: 这个性能快照的风险等级和推荐处理动作?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_perf_v2.jsonl 抽出 (seed=42, idx=7) — 训练时排除"
+  },
+  {
+    "id": "perf.h.001",
+    "scenario": "perf",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "keep",
+    "text": "性能采样: cron job 完成, 内存释放 1GB, ProBalance 触发零次\n问: 这个性能快照的风险等级和推荐处理动作?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_perf_v2.jsonl 抽出 (seed=42, idx=1) — 训练时排除"
+  },
+  {
+    "id": "perf.h.012",
+    "scenario": "perf",
+    "expect": "critical",
+    "risk_label": "critical",
+    "_action": "",
+    "text": "性能采样: 时间戳 02:50 UTC, 网络: 6 up / 3 down, CPU 空闲温度 20°C 频率 3.7GHz, BugCheck fingerprint: [夜间 03:26 UTC, 02:50 UTC NIC compliance, 凌晨 03:00 BSOD, idle 期间 NIC 扫合规, 7 天内 4 次 BugCheck]\n问: 这个性能快照的风险等级和推荐处理动作?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_perf_v2.jsonl 抽出 (seed=42, idx=12) — 训练时排除"
+  },
+  {
+    "id": "perf.s.026",
+    "scenario": "perf",
+    "expect": "high",
+    "text": "{\"ts\": \"2026-09-23T21:15:00Z\", \"cpu\": {\"pct\": 88, \"count\": 8, \"freq_mhz\": 4200}, \"memory\": {\"used_pct\": 91, \"used_gb\": 36, \"total_gb\": 40, \"available_gb\": 4}, \"net\": {\"n_total\": 7, \"n_up\": 4, \"nics\": [{\"nic\": \"WireGuard Tunnel\", \"isup\": false}, {\"nic\": \"ProtonVPN TAP\", \"isup\": false}]}, \"system\": {\"uptime_s\": 604800, \"user\": \"Administrator\"}, \"crash\": {\"bugcheck_count\": 0, \"kp41_count\": 1}}",
+    "sample": {
+      "ts": "2026-09-23T21:15:00Z",
+      "cpu": {
+        "pct": 88,
+        "count": 8,
+        "freq_mhz": 4200
+      },
+      "memory": {
+        "used_pct": 91,
+        "used_gb": 36,
+        "total_gb": 40,
+        "available_gb": 4
+      },
+      "net": {
+        "n_total": 7,
+        "n_up": 4,
+        "nics": [
+          {
+            "nic": "WireGuard Tunnel",
+            "isup": false
+          },
+          {
+            "nic": "ProtonVPN TAP",
+            "isup": false
+          }
+        ]
+      },
+      "system": {
+        "uptime_s": 604800,
+        "user": "Administrator"
+      },
+      "crash": {
+        "bugcheck_count": 0,
+        "kp41_count": 1
+      }
+    },
+    "tags": [
+      "synthetic",
+      "high"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造 perf 快照"
+  },
+  {
+    "id": "perf.s.011",
+    "scenario": "perf",
+    "expect": "high",
+    "text": "{\"ts\": \"2026-09-23T13:15:00Z\", \"cpu\": {\"pct\": 92, \"count\": 6, \"freq_mhz\": 3696}, \"memory\": {\"used_pct\": 88, \"used_gb\": 28, \"total_gb\": 32, \"available_gb\": 4}, \"net\": {\"n_total\": 7, \"n_up\": 6, \"nics\": [{\"nic\": \"ProtonVPN TAP\", \"isup\": false}]}, \"system\": {\"uptime_s\": 14400, \"user\": \"Administrator\"}, \"crash\": {\"bugcheck_count\": 0, \"kp41_count\": 0}}",
+    "sample": {
+      "ts": "2026-09-23T13:15:00Z",
+      "cpu": {
+        "pct": 92,
+        "count": 6,
+        "freq_mhz": 3696
+      },
+      "memory": {
+        "used_pct": 88,
+        "used_gb": 28,
+        "total_gb": 32,
+        "available_gb": 4
+      },
+      "net": {
+        "n_total": 7,
+        "n_up": 6,
+        "nics": [
+          {
+            "nic": "ProtonVPN TAP",
+            "isup": false
+          }
+        ]
+      },
+      "system": {
+        "uptime_s": 14400,
+        "user": "Administrator"
+      },
+      "crash": {
+        "bugcheck_count": 0,
+        "kp41_count": 0
+      }
+    },
+    "tags": [
+      "synthetic",
+      "high"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造 perf 快照"
+  },
+  {
+    "id": "perf.h.018",
+    "scenario": "perf",
+    "expect": "safe",
+    "risk_label": "safe",
+    "_action": "keep",
+    "text": "性能采样: 空闲状态, cpu 6%, 内存 25GB available, 网络空闲\n问: 这个性能快照的风险等级和推荐处理动作?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_perf_v2.jsonl 抽出 (seed=42, idx=18) — 训练时排除"
+  },
+  {
+    "id": "perf.h.027",
+    "scenario": "perf",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "性能采样: 1 个 TAP disconnected, NIC compliance, cpu 80% 持续 10 秒, 内存空闲 5GB\n问: 这个性能快照的风险等级和推荐处理动作?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_perf_v2.jsonl 抽出 (seed=42, idx=27) — 训练时排除"
+  },
+  {
+    "id": "perf.h.019",
+    "scenario": "perf",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "keep",
+    "text": "性能采样: cron job 完成, 内存释放 1GB, ProBalance 触发零次\n问: 这个性能快照的风险等级和推荐处理动作?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_perf_v2.jsonl 抽出 (seed=42, idx=19) — 训练时排除"
+  },
+  {
+    "id": "perf.h.025",
+    "scenario": "perf",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "keep",
+    "text": "性能采样: cpu 50% 持续 2 分钟, 内存空闲 12GB, ProBalance 解禁, 一切正常\n问: 这个性能快照的风险等级和推荐处理动作?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_perf_v2.jsonl 抽出 (seed=42, idx=25) — 训练时排除"
+  },
+  {
+    "id": "perf.s.013",
+    "scenario": "perf",
+    "expect": "critical",
+    "text": "{\"ts\": \"2026-09-23T14:42:00Z\", \"cpu\": {\"pct\": 99, \"count\": 6, \"freq_mhz\": 3696}, \"memory\": {\"used_pct\": 95, \"used_gb\": 30, \"total_gb\": 32, \"available_gb\": 2}, \"net\": {\"n_total\": 9, \"n_up\": 5, \"nics\": [{\"nic\": \"ProtonVPN TAP\", \"isup\": false}, {\"nic\": \"OpenVPN TAP\", \"isup\": false}]}, \"system\": {\"uptime_s\": 800, \"user\": \"Administrator\"}, \"crash\": {\"bugcheck_count\": 1, \"kp41_count\": 1}}",
+    "sample": {
+      "ts": "2026-09-23T14:42:00Z",
+      "cpu": {
+        "pct": 99,
+        "count": 6,
+        "freq_mhz": 3696
+      },
+      "memory": {
+        "used_pct": 95,
+        "used_gb": 30,
+        "total_gb": 32,
+        "available_gb": 2
+      },
+      "net": {
+        "n_total": 9,
+        "n_up": 5,
+        "nics": [
+          {
+            "nic": "ProtonVPN TAP",
+            "isup": false
+          },
+          {
+            "nic": "OpenVPN TAP",
+            "isup": false
+          }
+        ]
+      },
+      "system": {
+        "uptime_s": 800,
+        "user": "Administrator"
+      },
+      "crash": {
+        "bugcheck_count": 1,
+        "kp41_count": 1
+      }
+    },
+    "tags": [
+      "synthetic",
+      "critical"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造 perf 快照"
+  },
+  {
+    "id": "perf.h.030",
+    "scenario": "perf",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "性能采样: standby list 3.5GB, free 内存 3GB, -1 个 TAP disconnected, ISLC 未启用\n问: 这个性能快照的风险等级和推荐处理动作?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_perf_v2.jsonl 抽出 (seed=42, idx=30) — 训练时排除"
+  },
+  {
+    "id": "perf.s.018",
+    "scenario": "perf",
+    "expect": "safe",
+    "text": "{\"ts\": \"2026-09-23T18:00:00Z\", \"cpu\": {\"pct\": 5, \"count\": 8, \"freq_mhz\": 4200}, \"memory\": {\"used_pct\": 30, \"used_gb\": 12, \"total_gb\": 40, \"available_gb\": 28}, \"net\": {\"n_total\": 3, \"n_up\": 3, \"nics\": []}, \"system\": {\"uptime_s\": 86400, \"user\": \"Administrator\"}, \"crash\": {\"bugcheck_count\": 0, \"kp41_count\": 0}}",
+    "sample": {
+      "ts": "2026-09-23T18:00:00Z",
+      "cpu": {
+        "pct": 5,
+        "count": 8,
+        "freq_mhz": 4200
+      },
+      "memory": {
+        "used_pct": 30,
+        "used_gb": 12,
+        "total_gb": 40,
+        "available_gb": 28
+      },
+      "net": {
+        "n_total": 3,
+        "n_up": 3,
+        "nics": []
+      },
+      "system": {
+        "uptime_s": 86400,
+        "user": "Administrator"
+      },
+      "crash": {
+        "bugcheck_count": 0,
+        "kp41_count": 0
+      }
+    },
+    "tags": [
+      "synthetic",
+      "safe"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造 perf 快照"
+  },
+  {
+    "id": "perf.h.028",
+    "scenario": "perf",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "性能采样: standby list 0.5GB, free 内存 3GB, 5 个 TAP disconnected, ISLC 未启用\n问: 这个性能快照的风险等级和推荐处理动作?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_perf_v2.jsonl 抽出 (seed=42, idx=28) — 训练时排除"
+  },
+  {
+    "id": "perf.h.002",
+    "scenario": "perf",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "alert",
+    "text": "性能采样: 3 个 TAP disconnected, ndis 启动期扫 NIC, Kernel-Power 41 触发 4 次\n问: 这个性能快照的风险等级和推荐处理动作?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_perf_v2.jsonl 抽出 (seed=42, idx=2) — 训练时排除"
+  },
+  {
+    "id": "perf.h.026",
+    "scenario": "perf",
+    "expect": "safe",
+    "risk_label": "safe",
+    "_action": "",
+    "text": "性能采样: 时间戳 03:26 UTC, 网络: 6 up / 0 down, CPU 空闲温度 20°C 频率 3.7GHz, BugCheck fingerprint: []\n问: 这个性能快照的风险等级和推荐处理动作?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_perf_v2.jsonl 抽出 (seed=42, idx=26) — 训练时排除"
+  },
+  {
+    "id": "perf.h.015",
+    "scenario": "perf",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "keep",
+    "text": "性能采样: cron job 完成, 内存释放 1GB, ProBalance 触发零次\n问: 这个性能快照的风险等级和推荐处理动作?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_perf_v2.jsonl 抽出 (seed=42, idx=15) — 训练时排除"
+  },
+  {
+    "id": "perf.h.017",
+    "scenario": "perf",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "keep",
+    "text": "性能采样: cpu 65% 持续 0 分钟, 内存空闲 18GB, ProBalance 解禁, 一切正常\n问: 这个性能快照的风险等级和推荐处理动作?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_perf_v2.jsonl 抽出 (seed=42, idx=17) — 训练时排除"
+  },
+  {
+    "id": "perf.s.010",
+    "scenario": "perf",
+    "expect": "high",
+    "text": "{\"ts\": \"2026-09-23T13:15:00Z\", \"cpu\": {\"pct\": 92, \"count\": 6, \"freq_mhz\": 3696}, \"memory\": {\"used_pct\": 88, \"used_gb\": 28, \"total_gb\": 32, \"available_gb\": 4}, \"net\": {\"n_total\": 7, \"n_up\": 6, \"nics\": [{\"nic\": \"ProtonVPN TAP\", \"isup\": false}]}, \"system\": {\"uptime_s\": 14400, \"user\": \"Administrator\"}, \"crash\": {\"bugcheck_count\": 0, \"kp41_count\": 0}}",
+    "sample": {
+      "ts": "2026-09-23T13:15:00Z",
+      "cpu": {
+        "pct": 92,
+        "count": 6,
+        "freq_mhz": 3696
+      },
+      "memory": {
+        "used_pct": 88,
+        "used_gb": 28,
+        "total_gb": 32,
+        "available_gb": 4
+      },
+      "net": {
+        "n_total": 7,
+        "n_up": 6,
+        "nics": [
+          {
+            "nic": "ProtonVPN TAP",
+            "isup": false
+          }
+        ]
+      },
+      "system": {
+        "uptime_s": 14400,
+        "user": "Administrator"
+      },
+      "crash": {
+        "bugcheck_count": 0,
+        "kp41_count": 0
+      }
+    },
+    "tags": [
+      "synthetic",
+      "high"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造 perf 快照"
+  },
+  {
+    "id": "perf.h.003",
+    "scenario": "perf",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "性能采样: 内存使用 88%, 进程 277 个, containerd-shim RSS 异常高\n问: 这个性能快照的风险等级和推荐处理动作?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_perf_v2.jsonl 抽出 (seed=42, idx=3) — 训练时排除"
+  },
+  {
+    "id": "perf.s.002",
+    "scenario": "perf",
+    "expect": "safe",
+    "text": "{\"ts\": \"2026-09-23T08:00:00Z\", \"cpu\": {\"pct\": 8, \"count\": 6, \"freq_mhz\": 3696}, \"memory\": {\"used_pct\": 25, \"used_gb\": 8, \"total_gb\": 32, \"available_gb\": 24}, \"net\": {\"n_total\": 3, \"n_up\": 3, \"nics\": []}, \"system\": {\"uptime_s\": 3600, \"user\": \"Administrator\"}, \"crash\": {\"bugcheck_count\": 0, \"kp41_count\": 0}}",
+    "sample": {
+      "ts": "2026-09-23T08:00:00Z",
+      "cpu": {
+        "pct": 8,
+        "count": 6,
+        "freq_mhz": 3696
+      },
+      "memory": {
+        "used_pct": 25,
+        "used_gb": 8,
+        "total_gb": 32,
+        "available_gb": 24
+      },
+      "net": {
+        "n_total": 3,
+        "n_up": 3,
+        "nics": []
+      },
+      "system": {
+        "uptime_s": 3600,
+        "user": "Administrator"
+      },
+      "crash": {
+        "bugcheck_count": 0,
+        "kp41_count": 0
+      }
+    },
+    "tags": [
+      "synthetic",
+      "safe"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造 perf 快照"
+  },
+  {
+    "id": "perf.h.014",
+    "scenario": "perf",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "alert",
+    "text": "性能采样: 3 天内 2 次 BugCheck 0x3b, Kernel-Power 3 触发, NIC compliance 告警\n问: 这个性能快照的风险等级和推荐处理动作?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_perf_v2.jsonl 抽出 (seed=42, idx=14) — 训练时排除"
+  },
+  {
+    "id": "perf.s.020",
+    "scenario": "perf",
+    "expect": "low",
+    "text": "{\"ts\": \"2026-09-23T19:30:00Z\", \"cpu\": {\"pct\": 35, \"count\": 8, \"freq_mhz\": 4200}, \"memory\": {\"used_pct\": 55, \"used_gb\": 22, \"total_gb\": 40, \"available_gb\": 18}, \"net\": {\"n_total\": 4, \"n_up\": 4, \"nics\": [{\"nic\": \"Ethernet\", \"isup\": true}]}, \"system\": {\"uptime_s\": 172800, \"user\": \"Administrator\"}, \"crash\": {\"bugcheck_count\": 0, \"kp41_count\": 0}}",
+    "sample": {
+      "ts": "2026-09-23T19:30:00Z",
+      "cpu": {
+        "pct": 35,
+        "count": 8,
+        "freq_mhz": 4200
+      },
+      "memory": {
+        "used_pct": 55,
+        "used_gb": 22,
+        "total_gb": 40,
+        "available_gb": 18
+      },
+      "net": {
+        "n_total": 4,
+        "n_up": 4,
+        "nics": [
+          {
+            "nic": "Ethernet",
+            "isup": true
+          }
+        ]
+      },
+      "system": {
+        "uptime_s": 172800,
+        "user": "Administrator"
+      },
+      "crash": {
+        "bugcheck_count": 0,
+        "kp41_count": 0
+      }
+    },
+    "tags": [
+      "synthetic",
+      "low"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造 perf 快照"
+  },
+  {
+    "id": "perf.s.022",
+    "scenario": "perf",
+    "expect": "medium",
+    "text": "{\"ts\": \"2026-09-23T20:45:00Z\", \"cpu\": {\"pct\": 72, \"count\": 8, \"freq_mhz\": 4200}, \"memory\": {\"used_pct\": 82, \"used_gb\": 33, \"total_gb\": 40, \"available_gb\": 7}, \"net\": {\"n_total\": 6, \"n_up\": 5, \"nics\": [{\"nic\": \"Wi-Fi\", \"isup\": true}, {\"nic\": \"Hyper-V Virtual Ethernet Adapter\", \"isup\": false}]}, \"system\": {\"uptime_s\": 259200, \"user\": \"Administrator\"}, \"crash\": {\"bugcheck_count\": 0, \"kp41_count\": 0}}",
+    "sample": {
+      "ts": "2026-09-23T20:45:00Z",
+      "cpu": {
+        "pct": 72,
+        "count": 8,
+        "freq_mhz": 4200
+      },
+      "memory": {
+        "used_pct": 82,
+        "used_gb": 33,
+        "total_gb": 40,
+        "available_gb": 7
+      },
+      "net": {
+        "n_total": 6,
+        "n_up": 5,
+        "nics": [
+          {
+            "nic": "Wi-Fi",
+            "isup": true
+          },
+          {
+            "nic": "Hyper-V Virtual Ethernet Adapter",
+            "isup": false
+          }
+        ]
+      },
+      "system": {
+        "uptime_s": 259200,
+        "user": "Administrator"
+      },
+      "crash": {
+        "bugcheck_count": 0,
+        "kp41_count": 0
+      }
+    },
+    "tags": [
+      "synthetic",
+      "medium"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造 perf 快照"
+  },
+  {
+    "id": "perf.s.025",
+    "scenario": "perf",
+    "expect": "high",
+    "text": "{\"ts\": \"2026-09-23T21:15:00Z\", \"cpu\": {\"pct\": 88, \"count\": 8, \"freq_mhz\": 4200}, \"memory\": {\"used_pct\": 91, \"used_gb\": 36, \"total_gb\": 40, \"available_gb\": 4}, \"net\": {\"n_total\": 7, \"n_up\": 4, \"nics\": [{\"nic\": \"WireGuard Tunnel\", \"isup\": false}, {\"nic\": \"ProtonVPN TAP\", \"isup\": false}]}, \"system\": {\"uptime_s\": 604800, \"user\": \"Administrator\"}, \"crash\": {\"bugcheck_count\": 0, \"kp41_count\": 1}}",
+    "sample": {
+      "ts": "2026-09-23T21:15:00Z",
+      "cpu": {
+        "pct": 88,
+        "count": 8,
+        "freq_mhz": 4200
+      },
+      "memory": {
+        "used_pct": 91,
+        "used_gb": 36,
+        "total_gb": 40,
+        "available_gb": 4
+      },
+      "net": {
+        "n_total": 7,
+        "n_up": 4,
+        "nics": [
+          {
+            "nic": "WireGuard Tunnel",
+            "isup": false
+          },
+          {
+            "nic": "ProtonVPN TAP",
+            "isup": false
+          }
+        ]
+      },
+      "system": {
+        "uptime_s": 604800,
+        "user": "Administrator"
+      },
+      "crash": {
+        "bugcheck_count": 0,
+        "kp41_count": 1
+      }
+    },
+    "tags": [
+      "synthetic",
+      "high"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造 perf 快照"
+  },
+  {
+    "id": "perf.h.021",
+    "scenario": "perf",
+    "expect": "critical",
+    "risk_label": "critical",
+    "_action": "alert",
+    "text": "性能采样: 系统未启动完成 boot 20s 时崩, BugCheck 3 次, NIC compliance 夜间扫 NIC 触发\n问: 这个性能快照的风险等级和推荐处理动作?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_perf_v2.jsonl 抽出 (seed=42, idx=21) — 训练时排除"
+  },
+  {
+    "id": "perf.h.011",
+    "scenario": "perf",
+    "expect": "safe",
+    "risk_label": "safe",
+    "_action": "keep",
+    "text": "性能采样: cpu 5%, 内存 20GB available, 网络 10Mbps, ProBalance 未触发, 一切正常\n问: 这个性能快照的风险等级和推荐处理动作?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_perf_v2.jsonl 抽出 (seed=42, idx=11) — 训练时排除"
+  },
+  {
+    "id": "perf.h.010",
+    "scenario": "perf",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "",
+    "text": "性能采样: 时间戳 03:26 UTC, 网络: 6 up / 3 down, CPU 空闲温度 20°C 频率 3.7GHz, BugCheck fingerprint: [CPU 空闲温度 20°C 频率 3.7GHz]\n问: 这个性能快照的风险等级和推荐处理动作?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_perf_v2.jsonl 抽出 (seed=42, idx=10) — 训练时排除"
+  },
+  {
+    "id": "perf.s.005",
+    "scenario": "perf",
+    "expect": "low",
+    "text": "{\"ts\": \"2026-09-23T09:30:00Z\", \"cpu\": {\"pct\": 25, \"count\": 6, \"freq_mhz\": 3696}, \"memory\": {\"used_pct\": 45, \"used_gb\": 14, \"total_gb\": 32, \"available_gb\": 18}, \"net\": {\"n_total\": 4, \"n_up\": 4, \"nics\": []}, \"system\": {\"uptime_s\": 7200, \"user\": \"Administrator\"}, \"crash\": {\"bugcheck_count\": 0, \"kp41_count\": 0}}",
+    "sample": {
+      "ts": "2026-09-23T09:30:00Z",
+      "cpu": {
+        "pct": 25,
+        "count": 6,
+        "freq_mhz": 3696
+      },
+      "memory": {
+        "used_pct": 45,
+        "used_gb": 14,
+        "total_gb": 32,
+        "available_gb": 18
+      },
+      "net": {
+        "n_total": 4,
+        "n_up": 4,
+        "nics": []
+      },
+      "system": {
+        "uptime_s": 7200,
+        "user": "Administrator"
+      },
+      "crash": {
+        "bugcheck_count": 0,
+        "kp41_count": 0
+      }
+    },
+    "tags": [
+      "synthetic",
+      "low"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造 perf 快照"
+  },
+  {
+    "id": "perf.s.017",
+    "scenario": "perf",
+    "expect": "safe",
+    "text": "{\"ts\": \"2026-09-23T18:00:00Z\", \"cpu\": {\"pct\": 5, \"count\": 8, \"freq_mhz\": 4200}, \"memory\": {\"used_pct\": 30, \"used_gb\": 12, \"total_gb\": 40, \"available_gb\": 28}, \"net\": {\"n_total\": 3, \"n_up\": 3, \"nics\": []}, \"system\": {\"uptime_s\": 86400, \"user\": \"Administrator\"}, \"crash\": {\"bugcheck_count\": 0, \"kp41_count\": 0}}",
+    "sample": {
+      "ts": "2026-09-23T18:00:00Z",
+      "cpu": {
+        "pct": 5,
+        "count": 8,
+        "freq_mhz": 4200
+      },
+      "memory": {
+        "used_pct": 30,
+        "used_gb": 12,
+        "total_gb": 40,
+        "available_gb": 28
+      },
+      "net": {
+        "n_total": 3,
+        "n_up": 3,
+        "nics": []
+      },
+      "system": {
+        "uptime_s": 86400,
+        "user": "Administrator"
+      },
+      "crash": {
+        "bugcheck_count": 0,
+        "kp41_count": 0
+      }
+    },
+    "tags": [
+      "synthetic",
+      "safe"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造 perf 快照"
+  },
+  {
+    "id": "perf.h.013",
+    "scenario": "perf",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "alert",
+    "text": "性能采样: cpu 93%, GPU 89%, 内存 96%, swap 4GB, IO 97% 持续 14 秒, 系统无响应 29 秒\n问: 这个性能快照的风险等级和推荐处理动作?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_perf_v2.jsonl 抽出 (seed=42, idx=13) — 训练时排除"
+  },
+  {
+    "id": "perf.s.003",
+    "scenario": "perf",
+    "expect": "safe",
+    "text": "{\"ts\": \"2026-09-23T08:00:00Z\", \"cpu\": {\"pct\": 8, \"count\": 6, \"freq_mhz\": 3696}, \"memory\": {\"used_pct\": 25, \"used_gb\": 8, \"total_gb\": 32, \"available_gb\": 24}, \"net\": {\"n_total\": 3, \"n_up\": 3, \"nics\": []}, \"system\": {\"uptime_s\": 3600, \"user\": \"Administrator\"}, \"crash\": {\"bugcheck_count\": 0, \"kp41_count\": 0}}",
+    "sample": {
+      "ts": "2026-09-23T08:00:00Z",
+      "cpu": {
+        "pct": 8,
+        "count": 6,
+        "freq_mhz": 3696
+      },
+      "memory": {
+        "used_pct": 25,
+        "used_gb": 8,
+        "total_gb": 32,
+        "available_gb": 24
+      },
+      "net": {
+        "n_total": 3,
+        "n_up": 3,
+        "nics": []
+      },
+      "system": {
+        "uptime_s": 3600,
+        "user": "Administrator"
+      },
+      "crash": {
+        "bugcheck_count": 0,
+        "kp41_count": 0
+      }
+    },
+    "tags": [
+      "synthetic",
+      "safe"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造 perf 快照"
+  },
+  {
+    "id": "perf.s.006",
+    "scenario": "perf",
+    "expect": "low",
+    "text": "{\"ts\": \"2026-09-23T09:30:00Z\", \"cpu\": {\"pct\": 25, \"count\": 6, \"freq_mhz\": 3696}, \"memory\": {\"used_pct\": 45, \"used_gb\": 14, \"total_gb\": 32, \"available_gb\": 18}, \"net\": {\"n_total\": 4, \"n_up\": 4, \"nics\": []}, \"system\": {\"uptime_s\": 7200, \"user\": \"Administrator\"}, \"crash\": {\"bugcheck_count\": 0, \"kp41_count\": 0}}",
+    "sample": {
+      "ts": "2026-09-23T09:30:00Z",
+      "cpu": {
+        "pct": 25,
+        "count": 6,
+        "freq_mhz": 3696
+      },
+      "memory": {
+        "used_pct": 45,
+        "used_gb": 14,
+        "total_gb": 32,
+        "available_gb": 18
+      },
+      "net": {
+        "n_total": 4,
+        "n_up": 4,
+        "nics": []
+      },
+      "system": {
+        "uptime_s": 7200,
+        "user": "Administrator"
+      },
+      "crash": {
+        "bugcheck_count": 0,
+        "kp41_count": 0
+      }
+    },
+    "tags": [
+      "synthetic",
+      "low"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造 perf 快照"
+  },
+  {
+    "id": "perf.h.004",
+    "scenario": "perf",
+    "expect": "low",
+    "risk_label": "low",
+    "_action": "keep",
+    "text": "性能采样: cron job 完成, 内存释放 1GB, ProBalance 触发零次\n问: 这个性能快照的风险等级和推荐处理动作?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_perf_v2.jsonl 抽出 (seed=42, idx=4) — 训练时排除"
+  },
+  {
+    "id": "perf.h.008",
+    "scenario": "perf",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "alert",
+    "text": "性能采样: cpu 89% 持续 29 秒, ProBalance 已强制降级 1 个后台进程, 内存剩余 -2.8GB\n问: 这个性能快照的风险等级和推荐处理动作?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_perf_v2.jsonl 抽出 (seed=42, idx=8) — 训练时排除"
+  },
+  {
+    "id": "perf.s.007",
+    "scenario": "perf",
+    "expect": "medium",
+    "text": "{\"ts\": \"2026-09-23T11:00:00Z\", \"cpu\": {\"pct\": 65, \"count\": 6, \"freq_mhz\": 3696}, \"memory\": {\"used_pct\": 78, \"used_gb\": 25, \"total_gb\": 32, \"available_gb\": 7}, \"net\": {\"n_total\": 5, \"n_up\": 5, \"nics\": []}, \"system\": {\"uptime_s\": 10800, \"user\": \"Administrator\"}, \"crash\": {\"bugcheck_count\": 0, \"kp41_count\": 0}}",
+    "sample": {
+      "ts": "2026-09-23T11:00:00Z",
+      "cpu": {
+        "pct": 65,
+        "count": 6,
+        "freq_mhz": 3696
+      },
+      "memory": {
+        "used_pct": 78,
+        "used_gb": 25,
+        "total_gb": 32,
+        "available_gb": 7
+      },
+      "net": {
+        "n_total": 5,
+        "n_up": 5,
+        "nics": []
+      },
+      "system": {
+        "uptime_s": 10800,
+        "user": "Administrator"
+      },
+      "crash": {
+        "bugcheck_count": 0,
+        "kp41_count": 0
+      }
+    },
+    "tags": [
+      "synthetic",
+      "medium"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造 perf 快照"
+  },
+  {
+    "id": "perf.h.005",
+    "scenario": "perf",
+    "expect": "high",
+    "risk_label": "high",
+    "_action": "alert",
+    "text": "性能采样: cpu 94% 持续 30 秒, ProBalance 已强制降级 5 个后台进程, 内存剩余 -1.8GB\n问: 这个性能快照的风险等级和推荐处理动作?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_perf_v2.jsonl 抽出 (seed=42, idx=5) — 训练时排除"
+  },
+  {
+    "id": "perf.h.024",
+    "scenario": "perf",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "性能采样: 1 个 TAP disconnected, NIC compliance, cpu 75% 持续 10 秒, 内存空闲 6GB\n问: 这个性能快照的风险等级和推荐处理动作?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_perf_v2.jsonl 抽出 (seed=42, idx=24) — 训练时排除"
+  },
+  {
+    "id": "perf.s.016",
+    "scenario": "perf",
+    "expect": "safe",
+    "text": "{\"ts\": \"2026-09-23T18:00:00Z\", \"cpu\": {\"pct\": 5, \"count\": 8, \"freq_mhz\": 4200}, \"memory\": {\"used_pct\": 30, \"used_gb\": 12, \"total_gb\": 40, \"available_gb\": 28}, \"net\": {\"n_total\": 3, \"n_up\": 3, \"nics\": []}, \"system\": {\"uptime_s\": 86400, \"user\": \"Administrator\"}, \"crash\": {\"bugcheck_count\": 0, \"kp41_count\": 0}}",
+    "sample": {
+      "ts": "2026-09-23T18:00:00Z",
+      "cpu": {
+        "pct": 5,
+        "count": 8,
+        "freq_mhz": 4200
+      },
+      "memory": {
+        "used_pct": 30,
+        "used_gb": 12,
+        "total_gb": 40,
+        "available_gb": 28
+      },
+      "net": {
+        "n_total": 3,
+        "n_up": 3,
+        "nics": []
+      },
+      "system": {
+        "uptime_s": 86400,
+        "user": "Administrator"
+      },
+      "crash": {
+        "bugcheck_count": 0,
+        "kp41_count": 0
+      }
+    },
+    "tags": [
+      "synthetic",
+      "safe"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造 perf 快照"
+  },
+  {
+    "id": "perf.s.023",
+    "scenario": "perf",
+    "expect": "medium",
+    "text": "{\"ts\": \"2026-09-23T20:45:00Z\", \"cpu\": {\"pct\": 72, \"count\": 8, \"freq_mhz\": 4200}, \"memory\": {\"used_pct\": 82, \"used_gb\": 33, \"total_gb\": 40, \"available_gb\": 7}, \"net\": {\"n_total\": 6, \"n_up\": 5, \"nics\": [{\"nic\": \"Wi-Fi\", \"isup\": true}, {\"nic\": \"Hyper-V Virtual Ethernet Adapter\", \"isup\": false}]}, \"system\": {\"uptime_s\": 259200, \"user\": \"Administrator\"}, \"crash\": {\"bugcheck_count\": 0, \"kp41_count\": 0}}",
+    "sample": {
+      "ts": "2026-09-23T20:45:00Z",
+      "cpu": {
+        "pct": 72,
+        "count": 8,
+        "freq_mhz": 4200
+      },
+      "memory": {
+        "used_pct": 82,
+        "used_gb": 33,
+        "total_gb": 40,
+        "available_gb": 7
+      },
+      "net": {
+        "n_total": 6,
+        "n_up": 5,
+        "nics": [
+          {
+            "nic": "Wi-Fi",
+            "isup": true
+          },
+          {
+            "nic": "Hyper-V Virtual Ethernet Adapter",
+            "isup": false
+          }
+        ]
+      },
+      "system": {
+        "uptime_s": 259200,
+        "user": "Administrator"
+      },
+      "crash": {
+        "bugcheck_count": 0,
+        "kp41_count": 0
+      }
+    },
+    "tags": [
+      "synthetic",
+      "medium"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造 perf 快照"
+  },
+  {
+    "id": "perf.h.029",
+    "scenario": "perf",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "性能采样: 2 个 TAP miniport disconnected, cpu 75% 中等负载, 内存空闲 10GB\n问: 这个性能快照的风险等级和推荐处理动作?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_perf_v2.jsonl 抽出 (seed=42, idx=29) — 训练时排除"
+  },
+  {
+    "id": "perf.s.004",
+    "scenario": "perf",
+    "expect": "low",
+    "text": "{\"ts\": \"2026-09-23T09:30:00Z\", \"cpu\": {\"pct\": 25, \"count\": 6, \"freq_mhz\": 3696}, \"memory\": {\"used_pct\": 45, \"used_gb\": 14, \"total_gb\": 32, \"available_gb\": 18}, \"net\": {\"n_total\": 4, \"n_up\": 4, \"nics\": []}, \"system\": {\"uptime_s\": 7200, \"user\": \"Administrator\"}, \"crash\": {\"bugcheck_count\": 0, \"kp41_count\": 0}}",
+    "sample": {
+      "ts": "2026-09-23T09:30:00Z",
+      "cpu": {
+        "pct": 25,
+        "count": 6,
+        "freq_mhz": 3696
+      },
+      "memory": {
+        "used_pct": 45,
+        "used_gb": 14,
+        "total_gb": 32,
+        "available_gb": 18
+      },
+      "net": {
+        "n_total": 4,
+        "n_up": 4,
+        "nics": []
+      },
+      "system": {
+        "uptime_s": 7200,
+        "user": "Administrator"
+      },
+      "crash": {
+        "bugcheck_count": 0,
+        "kp41_count": 0
+      }
+    },
+    "tags": [
+      "synthetic",
+      "low"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造 perf 快照"
+  },
+  {
+    "id": "perf.h.006",
+    "scenario": "perf",
+    "expect": "safe",
+    "risk_label": "safe",
+    "_action": "keep",
+    "text": "性能采样: 定时清理完成, 内存释放 500MB, cpu 18%, 进程 273 个\n问: 这个性能快照的风险等级和推荐处理动作?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_perf_v2.jsonl 抽出 (seed=42, idx=6) — 训练时排除"
+  },
+  {
+    "id": "perf.s.021",
+    "scenario": "perf",
+    "expect": "low",
+    "text": "{\"ts\": \"2026-09-23T19:30:00Z\", \"cpu\": {\"pct\": 35, \"count\": 8, \"freq_mhz\": 4200}, \"memory\": {\"used_pct\": 55, \"used_gb\": 22, \"total_gb\": 40, \"available_gb\": 18}, \"net\": {\"n_total\": 4, \"n_up\": 4, \"nics\": [{\"nic\": \"Ethernet\", \"isup\": true}]}, \"system\": {\"uptime_s\": 172800, \"user\": \"Administrator\"}, \"crash\": {\"bugcheck_count\": 0, \"kp41_count\": 0}}",
+    "sample": {
+      "ts": "2026-09-23T19:30:00Z",
+      "cpu": {
+        "pct": 35,
+        "count": 8,
+        "freq_mhz": 4200
+      },
+      "memory": {
+        "used_pct": 55,
+        "used_gb": 22,
+        "total_gb": 40,
+        "available_gb": 18
+      },
+      "net": {
+        "n_total": 4,
+        "n_up": 4,
+        "nics": [
+          {
+            "nic": "Ethernet",
+            "isup": true
+          }
+        ]
+      },
+      "system": {
+        "uptime_s": 172800,
+        "user": "Administrator"
+      },
+      "crash": {
+        "bugcheck_count": 0,
+        "kp41_count": 0
+      }
+    },
+    "tags": [
+      "synthetic",
+      "low"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造 perf 快照"
+  },
+  {
+    "id": "perf.s.009",
+    "scenario": "perf",
+    "expect": "medium",
+    "text": "{\"ts\": \"2026-09-23T11:00:00Z\", \"cpu\": {\"pct\": 65, \"count\": 6, \"freq_mhz\": 3696}, \"memory\": {\"used_pct\": 78, \"used_gb\": 25, \"total_gb\": 32, \"available_gb\": 7}, \"net\": {\"n_total\": 5, \"n_up\": 5, \"nics\": []}, \"system\": {\"uptime_s\": 10800, \"user\": \"Administrator\"}, \"crash\": {\"bugcheck_count\": 0, \"kp41_count\": 0}}",
+    "sample": {
+      "ts": "2026-09-23T11:00:00Z",
+      "cpu": {
+        "pct": 65,
+        "count": 6,
+        "freq_mhz": 3696
+      },
+      "memory": {
+        "used_pct": 78,
+        "used_gb": 25,
+        "total_gb": 32,
+        "available_gb": 7
+      },
+      "net": {
+        "n_total": 5,
+        "n_up": 5,
+        "nics": []
+      },
+      "system": {
+        "uptime_s": 10800,
+        "user": "Administrator"
+      },
+      "crash": {
+        "bugcheck_count": 0,
+        "kp41_count": 0
+      }
+    },
+    "tags": [
+      "synthetic",
+      "medium"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造 perf 快照"
+  },
+  {
+    "id": "perf.s.030",
+    "scenario": "perf",
+    "expect": "critical",
+    "text": "{\"ts\": \"2026-09-23T22:00:00Z\", \"cpu\": {\"pct\": 100, \"count\": 8, \"freq_mhz\": 4200}, \"memory\": {\"used_pct\": 98, \"used_gb\": 39, \"total_gb\": 40, \"available_gb\": 1}, \"net\": {\"n_total\": 10, \"n_up\": 3, \"nics\": [{\"nic\": \"ProtonVPN TAP\", \"isup\": false}, {\"nic\": \"OpenVPN TAP\", \"isup\": false}, {\"nic\": \"WireGuard Tunnel\", \"isup\": false}]}, \"system\": {\"uptime_s\": 3600, \"user\": \"Administrator\"}, \"crash\": {\"bugcheck_count\": 2, \"kp41_count\": 2}}",
+    "sample": {
+      "ts": "2026-09-23T22:00:00Z",
+      "cpu": {
+        "pct": 100,
+        "count": 8,
+        "freq_mhz": 4200
+      },
+      "memory": {
+        "used_pct": 98,
+        "used_gb": 39,
+        "total_gb": 40,
+        "available_gb": 1
+      },
+      "net": {
+        "n_total": 10,
+        "n_up": 3,
+        "nics": [
+          {
+            "nic": "ProtonVPN TAP",
+            "isup": false
+          },
+          {
+            "nic": "OpenVPN TAP",
+            "isup": false
+          },
+          {
+            "nic": "WireGuard Tunnel",
+            "isup": false
+          }
+        ]
+      },
+      "system": {
+        "uptime_s": 3600,
+        "user": "Administrator"
+      },
+      "crash": {
+        "bugcheck_count": 2,
+        "kp41_count": 2
+      }
+    },
+    "tags": [
+      "synthetic",
+      "critical"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造 perf 快照"
+  },
+  {
+    "id": "perf.s.014",
+    "scenario": "perf",
+    "expect": "critical",
+    "text": "{\"ts\": \"2026-09-23T14:42:00Z\", \"cpu\": {\"pct\": 99, \"count\": 6, \"freq_mhz\": 3696}, \"memory\": {\"used_pct\": 95, \"used_gb\": 30, \"total_gb\": 32, \"available_gb\": 2}, \"net\": {\"n_total\": 9, \"n_up\": 5, \"nics\": [{\"nic\": \"ProtonVPN TAP\", \"isup\": false}, {\"nic\": \"OpenVPN TAP\", \"isup\": false}]}, \"system\": {\"uptime_s\": 800, \"user\": \"Administrator\"}, \"crash\": {\"bugcheck_count\": 1, \"kp41_count\": 1}}",
+    "sample": {
+      "ts": "2026-09-23T14:42:00Z",
+      "cpu": {
+        "pct": 99,
+        "count": 6,
+        "freq_mhz": 3696
+      },
+      "memory": {
+        "used_pct": 95,
+        "used_gb": 30,
+        "total_gb": 32,
+        "available_gb": 2
+      },
+      "net": {
+        "n_total": 9,
+        "n_up": 5,
+        "nics": [
+          {
+            "nic": "ProtonVPN TAP",
+            "isup": false
+          },
+          {
+            "nic": "OpenVPN TAP",
+            "isup": false
+          }
+        ]
+      },
+      "system": {
+        "uptime_s": 800,
+        "user": "Administrator"
+      },
+      "crash": {
+        "bugcheck_count": 1,
+        "kp41_count": 1
+      }
+    },
+    "tags": [
+      "synthetic",
+      "critical"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造 perf 快照"
+  },
+  {
+    "id": "perf.h.016",
+    "scenario": "perf",
+    "expect": "medium",
+    "risk_label": "medium",
+    "_action": "review",
+    "text": "性能采样: standby list -1.5GB, free 内存 3GB, -1 个 TAP disconnected, ISLC 未启用\n问: 这个性能快照的风险等级和推荐处理动作?",
+    "tags": [
+      "holdout_split",
+      "training_excluded"
+    ],
+    "source": "holdout_split",
+    "notes": "从 data_perf_v2.jsonl 抽出 (seed=42, idx=16) — 训练时排除"
+  },
+  {
+    "id": "perf.s.019",
+    "scenario": "perf",
+    "expect": "low",
+    "text": "{\"ts\": \"2026-09-23T19:30:00Z\", \"cpu\": {\"pct\": 35, \"count\": 8, \"freq_mhz\": 4200}, \"memory\": {\"used_pct\": 55, \"used_gb\": 22, \"total_gb\": 40, \"available_gb\": 18}, \"net\": {\"n_total\": 4, \"n_up\": 4, \"nics\": [{\"nic\": \"Ethernet\", \"isup\": true}]}, \"system\": {\"uptime_s\": 172800, \"user\": \"Administrator\"}, \"crash\": {\"bugcheck_count\": 0, \"kp41_count\": 0}}",
+    "sample": {
+      "ts": "2026-09-23T19:30:00Z",
+      "cpu": {
+        "pct": 35,
+        "count": 8,
+        "freq_mhz": 4200
+      },
+      "memory": {
+        "used_pct": 55,
+        "used_gb": 22,
+        "total_gb": 40,
+        "available_gb": 18
+      },
+      "net": {
+        "n_total": 4,
+        "n_up": 4,
+        "nics": [
+          {
+            "nic": "Ethernet",
+            "isup": true
+          }
+        ]
+      },
+      "system": {
+        "uptime_s": 172800,
+        "user": "Administrator"
+      },
+      "crash": {
+        "bugcheck_count": 0,
+        "kp41_count": 0
+      }
+    },
+    "tags": [
+      "synthetic",
+      "low"
+    ],
+    "source": "synthetic",
+    "notes": "M3.60 L3 手造 perf 快照"
+  }
+]

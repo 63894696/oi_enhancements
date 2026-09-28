@@ -1,0 +1,18 @@
+#!/bin/bash
+# run_train_step3.sh — M3.47 Step 1 disk_cleanup 训练
+set -e
+cd /workspace/companion
+export HF_ENDPOINT=https://hf-mirror.com
+export HF_HUB_OFFLINE=1
+export TRANSFORMERS_OFFLINE=1
+export TOKENIZERS_PARALLELISM=false
+export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
+echo "=== Step 3 train start $(date) ==="
+nvidia-smi --query-gpu=memory.used,memory.free --format=csv,noheader
+python3 train_step1.py \
+  --data /workspace/data_disk_cleanup.jsonl \
+  --base-model /workspace/models/Qwen3Guard-Gen-0.6B \
+  --schema disk_cleanup \
+  --output /workspace/qwen3guard-disk-cleanup \
+  --epochs 4 --batch 4 2>&1
+echo "=== Step 3 train end $(date) ==="

@@ -1,0 +1,20 @@
+{
+  "name": "handraw-style-prompter",
+  "displayName": "手绘海报 prompt 生成器",
+  "version": "0.2.0",
+  "description": "从 yang0/handraw-style 的 278 风格 + 36 颜色 + 120 版式数据集中,产出中英双语海报 prompt 卡片。Phase B 只产 prompt;Phase C 接入主对话 EXEC;Phase D 在 meta 透传 prompt_zh/prompt_en 给下游 image-gen.from_poster_prompt 出图闭环。",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:poster.smart",
+    "ai.invoke.command:poster.spec",
+    "ai.invoke.command:poster.ai_design",
+    "ai.invoke.command:poster.list",
+    "ui.inject.card"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}

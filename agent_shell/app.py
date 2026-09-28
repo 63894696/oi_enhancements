@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import logging
+import os
+import sys
 import threading
+import webbrowser
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -26,6 +29,73 @@ from .stream_ptt import PTTStreamController
 from .tray import TrayController
 
 log = logging.getLogger("agent_shell")
+
+
+# ---------------------------------------------------------------------------
+# 子模块面板 helper(对齐 P2.5+16/17 子菜单分组)— 探测端口 + 浏览器跳转
+# ---------------------------------------------------------------------------
+
+def _read_hkcu_port(name: str) -> Optional[int]:
+    """读 HKCU\\Software\\PrisirAI\\<name> REG_DWORD(对齐 Tauri 壳端口钉死范式)。"""
+    if sys.platform != "win32":
+        return None
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\PrisirAI") as k:
+            v, _ = winreg.QueryValueEx(k, name)
+            return int(v) if v else None
+    except (OSError, FileNotFoundError):
+        return None
+
+
+def _read_wechat_publisher_port() -> Optional[int]:
+    """读 wechat_publisher 注册表端口;退化到 _prisir_registry json 文件。"""
+    p = _read_hkcu_port("wechat_publisher_port")
+    if p:
+        return p
+    try:
+        # companion/_prisir_registry/wechat_publisher_port.json
+        from .config import load_config as _ld
+        # 走相对路径,直接找 repo 内的注册文件
+        candidates = [
+            Path(__file__).resolve().parent.parent / "companion" /
+            "_prisir_registry" / "wechat_publisher_port.json",
+        ]
+        for c in candidates:
+            if c.is_file():
+                import json
+                d = json.loads(c.read_text(encoding="utf-8"))
+                return int(d.get("port") or 0) or None
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+def _open_in_browser(port: Optional[int]) -> None:
+    if not port:
+        log.warning("子模块未注册端口,无法打开")
+        return
+    url = f"http://127.0.0.1:{port}/"
+    try:
+        webbrowser.open(url)
+    except Exception as e:  # noqa: BLE001
+        log.warning("浏览器打开失败: %s", e)
+
+
+def _open_calendar_panel() -> None:
+    p = _read_hkcu_port("calendar_port")
+    if p:
+        _open_in_browser(p)
+    else:
+        log.warning("日历未启动(calendar_port 没注册)")
+
+
+def _open_music_panel() -> None:
+    p = _read_hkcu_port("music_port")
+    if p:
+        _open_in_browser(p)
+    else:
+        log.warning("音乐未启动(music_port 没注册)")
 
 
 class AgentShellApp:
@@ -78,6 +148,20 @@ class AgentShellApp:
             items.append((label, _make_switch()))
         return items
 
+    def _extra_menu(self):
+        """托盘子菜单 — 工具/子模块入口(对齐 P2.5+16 + P2.5+17 子菜单分组)。
+
+        当前:
+          · 打开发布面板(wechat-publisher,找 HKCU 端口 + 启动浏览器)
+          · 打开日历(占位)
+          · 打开音乐(占位)
+        """
+        return [
+            ("📢 打开发布面板", lambda: _open_in_browser(_read_wechat_publisher_port())),
+            ("📅 打开日历",     lambda: _open_calendar_panel()),
+            ("🎵 打开音乐",     lambda: _open_music_panel()),
+        ]
+
     def _make_pipeline(self) -> VoicePipeline:
         ports = self.profile.get("ports", {})
         hooks = AgentStateHooks(
@@ -119,6 +203,7 @@ class AgentShellApp:
             self._poller.refresh_once()
         if self._tray is not None:
             self._tray.profile_actions = self._profile_menu()
+            self._tray.extra_actions = self._extra_menu()
             self._tray.refresh_menu()
 
     def _flash_local(self, state: str, detail: str = "", **extra: Any) -> None:
@@ -285,6 +370,7 @@ class AgentShellApp:
             self._tray = TrayController(
                 on_quit=self.shutdown,
                 profile_actions=self._profile_menu(),
+                extra_actions=self._extra_menu(),
             )
             self._tray.start()
 

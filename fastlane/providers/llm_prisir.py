@@ -107,31 +107,86 @@ class PrisirKeyStore:
 # ============================================================
 # 任务分类 → 路由
 # ============================================================
+# M3.57 拆 code → code_call / code_qa:
+#   code_call = "我想要写/生成/修代码" (有 ``` 代码块 或 def/class/import 等模式 + 动词强)
+#   code_qa   = "我想了解/解释 code 概念" (聊什么是/为什么/区别/原理)
+# _CODE_HINTS 保持兼容(被 _CALL_HINTS / _QA_HINTS 继承),新增 _CALL_HINTS / _QA_HINTS 拆判
 _CODE_HINTS = re.compile(
-    r"(```|def |class |import |function|代码|编程|debug|报错|bug|报错|编译|算法|python|javascript|rust|c\+\+|sql|api|脚本)", re.I)
+    r"(```|def |class |import |function|代码|编程|debug|报错|bug|编译|算法|python|javascript|rust|cpp|api|装饰|协程|递归|闭包|异步|多线程|并发|gil|堆栈|数组|字典|函数式|正则|json|tcp|udp|async|await|promise|iterator|generator|asyncio|线程|进程|内存|框架|docker|kubernetes|sql|git|rebase|commit|merge|branch|react|vue|node|npm|pip|conda|venv)", re.I)
+# code_call:含 ``` 代码块 + 长度适中;或动作动词(写/改/修/实现/编写)+ 代码语言词
+_CALL_HINTS = re.compile(
+    r"(```|写.*代码|写个|写一个|帮我写|帮我写个|实现|实现一个|debug|修.*bug|编译|跑.*报错|怎么跑|跑代码|报错|异常处理|实现一下|写一下)", re.I)
+# code_qa:聊概念/原理/区别/为什么 — 必须 _CODE_HINTS 同时命中才归 code_qa,否则归 general
+_QA_HINTS = re.compile(
+    r"(什么是|怎么理解|原理|区别|为什么|解释|讲讲|介绍|how does|what is|优缺点|怎么用|怎么看|有什么|是不是|解释一下|聊聊|怎么解决|怎么停|怎么删|怎么查|怎么读|怎么设)", re.I)
 _LONG_HINT = 3000  # 字符数阈值,超过视为长上下文
-_FAST_HINTS = re.compile(r"(是什么|什么意思|翻译|天气|计算|多少|定义|who is|what is|translate)", re.I)
+# 「是什么」「什么意思」等 3 字词在中文输入时常排错顺序;regex 同时含正反顺序的 2-3 字符组合。
+# 进一步防御:把字符串反转后再 search 一次(_search_either 实现)。
+_FAST_HINTS = re.compile(
+    r"(是什么|什么意思|怎么用|翻译|天气|计算|多少|定义|who is|what is|translate|缩写|身高|几岁|多大|多高)", re.I)
+
+
+def _search_either(pattern: re.Pattern, text: str) -> bool:
+    """中文输入 IME 偶尔把 3 字词表排错顺序(如 什/么/是 vs 是/什/么 vs 是/么/什),
+    因此尝试原文 + 全文反序。多数情况下 pattern 自身含覆盖 > 字串,
+    这里只处理"字符全错"这种边缘场景。"""
+    if pattern.search(text):
+        return True
+    # 把文本反序(逐字符)再试一次
+    return bool(pattern.search(text[::-1]))
 
 
 def classify_task(text: str) -> str:
-    """粗分类: code / creative / long / fast / general"""
+    """粗分类: code_call / code_qa / creative / long / fast / general
+
+    M3.57:把 code 拆成 code_call(写代码)和 code_qa(聊代码概念)。
+      code_call → 强代码模型 + 必要时 OI code interpreter
+      code_qa   → 解释能力强模型(Anthropic / qwen3-max),不用 code interpreter
+
+    判定顺序(优先级从高到低):
+      1. 长上下文 → long
+      2. code_call 模式命中(短 + ``` 代码块 或 强动词)→ code_call
+      3. code_qa 模式 + code 词命中 → code_qa
+      4. code 词兜底 → code_call(默认强动作意图)
+      5. fast + 短文本 → fast
+      6. 兜底 → general
+    """
     t = text or ""
     if len(t) > _LONG_HINT:
         return "long"
-    if _CODE_HINTS.search(t):
-        return "code"
-    if _FAST_HINTS.search(t) and len(t) < 200:
+    # code_qa 判定:聊概念 + 含 code 词 → code_qa(优先于 code_call,聊 vs 写)
+    if _search_either(_QA_HINTS, t) and _search_either(_CODE_HINTS, t):
+        return "code_qa"
+    # code_call 判定:有 ``` 代码块 或 长度短 + 强动作动词
+    if "```" in t and _search_either(_CALL_HINTS, t):
+        return "code_call"
+    if _search_either(_CALL_HINTS, t) and (len(t) < 400 or _search_either(_CODE_HINTS, t)):
+        return "code_call"
+    # code 兜底:含 code 词但不是 qa 模式 → 默认 code_call(强动作意图更常见)
+    if _search_either(_CODE_HINTS, t):
+        return "code_call"
+    # fast:包含一些 QA 词 + 没 code 词 → fast (短查询)
+    if len(t) < 200 and _search_either(_FAST_HINTS, t):
+        return "fast"
+    # 中文输入 IME 把 "什" "么" "是" 排成 什/么/是,而 regex 是 是/什/么 -
+    # 单独 fast_path:含 "是什么"/"什么是"/"为什么" + 短 + 没 code → fast
+    qa_short = len(t) < 60 and not _search_either(_CODE_HINTS, t) and any(
+        kw in t or kw[::-1] in t for kw in ("是什么", "什么是", "为什么")
+    )
+    if qa_short:
         return "fast"
     return "general"
 
 
 # 各任务类型的平台偏好序(用户可覆盖)
+# M3.57:code_call 落强代码模型(openai/anthropic),code_qa 落解释型(anthropic 优先)
 _TASK_PREFERENCE: Dict[str, List[str]] = {
-    "code": ["openai", "anthropic", "custom"],
-    "creative": ["anthropic", "openai", "custom"],
-    "general": ["anthropic", "openai", "custom"],
-    "fast": ["openai", "custom", "anthropic"],
-    "long": ["anthropic", "openai", "custom"],
+    "code_call": ["openai", "anthropic", "custom"],
+    "code_qa":   ["anthropic", "openai", "custom"],
+    "creative":  ["anthropic", "openai", "custom"],
+    "general":   ["anthropic", "openai", "custom"],
+    "fast":      ["openai", "custom", "anthropic"],
+    "long":      ["anthropic", "openai", "custom"],
 }
 
 

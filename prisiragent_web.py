@@ -5570,8 +5570,185 @@ window.__PRISIR_FORUM_URL__ = "__PRISIR_FORUM_URL_PLACEHOLDER__";
   window.__mermaid = mermaid;
   window.__mermaidReady = true;
 </script>
+<style>
+/* M3.36.C (2026-09-28):colibri 三选一引导卡 — 主对话窗口 */
+#onboardingCard {
+  display: none;
+  margin: 14px 16px 0;
+  padding: 14px 16px;
+  background: linear-gradient(180deg, #fbf8f1 0%, #f6f1e7 100%);
+  border: 1px solid var(--gh-gold, #d6b26c);
+  border-radius: var(--gh-radius, 10px);
+  box-shadow: 0 2px 8px rgba(60, 50, 30, 0.06);
+  position: relative;
+}
+#onboardingCard.shown {
+  display: block;
+}
+.onb-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--gh-ink, #2f3a34);
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.onb-subtitle {
+  font-size: 12px;
+  color: var(--gh-ink-soft, #5b6a61);
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+.onb-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+.onb-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--gh-line, #d8cfbc);
+  border-radius: 8px;
+  background: var(--gh-surface, #fbf8f1);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.onb-choice:hover {
+  border-color: var(--gh-green-deep, #4a5c52);
+  background: #fff;
+  transform: translateY(-1px);
+}
+.onb-choice-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+.onb-choice-body {
+  flex: 1;
+}
+.onb-choice-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gh-ink, #2f3a34);
+  margin-bottom: 2px;
+}
+.onb-choice-desc {
+  font-size: 11.5px;
+  color: var(--gh-ink-soft, #5b6a61);
+  line-height: 1.4;
+}
+.onb-warn {
+  margin-top: 6px;
+  padding: 6px 10px;
+  background: #fff8c5;
+  border: 1px solid #d4a72c;
+  border-radius: 6px;
+  font-size: 11.5px;
+  color: #5a4400;
+  line-height: 1.5;
+}
+.onb-warn b {
+  color: #6b3a00;
+}
+.onb-progress {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--gh-paper-2, #efe8da);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--gh-ink, #2f3a34);
+}
+.onb-progress-bar {
+  width: 100%;
+  height: 6px;
+  background: var(--gh-paper-3, #e7dfce);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 6px;
+}
+.onb-progress-fill {
+  height: 100%;
+  background: var(--gh-green-deep, #4a5c52);
+  width: 0%;
+  transition: width 0.3s ease;
+}
+.onb-close {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  background: transparent;
+  border: none;
+  font-size: 16px;
+  color: var(--gh-ink-faint, #8a968e);
+  cursor: pointer;
+  padding: 2px 6px;
+}
+.onb-close:hover {
+  color: var(--gh-seal-deep, #b23a30);
+}
+@media (max-width: 600px) {
+  .onb-choices { gap: 6px; }
+  .onb-choice { padding: 8px 10px; }
+}
+</style>
 </head>
 <body>
+
+<!-- M3.36.C (2026-09-28):colibri 三选一引导卡(主对话窗口)
+     首次启动无云端 key 时弹;用户三选一:
+       no_key  → 下载本地 OLMoE 模型(一次性 ~7 GB,纯 CPU 可跑)
+       has_key → 关闭引导,日常走云端(去设置填 key / 自动读 env)
+       skip    → 暂时跳过(下次启动还弹) -->
+<div id="onboardingCard">
+  <button class="onb-close" id="onbClose" title="关闭引导">✕</button>
+  <div class="onb-title">🎉 欢迎使用 PrisirAI</div>
+  <div class="onb-subtitle">
+    在开始之前,请选一种方式完成首次配置。完成后,以后每次启动不再弹此引导。
+  </div>
+  <div class="onb-choices" id="onbChoices">
+    <div class="onb-choice" data-choice="no_key">
+      <div class="onb-choice-icon">📥</div>
+      <div class="onb-choice-body">
+        <div class="onb-choice-title">完全不懂 API / key(零配置起步)</div>
+        <div class="onb-choice-desc">
+          下载一个本地小模型 <b>OLMoE-7B</b>(~7 GB,一次性),无需任何 API key、无需联网对话,装机即可开始聊天。
+        </div>
+        <div class="onb-warn">
+          ⚠️ <b>空间:</b>预留 ~7 GB 磁盘; <b>内存:</b>至少 8 GB RAM;
+          <b>速度:</b>纯 CPU 跑对话较慢(每秒 1-2 字),首字输出需等 10-30 秒。
+          <br>📌 这是<b>一次性配置</b>:下载完成后可正常对话,日常使用建议切换云端 LLM(更快更强)。
+        </div>
+      </div>
+    </div>
+    <div class="onb-choice" data-choice="has_key">
+      <div class="onb-choice-icon">🔑</div>
+      <div class="onb-choice-body">
+        <div class="onb-choice-title">我会配置 API key / 已经有 key</div>
+        <div class="onb-choice-desc">
+          关闭引导,直接进入主界面。请到「⚙ 设置」页填写 OpenAI / Anthropic / DeepSeek / 通义千问等任一平台的 API key。
+          <br>📌 PrisirAI 会<b>自动读取</b>你环境变量里的 key(若有);云端 LLM 速度更快、质量更强。
+        </div>
+      </div>
+    </div>
+    <div class="onb-choice" data-choice="skip">
+      <div class="onb-choice-icon">⏭️</div>
+      <div class="onb-choice-body">
+        <div class="onb-choice-title">暂时跳过,以后再说</div>
+        <div class="onb-choice-desc">
+          不下载、不配置,以后手动到设置页再决定。下次启动还会再弹一次。
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="onb-progress" id="onbProgress" style="display:none">
+    <div id="onbProgressText">📥 正在下载 OLMoE 模型…</div>
+    <div class="onb-progress-bar"><div class="onb-progress-fill" id="onbProgressFill"></div></div>
+  </div>
+</div>
 <div id="topbar">
   <div id="brand">
     <img src="/prisiragent/assets/prisir-flame-48.png" alt="icon">
@@ -10393,6 +10570,140 @@ window.addEventListener("beforeunload", function(e) {
   }, 900);
 })();
 </script>
+<script>
+// ---- M3.36.C (2026-09-28):colibri 三选一 onboarding 引导卡 ------------------
+// 主对话窗口(/prisIragent/web)首次启动时,若无云端 key 则弹引导卡
+//   no_key  → POST /prisiragent/api/colibri/onboarding/choose + 触发下载
+//   has_key → 关闭引导 + 提示去设置填 key
+//   skip    → 关闭引导,下次启动还弹
+(function(){
+  function $(id){ return document.getElementById(id); }
+  var card = $("onboardingCard");
+  if (!card) return;   // 引导卡不在页面 → 不挂监听
+  var choices = $("onbChoices");
+  var closeBtn = $("onbClose");
+  var prog = $("onbProgress");
+  var progText = $("onbProgressText");
+  var progFill = $("onbProgressFill");
+
+  function checkOnboarding(){
+    fetch("/prisiragent/api/colibri/onboarding", { cache: "no-store" })
+      .then(function(r){
+        if (!r.ok) return null;
+        return r.json();
+      })
+      .then(function(data){
+        if (!data || !data.ok) return;
+        if (!data.should_show) return;
+        card.classList.add("shown");
+      })
+      .catch(function(){ /* 网络错 / 后端未起 → 不弹 */ });
+  }
+
+  function submit(choice){
+    card.classList.remove("shown");
+    fetch("/prisiragent/api/colibri/onboarding/choose", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ choice: choice }),
+    })
+    .then(function(r){ return r.ok ? r.json() : { ok:false }; })
+    .then(function(data){
+      if (choice === "no_key") {
+        // M3.36.B(2026-09-28):显示进度条 + 触发下载 + 真实轮询
+        if (prog) prog.style.display = "block";
+        if (progText) progText.textContent = "📥 准备下载 OLMoE 模型(~7 GB,首次较慢)……";
+        if (progFill) progFill.style.width = "0%";
+        fetch("/prisiragent/api/colibri/download", { method: "POST" })
+          .then(function(r){ return r.ok ? r.json() : { ok:false }; })
+          .then(function(data){
+            if (!data || !data.ok) {
+              if (progText) progText.textContent = "❌ 启动下载失败: " + ((data && data.err) || "未知");
+              return;
+            }
+            // 开始轮询进度
+            pollDownloadProgress();
+          })
+          .catch(function(e){
+            if (progText) progText.textContent = "❌ 下载启动失败: " + e;
+          });
+      } else if (choice === "has_key") {
+        // 提示去设置页
+        var hint = document.createElement("div");
+        hint.style.cssText = "margin:14px 16px;padding:10px 14px;background:#ddf4e1;border:1px solid #1a7f37;border-radius:8px;color:#1a7f37;font-size:12px";
+        hint.textContent = "✅ 已记录。点击右上角「⚙ 设置」→ 「LLM Key」填写 OpenAI / Anthropic 等平台 key;PrisirAI 会自动读取环境变量里的 key。";
+        card.parentNode.insertBefore(hint, card.nextSibling);
+        setTimeout(function(){ hint.remove(); }, 8000);
+      } else if (choice === "skip") {
+        // 静默关闭
+      }
+    })
+    .catch(function(){ /* fail-soft */ });
+  }
+
+  // M3.36.B(2026-09-28):下载进度轮询 — 每 2s 拉一次,直到 phase != downloading
+  function pollDownloadProgress(){
+    var stopped = false;
+    var tries = 0;
+    function tick(){
+      if (stopped) return;
+      tries += 1;
+      fetch("/prisiragent/api/colibri/download/status", { cache: "no-store" })
+        .then(function(r){ return r.ok ? r.json() : { ok:false }; })
+        .then(function(s){
+          if (!s || !s.ok) {
+            if (progText) progText.textContent = "⚠️ 进度查询失败";
+            return;
+          }
+          if (progFill && typeof s.progress_pct === "number") {
+            progFill.style.width = Math.max(0, Math.min(100, s.progress_pct)) + "%";
+          }
+          if (s.phase === "downloading") {
+            var mb = s.done_bytes ? (s.done_bytes/1024/1024).toFixed(0) : "?";
+            var tot = s.total_bytes ? (s.total_bytes/1024/1024).toFixed(0) : "?";
+            if (progText) {
+              progText.textContent = "📥 正在下载 OLMoE 模型… " +
+                (s.progress_pct || 0).toFixed(1) + "% " +
+                "(" + mb + " MB / " + tot + " MB)";
+            }
+            setTimeout(tick, 2000);
+          } else if (s.phase === "ready") {
+            if (progText) progText.textContent = "✅ 下载完成!模型已就绪,刷新后即可对话。";
+            if (progFill) progFill.style.width = "100%";
+            setTimeout(function(){ if (prog) prog.style.display = "none"; location.reload(); }, 3000);
+          } else if (s.phase === "failed") {
+            if (progText) progText.textContent = "❌ 下载失败: " + (s.error || "未知错误");
+          } else {
+            // idle — 用户没下,不做任何事
+            if (prog) prog.style.display = "none";
+          }
+        })
+        .catch(function(){
+          // 静默重试
+          if (tries < 600) setTimeout(tick, 3000);  // 最多 30 分钟
+        });
+    }
+    tick();
+  }
+
+  if (choices) {
+    choices.addEventListener("click", function(ev){
+      var t = ev.target.closest(".onb-choice");
+      if (!t) return;
+      var c = t.getAttribute("data-choice");
+      if (c) submit(c);
+    });
+  }
+  if (closeBtn) {
+    closeBtn.addEventListener("click", function(){ submit("skip"); });
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", checkOnboarding);
+  } else {
+    checkOnboarding();
+  }
+})();
+</script>
 </body>
 </html>
 """
@@ -12339,6 +12650,31 @@ class Handler(BaseHTTPRequestHandler):
             self._html(_page_html)
         elif path.startswith("/prisiragent/assets/"):
             self._asset(path[len("/prisiragent/assets/"):])
+        elif path == "/prisiragent/api/colibri/onboarding":
+            # M3.36.C(2026-09-28):colibri 三选一引导卡状态端点
+            # 判定是否需要在主对话窗口弹"零配置起步"卡片
+            try:
+                from companion.colibri_state import (
+                    should_show_onboarding, load_state, has_existing_keys,
+                )
+                should_show = bool(should_show_onboarding())
+                s = load_state()
+                reason = ("user_dismissed" if s.onboarding_choice == "has_key"
+                          else "downloaded" if (s.onboarding_choice == "no_key"
+                                                  and s.downloaded)
+                          else "has_existing_keys" if has_existing_keys()
+                          else "first_launch")
+                self._json({
+                    "ok": True,
+                    "should_show": should_show,
+                    "reason": reason,
+                    "choice": s.onboarding_choice,
+                    "downloaded": s.downloaded,
+                    "state": s.state,
+                })
+            except Exception as e:
+                _LOGGER.warning("[colibri-onboarding] 状态端点失败: %s", e)
+                self._json({"ok": False, "err": str(e), "should_show": False})
         elif path == "/prisiragent/api/info":
             self._json({"strategy": DEFAULT_STRATEGY, "workdir": _WORKDIR["path"],
                         "platforms": _router.available_platforms(),
@@ -13229,6 +13565,55 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": True, "alias": alias, "alias_file": _alias_file_path()})
             except OSError as e:
                 self._json({"ok": False, "err": f"写 alias 失败: {e}"}, 500)
+        elif path == "/prisiragent/api/colibri/onboarding/choose":
+            # M3.36.C(2026-09-28):colibri 三选一引导卡选择端点
+            # body: {choice: "no_key" | "has_key" | "skip"}
+            choice = (body.get("choice") or "").strip() if isinstance(body, dict) else ""
+            if choice not in ("no_key", "has_key", "skip"):
+                self._json({"ok": False, "err": f"unknown choice: {choice}"}, 400)
+                return
+            try:
+                from companion.colibri_state import update_state
+                if choice == "has_key":
+                    update_state(onboarding_choice="has_key")
+                    _LOGGER.info("[M3.36.C] 主对话:onboarding has_key → user will configure key manually")
+                elif choice == "no_key":
+                    update_state(onboarding_choice="no_key")
+                    _LOGGER.info("[M3.36.C] 主对话:onboarding no_key → user will download local model")
+                else:  # skip
+                    # skip 不持久化 choice(下次启动继续弹),只更新时间戳
+                    update_state(onboarding_at=int(time.time()))
+                    _LOGGER.info("[M3.36.C] 主对话:onboarding skip (next launch will re-prompt)")
+                self._json({"ok": True, "choice": choice})
+            except Exception as e:
+                _LOGGER.warning("[colibri-onboarding] choose 端点失败: %s", e)
+                self._json({"ok": False, "err": str(e)}, 500)
+        elif path == "/prisiragent/api/colibri/download":
+            # M3.36.B(2026-09-28):触发 OLMoE 后台下载
+            # 幂等:已在跑 → 返 task_id,不重复触发
+            try:
+                from companion.colibri_download import request_download
+                result = request_download()
+                self._json(result)
+            except Exception as e:
+                _LOGGER.exception("[colibri-download] request_download failed: %s", e)
+                self._json({"ok": False, "err": f"{type(e).__name__}: {e}"}, 500)
+        elif path == "/prisiragent/api/colibri/download/status":
+            # M3.36.B(2026-09-28):下载进度查询(前端每 2s 轮询)
+            try:
+                from companion.colibri_download import get_download_status
+                self._json(get_download_status())
+            except Exception as e:
+                _LOGGER.exception("[colibri-download] get_download_status failed: %s", e)
+                self._json({"ok": False, "err": f"{type(e).__name__}: {e}"}, 500)
+        elif path == "/prisiragent/api/colibri/download/cancel":
+            # M3.36.B(2026-09-28):用户取消下载
+            try:
+                from companion.colibri_download import request_cancel
+                self._json(request_cancel())
+            except Exception as e:
+                _LOGGER.exception("[colibri-download] request_cancel failed: %s", e)
+                self._json({"ok": False, "err": f"{type(e).__name__}: {e}"}, 500)
         elif path == "/api/asr/active":
             # M3.27.4(2026-09-18):主面板 k-platform-pick 选 ASR 后调用。
             # 主面板端口 18802 → 转发到 companion 服务 18850 /api/asr/active。

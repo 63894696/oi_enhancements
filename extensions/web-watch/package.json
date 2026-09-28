@@ -1,0 +1,30 @@
+{
+  "name": "@prisir/web-watch",
+  "version": "0.1.0",
+  "description": "URL 内容监控(SHA256 比对) + 抓取失败/内容变化 Windows toast 通知,SQLite 存历次通知",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "author": "PrisirAI",
+  "prisIrPermissions": [
+    "ai.invoke.command:watch.add",
+    "ai.invoke.command:watch.list",
+    "ai.invoke.command:watch.remove",
+    "ai.invoke.command:watch.run",
+    "ai.invoke.command:watch.check",
+    "shell.exec"
+  ],
+  "prisIr": {
+    "type": "extension",
+    "tags": [
+      "web",
+      "monitor",
+      "notification",
+      "watch"
+    ],
+    "auto_enable": false
+  },
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}

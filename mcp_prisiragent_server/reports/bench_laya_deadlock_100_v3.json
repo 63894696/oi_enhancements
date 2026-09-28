@@ -1,0 +1,113 @@
+{
+  "total": 100,
+  "correct": 0,
+  "parse_fail": 0,
+  "overall_acc": 0.0,
+  "per_label_acc": {
+    "stalled": 0,
+    "zero_progress": 0.0,
+    "slow": 0.0,
+    "ok": 0.0
+  },
+  "per_label_total": {
+    "stalled": 0,
+    "zero_progress": 22,
+    "slow": 8,
+    "ok": 70
+  },
+  "avg_latency_ms": 775.4,
+  "p50_latency_ms": 690.1,
+  "errors": [
+    {
+      "task_id": 3082,
+      "expect": "ok",
+      "got": "stalled",
+      "conf": 0.85
+    },
+    {
+      "task_id": 3082,
+      "expect": "ok",
+      "got": "stalled",
+      "conf": 0.85
+    },
+    {
+      "task_id": 3082,
+      "expect": "ok",
+      "got": "stalled",
+      "conf": 0.85
+    },
+    {
+      "task_id": 3082,
+      "expect": "ok",
+      "got": "stalled",
+      "conf": 0.85
+    },
+    {
+      "task_id": 3082,
+      "expect": "ok",
+      "got": "stalled",
+      "conf": 0.85
+    },
+    {
+      "task_id": 3082,
+      "expect": "ok",
+      "got": "stalled",
+      "conf": 0.85
+    },
+    {
+      "task_id": 3082,
+      "expect": "ok",
+      "got": "stalled",
+      "conf": 0.85
+    },
+    {
+      "task_id": 3082,
+      "expect": "ok",
+      "got": "stalled",
+      "conf": 0.85
+    },
+    {
+      "task_id": 72228,
+      "expect": "zero_progress",
+      "got": "stalled",
+      "conf": 0.85
+    },
+    {
+      "task_id": 72228,
+      "expect": "zero_progress",
+      "got": "stalled",
+      "conf": 0.85
+    },
+    {
+      "task_id": 72228,
+      "expect": "zero_progress",
+      "got": "stalled",
+      "conf": 0.85
+    },
+    {
+      "task_id": 72228,
+      "expect": "zero_progress",
+      "got": "stalled",
+      "conf": 0.85
+    },
+    {
+      "task_id": 72228,
+      "expect": "zero_progress",
+      "got": "stalled",
+      "conf": 0.85
+    },
+    {
+      "task_id": 72228,
+      "expect": "ok",
+      "got": "stalled",
+      "conf": 0.85
+    },
+    {
+      "task_id": 72228,
+      "expect": "ok",
+      "got": "stalled",
+      "conf": 0.85
+    }
+  ],
+  "elapsed_total_s": 77.5
+}

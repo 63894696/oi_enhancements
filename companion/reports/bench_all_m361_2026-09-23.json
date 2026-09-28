@@ -1,0 +1,4079 @@
+{
+  "ts": "2026-09-23T10:21:51Z",
+  "scenarios_listed": [
+    "intents",
+    "task",
+    "safety",
+    "perf",
+    "disk_cleanup",
+    "tempfile",
+    "email",
+    "log"
+  ],
+  "scenarios": {
+    "intents": {
+      "fixture": "intents_jev_compat",
+      "fixture_path": "C:\\Users\\Administrator\\oi_enhancements\\companion\\test_fixtures\\intents_jev_compat.json",
+      "local": {
+        "fixture": "intents_jev_compat",
+        "fixture_path": "C:\\Users\\Administrator\\oi_enhancements\\companion\\test_fixtures\\intents_jev_compat.json",
+        "n_cases": 50,
+        "results": [
+          {
+            "i": 1,
+            "id": "intents.chat.001",
+            "expect": "chat",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 18381
+          },
+          {
+            "i": 2,
+            "id": "intents.chat.002",
+            "expect": "chat",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4642
+          },
+          {
+            "i": 3,
+            "id": "intents.chat.003",
+            "expect": "chat",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4428
+          },
+          {
+            "i": 4,
+            "id": "intents.chat.004",
+            "expect": "chat",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4615
+          },
+          {
+            "i": 5,
+            "id": "intents.chat.005",
+            "expect": "chat",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4787
+          },
+          {
+            "i": 6,
+            "id": "intents.chat.006",
+            "expect": "chat",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4852
+          },
+          {
+            "i": 7,
+            "id": "intents.chat.007",
+            "expect": "chat",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4552
+          },
+          {
+            "i": 8,
+            "id": "intents.chat.008",
+            "expect": "chat",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4464
+          },
+          {
+            "i": 9,
+            "id": "intents.chat.009",
+            "expect": "chat",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4664
+          },
+          {
+            "i": 10,
+            "id": "intents.chat.010",
+            "expect": "chat",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4598
+          },
+          {
+            "i": 11,
+            "id": "intents.code.001",
+            "expect": "code",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5031
+          },
+          {
+            "i": 12,
+            "id": "intents.code.002",
+            "expect": "code",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4461
+          },
+          {
+            "i": 13,
+            "id": "intents.code.003",
+            "expect": "code",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4734
+          },
+          {
+            "i": 14,
+            "id": "intents.code.004",
+            "expect": "code",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4528
+          },
+          {
+            "i": 15,
+            "id": "intents.code.005",
+            "expect": "code",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4618
+          },
+          {
+            "i": 16,
+            "id": "intents.code.006",
+            "expect": "code",
+            "actual": "code",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 6181
+          },
+          {
+            "i": 17,
+            "id": "intents.code.007",
+            "expect": "code",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6809
+          },
+          {
+            "i": 18,
+            "id": "intents.code.008",
+            "expect": "code",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 8073
+          },
+          {
+            "i": 19,
+            "id": "intents.code.009",
+            "expect": "code",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6633
+          },
+          {
+            "i": 20,
+            "id": "intents.code.010",
+            "expect": "code",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6245
+          },
+          {
+            "i": 21,
+            "id": "intents.search.001",
+            "expect": "search",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6182
+          },
+          {
+            "i": 22,
+            "id": "intents.search.002",
+            "expect": "search",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6299
+          },
+          {
+            "i": 23,
+            "id": "intents.search.003",
+            "expect": "search",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 6349
+          },
+          {
+            "i": 24,
+            "id": "intents.search.004",
+            "expect": "search",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4305
+          },
+          {
+            "i": 25,
+            "id": "intents.search.005",
+            "expect": "search",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4796
+          },
+          {
+            "i": 26,
+            "id": "intents.search.006",
+            "expect": "search",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4640
+          },
+          {
+            "i": 27,
+            "id": "intents.search.007",
+            "expect": "search",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4940
+          },
+          {
+            "i": 28,
+            "id": "intents.search.008",
+            "expect": "search",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4615
+          },
+          {
+            "i": 29,
+            "id": "intents.search.009",
+            "expect": "search",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5033
+          },
+          {
+            "i": 30,
+            "id": "intents.search.010",
+            "expect": "search",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4592
+          },
+          {
+            "i": 31,
+            "id": "intents.tool_call.001",
+            "expect": "tool_call",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4602
+          },
+          {
+            "i": 32,
+            "id": "intents.tool_call.002",
+            "expect": "tool_call",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4557
+          },
+          {
+            "i": 33,
+            "id": "intents.tool_call.003",
+            "expect": "tool_call",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5285
+          },
+          {
+            "i": 34,
+            "id": "intents.tool_call.004",
+            "expect": "tool_call",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4977
+          },
+          {
+            "i": 35,
+            "id": "intents.tool_call.005",
+            "expect": "tool_call",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4589
+          },
+          {
+            "i": 36,
+            "id": "intents.tool_call.006",
+            "expect": "tool_call",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5294
+          },
+          {
+            "i": 37,
+            "id": "intents.tool_call.007",
+            "expect": "tool_call",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4533
+          },
+          {
+            "i": 38,
+            "id": "intents.tool_call.008",
+            "expect": "tool_call",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4879
+          },
+          {
+            "i": 39,
+            "id": "intents.tool_call.009",
+            "expect": "tool_call",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5137
+          },
+          {
+            "i": 40,
+            "id": "intents.tool_call.010",
+            "expect": "tool_call",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5462
+          },
+          {
+            "i": 41,
+            "id": "intents.roleplay.001",
+            "expect": "roleplay",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4767
+          },
+          {
+            "i": 42,
+            "id": "intents.roleplay.002",
+            "expect": "roleplay",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4780
+          },
+          {
+            "i": 43,
+            "id": "intents.roleplay.003",
+            "expect": "roleplay",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 3290
+          },
+          {
+            "i": 44,
+            "id": "intents.roleplay.004",
+            "expect": "roleplay",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4611
+          },
+          {
+            "i": 45,
+            "id": "intents.roleplay.005",
+            "expect": "roleplay",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 3068
+          },
+          {
+            "i": 46,
+            "id": "intents.roleplay.006",
+            "expect": "roleplay",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4719
+          },
+          {
+            "i": 47,
+            "id": "intents.roleplay.007",
+            "expect": "roleplay",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5173
+          },
+          {
+            "i": 48,
+            "id": "intents.roleplay.008",
+            "expect": "roleplay",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4796
+          },
+          {
+            "i": 49,
+            "id": "intents.roleplay.009",
+            "expect": "roleplay",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5317
+          },
+          {
+            "i": 50,
+            "id": "intents.roleplay.010",
+            "expect": "roleplay",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5388
+          }
+        ],
+        "summary": {
+          "n": 50,
+          "accuracy": 0.02,
+          "parse_fail_rate": 0.0,
+          "latency_p50_ms": 4787,
+          "latency_p95_ms": 6809
+        },
+        "elapsed_total_s": 264.29
+      }
+    },
+    "task": {
+      "fixture": "task_jev_compat",
+      "fixture_path": "C:\\Users\\Administrator\\oi_enhancements\\companion\\test_fixtures\\task_jev_compat.json",
+      "local": {
+        "fixture": "task_jev_compat",
+        "fixture_path": "C:\\Users\\Administrator\\oi_enhancements\\companion\\test_fixtures\\task_jev_compat.json",
+        "n_cases": 59,
+        "results": [
+          {
+            "i": 1,
+            "id": "task.code_call.001",
+            "expect": "code_call",
+            "actual": "code_call",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 10879
+          },
+          {
+            "i": 2,
+            "id": "task.code_call.002",
+            "expect": "code_call",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5326
+          },
+          {
+            "i": 3,
+            "id": "task.code_call.003",
+            "expect": "code_call",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4648
+          },
+          {
+            "i": 4,
+            "id": "task.code_call.004",
+            "expect": "code_call",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4691
+          },
+          {
+            "i": 5,
+            "id": "task.code_call.005",
+            "expect": "code_call",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4857
+          },
+          {
+            "i": 6,
+            "id": "task.code_call.006",
+            "expect": "code_call",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4830
+          },
+          {
+            "i": 7,
+            "id": "task.code_call.007",
+            "expect": "code_call",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4897
+          },
+          {
+            "i": 8,
+            "id": "task.code_call.008",
+            "expect": "code_call",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4920
+          },
+          {
+            "i": 9,
+            "id": "task.code_call.009",
+            "expect": "code_call",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5036
+          },
+          {
+            "i": 10,
+            "id": "task.code_call.010",
+            "expect": "code_call",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4896
+          },
+          {
+            "i": 11,
+            "id": "task.code_call.011",
+            "expect": "code_call",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4210
+          },
+          {
+            "i": 12,
+            "id": "task.code_call.012",
+            "expect": "code_call",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4863
+          },
+          {
+            "i": 13,
+            "id": "task.code_qa.001",
+            "expect": "code_qa",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4957
+          },
+          {
+            "i": 14,
+            "id": "task.code_qa.002",
+            "expect": "code_qa",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5245
+          },
+          {
+            "i": 15,
+            "id": "task.code_qa.003",
+            "expect": "code_qa",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4899
+          },
+          {
+            "i": 16,
+            "id": "task.code_qa.004",
+            "expect": "code_qa",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5141
+          },
+          {
+            "i": 17,
+            "id": "task.code_qa.005",
+            "expect": "code_qa",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5274
+          },
+          {
+            "i": 18,
+            "id": "task.code_qa.006",
+            "expect": "code_qa",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4883
+          },
+          {
+            "i": 19,
+            "id": "task.code_qa.007",
+            "expect": "code_qa",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4816
+          },
+          {
+            "i": 20,
+            "id": "task.code_qa.008",
+            "expect": "code_qa",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5145
+          },
+          {
+            "i": 21,
+            "id": "task.code_qa.009",
+            "expect": "code_qa",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4989
+          },
+          {
+            "i": 22,
+            "id": "task.code_qa.010",
+            "expect": "code_qa",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4992
+          },
+          {
+            "i": 23,
+            "id": "task.code_qa.011",
+            "expect": "code_qa",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5233
+          },
+          {
+            "i": 24,
+            "id": "task.code_qa.012",
+            "expect": "code_qa",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4840
+          },
+          {
+            "i": 25,
+            "id": "task.creative.001",
+            "expect": "creative",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5179
+          },
+          {
+            "i": 26,
+            "id": "task.creative.002",
+            "expect": "creative",
+            "actual": "creative",
+            "match": true,
+            "parse_fail": false,
+            "elapsed_ms": 5737
+          },
+          {
+            "i": 27,
+            "id": "task.creative.003",
+            "expect": "creative",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5434
+          },
+          {
+            "i": 28,
+            "id": "task.creative.004",
+            "expect": "creative",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5590
+          },
+          {
+            "i": 29,
+            "id": "task.creative.005",
+            "expect": "creative",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5335
+          },
+          {
+            "i": 30,
+            "id": "task.creative.006",
+            "expect": "creative",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5162
+          },
+          {
+            "i": 31,
+            "id": "task.creative.007",
+            "expect": "creative",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5078
+          },
+          {
+            "i": 32,
+            "id": "task.creative.008",
+            "expect": "creative",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5433
+          },
+          {
+            "i": 33,
+            "id": "task.creative.009",
+            "expect": "creative",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5146
+          },
+          {
+            "i": 34,
+            "id": "task.creative.010",
+            "expect": "creative",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5203
+          },
+          {
+            "i": 35,
+            "id": "task.long.001",
+            "expect": "long",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 25453
+          },
+          {
+            "i": 36,
+            "id": "task.fast.001",
+            "expect": "fast",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5163
+          },
+          {
+            "i": 37,
+            "id": "task.fast.002",
+            "expect": "fast",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4441
+          },
+          {
+            "i": 38,
+            "id": "task.fast.003",
+            "expect": "fast",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4717
+          },
+          {
+            "i": 39,
+            "id": "task.fast.004",
+            "expect": "fast",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4402
+          },
+          {
+            "i": 40,
+            "id": "task.fast.005",
+            "expect": "fast",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4815
+          },
+          {
+            "i": 41,
+            "id": "task.fast.006",
+            "expect": "fast",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4844
+          },
+          {
+            "i": 42,
+            "id": "task.fast.007",
+            "expect": "fast",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4898
+          },
+          {
+            "i": 43,
+            "id": "task.fast.008",
+            "expect": "fast",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4486
+          },
+          {
+            "i": 44,
+            "id": "task.fast.009",
+            "expect": "fast",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4501
+          },
+          {
+            "i": 45,
+            "id": "task.fast.010",
+            "expect": "fast",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4812
+          },
+          {
+            "i": 46,
+            "id": "task.fast.011",
+            "expect": "fast",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4876
+          },
+          {
+            "i": 47,
+            "id": "task.fast.012",
+            "expect": "fast",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5075
+          },
+          {
+            "i": 48,
+            "id": "task.general.001",
+            "expect": "general",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5043
+          },
+          {
+            "i": 49,
+            "id": "task.general.002",
+            "expect": "general",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4580
+          },
+          {
+            "i": 50,
+            "id": "task.general.003",
+            "expect": "general",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4385
+          },
+          {
+            "i": 51,
+            "id": "task.general.004",
+            "expect": "general",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4495
+          },
+          {
+            "i": 52,
+            "id": "task.general.005",
+            "expect": "general",
+            "actual": "creative",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5509
+          },
+          {
+            "i": 53,
+            "id": "task.general.006",
+            "expect": "general",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5434
+          },
+          {
+            "i": 54,
+            "id": "task.general.007",
+            "expect": "general",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 4689
+          },
+          {
+            "i": 55,
+            "id": "task.general.008",
+            "expect": "general",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5124
+          },
+          {
+            "i": 56,
+            "id": "task.general.009",
+            "expect": "general",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5077
+          },
+          {
+            "i": 57,
+            "id": "task.general.010",
+            "expect": "general",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5084
+          },
+          {
+            "i": 58,
+            "id": "task.general.011",
+            "expect": "general",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5162
+          },
+          {
+            "i": 59,
+            "id": "task.general.012",
+            "expect": "general",
+            "actual": "safe",
+            "match": false,
+            "parse_fail": false,
+            "elapsed_ms": 5344
+          }
+        ],
+        "summary": {
+          "n": 59,
+          "accuracy": 0.0339,
+          "parse_fail_rate": 0.0,
+          "latency_p50_ms": 4992,
+          "latency_p95_ms": 5737
+        },
+        "elapsed_total_s": 320.2
+      }
+    },
+    "safety": {
+      "fixture": "safety_jev_compat",
+      "fixture_path": "C:\\Users\\Administrator\\oi_enhancements\\companion\\test_fixtures\\safety_jev_compat.json",
+      "local": {
+        "skipped": true,
+        "reason": "无本地 adapter 模块(待 M3.60+ 训)",
+        "fixture": "safety_jev_compat",
+        "n_cases": 30
+      }
+    },
+    "perf": {
+      "fixture": "perf_independent",
+      "fixture_path": "C:\\Users\\Administrator\\oi_enhancements\\companion\\test_fixtures\\perf_independent.json",
+      "local": {
+        "fixture": "perf_independent",
+        "fixture_path": "C:\\Users\\Administrator\\oi_enhancements\\companion\\test_fixtures\\perf_independent.json",
+        "n_cases": 60,
+        "results": [
+          {
+            "i": 1,
+            "id": "perf.s.024",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 188,
+            "error": "JSONDecodeError: Expecting ',' delimiter: line 577381 column 14 (char 8538459)"
+          },
+          {
+            "i": 2,
+            "id": "perf.h.009",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+          },
+          {
+            "i": 3,
+            "id": "perf.s.012",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 161,
+            "error": "JSONDecodeError: Expecting ',' delimiter: line 577381 column 14 (char 8538459)"
+          },
+          {
+            "i": 4,
+            "id": "perf.h.023",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+          },
+          {
+            "i": 5,
+            "id": "perf.s.028",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 313,
+            "error": "JSONDecodeError: Expecting ',' delimiter: line 577381 column 14 (char 8538459)"
+          },
+          {
+            "i": 6,
+            "id": "perf.s.001",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 152,
+            "error": "JSONDecodeError: Expecting ',' delimiter: line 577381 column 14 (char 8538459)"
+          },
+          {
+            "i": 7,
+            "id": "perf.s.029",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 151,
+            "error": "JSONDecodeError: Expecting ',' delimiter: line 577381 column 14 (char 8538459)"
+          },
+          {
+            "i": 8,
+            "id": "perf.s.008",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 158,
+            "error": "JSONDecodeError: Expecting ',' delimiter: line 577381 column 14 (char 8538459)"
+          },
+          {
+            "i": 9,
+            "id": "perf.h.020",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+          },
+          {
+            "i": 10,
+            "id": "perf.s.015",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 160,
+            "error": "JSONDecodeError: Expecting ',' delimiter: line 577381 column 14 (char 8538459)"
+          },
+          {
+            "i": 11,
+            "id": "perf.h.022",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+          },
+          {
+            "i": 12,
+            "id": "perf.s.027",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 174,
+            "error": "JSONDecodeError: Expecting ',' delimiter: line 577381 column 14 (char 8538459)"
+          },
+          {
+            "i": 13,
+            "id": "perf.h.007",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+          },
+          {
+            "i": 14,
+            "id": "perf.h.001",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+          },
+          {
+            "i": 15,
+            "id": "perf.h.012",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+          },
+          {
+            "i": 16,
+            "id": "perf.s.026",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 155,
+            "error": "JSONDecodeError: Expecting ',' delimiter: line 577381 column 14 (char 8538459)"
+          },
+          {
+            "i": 17,
+            "id": "perf.s.011",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 150,
+            "error": "JSONDecodeError: Expecting ',' delimiter: line 577381 column 14 (char 8538459)"
+          },
+          {
+            "i": 18,
+            "id": "perf.h.018",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+          },
+          {
+            "i": 19,
+            "id": "perf.h.027",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+          },
+          {
+            "i": 20,
+            "id": "perf.h.019",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+          },
+          {
+            "i": 21,
+            "id": "perf.h.025",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+          },
+          {
+            "i": 22,
+            "id": "perf.s.013",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 150,
+            "error": "JSONDecodeError: Expecting ',' delimiter: line 577381 column 14 (char 8538459)"
+          },
+          {
+            "i": 23,
+            "id": "perf.h.030",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+          },
+          {
+            "i": 24,
+            "id": "perf.s.018",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 155,
+            "error": "JSONDecodeError: Expecting ',' delimiter: line 577381 column 14 (char 8538459)"
+          },
+          {
+            "i": 25,
+            "id": "perf.h.028",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+          },
+          {
+            "i": 26,
+            "id": "perf.h.002",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+          },
+          {
+            "i": 27,
+            "id": "perf.h.026",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+          },
+          {
+            "i": 28,
+            "id": "perf.h.015",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+          },
+          {
+            "i": 29,
+            "id": "perf.h.017",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+          },
+          {
+            "i": 30,
+            "id": "perf.s.010",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 154,
+            "error": "JSONDecodeError: Expecting ',' delimiter: line 577381 column 14 (char 8538459)"
+          },
+          {
+            "i": 31,
+            "id": "perf.h.003",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+          },
+          {
+            "i": 32,
+            "id": "perf.s.002",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 169,
+            "error": "JSONDecodeError: Expecting ',' delimiter: line 577381 column 14 (char 8538459)"
+          },
+          {
+            "i": 33,
+            "id": "perf.h.014",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+          },
+          {
+            "i": 34,
+            "id": "perf.s.020",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 150,
+            "error": "JSONDecodeError: Expecting ',' delimiter: line 577381 column 14 (char 8538459)"
+          },
+          {
+            "i": 35,
+            "id": "perf.s.022",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 152,
+            "error": "JSONDecodeError: Expecting ',' delimiter: line 577381 column 14 (char 8538459)"
+          },
+          {
+            "i": 36,
+            "id": "perf.s.025",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 147,
+            "error": "JSONDecodeError: Expecting ',' delimiter: line 577381 column 14 (char 8538459)"
+          },
+          {
+            "i": 37,
+            "id": "perf.h.021",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+          },
+          {
+            "i": 38,
+            "id": "perf.h.011",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+          },
+          {
+            "i": 39,
+            "id": "perf.h.010",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+          },
+          {
+            "i": 40,
+            "id": "perf.s.005",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 151,
+            "error": "JSONDecodeError: Expecting ',' delimiter: line 577381 column 14 (char 8538459)"
+          },
+          {
+            "i": 41,
+            "id": "perf.s.017",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 157,
+            "error": "JSONDecodeError: Expecting ',' delimiter: line 577381 column 14 (char 8538459)"
+          },
+          {
+            "i": 42,
+            "id": "perf.h.013",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+          },
+          {
+            "i": 43,
+            "id": "perf.s.003",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 160,
+            "error": "JSONDecodeError: Expecting ',' delimiter: line 577381 column 14 (char 8538459)"
+          },
+          {
+            "i": 44,
+            "id": "perf.s.006",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 160,
+            "error": "JSONDecodeError: Expecting ',' delimiter: line 577381 column 14 (char 8538459)"
+          },
+          {
+            "i": 45,
+            "id": "perf.h.004",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+          },
+          {
+            "i": 46,
+            "id": "perf.h.008",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+          },
+          {
+            "i": 47,
+            "id": "perf.s.007",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 149,
+            "error": "JSONDecodeError: Expecting ',' delimiter: line 577381 column 14 (char 8538459)"
+          },
+          {
+            "i": 48,
+            "id": "perf.h.005",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+          },
+          {
+            "i": 49,
+            "id": "perf.h.024",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+          },
+          {
+            "i": 50,
+            "id": "perf.s.016",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 151,
+            "error": "JSONDecodeError: Expecting ',' delimiter: line 577381 column 14 (char 8538459)"
+          },
+          {
+            "i": 51,
+            "id": "perf.s.023",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 148,
+            "error": "JSONDecodeError: Expecting ',' delimiter: line 577381 column 14 (char 8538459)"
+          },
+          {
+            "i": 52,
+            "id": "perf.h.029",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+          },
+          {
+            "i": 53,
+            "id": "perf.s.004",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 150,
+            "error": "JSONDecodeError: Expecting ',' delimiter: line 577381 column 14 (char 8538459)"
+          },
+          {
+            "i": 54,
+            "id": "perf.h.006",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+          },
+          {
+            "i": 55,
+            "id": "perf.s.021",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 149,
+            "error": "JSONDecodeError: Expecting ',' delimiter: line 577381 column 14 (char 8538459)"
+          },
+          {
+            "i": 56,
+            "id": "perf.s.009",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 166,
+            "error": "JSONDecodeError: Expecting ',' delimiter: line 577381 column 14 (char 8538459)"
+          },
+          {
+            "i": 57,
+            "id": "perf.s.030",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 144,
+            "error": "JSONDecodeError: Expecting ',' delimiter: line 577381 column 14 (char 8538459)"
+          },
+          {
+            "i": 58,
+            "id": "perf.s.014",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 148,
+            "error": "JSONDecodeError: Expecting ',' delimiter: line 577381 column 14 (char 8538459)"
+          },
+          {
+            "i": 59,
+            "id": "perf.h.016",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "JSONDecodeError: Expecting value: line 1 column 1 (char 0)"
+          },
+          {
+            "i": 60,
+            "id": "perf.s.019",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 153,
+            "error": "JSONDecodeError: Expecting ',' delimiter: line 577381 column 14 (char 8538459)"
+          }
+        ],
+        "summary": {
+          "n": 60,
+          "accuracy": 0.0,
+          "parse_fail_rate": 1.0,
+          "latency_p50_ms": 144,
+          "latency_p95_ms": 174
+        },
+        "elapsed_total_s": 4.84
+      }
+    },
+    "disk_cleanup": {
+      "fixture": "disk_cleanup_independent",
+      "fixture_path": "C:\\Users\\Administrator\\oi_enhancements\\companion\\test_fixtures\\disk_cleanup_independent.json",
+      "local": {
+        "fixture": "disk_cleanup_independent",
+        "fixture_path": "C:\\Users\\Administrator\\oi_enhancements\\companion\\test_fixtures\\disk_cleanup_independent.json",
+        "n_cases": 60,
+        "results": [
+          {
+            "i": 1,
+            "id": "dc.h.010",
+            "expect": "medium",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 12136
+          },
+          {
+            "i": 2,
+            "id": "dc.s.028",
+            "expect": "critical",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 8374
+          },
+          {
+            "i": 3,
+            "id": "dc.h.013",
+            "expect": "low",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 9705
+          },
+          {
+            "i": 4,
+            "id": "dc.s.007",
+            "expect": "medium",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 8788
+          },
+          {
+            "i": 5,
+            "id": "dc.s.005",
+            "expect": "low",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 7822
+          },
+          {
+            "i": 6,
+            "id": "dc.s.029",
+            "expect": "critical",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 9634
+          },
+          {
+            "i": 7,
+            "id": "dc.s.001",
+            "expect": "safe",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 8764
+          },
+          {
+            "i": 8,
+            "id": "dc.s.030",
+            "expect": "critical",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 8940
+          },
+          {
+            "i": 9,
+            "id": "dc.s.010",
+            "expect": "high",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 14112
+          },
+          {
+            "i": 10,
+            "id": "dc.h.021",
+            "expect": "medium",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 9423
+          },
+          {
+            "i": 11,
+            "id": "dc.h.012",
+            "expect": "medium",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 8837
+          },
+          {
+            "i": 12,
+            "id": "dc.h.023",
+            "expect": "low",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 9509
+          },
+          {
+            "i": 13,
+            "id": "dc.h.006",
+            "expect": "low",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 9213
+          },
+          {
+            "i": 14,
+            "id": "dc.h.027",
+            "expect": "critical",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 11201
+          },
+          {
+            "i": 15,
+            "id": "dc.h.011",
+            "expect": "low",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 8870
+          },
+          {
+            "i": 16,
+            "id": "dc.h.017",
+            "expect": "low",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 8789
+          },
+          {
+            "i": 17,
+            "id": "dc.s.026",
+            "expect": "high",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 7426
+          },
+          {
+            "i": 18,
+            "id": "dc.h.028",
+            "expect": "low",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 9076
+          },
+          {
+            "i": 19,
+            "id": "dc.h.014",
+            "expect": "low",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 9420
+          },
+          {
+            "i": 20,
+            "id": "dc.h.030",
+            "expect": "low",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 11319
+          },
+          {
+            "i": 21,
+            "id": "dc.s.021",
+            "expect": "low",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 9342
+          },
+          {
+            "i": 22,
+            "id": "dc.s.022",
+            "expect": "medium",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 10566
+          },
+          {
+            "i": 23,
+            "id": "dc.h.025",
+            "expect": "medium",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 10555
+          },
+          {
+            "i": 24,
+            "id": "dc.h.019",
+            "expect": "low",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 11331
+          },
+          {
+            "i": 25,
+            "id": "dc.s.025",
+            "expect": "high",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 11966
+          },
+          {
+            "i": 26,
+            "id": "dc.s.003",
+            "expect": "safe",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 12483
+          },
+          {
+            "i": 27,
+            "id": "dc.h.018",
+            "expect": "high",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 16122
+          },
+          {
+            "i": 28,
+            "id": "dc.h.007",
+            "expect": "medium",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 13308
+          },
+          {
+            "i": 29,
+            "id": "dc.s.002",
+            "expect": "safe",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 10898
+          },
+          {
+            "i": 30,
+            "id": "dc.s.023",
+            "expect": "medium",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 10975
+          },
+          {
+            "i": 31,
+            "id": "dc.h.009",
+            "expect": "medium",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 13774
+          },
+          {
+            "i": 32,
+            "id": "dc.s.020",
+            "expect": "low",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 14162
+          },
+          {
+            "i": 33,
+            "id": "dc.s.014",
+            "expect": "critical",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 12668
+          },
+          {
+            "i": 34,
+            "id": "dc.s.017",
+            "expect": "safe",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 14068
+          },
+          {
+            "i": 35,
+            "id": "dc.h.003",
+            "expect": "critical",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 20629
+          },
+          {
+            "i": 36,
+            "id": "dc.s.009",
+            "expect": "medium",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 11716
+          },
+          {
+            "i": 37,
+            "id": "dc.s.011",
+            "expect": "high",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 15044
+          },
+          {
+            "i": 38,
+            "id": "dc.h.004",
+            "expect": "medium",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 12623
+          },
+          {
+            "i": 39,
+            "id": "dc.s.018",
+            "expect": "safe",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 11285
+          },
+          {
+            "i": 40,
+            "id": "dc.h.001",
+            "expect": "medium",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 14536
+          },
+          {
+            "i": 41,
+            "id": "dc.s.027",
+            "expect": "high",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 13923
+          },
+          {
+            "i": 42,
+            "id": "dc.s.015",
+            "expect": "critical",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 13101
+          },
+          {
+            "i": 43,
+            "id": "dc.s.019",
+            "expect": "low",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 14300
+          },
+          {
+            "i": 44,
+            "id": "dc.s.006",
+            "expect": "low",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 13424
+          },
+          {
+            "i": 45,
+            "id": "dc.s.008",
+            "expect": "medium",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 15184
+          },
+          {
+            "i": 46,
+            "id": "dc.h.002",
+            "expect": "medium",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 15619
+          },
+          {
+            "i": 47,
+            "id": "dc.h.022",
+            "expect": "low",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 16159
+          },
+          {
+            "i": 48,
+            "id": "dc.h.005",
+            "expect": "medium",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 15531
+          },
+          {
+            "i": 49,
+            "id": "dc.h.015",
+            "expect": "medium",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 15801
+          },
+          {
+            "i": 50,
+            "id": "dc.h.016",
+            "expect": "low",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 16328
+          },
+          {
+            "i": 51,
+            "id": "dc.h.008",
+            "expect": "low",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 13945
+          },
+          {
+            "i": 52,
+            "id": "dc.s.024",
+            "expect": "medium",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 11273
+          },
+          {
+            "i": 53,
+            "id": "dc.s.004",
+            "expect": "low",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 11139
+          },
+          {
+            "i": 54,
+            "id": "dc.h.029",
+            "expect": "low",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 15040
+          },
+          {
+            "i": 55,
+            "id": "dc.h.024",
+            "expect": "medium",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 17535
+          },
+          {
+            "i": 56,
+            "id": "dc.s.012",
+            "expect": "high",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 15199
+          },
+          {
+            "i": 57,
+            "id": "dc.s.013",
+            "expect": "critical",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 10334
+          },
+          {
+            "i": 58,
+            "id": "dc.h.026",
+            "expect": "medium",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 16535
+          },
+          {
+            "i": 59,
+            "id": "dc.h.020",
+            "expect": "critical",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 20377
+          },
+          {
+            "i": 60,
+            "id": "dc.s.016",
+            "expect": "safe",
+            "actual": "unknown",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 11319
+          }
+        ],
+        "summary": {
+          "n": 60,
+          "accuracy": 0.0,
+          "parse_fail_rate": 1.0,
+          "latency_p50_ms": 11966,
+          "latency_p95_ms": 17535
+        },
+        "elapsed_total_s": 741.51
+      }
+    },
+    "tempfile": {
+      "fixture": "tempfile_independent",
+      "fixture_path": "C:\\Users\\Administrator\\oi_enhancements\\companion\\test_fixtures\\tempfile_independent.json",
+      "local": {
+        "fixture": "tempfile_independent",
+        "fixture_path": "C:\\Users\\Administrator\\oi_enhancements\\companion\\test_fixtures\\tempfile_independent.json",
+        "n_cases": 60,
+        "results": [
+          {
+            "i": 1,
+            "id": "tf.h.029",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 2,
+            "id": "tf.h.023",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 3,
+            "id": "tf.h.002",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 4,
+            "id": "tf.s.016",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 5,
+            "id": "tf.s.018",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 6,
+            "id": "tf.s.004",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 7,
+            "id": "tf.s.014",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 8,
+            "id": "tf.s.021",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 9,
+            "id": "tf.s.008",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 10,
+            "id": "tf.s.011",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 11,
+            "id": "tf.s.005",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 12,
+            "id": "tf.s.030",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 13,
+            "id": "tf.h.004",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 14,
+            "id": "tf.h.005",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 15,
+            "id": "tf.h.018",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 16,
+            "id": "tf.h.008",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 17,
+            "id": "tf.s.002",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 18,
+            "id": "tf.h.011",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 19,
+            "id": "tf.s.009",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 20,
+            "id": "tf.h.010",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 21,
+            "id": "tf.h.003",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 22,
+            "id": "tf.s.027",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 23,
+            "id": "tf.h.006",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 24,
+            "id": "tf.h.024",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 25,
+            "id": "tf.h.016",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 26,
+            "id": "tf.h.017",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 27,
+            "id": "tf.h.007",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 28,
+            "id": "tf.h.022",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 29,
+            "id": "tf.h.030",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 30,
+            "id": "tf.s.001",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 31,
+            "id": "tf.h.015",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 32,
+            "id": "tf.s.023",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 33,
+            "id": "tf.h.028",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 34,
+            "id": "tf.h.014",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 35,
+            "id": "tf.s.020",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 36,
+            "id": "tf.s.012",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 37,
+            "id": "tf.h.001",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 38,
+            "id": "tf.s.019",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 39,
+            "id": "tf.s.022",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 40,
+            "id": "tf.s.026",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 41,
+            "id": "tf.s.007",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 42,
+            "id": "tf.s.010",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 43,
+            "id": "tf.h.012",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 44,
+            "id": "tf.h.025",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 45,
+            "id": "tf.s.025",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 46,
+            "id": "tf.s.024",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 47,
+            "id": "tf.h.013",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 48,
+            "id": "tf.h.009",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 49,
+            "id": "tf.s.006",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 50,
+            "id": "tf.h.019",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 51,
+            "id": "tf.s.015",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 52,
+            "id": "tf.h.026",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 53,
+            "id": "tf.h.021",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 54,
+            "id": "tf.h.027",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 55,
+            "id": "tf.s.013",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 56,
+            "id": "tf.s.029",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 57,
+            "id": "tf.s.003",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 58,
+            "id": "tf.h.020",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 59,
+            "id": "tf.s.028",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 60,
+            "id": "tf.s.017",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          }
+        ],
+        "summary": {
+          "n": 60,
+          "accuracy": 0.0,
+          "parse_fail_rate": 1.0,
+          "latency_p50_ms": 0,
+          "latency_p95_ms": 0
+        },
+        "elapsed_total_s": 0.0
+      }
+    },
+    "email": {
+      "fixture": "email_independent",
+      "fixture_path": "C:\\Users\\Administrator\\oi_enhancements\\companion\\test_fixtures\\email_independent.json",
+      "local": {
+        "fixture": "email_independent",
+        "fixture_path": "C:\\Users\\Administrator\\oi_enhancements\\companion\\test_fixtures\\email_independent.json",
+        "n_cases": 60,
+        "results": [
+          {
+            "i": 1,
+            "id": "em.h.012",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 2,
+            "id": "em.s.024",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 3,
+            "id": "em.s.016",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 4,
+            "id": "em.s.015",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 5,
+            "id": "em.s.014",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 6,
+            "id": "em.h.007",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 7,
+            "id": "em.h.016",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 8,
+            "id": "em.h.025",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 9,
+            "id": "em.s.026",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 10,
+            "id": "em.h.005",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 11,
+            "id": "em.h.015",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 12,
+            "id": "em.h.028",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 13,
+            "id": "em.h.011",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 14,
+            "id": "em.h.002",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 15,
+            "id": "em.s.029",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 16,
+            "id": "em.s.001",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 17,
+            "id": "em.s.018",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 18,
+            "id": "em.h.003",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 19,
+            "id": "em.s.008",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 20,
+            "id": "em.h.022",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 21,
+            "id": "em.s.019",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 22,
+            "id": "em.s.007",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 23,
+            "id": "em.h.010",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 24,
+            "id": "em.h.006",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 25,
+            "id": "em.h.023",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 26,
+            "id": "em.s.027",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 27,
+            "id": "em.s.025",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 28,
+            "id": "em.h.020",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 29,
+            "id": "em.s.028",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 30,
+            "id": "em.s.022",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 31,
+            "id": "em.s.009",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 32,
+            "id": "em.s.012",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 33,
+            "id": "em.s.021",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 34,
+            "id": "em.h.019",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 35,
+            "id": "em.h.009",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 36,
+            "id": "em.s.006",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 37,
+            "id": "em.h.018",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 38,
+            "id": "em.h.014",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 39,
+            "id": "em.s.017",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 40,
+            "id": "em.h.029",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 41,
+            "id": "em.s.011",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 42,
+            "id": "em.s.002",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 43,
+            "id": "em.s.010",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 44,
+            "id": "em.h.024",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 45,
+            "id": "em.s.004",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 46,
+            "id": "em.h.013",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 47,
+            "id": "em.h.004",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 48,
+            "id": "em.h.027",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 49,
+            "id": "em.h.030",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 50,
+            "id": "em.s.005",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 51,
+            "id": "em.s.013",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 52,
+            "id": "em.h.001",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 53,
+            "id": "em.s.023",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 54,
+            "id": "em.s.003",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 55,
+            "id": "em.h.026",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 56,
+            "id": "em.s.020",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 57,
+            "id": "em.h.008",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 58,
+            "id": "em.s.030",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 59,
+            "id": "em.h.017",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          },
+          {
+            "i": 60,
+            "id": "em.h.021",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_email() missing 2 required positional arguments: 'subject' and 'body'"
+          }
+        ],
+        "summary": {
+          "n": 60,
+          "accuracy": 0.0,
+          "parse_fail_rate": 1.0,
+          "latency_p50_ms": 0,
+          "latency_p95_ms": 0
+        },
+        "elapsed_total_s": 0.0
+      }
+    },
+    "log": {
+      "fixture": "log_independent",
+      "fixture_path": "C:\\Users\\Administrator\\oi_enhancements\\companion\\test_fixtures\\log_independent.json",
+      "local": {
+        "fixture": "log_independent",
+        "fixture_path": "C:\\Users\\Administrator\\oi_enhancements\\companion\\test_fixtures\\log_independent.json",
+        "n_cases": 60,
+        "results": [
+          {
+            "i": 1,
+            "id": "lg.s.029",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 2,
+            "id": "lg.h.009",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 3,
+            "id": "lg.s.003",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 4,
+            "id": "lg.h.026",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 5,
+            "id": "lg.s.016",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 6,
+            "id": "lg.s.020",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 7,
+            "id": "lg.h.015",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 8,
+            "id": "lg.h.003",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 9,
+            "id": "lg.s.012",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 10,
+            "id": "lg.h.005",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 11,
+            "id": "lg.s.024",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 12,
+            "id": "lg.h.013",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 13,
+            "id": "lg.h.001",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 14,
+            "id": "lg.s.005",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 15,
+            "id": "lg.s.001",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 16,
+            "id": "lg.h.008",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 17,
+            "id": "lg.h.002",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 18,
+            "id": "lg.s.021",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 19,
+            "id": "lg.s.028",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 20,
+            "id": "lg.h.016",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 21,
+            "id": "lg.h.019",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 22,
+            "id": "lg.h.023",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 23,
+            "id": "lg.s.023",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 24,
+            "id": "lg.s.013",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 25,
+            "id": "lg.s.006",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 26,
+            "id": "lg.s.027",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 27,
+            "id": "lg.h.012",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 28,
+            "id": "lg.s.011",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 29,
+            "id": "lg.h.017",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 30,
+            "id": "lg.s.026",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 31,
+            "id": "lg.h.007",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 32,
+            "id": "lg.s.008",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 33,
+            "id": "lg.s.025",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 34,
+            "id": "lg.s.019",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 35,
+            "id": "lg.s.002",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 36,
+            "id": "lg.h.028",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 37,
+            "id": "lg.h.029",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 38,
+            "id": "lg.h.018",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 39,
+            "id": "lg.s.015",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 40,
+            "id": "lg.s.014",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 41,
+            "id": "lg.s.010",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 42,
+            "id": "lg.s.022",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 43,
+            "id": "lg.h.010",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 44,
+            "id": "lg.h.004",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 45,
+            "id": "lg.s.030",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 46,
+            "id": "lg.s.009",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 47,
+            "id": "lg.s.007",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 48,
+            "id": "lg.h.021",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 49,
+            "id": "lg.s.017",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 50,
+            "id": "lg.h.020",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 51,
+            "id": "lg.h.024",
+            "expect": "high",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 52,
+            "id": "lg.h.011",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 53,
+            "id": "lg.h.022",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 54,
+            "id": "lg.h.030",
+            "expect": "medium",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 55,
+            "id": "lg.h.027",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 56,
+            "id": "lg.h.025",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 57,
+            "id": "lg.h.014",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 58,
+            "id": "lg.s.004",
+            "expect": "low",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 59,
+            "id": "lg.s.018",
+            "expect": "safe",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          },
+          {
+            "i": 60,
+            "id": "lg.h.006",
+            "expect": "critical",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 0,
+            "error": "TypeError: classify_log() missing 2 required positional arguments: 'level' and 'content'"
+          }
+        ],
+        "summary": {
+          "n": 60,
+          "accuracy": 0.0,
+          "parse_fail_rate": 1.0,
+          "latency_p50_ms": 0,
+          "latency_p95_ms": 0
+        },
+        "elapsed_total_s": 0.0
+      }
+    }
+  }
+}

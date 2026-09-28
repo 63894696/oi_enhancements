@@ -1,0 +1,527 @@
+{
+  "ts": "2026-09-23T10:03:35Z",
+  "scenarios_listed": [
+    "intents"
+  ],
+  "scenarios": {
+    "intents": {
+      "fixture": "intents_jev_compat",
+      "fixture_path": "C:\\Users\\Administrator\\oi_enhancements\\companion\\test_fixtures\\intents_jev_compat.json",
+      "local": {
+        "fixture": "intents_jev_compat",
+        "fixture_path": "C:\\Users\\Administrator\\oi_enhancements\\companion\\test_fixtures\\intents_jev_compat.json",
+        "n_cases": 50,
+        "results": [
+          {
+            "i": 1,
+            "id": "intents.chat.001",
+            "expect": "chat",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 12765,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 2,
+            "id": "intents.chat.002",
+            "expect": "chat",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 549,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 3,
+            "id": "intents.chat.003",
+            "expect": "chat",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 540,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 4,
+            "id": "intents.chat.004",
+            "expect": "chat",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 532,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 5,
+            "id": "intents.chat.005",
+            "expect": "chat",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 545,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 6,
+            "id": "intents.chat.006",
+            "expect": "chat",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 523,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 7,
+            "id": "intents.chat.007",
+            "expect": "chat",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 529,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 8,
+            "id": "intents.chat.008",
+            "expect": "chat",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 538,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 9,
+            "id": "intents.chat.009",
+            "expect": "chat",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 520,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 10,
+            "id": "intents.chat.010",
+            "expect": "chat",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 550,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 11,
+            "id": "intents.code.001",
+            "expect": "code",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 516,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 12,
+            "id": "intents.code.002",
+            "expect": "code",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 539,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 13,
+            "id": "intents.code.003",
+            "expect": "code",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 517,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 14,
+            "id": "intents.code.004",
+            "expect": "code",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 521,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 15,
+            "id": "intents.code.005",
+            "expect": "code",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 507,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 16,
+            "id": "intents.code.006",
+            "expect": "code",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 523,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 17,
+            "id": "intents.code.007",
+            "expect": "code",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 519,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 18,
+            "id": "intents.code.008",
+            "expect": "code",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 515,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 19,
+            "id": "intents.code.009",
+            "expect": "code",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 522,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 20,
+            "id": "intents.code.010",
+            "expect": "code",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 510,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 21,
+            "id": "intents.search.001",
+            "expect": "search",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 520,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 22,
+            "id": "intents.search.002",
+            "expect": "search",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 508,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 23,
+            "id": "intents.search.003",
+            "expect": "search",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 520,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 24,
+            "id": "intents.search.004",
+            "expect": "search",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 509,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 25,
+            "id": "intents.search.005",
+            "expect": "search",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 523,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 26,
+            "id": "intents.search.006",
+            "expect": "search",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 521,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 27,
+            "id": "intents.search.007",
+            "expect": "search",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 512,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 28,
+            "id": "intents.search.008",
+            "expect": "search",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 517,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 29,
+            "id": "intents.search.009",
+            "expect": "search",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 508,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 30,
+            "id": "intents.search.010",
+            "expect": "search",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 520,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 31,
+            "id": "intents.tool_call.001",
+            "expect": "tool_call",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 516,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 32,
+            "id": "intents.tool_call.002",
+            "expect": "tool_call",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 530,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 33,
+            "id": "intents.tool_call.003",
+            "expect": "tool_call",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 507,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 34,
+            "id": "intents.tool_call.004",
+            "expect": "tool_call",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 518,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 35,
+            "id": "intents.tool_call.005",
+            "expect": "tool_call",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 510,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 36,
+            "id": "intents.tool_call.006",
+            "expect": "tool_call",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 522,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 37,
+            "id": "intents.tool_call.007",
+            "expect": "tool_call",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 508,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 38,
+            "id": "intents.tool_call.008",
+            "expect": "tool_call",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 511,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 39,
+            "id": "intents.tool_call.009",
+            "expect": "tool_call",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 520,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 40,
+            "id": "intents.tool_call.010",
+            "expect": "tool_call",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 510,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 41,
+            "id": "intents.roleplay.001",
+            "expect": "roleplay",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 519,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 42,
+            "id": "intents.roleplay.002",
+            "expect": "roleplay",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 505,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 43,
+            "id": "intents.roleplay.003",
+            "expect": "roleplay",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 521,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 44,
+            "id": "intents.roleplay.004",
+            "expect": "roleplay",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 511,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 45,
+            "id": "intents.roleplay.005",
+            "expect": "roleplay",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 526,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 46,
+            "id": "intents.roleplay.006",
+            "expect": "roleplay",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 515,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 47,
+            "id": "intents.roleplay.007",
+            "expect": "roleplay",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 518,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 48,
+            "id": "intents.roleplay.008",
+            "expect": "roleplay",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 511,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 49,
+            "id": "intents.roleplay.009",
+            "expect": "roleplay",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 603,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          },
+          {
+            "i": 50,
+            "id": "intents.roleplay.010",
+            "expect": "roleplay",
+            "actual": "error",
+            "match": false,
+            "parse_fail": true,
+            "elapsed_ms": 524,
+            "error": "AttributeError: 'list' object has no attribute 'keys'"
+          }
+        ],
+        "summary": {
+          "n": 50,
+          "accuracy": 0.0,
+          "parse_fail_rate": 1.0,
+          "latency_p50_ms": 520,
+          "latency_p95_ms": 550
+        },
+        "elapsed_total_s": 39.8
+      }
+    }
+  }
+}

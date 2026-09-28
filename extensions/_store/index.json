@@ -1,6 +1,6 @@
 {
   "version": 5,
-  "updated_at": "2026-09-20",
+  "updated_at": "2026-09-23",
   "source": "local-file://",
   "store_root": "C:/Users/Administrator/.prisir/store",
   "items": [
@@ -583,6 +583,35 @@
       "downloads": 0,
       "updated": "2026-09-20",
       "auto_enable": true
+    },
+    {
+      "id": "web-watch",
+      "name": "URL 监控",
+      "desc": "盯 URL 内容变化(SHA256 比对),抓取失败/变化都 Windows toast 通知,SQLite 存历次通知",
+      "long_desc": "零 npm 依赖(Node 内置 node:sqlite + child_process + crypto),fetch 复用主进程 prisir_work.web_fetch(并发竞速 + 7d 缓存 + SSRF 兜底)。\n\n**核心规则**:\n- `interval_sec` 默认 600,范围 [10, 86400]\n- 变化检测:SHA256(normalize(content))。首次只存 hash 不告警\n- 抓取失败 → `fetch_failed` 通知,last_hash 不变\n- 内容变化 → `content_changed` 通知\n- toast 走系统自带 Windows.UI.Notifications,不依赖 BurntToast\n\n**命令**:\n- `watch.add { url, interval_sec?, selector? }`\n- `watch.list { limit? }`\n- `watch.remove { id }`\n- `watch.run { id, force? }`\n- `watch.check { all: true } | { id }`\n\n**存储**:`~/.prisir/extensions/web-watch/state.db`(SQLite,独立)。",
+      "version": "0.1.0",
+      "author": "PrisirAI 官方",
+      "tarball_url": "file:///C:/Users/Administrator/.prisir/store/ext-web-watch-0.1.0.tgz",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "size_kb": 4,
+      "permissions": [
+        "ai.invoke.command:watch.add",
+        "ai.invoke.command:watch.list",
+        "ai.invoke.command:watch.remove",
+        "ai.invoke.command:watch.run",
+        "ai.invoke.command:watch.check",
+        "shell.exec"
+      ],
+      "tags": [
+        "web",
+        "monitor",
+        "notification",
+        "watch",
+        "official"
+      ],
+      "stars": 0,
+      "downloads": 0,
+      "updated": "2026-09-23"
     }
   ]
 }

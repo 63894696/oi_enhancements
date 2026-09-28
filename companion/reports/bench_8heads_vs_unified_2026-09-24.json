@@ -1,0 +1,327 @@
+[
+  {
+    "scene": "disk_cleanup",
+    "model": "8head",
+    "n": 60,
+    "correct": 45,
+    "accuracy": 0.75,
+    "parse_fail_rate": 0.0,
+    "per_class": {
+      "medium": {
+        "correct": 19,
+        "total": 19,
+        "accuracy": 1.0
+      },
+      "critical": {
+        "correct": 6,
+        "total": 9,
+        "accuracy": 0.6667
+      },
+      "low": {
+        "correct": 19,
+        "total": 19,
+        "accuracy": 1.0
+      },
+      "safe": {
+        "correct": 0,
+        "total": 6,
+        "accuracy": 0.0
+      },
+      "high": {
+        "correct": 1,
+        "total": 7,
+        "accuracy": 0.1429
+      }
+    },
+    "latency_ms": {
+      "p50": 1670.0,
+      "min": 1118.7,
+      "max": 2837.6
+    }
+  },
+  {
+    "scene": "tempfile",
+    "model": "8head",
+    "n": 60,
+    "correct": 16,
+    "accuracy": 0.2667,
+    "parse_fail_rate": 0.0,
+    "per_class": {
+      "high": {
+        "correct": 5,
+        "total": 15,
+        "accuracy": 0.3333
+      },
+      "safe": {
+        "correct": 0,
+        "total": 6,
+        "accuracy": 0.0
+      },
+      "low": {
+        "correct": 7,
+        "total": 14,
+        "accuracy": 0.5
+      },
+      "critical": {
+        "correct": 3,
+        "total": 9,
+        "accuracy": 0.3333
+      },
+      "medium": {
+        "correct": 1,
+        "total": 16,
+        "accuracy": 0.0625
+      }
+    },
+    "latency_ms": {
+      "p50": 1578.4,
+      "min": 1185.9,
+      "max": 2734.3
+    }
+  },
+  {
+    "scene": "email",
+    "model": "8head",
+    "n": 60,
+    "correct": 36,
+    "accuracy": 0.6,
+    "parse_fail_rate": 0.0,
+    "per_class": {
+      "medium": {
+        "correct": 10,
+        "total": 19,
+        "accuracy": 0.5263
+      },
+      "safe": {
+        "correct": 9,
+        "total": 10,
+        "accuracy": 0.9
+      },
+      "critical": {
+        "correct": 8,
+        "total": 11,
+        "accuracy": 0.7273
+      },
+      "high": {
+        "correct": 3,
+        "total": 10,
+        "accuracy": 0.3
+      },
+      "low": {
+        "correct": 6,
+        "total": 10,
+        "accuracy": 0.6
+      }
+    },
+    "latency_ms": {
+      "p50": 1744.4,
+      "min": 1016.9,
+      "max": 2773.1
+    }
+  },
+  {
+    "scene": "log",
+    "model": "8head",
+    "n": 60,
+    "correct": 50,
+    "accuracy": 0.8333,
+    "parse_fail_rate": 0.0,
+    "per_class": {
+      "critical": {
+        "correct": 10,
+        "total": 11,
+        "accuracy": 0.9091
+      },
+      "safe": {
+        "correct": 12,
+        "total": 12,
+        "accuracy": 1.0
+      },
+      "high": {
+        "correct": 13,
+        "total": 13,
+        "accuracy": 1.0
+      },
+      "low": {
+        "correct": 10,
+        "total": 13,
+        "accuracy": 0.7692
+      },
+      "medium": {
+        "correct": 5,
+        "total": 11,
+        "accuracy": 0.4545
+      }
+    },
+    "latency_ms": {
+      "p50": 1805.8,
+      "min": 1540.0,
+      "max": 2411.8
+    }
+  },
+  {
+    "scene": "perf",
+    "model": "8head",
+    "n": 60,
+    "correct": 33,
+    "accuracy": 0.55,
+    "parse_fail_rate": 0.0,
+    "per_class": {
+      "medium": {
+        "correct": 7,
+        "total": 13,
+        "accuracy": 0.5385
+      },
+      "high": {
+        "correct": 7,
+        "total": 15,
+        "accuracy": 0.4667
+      },
+      "low": {
+        "correct": 7,
+        "total": 14,
+        "accuracy": 0.5
+      },
+      "critical": {
+        "correct": 8,
+        "total": 8,
+        "accuracy": 1.0
+      },
+      "safe": {
+        "correct": 4,
+        "total": 10,
+        "accuracy": 0.4
+      }
+    },
+    "latency_ms": {
+      "p50": 2828.3,
+      "min": 1308.1,
+      "max": 3569.8
+    }
+  },
+  {
+    "scene": "intents",
+    "model": "8head",
+    "n": 50,
+    "correct": 38,
+    "accuracy": 0.76,
+    "parse_fail_rate": 0.0,
+    "per_class": {
+      "chat": {
+        "correct": 8,
+        "total": 10,
+        "accuracy": 0.8
+      },
+      "code": {
+        "correct": 9,
+        "total": 10,
+        "accuracy": 0.9
+      },
+      "search": {
+        "correct": 7,
+        "total": 10,
+        "accuracy": 0.7
+      },
+      "tool_call": {
+        "correct": 4,
+        "total": 10,
+        "accuracy": 0.4
+      },
+      "roleplay": {
+        "correct": 10,
+        "total": 10,
+        "accuracy": 1.0
+      }
+    },
+    "latency_ms": {
+      "p50": 680.6,
+      "min": 605.2,
+      "max": 941.7
+    }
+  },
+  {
+    "scene": "task",
+    "model": "8head",
+    "n": 59,
+    "correct": 31,
+    "accuracy": 0.5254,
+    "parse_fail_rate": 0.0,
+    "per_class": {
+      "code_call": {
+        "correct": 12,
+        "total": 12,
+        "accuracy": 1.0
+      },
+      "code_qa": {
+        "correct": 1,
+        "total": 12,
+        "accuracy": 0.0833
+      },
+      "creative": {
+        "correct": 7,
+        "total": 10,
+        "accuracy": 0.7
+      },
+      "long": {
+        "correct": 1,
+        "total": 1,
+        "accuracy": 1.0
+      },
+      "fast": {
+        "correct": 5,
+        "total": 12,
+        "accuracy": 0.4167
+      },
+      "general": {
+        "correct": 5,
+        "total": 12,
+        "accuracy": 0.4167
+      }
+    },
+    "latency_ms": {
+      "p50": 850.0,
+      "min": 729.4,
+      "max": 3270.3
+    }
+  },
+  {
+    "scene": "safety",
+    "model": "8head",
+    "n": 30,
+    "correct": 6,
+    "accuracy": 0.2,
+    "parse_fail_rate": 0.0,
+    "per_class": {
+      "safe": {
+        "correct": 6,
+        "total": 6,
+        "accuracy": 1.0
+      },
+      "low": {
+        "correct": 0,
+        "total": 6,
+        "accuracy": 0.0
+      },
+      "medium": {
+        "correct": 0,
+        "total": 6,
+        "accuracy": 0.0
+      },
+      "high": {
+        "correct": 0,
+        "total": 6,
+        "accuracy": 0.0
+      },
+      "critical": {
+        "correct": 0,
+        "total": 6,
+        "accuracy": 0.0
+      }
+    },
+    "latency_ms": {
+      "p50": 360.7,
+      "min": 316.6,
+      "max": 564.9
+    }
+  }
+]

@@ -1449,7 +1449,11 @@ function renderEmoji(g) {
 // 音乐 UI 已与语伴完全解耦(2026-09-19 M3.29.8)
 // 音乐启动入口:PrisirAI Tauri 托盘菜单。
 // =============================================================================
+// M3.36.C 重构:colibri 三选一引导卡 UI 已转移到主对话窗口(prisIragent_web.py),
+// companion 不再展示此卡。状态持久化(colibri_state.py)/子进程管理(colibri_engine.py)
+// /adapter(colibri_adapter.py)继续在 companion 维护,跨页面共用。
 
+// ---- M3.36.C 重构:colibri 引导卡 UI 已转移到主对话窗口。companion 不再展示。
 // ---- 启动 -------------------------------------------------------------------
 window.addEventListener("DOMContentLoaded", () => {
     autoSize();

@@ -1,0 +1,20 @@
+{
+  "name": "free-for-dev-promo",
+  "displayName": "免费资源导航器",
+  "version": "0.1.0",
+  "description": "汇总 ripienaar/free-for-dev 的 57 分类 1300+ 免费 SaaS/PaaS/IaaS 资源,Phase B 4 命令(搜索/列表/详情/随机);Phase C 接入主对话 EXEC 标记。数据本地只读,合规原仓库 AGENTS.md。",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:free.find",
+    "ai.invoke.command:free.list_categories",
+    "ai.invoke.command:free.detail",
+    "ai.invoke.command:free.random",
+    "ui.inject.card"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}

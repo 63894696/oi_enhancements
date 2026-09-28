@@ -1,0 +1,85 @@
+{
+  "ts": "2026-09-23T12:38:37Z",
+  "scenarios": {
+    "intents": {
+      "jev": {
+        "n": 3,
+        "accuracy": 1.0,
+        "latency_p50_ms": 2110,
+        "elapsed_total_s": 6.37,
+        "results": [
+          {
+            "i": 1,
+            "id": "intents.chat.001",
+            "expect": "chat",
+            "actual": "chat",
+            "match": true,
+            "elapsed_ms": 2110
+          },
+          {
+            "i": 2,
+            "id": "intents.chat.002",
+            "expect": "chat",
+            "actual": "chat",
+            "match": true,
+            "elapsed_ms": 1917
+          },
+          {
+            "i": 3,
+            "id": "intents.chat.003",
+            "expect": "chat",
+            "actual": "chat",
+            "match": true,
+            "elapsed_ms": 2345
+          }
+        ]
+      },
+      "local": {
+        "n": 3,
+        "accuracy": 0.6667,
+        "latency_p50_ms": 8805,
+        "elapsed_total_s": 43.7,
+        "results": [
+          {
+            "i": 1,
+            "id": "intents.chat.001",
+            "expect": "chat",
+            "actual": "search",
+            "match": false,
+            "elapsed_ms": 26557
+          },
+          {
+            "i": 2,
+            "id": "intents.chat.002",
+            "expect": "chat",
+            "actual": "chat",
+            "match": true,
+            "elapsed_ms": 8805
+          },
+          {
+            "i": 3,
+            "id": "intents.chat.003",
+            "expect": "chat",
+            "actual": "chat",
+            "match": true,
+            "elapsed_ms": 8341
+          }
+        ]
+      },
+      "delta_local_minus_jev": -0.3333
+    }
+  },
+  "summary": {
+    "intents": {
+      "delta_local_minus_jev": -0.3333,
+      "local_acc": 0.6667,
+      "jev_acc": 1.0,
+      "local_loses": true
+    }
+  },
+  "fallback_value": {
+    "scenarios_total": 1,
+    "local_beats_jev": 0,
+    "delta_avg": -0.3333
+  }
+}

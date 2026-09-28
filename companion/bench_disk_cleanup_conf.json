@@ -1,0 +1,46 @@
+{
+  "scenario": "disk_cleanup",
+  "samples_total": 203,
+  "test_size": 40,
+  "with_adapter": {
+    "n": 40,
+    "risk_accuracy": 0.6,
+    "action_accuracy": 0.7,
+    "parse_fail_rate": 0.25,
+    "calibration": {
+      "risk_conf_mean_correct": 1.0087,
+      "risk_conf_mean_wrong": 0.4715,
+      "n_with_conf": 30
+    },
+    "latency_ms": {
+      "p50": 2501.9,
+      "p95": 2516.5,
+      "mean": 2557.4
+    },
+    "confusion_risk": {
+      "safe": {},
+      "low": {
+        "low": 18
+      },
+      "medium": {
+        "medium": 6,
+        "low": 1
+      },
+      "high": {
+        "low": 1
+      },
+      "critical": {
+        "low": 4
+      }
+    },
+    "confusion_action": {
+      "delete": {
+        "review": 2
+      },
+      "review": {},
+      "keep": {}
+    }
+  },
+  "base_only": null,
+  "delta_risk_accuracy": 0.6
+}

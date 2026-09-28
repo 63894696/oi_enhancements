@@ -1,0 +1,998 @@
+{
+  "ts": "2026-09-23T18:13:58",
+  "n": 50,
+  "accuracy": 0.0,
+  "parse_fail_rate": 1.0,
+  "by_class": {
+    "chat": {
+      "total": 10,
+      "match": 0,
+      "accuracy": 0.0
+    },
+    "code": {
+      "total": 10,
+      "match": 0,
+      "accuracy": 0.0
+    },
+    "search": {
+      "total": 10,
+      "match": 0,
+      "accuracy": 0.0
+    },
+    "tool_call": {
+      "total": 10,
+      "match": 0,
+      "accuracy": 0.0
+    },
+    "roleplay": {
+      "total": 10,
+      "match": 0,
+      "accuracy": 0.0
+    }
+  },
+  "confusion_matrix": {
+    "chat": {
+      "chat": 0,
+      "code": 0,
+      "roleplay": 0,
+      "search": 0,
+      "tool_call": 0,
+      "unknown": 10
+    },
+    "code": {
+      "chat": 0,
+      "code": 0,
+      "roleplay": 0,
+      "search": 0,
+      "tool_call": 0,
+      "unknown": 10
+    },
+    "roleplay": {
+      "chat": 0,
+      "code": 0,
+      "roleplay": 0,
+      "search": 0,
+      "tool_call": 0,
+      "unknown": 10
+    },
+    "search": {
+      "chat": 0,
+      "code": 0,
+      "roleplay": 0,
+      "search": 0,
+      "tool_call": 0,
+      "unknown": 10
+    },
+    "tool_call": {
+      "chat": 0,
+      "code": 0,
+      "roleplay": 0,
+      "search": 0,
+      "tool_call": 0,
+      "unknown": 10
+    },
+    "unknown": {
+      "chat": 0,
+      "code": 0,
+      "roleplay": 0,
+      "search": 0,
+      "tool_call": 0,
+      "unknown": 0
+    }
+  },
+  "latency_ms": {
+    "p50": 0,
+    "p95": 2,
+    "max": 4,
+    "min": 0
+  },
+  "confidence_buckets": {
+    "<0.5": 47,
+    "0.5-0.8": 0,
+    ">=0.8": 0
+  },
+  "wrong_samples": [
+    {
+      "text": "今天天气真好呀",
+      "expect": "chat",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "我刚吃完饭,有点困",
+      "expect": "chat",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "你在干嘛呢?",
+      "expect": "chat",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "哈哈,你真逗",
+      "expect": "chat",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "我心情不太好",
+      "expect": "chat",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "周末想出去走走",
+      "expect": "chat",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "今天心情不太好,有点难过",
+      "expect": "chat",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "你叫什么名字?",
+      "expect": "chat",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "我喜欢你这种说话风格",
+      "expect": "chat",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "陪我聊会儿天吧",
+      "expect": "chat",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "帮我写一个 Python 装饰器",
+      "expect": "code",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "解释下 React 的 useEffect",
+      "expect": "code",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "SQL 怎么优化索引?",
+      "expect": "code",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "教我用 git rebase",
+      "expect": "code",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "Python 异步和并发的区别",
+      "expect": "code",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "TypeScript 中 interface 和 type ",
+      "expect": "code",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "这个报错 'Cannot read property of ",
+      "expect": "code",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "帮我写个递归求斐波那契",
+      "expect": "code",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "Docker 怎么配置多阶段构建",
+      "expect": "code",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "Rust 的生命周期怎么理解",
+      "expect": "code",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "为什么天空是蓝色的?",
+      "expect": "search",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "今天股市怎么样",
+      "expect": "search",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "推荐一本好看的小说",
+      "expect": "search",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "推荐几本理财的书",
+      "expect": "search",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "孩子不听话怎么办",
+      "expect": "search",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "怎么跟女朋友道歉比较好",
+      "expect": "search",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "我想学钢琴,几岁开始好",
+      "expect": "search",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "什么是量子计算?",
+      "expect": "search",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "北京的人口有多少",
+      "expect": "search",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "二战是哪一年结束的?",
+      "expect": "search",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "帮我打开浏览器",
+      "expect": "tool_call",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "关闭所有窗口",
+      "expect": "tool_call",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "把音量调到 50%",
+      "expect": "tool_call",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "删除 C 盘下 temp 文件夹",
+      "expect": "tool_call",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "截图当前屏幕",
+      "expect": "tool_call",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "给张三发邮件,主题是周报",
+      "expect": "tool_call",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "重启电脑",
+      "expect": "tool_call",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "打开 VS Code 打开项目 D:/work",
+      "expect": "tool_call",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "搜索我的桌面文件名为 '合同' 的文档",
+      "expect": "tool_call",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "把这个 PDF 转成 Word",
+      "expect": "tool_call",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "讲个鬼故事给我听",
+      "expect": "roleplay",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "假装你是李白,我们来对诗",
+      "expect": "roleplay",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "玩个角色扮演,你是黑骑士",
+      "expect": "roleplay",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "继续讲那个穿越小说的剧情",
+      "expect": "roleplay",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "假设你在中世纪,我是国王,你来当军师",
+      "expect": "roleplay",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "演一段面试官,我要练习面试",
+      "expect": "roleplay",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "扮演我的英语老师,我们用英语对话",
+      "expect": "roleplay",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "讲个童话故事哄孩子睡觉",
+      "expect": "roleplay",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "你是海盗,我也是海盗,我们抢宝藏",
+      "expect": "roleplay",
+      "actual": "unknown",
+      "action_conf": 0.0
+    },
+    {
+      "text": "模仿苏东坡的语气给我写首词",
+      "expect": "roleplay",
+      "actual": "unknown",
+      "action_conf": 0.0
+    }
+  ],
+  "details": [
+    {
+      "i": 1,
+      "expect": "chat",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 12093,
+      "warmup": true,
+      "text": "今天天气真好呀",
+      "raw": ""
+    },
+    {
+      "i": 2,
+      "expect": "chat",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": true,
+      "text": "我刚吃完饭,有点困",
+      "raw": ""
+    },
+    {
+      "i": 3,
+      "expect": "chat",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": true,
+      "text": "你在干嘛呢?",
+      "raw": ""
+    },
+    {
+      "i": 4,
+      "expect": "chat",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "哈哈,你真逗",
+      "raw": ""
+    },
+    {
+      "i": 5,
+      "expect": "chat",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "我心情不太好",
+      "raw": ""
+    },
+    {
+      "i": 6,
+      "expect": "chat",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "周末想出去走走",
+      "raw": ""
+    },
+    {
+      "i": 7,
+      "expect": "chat",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "今天心情不太好,有点难过",
+      "raw": ""
+    },
+    {
+      "i": 8,
+      "expect": "chat",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "你叫什么名字?",
+      "raw": ""
+    },
+    {
+      "i": 9,
+      "expect": "chat",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "我喜欢你这种说话风格",
+      "raw": ""
+    },
+    {
+      "i": 10,
+      "expect": "chat",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "陪我聊会儿天吧",
+      "raw": ""
+    },
+    {
+      "i": 11,
+      "expect": "code",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "帮我写一个 Python 装饰器",
+      "raw": ""
+    },
+    {
+      "i": 12,
+      "expect": "code",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "解释下 React 的 useEffect",
+      "raw": ""
+    },
+    {
+      "i": 13,
+      "expect": "code",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "SQL 怎么优化索引?",
+      "raw": ""
+    },
+    {
+      "i": 14,
+      "expect": "code",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 4,
+      "warmup": false,
+      "text": "教我用 git rebase",
+      "raw": ""
+    },
+    {
+      "i": 15,
+      "expect": "code",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "Python 异步和并发的区别",
+      "raw": ""
+    },
+    {
+      "i": 16,
+      "expect": "code",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "TypeScript 中 interface 和 type 的区别?",
+      "raw": ""
+    },
+    {
+      "i": 17,
+      "expect": "code",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "这个报错 'Cannot read property of undefined' 怎么修",
+      "raw": ""
+    },
+    {
+      "i": 18,
+      "expect": "code",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "帮我写个递归求斐波那契",
+      "raw": ""
+    },
+    {
+      "i": 19,
+      "expect": "code",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "Docker 怎么配置多阶段构建",
+      "raw": ""
+    },
+    {
+      "i": 20,
+      "expect": "code",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "Rust 的生命周期怎么理解",
+      "raw": ""
+    },
+    {
+      "i": 21,
+      "expect": "search",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "为什么天空是蓝色的?",
+      "raw": ""
+    },
+    {
+      "i": 22,
+      "expect": "search",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "今天股市怎么样",
+      "raw": ""
+    },
+    {
+      "i": 23,
+      "expect": "search",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "推荐一本好看的小说",
+      "raw": ""
+    },
+    {
+      "i": 24,
+      "expect": "search",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "推荐几本理财的书",
+      "raw": ""
+    },
+    {
+      "i": 25,
+      "expect": "search",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 2,
+      "warmup": false,
+      "text": "孩子不听话怎么办",
+      "raw": ""
+    },
+    {
+      "i": 26,
+      "expect": "search",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "怎么跟女朋友道歉比较好",
+      "raw": ""
+    },
+    {
+      "i": 27,
+      "expect": "search",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "我想学钢琴,几岁开始好",
+      "raw": ""
+    },
+    {
+      "i": 28,
+      "expect": "search",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "什么是量子计算?",
+      "raw": ""
+    },
+    {
+      "i": 29,
+      "expect": "search",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "北京的人口有多少",
+      "raw": ""
+    },
+    {
+      "i": 30,
+      "expect": "search",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "二战是哪一年结束的?",
+      "raw": ""
+    },
+    {
+      "i": 31,
+      "expect": "tool_call",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "帮我打开浏览器",
+      "raw": ""
+    },
+    {
+      "i": 32,
+      "expect": "tool_call",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "关闭所有窗口",
+      "raw": ""
+    },
+    {
+      "i": 33,
+      "expect": "tool_call",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "把音量调到 50%",
+      "raw": ""
+    },
+    {
+      "i": 34,
+      "expect": "tool_call",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "删除 C 盘下 temp 文件夹",
+      "raw": ""
+    },
+    {
+      "i": 35,
+      "expect": "tool_call",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "截图当前屏幕",
+      "raw": ""
+    },
+    {
+      "i": 36,
+      "expect": "tool_call",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "给张三发邮件,主题是周报",
+      "raw": ""
+    },
+    {
+      "i": 37,
+      "expect": "tool_call",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "重启电脑",
+      "raw": ""
+    },
+    {
+      "i": 38,
+      "expect": "tool_call",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "打开 VS Code 打开项目 D:/work",
+      "raw": ""
+    },
+    {
+      "i": 39,
+      "expect": "tool_call",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "搜索我的桌面文件名为 '合同' 的文档",
+      "raw": ""
+    },
+    {
+      "i": 40,
+      "expect": "tool_call",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "把这个 PDF 转成 Word",
+      "raw": ""
+    },
+    {
+      "i": 41,
+      "expect": "roleplay",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "讲个鬼故事给我听",
+      "raw": ""
+    },
+    {
+      "i": 42,
+      "expect": "roleplay",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "假装你是李白,我们来对诗",
+      "raw": ""
+    },
+    {
+      "i": 43,
+      "expect": "roleplay",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "玩个角色扮演,你是黑骑士",
+      "raw": ""
+    },
+    {
+      "i": 44,
+      "expect": "roleplay",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "继续讲那个穿越小说的剧情",
+      "raw": ""
+    },
+    {
+      "i": 45,
+      "expect": "roleplay",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 4,
+      "warmup": false,
+      "text": "假设你在中世纪,我是国王,你来当军师",
+      "raw": ""
+    },
+    {
+      "i": 46,
+      "expect": "roleplay",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "演一段面试官,我要练习面试",
+      "raw": ""
+    },
+    {
+      "i": 47,
+      "expect": "roleplay",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "扮演我的英语老师,我们用英语对话",
+      "raw": ""
+    },
+    {
+      "i": 48,
+      "expect": "roleplay",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "讲个童话故事哄孩子睡觉",
+      "raw": ""
+    },
+    {
+      "i": 49,
+      "expect": "roleplay",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "你是海盗,我也是海盗,我们抢宝藏",
+      "raw": ""
+    },
+    {
+      "i": 50,
+      "expect": "roleplay",
+      "actual": "unknown",
+      "match": false,
+      "parse_fail": true,
+      "action_conf": 0.0,
+      "elapsed_ms": 0,
+      "warmup": false,
+      "text": "模仿苏东坡的语气给我写首词",
+      "raw": ""
+    }
+  ]
+}
