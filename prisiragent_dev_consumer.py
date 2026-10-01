@@ -326,6 +326,22 @@ def run_one(worker_idx: int) -> bool:
                     return True
         except Exception as _e:  # noqa: BLE001
             log.debug("落盘校验跳过(%s)", _e)  # 校验本身失败不阻塞(增强,非必需)
+        # P5-SwarmTLDR(2026-10-02):完成报告必含 SWARM_COMPLETION_REPORT_MARKER
+        # 只做 warn 不阻断(向后兼容存量任务,新派单鼓励模型先 build_completion_skeleton)。
+        # 借鉴 jcode-swarm-core:超 4000 字必拒 + 必须以 marker 开头。
+        try:
+            from dev_dispatch import validate_completion_report  # noqa: PLC0415
+            # mark_done 会把 reply 追加到 content(=== RESULT === 块),consumer 这里
+            # 校验 reply 自身;若 reply 就是 build_completion_skeleton 输出则 pass。
+            if reply and reply.strip():
+                ok, why = validate_completion_report(reply)
+                if not ok:
+                    log.warning(
+                        "[w%d] [swarm-tldr] task %s 完成报告校验未过(%s),新派单请用 build_completion_skeleton",
+                        worker_idx, task_id, why,
+                    )
+        except Exception as _swarm_e:  # noqa: BLE001
+            log.debug("swarm-tldr 校验跳过(%s)", _swarm_e)
         tq.mark_done(task_id, result=reply[:20000])
         # 落地八:双闸通过 → 提炼成功模式候选(半自动,师傅挑才入库),补「老员工手感」。
         # 与落地五(打回记错题)对偶:这个记成功做法,但只挂候选不直接入库(防噪声灌库)。

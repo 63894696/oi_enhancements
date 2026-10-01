@@ -136,5 +136,139 @@ def _cli() -> None:
         print(__doc__)
 
 
+# ─────────────────────────────────────────────────────────────
+# P5-SwarmTLDR(2026-10-02):借鉴 jcode-swarm-core 派单协议
+#
+# jcode 的 swarm 派单在 `crates/jcode-swarm-core/src/lib.rs` 顶部定义了一组阈值常量,
+# 强制「超长 body 必须带 tldr」「完成报告必含 marker 且长度上限」,用来压住 LLM 派单时
+# 「堆长文不带摘要 / 完成报告里乱写」的常见病。本模块摘录这四个核心常量 + 五个
+# helper,不做 1000 worker 上限那类与本仓库无关的复杂度。
+#
+# 借鉴源:`/tmp/jcode-recon/crates/jcode-swarm-core/src/lib.rs` 顶部常量段。
+# ─────────────────────────────────────────────────────────────
+
+# 阈值常量(从 jcode-swarm-core lib.rs 顶部常量段摘录)
+SWARM_TLDR_REQUIRED_OVER_CHARS = 240
+MAX_SWARM_TLDR_CHARS = 200
+SWARM_COMPLETION_REPORT_MARKER = "SWARM COMPLETION REPORT REQUIRED"
+MAX_SWARM_COMPLETION_REPORT_CHARS = 4000
+
+# 行首锚定(`^` + MULTILINE),与 parse_declared_files 同款防误命中策略。
+# 匹配 `tldr: ...`(中英冒号都收),case-insensitive 兼容 `Tldr:` / `TLDR:`。
+# tldr 是单行:`.+?` 非贪婪 + `$` 行尾,normalize 时 `re.sub(r"\s+", " ", ...)` 把
+# 行内的多空白(含制表符)压成单空格,但**不**跨行(行为与 jcode-swarm-core 一致,
+# 那个项目里 tldr 也是单行)。
+_TLDR_DECL_RE = re.compile(
+    r"^\s*tldr\s*[:：]\s*(.+?)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def parse_swarm_tldr(content: str) -> str | None:
+    """从任务 content 解析 tldr 行(行首以 `tldr:` 开头的单行)。无声明 → None。
+
+    只认行首声明;正文中描述性的「tldr 是...」之类不算。
+    """
+    if not content:
+        return None
+    m = _TLDR_DECL_RE.search(content)
+    if not m:
+        return None
+    raw = m.group(1)
+    # normalize:trim + 多空白压成单空格(包括换行被压平)
+    return re.sub(r"\s+", " ", raw).strip() or None
+
+
+def make_swarm_tldr(tldr: str) -> str:
+    """归一 + 截断。强制仅在派单端调一次,consumer 不重复 normalize。
+
+    步骤:trim → 空白压单空格 → 截到 MAX_SWARM_TLDR_CHARS。
+    截断在归一之后做,避免「压空格后字符数比原始预判少」导致漏截。
+    """
+    if not tldr:
+        return ""
+    norm = re.sub(r"\s+", " ", tldr).strip()
+    if len(norm) > MAX_SWARM_TLDR_CHARS:
+        norm = norm[:MAX_SWARM_TLDR_CHARS].rstrip()
+    return norm
+
+
+def validate_swarm_tldr(content: str, tldr: str | None = None) -> tuple[bool, str]:
+    """校验派单是否合规。
+
+    规则:
+      - body chars > SWARM_TLDR_REQUIRED_OVER_CHARS 时,必须给出 tldr(若未传则自动 parse)
+      - tldr 必须 ≤ MAX_SWARM_TLDR_CHARS
+      - tldr normalize 后不能为空(防止「tldr:    」这种纯空格骗过去)
+      - body ≤ 240 时 tldr 可选(短任务不强求)
+
+    返回 (pass?, reason)。失败 reason 含具体违规项,便于日志排查。
+    """
+    body = content or ""
+    body_chars = len(body)
+    if tldr is None:
+        tldr = parse_swarm_tldr(body)
+    if body_chars <= SWARM_TLDR_REQUIRED_OVER_CHARS:
+        # 短 body:tldr 可选,即使给了也不卡上限外的边界(给短 body 也允许写 tldr)
+        return True, f"body {body_chars} chars ≤ {SWARM_TLDR_REQUIRED_OVER_CHARS},tldr 可选"
+    # 长 body:tldr 必须存在且合规
+    if tldr is None:
+        return False, (
+            f"body {body_chars} chars > {SWARM_TLDR_REQUIRED_OVER_CHARS} 但缺 tldr"
+            f"(需在 content 行首声明 `tldr: 简短摘要`)"
+        )
+    # 先 normalize(空白压单 + trim)但不截断,长度检查在 normalize 之后做,
+    # 这样 caller 传超长 tldr 时会 FAIL(要求 caller 显式 make_swarm_tldr 后再校验),
+    # 不会「输入 300 字被悄悄截到 200 还假装 pass」。
+    normalized = re.sub(r"\s+", " ", tldr).strip()
+    if not normalized:
+        return False, "tldr 仅含空白,无效"
+    if len(normalized) > MAX_SWARM_TLDR_CHARS:
+        return False, (
+            f"tldr {len(normalized)} chars 超 {MAX_SWARM_TLDR_CHARS} 上限"
+            f"(normalize 后: {normalized[:40]}...)"
+        )
+    return True, f"ok, body={body_chars}chars tldr={len(normalized)}chars"
+
+
+def validate_completion_report(report: str) -> tuple[bool, str]:
+    """校验 consumer 交付的完成报告。
+
+    规则:
+      - 必须以 SWARM_COMPLETION_REPORT_MARKER 开头(允许前面有 BOM/空白)
+      - 总长度 ≤ MAX_SWARM_COMPLETION_REPORT_CHARS
+    """
+    if not report:
+        return False, "完成报告为空"
+    stripped = report.lstrip("﻿").lstrip()  # BOM + 空白容差
+    if not stripped.startswith(SWARM_COMPLETION_REPORT_MARKER):
+        # 给出前 60 字符片段,便于定位是不是 typo
+        head = stripped[:60].replace("\n", "\\n")
+        return False, f"缺 marker「{SWARM_COMPLETION_REPORT_MARKER}」(前 60 字符: {head!r})"
+    if len(report) > MAX_SWARM_COMPLETION_REPORT_CHARS:
+        return False, (
+            f"完成报告 {len(report)} chars 超 {MAX_SWARM_COMPLETION_REPORT_CHARS} 上限"
+        )
+    return True, f"ok, {len(report)} chars"
+
+
+def build_completion_skeleton(tldr: str, summary: str, files_touched: list[str]) -> str:
+    """便捷:构造以 SWARM_COMPLETION_REPORT_MARKER 开头的报告模板。
+
+    三个段都是可选字符串,但 tldr/建议给(便于消费者一眼看到任务意图)。
+    files_touched 可空(纯文本/调研任务)。
+    """
+    tldr_norm = make_swarm_tldr(tldr) if tldr else ""
+    parts = [SWARM_COMPLETION_REPORT_MARKER]
+    if tldr_norm:
+        parts.append(f"tldr: {tldr_norm}")
+    if summary:
+        parts.append(f"summary: {summary.strip()}")
+    if files_touched:
+        files_str = ", ".join(files_touched)
+        parts.append(f"files_touched: {files_str}")
+    return "\n".join(parts)
+
+
 if __name__ == "__main__":
     _cli()
