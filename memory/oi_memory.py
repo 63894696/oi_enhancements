@@ -94,6 +94,11 @@ class Memory:
     priority: int = 0  # task 优先级,数字越大越优先(默认 0)
     quality_score: float = 1.0  # v0.26: 记忆质量权重(0-1)，参与 decay_score
     owner_agent: str = ""  # v0.44 P1-5: 拥有者 agent id(空=全局共享)
+    # P1-Instincts(2026-10-02):3 列预留给「跨查表」场景
+    # (instincts 数据本身走独立 JSONL,这里只为未来 join 留 schema)
+    applied_count: int = 0
+    success_count: int = 0
+    last_used_at: float = 0.0
 
     def to_dict(self):
         return {
@@ -143,6 +148,11 @@ class OIMemory:
                 "ALTER TABLE memories ADD COLUMN quality_score REAL NOT NULL DEFAULT 1.0",
                 # v0.44 P1-5:per-agent 记忆隔离 — 拥有者 agent id(空=全局共享)
                 "ALTER TABLE memories ADD COLUMN owner_agent TEXT NOT NULL DEFAULT ''",
+                # P1-Instincts(2026-10-02):为「跨查表」打基础(instincts 数据走独立 JSONL,
+                # 但 OIMemory schema 留 3 列:applied_count / success_count / last_used_at)
+                "ALTER TABLE memories ADD COLUMN applied_count INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE memories ADD COLUMN success_count INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE memories ADD COLUMN last_used_at REAL NOT NULL DEFAULT 0.0",
             ]:
                 try:
                     c.execute(alter_sql)
@@ -319,6 +329,7 @@ class OIMemory:
     # ---------- v0.25:task queue 辅助方法 ----------
     def _row_to_memory(self, row) -> Memory:
         """从 sqlite3.Row 转 Memory dataclass,共享给 recall/list_by_layer/get_by_id"""
+        keys = row.keys() if hasattr(row, "keys") else []
         return Memory(
             id=row["id"], layer=row["layer"], title=row["title"], content=row["content"],
             tags=json.loads(row["tags_json"] or "[]"),
@@ -328,7 +339,11 @@ class OIMemory:
             depends_on=json.loads(row["depends_on_json"] or "[]"),
             priority=row["priority"] or 0,
             quality_score=row["quality_score"] if row["quality_score"] is not None else 1.0,
-            owner_agent=row["owner_agent"] if "owner_agent" in row.keys() else "",
+            owner_agent=row["owner_agent"] if "owner_agent" in keys else "",
+            # P1-Instincts(2026-10-02):3 列向 dataclass 暴露(老 DB 缺列时,zero out below)
+            applied_count=row["applied_count"] if "applied_count" in keys else 0,
+            success_count=row["success_count"] if "success_count" in keys else 0,
+            last_used_at=row["last_used_at"] if "last_used_at" in keys else 0.0,
         )
 
     def get_by_id(self, memory_id: int) -> Memory | None:
