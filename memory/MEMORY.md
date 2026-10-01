@@ -23,3 +23,8 @@
 - [Phase 12b OM-P4 Pixabay 修复 ship](prisIr-phase-12b-om-p4-pixabay-fix.md) — 2026-09-28;用户配 PIXABAY_API_KEY 后实测发现:Pixabay **无音频 API**(/api/audio/ 403,我之前 search_music 瞎编);删 search_music + 加 search_images + probe_key 升级(rate_limit 100/60s);free_bgm 改走 archive.org audio;pixabay_music scoring availability=0 自动落到 fma_music;18/18 测绿(6 项真调);累计测试 229
 - [Pixabay API 实际覆盖范围](pixabay-no-audio-api.md) — reference:网页有 Music/Photos/Videos 多分类,但公开 REST API 只 images+videos;Music **只能手动下**(API 不开放);100/60s 速率;per_page 最小 3;BGM 真集成走 archive.org audio
 - [M3.66 dropdown category 分组](prisIr-m366-dropdown-category.md) — 2026-09-28 ship;用户「同款 dropdown 清晰区分」决策;`companion_llm_providers.py` 加 `category` 字段(5 类:llm/tts/image/music/video)+ 22 个新 spec;LLM 写 keys.db,专业模型写 `~/.prisIrai/media_keys.json/_prisir_key` 子键(防污染顶层 siliconflow 等);原子写;累计 dropdown 平台 15→37
+
+## ECC/claude-swarm 借鉴 P2-Rules + P2-Hooks + P1-Instincts(2026-10-01/02 ship)
+- [P2-Rules ship](prisIr-p2-rules-shipped.md) — AGENTS.md frontmatter 解析 + build_messages 注入(完全 ECC 对齐);`prisir_work/rules.py` + 17 测试
+- [P2-Hooks ship](prisIr-p2-hooks-shipped.md) — 4 hook(secrets_check/data_egress/mtime_check/noop_user_prompt)+ 3 档 profile(off→standard→strict,默认 off);22 测试
+- [P1-Instincts ship](prisIr-p1-instincts-shipped.md) — JSONL 存储 + threshold 0.5 + reinforce ±0.05/0.1;`memory/instincts.py` + 17 测试;累计 56 测试全绿

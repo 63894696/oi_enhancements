@@ -969,6 +969,23 @@ async def _p14_bg_task(sess: "CallSession",
 async def build_messages(sess: CallSession, current_user_text: str) -> list[dict]:
     """组装 LLM 输入 messages:system + (M3.23 上下文段) + 最近 N 轮历史。"""
     msgs: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    # P2-Rules(2026-10-01): 项目根 AGENTS.md + 家目录 AGENTS.md(完全 ECC 对齐)
+    # 优先级最高,载入所有已有 system 段之前。
+    # 失败 fallback:任何 IO / 解析异常 → 静默返 None,不抛(主对话不受影响)。
+    try:
+        from prisir_work.rules import (
+            load_rules_for_project, merge_rules, format_rules_for_prompt,
+        )
+        # sess 没有 workdir 属性 → 用 Path.cwd() 兜底
+        rules_cwd = Path(getattr(sess, "workdir", None) or Path.cwd())
+        user_rules, project_rules = load_rules_for_project(rules_cwd)
+        merged = merge_rules(user_rules, project_rules)
+        if merged:
+            rblock = format_rules_for_prompt(merged)
+            if rblock:
+                msgs.append({"role": "system", "content": rblock})
+    except Exception:  # noqa: BLE001
+        log.exception("rules 注入失败(不影响主对话)")
     # P3j T29-c(2026-09-27): Skills 工作台索引(渐进披露)—
     # 单段 JSON 索引替换 N 处 intent_summary。配置项 skills_index_enabled 切换。
     # 失败/未开启 → fallback 老 5 处(skills_index_fallback_intent=True)。
@@ -1074,6 +1091,20 @@ async def build_messages(sess: CallSession, current_user_text: str) -> list[dict
             intent_inj = ""
     if intent_inj:
         msgs.append({"role": "system", "content": intent_inj})
+    # P1-Instincts(2026-10-02): 置信度召回(借鉴 ECC continuous-learning-v2)
+    # 阈值 0.5 才注入,top_n=6,在 intent 路由段之后、user prompt 之前。
+    # 失败 fallback:任何 IO / 解析异常 → 静默,不抛(主对话不受影响)。
+    try:
+        from memory.instincts import InstinctStore
+        _inst_store = InstinctStore()
+        if _inst_store.is_enabled():
+            _inst_hits = _inst_store.recall(current_user_text, top_n=6)
+            if _inst_hits:
+                _inst_block = _inst_store.format_for_prompt(_inst_hits)
+                if _inst_block:
+                    msgs.append({"role": "system", "content": _inst_block})
+    except Exception:  # noqa: BLE001
+        log.exception("instincts 注入失败(不影响主对话)")
     msgs.append({"role": "user", "content": current_user_text})
     return msgs
 
