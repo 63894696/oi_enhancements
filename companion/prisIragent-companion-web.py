@@ -1106,6 +1106,19 @@ async def build_messages(sess: CallSession, current_user_text: str) -> list[dict
     except Exception:  # noqa: BLE001
         log.exception("instincts 注入失败(不影响主对话)")
     msgs.append({"role": "user", "content": current_user_text})
+    # P4-Compaction(2026-10-02): 借鉴 jcode-compaction-core
+    # 80% 触发 summary 软压, 95% 触发 hard 硬压。只对已拼好的 msgs 长度检查,
+    # 不影响已 ship 的 segments 顺序。失败 fallback: 任何异常 → log.exception + 返原 msgs。
+    # Step 7 简化设计: 无同步 llm_call 通道, 跳过 summary 软压, 只走紧急 hard 硬压。
+    try:
+        from memory.compaction import CompactionManager
+        _comp_mgr = CompactionManager()
+        if _comp_mgr.is_enabled():
+            msgs, _action = _comp_mgr.compact(msgs, llm_call=None)
+            if _action.value != "none":
+                log.info("[compaction] 触发: %s", _action.value)
+    except Exception:  # noqa: BLE001
+        log.exception("compaction 失败(不影响主对话)")
     return msgs
 
 
