@@ -28,3 +28,8 @@
 - [P2-Rules ship](prisIr-p2-rules-shipped.md) — AGENTS.md frontmatter 解析 + build_messages 注入(完全 ECC 对齐);`prisir_work/rules.py` + 17 测试
 - [P2-Hooks ship](prisIr-p2-hooks-shipped.md) — 4 hook(secrets_check/data_egress/mtime_check/noop_user_prompt)+ 3 档 profile(off→standard→strict,默认 off);22 测试
 - [P1-Instincts ship](prisIr-p1-instincts-shipped.md) — JSONL 存储 + threshold 0.5 + reinforce ±0.05/0.1;`memory/instincts.py` + 17 测试;累计 56 测试全绿
+
+## jcode 借鉴 P3-HookRisk + P4-Compaction + P5-SwarmTLDR(2026-10-02 ship)
+- [P3-HookRisk ship](prisIr-p3-hookrisk-shipped.md) — 借鉴 jcode-command-risk,4 档分级 Safe/Low/Confirm/Catastrophic + 8 Catastrophic 模式(rm -rf / find -delete / shred / truncate / dd of= / `&gt;file` / mkfs / chmod -R 000);`~/.claude/hooks/command_risk.py` + 13 测试;profile 三档(off→standard→strict,默认 off)
+- [P4-Compaction ship](prisIr-p4-compaction-shipped.md) — 借鉴 jcode-compaction-core,200K token budget + 80%/95% 双阈值 + IMAGE_TOKEN_COST=1600 平摊 + 中文 4 段 SUMMARY_PROMPT;`memory/compaction.py` + 14 测试;Step 7 退一步只做 95% hard 压缩(无同步 llm_call);build_messages 钩子在 return msgs 之前
+- [P5-SwarmTLDR ship](prisIr-p5-swarmtldr-shipped.md) — 借鉴 jcode-swarm-core,SWARM_TLDR_REQUIRED_OVER_CHARS=240 + MAX_SWARM_TLDR_CHARS=200 + SWARM_COMPLETION_REPORT_MARKER + MAX=4000;`dev_dispatch.py` +5 函数 + `prisIragent_dev_consumer.py` line 329-344 完成报告校验(只 log.warning 不阻断)+ 27 测试;累计 110 测试全绿
