@@ -249,12 +249,19 @@ def _search_uncached(query: str, limit: int, providers: list[str], timeout: floa
 
     def worker(pname: str, fn: Callable[[str, int], list[dict[str, Any]]]) -> None:
         evt = done_events[pname]
+        t0 = time.monotonic()
+        ok = True
+        err_str = ""
         try:
             bag[pname]["value"] = fn(query, limit) or []
         except Exception as e:  # noqa: BLE001 - 全部吞
+            ok = False
+            err_str = f"{type(e).__name__}: {e}"
             _LOG.warning("web_search provider %s raised %s: %s", pname, type(e).__name__, e)
             bag[pname]["value"] = []
         finally:
+            elapsed_ms = (time.monotonic() - t0) * 1000.0
+            _Stats.record(pname, ok=ok, error=err_str, ms=elapsed_ms)
             bag[pname]["done"] = True
             evt.set()
 
@@ -630,6 +637,81 @@ def hn_search_provider(query: str, limit: int = 10) -> list[dict[str, Any]]:
         return []
 
 register_provider("hn_search", hn_search_provider)
+
+
+# ---------------------------------------------------------------------------
+# P3j T23: 引擎健康度观测 + 借鉴 SearXNG 的 76 个无 key 引擎批量注册
+# ---------------------------------------------------------------------------
+
+
+class _Stats:
+    """每 provider 最近一次调用状态(用于 ship 治理 + 降权决策)。
+
+    - record() 在 _search_uncached.worker 内每 provider 调一次
+    - snapshot() 返 dict 给外部观测(stats())
+    - reset() 仅测试
+    """
+    _DATA: dict[str, dict[str, Any]] = {}
+
+    @classmethod
+    def record(cls, name: str, *, ok: bool, error: str = "",
+               ms: float = 0.0) -> None:
+        d = cls._DATA.setdefault(name, {
+            "call_count": 0, "fail_count": 0,
+            "last_status": "unknown", "last_error": "",
+            "last_called_at": 0.0, "last_ms": 0.0,
+        })
+        d["call_count"] += 1
+        d["last_called_at"] = time.monotonic()
+        d["last_ms"] = ms
+        if ok:
+            d["last_status"] = "ok"
+            d["fail_count"] = max(0, d["fail_count"] - 1)  # 成功减半累积
+        else:
+            d["fail_count"] += 1
+            d["last_status"] = "fail"
+            d["last_error"] = error[:200]
+
+    @classmethod
+    def snapshot(cls) -> dict[str, Any]:
+        return {
+            "total": len(cls._DATA),
+            "providers": {k: dict(v) for k, v in cls._DATA.items()},
+        }
+
+    @classmethod
+    def reset(cls) -> None:
+        cls._DATA.clear()
+
+
+def stats() -> dict[str, Any]:
+    """返回每 provider 最近一次调用的状态(用于后续 ship 降权 / 退役决策)。"""
+    return _Stats.snapshot()
+
+
+def reset_stats() -> None:
+    """清空观测(测试用)。"""
+    _Stats.reset()
+
+
+def _register_searxng_engines() -> None:
+    """import 全部 search_engines 子模块并触发 register_all()。
+
+    失败静默:子模块 import 异常不会影响现有内置 9 provider。
+    """
+    try:
+        from prisir_work.search_engines import (
+            general, academic, code, wikipedia,
+            media, images, news, maps, specialty,
+        )
+        for mod in (general, academic, code, wikipedia,
+                    media, images, news, maps, specialty):
+            mod.register_all()
+    except Exception as e:  # noqa: BLE001 - 静默,主对话不依赖
+        _LOG.warning("search_engines auto-register failed: %s", e)
+
+
+_register_searxng_engines()
 
 
 # ---------------------------------------------------------------------------
