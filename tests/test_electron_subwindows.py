@@ -261,12 +261,16 @@ class TestPrisirAgentWebWfmodalHash(unittest.TestCase):
 
 
 class TestExtRespawnHotfix(unittest.TestCase):
-    """P2.5+21 hotfix:task-runner 进死循环(respawn_total > 5 强制停)。
+    """P2.5+21 hotfix (revised 2026-10-03):task-runner 不再 auto-respawn。
 
     修前 bug:`_ext_spawn` 每次都 `crash_count: 0` reset,reader_loop L441 判定
     永远 `<= 3`,死一个 spawn 一个,用户屏幕无限跳 node 弹窗(实测反馈)。
 
-    修:加独立于 crash_count 的 `_ext_respawn_total` 累计,>5 强制 stop respawn。
+    修法(简化为最终态):
+    - task-runner 死了 → 完全不 respawn(用户主动 run_task 才走 lazy-spawn)
+    - 其他 ext 仍按旧逻辑 respawn,但加 `_ext_respawn_total > 5` 兜底
+
+    完整 root fix(保留 crash_count 不被 reset)派在 chip task_f48e99a4。
     """
 
     @classmethod
@@ -290,7 +294,7 @@ class TestExtRespawnHotfix(unittest.TestCase):
         self.assertIsInstance(self.W._ext_respawn_total, dict)
 
     def test_respawn_total_not_reset_by_ext_spawn(self):
-        """模拟:`_ext_spawn` 多次调用,_ext_respawn_total 不会被重置(独立累加)。
+        """`_ext_respawn_total` 独立累加(不被 _ext_spawn 重置)。
 
         注意:不真 spawn,只验 dict 行为:`_ext_respawn_total[ext_id]` 累加正常。
         """
@@ -303,18 +307,19 @@ class TestExtRespawnHotfix(unittest.TestCase):
         self.W._ext_respawn_total[ext] += 1
         self.assertEqual(self.W._ext_respawn_total[ext], 8)
 
-    def test_respawn_threshold_5(self):
-        """验证:>5 强制停逻辑存在的 sanity check。
-
-        我们不直接调 reader_loop(那是真实 subprocess 流),只验 hotfix 阈值 5
-        写对了且 respawn_total > 5 的逻辑路径在源码里存在。
-        """
+    def test_task_runner_one_shot_in_source(self):
+        """源码里 task-runner 不 auto-respawn 的判断存在。"""
         with open(os.path.join(ROOT, "prisIragent_web.py"), "r", encoding="utf-8") as f:
             src = f.read()
+        # task-runner 一次性启逻辑存在
+        self.assertIn('ext_id == "task-runner"', src)
+        self.assertIn("auto-respawn DISABLED", src)
+        self.assertIn("Use run_task to start on demand", src)
+        # 其他 ext 仍按 respawn_total > 5 兜底
         self.assertIn("_ext_respawn_total", src)
         self.assertIn("> 5", src)
         self.assertIn("STOP", src)
-        # task_f48e99a4 chip 留口子
+        # chip 留口子
         self.assertIn("task_f48e99a4", src)
 
 

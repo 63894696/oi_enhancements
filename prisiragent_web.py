@@ -444,8 +444,17 @@ def _ext_reader_loop(ext_id: str):
             ev.set()
             st2["pending"].pop(rid, None)
         if st2["crash_count"] <= 3 and st2.get("enabled", True):
-            # P2.5+21 hotfix:累计 respawn 次数独立 crash_count(后者每次 spawn reset 0)
+            # P2.5+21 hotfix (revised 2026-10-03):task-runner 进程起后立即死 → 无 restart 死循环。
+            # 一刀切:task-runner 死了不再 respawn,用户主动调用 run_task 等接口走
+            # _ext_rpc_call lazy-spawn(P3j T24 ship)单独启,启完正常用,死了也尊重用户选择不再启。
+            # 累计 respawn 次数独立 crash_count(后者每次 spawn reset 0),>5 兜底。
             _ext_respawn_total[ext_id] = _ext_respawn_total.get(ext_id, 0) + 1
+            if ext_id == "task-runner":
+                try:
+                    _LOGGER.warning("[ext-bridge] %s auto-respawn DISABLED (one-shot). Use run_task to start on demand.", ext_id)
+                except Exception:
+                    pass
+                return
             if _ext_respawn_total[ext_id] > 5:
                 try:
                     _LOGGER.warning("[ext-bridge] %s respawn >5 times (total), STOP. crash_count was reset by _ext_spawn, see chip task_f48e99a4.", ext_id)
