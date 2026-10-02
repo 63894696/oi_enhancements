@@ -1284,6 +1284,14 @@ def _shell_system_prompt(user_text: str, sid: str = "") -> str:
     env_block = _local_env_block()
     if env_block:
         parts.append(env_block)
+    # 2026-10-02 user 反馈:用户问「X 扩展该什么时候开」时,模型之前完全瞎答。
+    # 注入 [已 ship 扩展 — 触发场景] 表(60s 缓存)。每扩展 ≤ 30 字场景描述,
+    # 命中关键词(user_text 含 ext_id 或近义/同义)时优先显示;无条件全表也行。
+    # 不与 companion intent_summary 重复(intent_summary 是 EXEC 协议 + cap 细节,
+    # 这块是「什么时候该开 + 运行时」决策,对象不同)。
+    ext_inv = _installed_extensions_block()
+    if ext_inv:
+        parts.append(ext_inv)
     # 预设优先级:命中项目关键词时,把方案库「优先查位置」注入(输入法/装包/对话链等)
     preset_block = _preset_priority_block(user_text)
     if preset_block:
@@ -1591,6 +1599,86 @@ def _local_env_block() -> str:
     _ENV_CACHE["text"] = text
     _ENV_CACHE["ts"] = now
     return text
+
+# 2026-10-02 user 反馈:模型需要知道「本机装了什么扩展 + 何时该开」。
+# 与 _local_env_block 共享 60s 缓存(放同一 _ENV_CACHE)。
+# 设计:只列 id + 一句话触发场景,不重复 package.json description(用户已能在 🧩 扩展 UI 看到)。
+# 不带 EXEC 协议(那是 build_messages intent_summary 段的事)。
+def _installed_extensions_block() -> str:
+    """组 [已 ship 扩展 — 触发场景] 块。每扩展 = id + 何时启用 + runtime 状态。
+    让模型能在用户问「X 该不该开/什么时候开」时,引用具体能力而非瞎答。
+    触发场景是手动维护的精简表(不读 README,精度高于 description)。
+    """
+    # 触发场景表(手维护:每扩展 ≤ 30 字场景描述,新增 ext 1 行即生效)
+    # 顺序按用户使用频率预估排:工具型在前,资源检索类靠后(后者能力已被 intent_summary 详述)。
+    _EXT_USE_CASES = (
+        ("pomodoro",           "用户长时间专注写作/编码/任务块、需要 25/5 节奏时"),
+        ("quick-note",         "用户随口提到笔记/记住/备忘/想法时,快速落 Markdown"),
+        ("todo",               "用户提到任务/待办/优先级/截止时,本地 JSON 增删改查"),
+        ("clipboard",          "用户说读剪贴板/复制/粘贴/拿当前选中内容时"),
+        ("web-watch",          "用户要盯一个 URL 变化、降价/上新/内容变更时"),
+        ("scheduled-task",     "Windows 计划任务相关:每天几点跑、开机启动"),
+        ("app-launcher",       "用户说打开应用/启动 exe/打开网页/打开文件管理器时"),
+        ("process-scan",       "用户问进程/PID/内存占用/杀进程时(高权限)"),
+        ("window-list",        "用户问当前开了哪些窗口、关某个窗口、置顶时"),
+        ("system-watchdog",    "后台稳定守护:ProBalance/Disallowed/LowMem/IdleSaver"),
+        ("http-request",       "用户要发 API/REST/POST/GET 调用、检查 URL 健康时"),
+        ("regex-tester",       "写正则、调试 pattern、看 match groups 时"),
+        ("json-format",        "用户给一坨 JSON 要格式化/排序/压缩时"),
+        ("base64-codec",       "Base64/URL-safe/Hex 编解码,中文/二进制互转"),
+        ("timestamp",          "Unix 时间戳转中文日期/ISO/相对时间/几分钟前"),
+        ("ascii-tree",         "把目录/JSON/缩进文本变可读树形字符"),
+        ("code-snippets",      "写常用代码片段(40+ 内置)/插自定义片段到 workdir"),
+        ("pr-review",          "git diff 切 hunks + 套审查模板(可配置)"),
+        ("git-stats",          "git log --numstat / 文件变更排行 / shortlog"),
+        ("keystroke-emit",     "SendInput 模拟键入 + 组合键 + 鼠标点击"),
+        ("sequence-builder",   "自然语言 → Mermaid sequenceDiagram / ASCII 时序图"),
+        ("ext-mermaid",        "对话含 mermaid fenced code block 时自动渲染 SVG 卡片"),
+        ("handraw-style",      "海报/卡片/封面 prompt:278 风格 + 36 颜色 + 120 版式"),
+        ("agency-roles",       "查找/选用 264 个 AI agent 角色模板(agency.list_divisions 等)"),
+        ("free-for-dev",       "用户要找免费 SaaS/工具/服务时(free.find 等 4 cap)"),
+        ("public-apis",        "用户要免费公共 API 端点(api.find 等 4 cap)"),
+        ("public-apis-cn",     "国内可访问的免费 API(api_cn.find 等 4 cap)"),
+        ("n0shake",            "免 key 试用/开源 API(nokeyapi.find 等 4 cap)"),
+        ("selfhost",           "自部署替代 SaaS(selfhost.find 等 4 cap)"),
+        ("awesome-hub",        "找 awesome 资源列表索引(LLM 直接读 JSON)"),
+        ("marketplace",        "远端 workflow bundle 镜像(论坛 bbs.babelspan.com)"),
+        ("task-runner",        "DAG 派单 + 定时调度 + 执行历史(Node node:sqlite)"),
+        ("sdk",                "扩展 SDK 自身,其他 ext 调用,不需要用户触发"),
+    )
+    # 合并 installed.json(enabled 状态)
+    installed_map = {}
+    for path in (
+        os.path.join(os.path.expanduser("~"), ".prisir", "installed.json"),
+        os.path.join(os.path.expanduser("~"), ".prisir", "extensions", "installed.json"),
+    ):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+            if isinstance(raw, dict) and "extensions" in raw and isinstance(raw["extensions"], list):
+                for e in raw["extensions"]:
+                    if isinstance(e, dict) and e.get("id"):
+                        installed_map[e["id"]] = bool(e.get("enabled"))
+            elif isinstance(raw, dict):
+                for k, v in raw.items():
+                    if isinstance(v, dict):
+                        installed_map[k] = bool(v.get("enabled"))
+        except (OSError, ValueError):
+            continue
+    parts = ["[已 ship 扩展 — 触发场景,用户问「X 该不该开」时引用此表回答]"]
+    parts.append("| id | 何时启用 | 状态 |")
+    parts.append("|---|---|---|")
+    for ext_id, use_case in _EXT_USE_CASES:
+        if ext_id in _EXT_PROCS:
+            st = "●运行中"
+        elif installed_map.get(ext_id, False):
+            st = "◉已启用"
+        else:
+            st = "○未启用"
+        parts.append(f"| {ext_id} | {use_case} | {st} |")
+    parts.append("[扩展表结束]")
+    return "\n".join(parts)
+
 
 # 运行中会话的内存锁/状态(结果落 SQLite,运行状态在内存)
 _running: dict[str, bool] = {}
