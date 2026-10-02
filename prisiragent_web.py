@@ -268,6 +268,11 @@ def _projects_load():
 # ============================================================
 _EXT_BRIDGE_LOCK = _threading.RLock()
 _EXT_PROCS = {}            # ext_id -> {"proc": Popen, "home": str, "pending": {req_id: (event, box)}, "last_alive_at": float, "crash_count": int, "reader_thread": Thread, "enabled": bool}
+# P2.5+21(2026-10-03)hotfix:task-runner 进死循环 — `_ext_spawn` 每次都把
+# crash_count 重置为 0,reader_loop L441 判定永远 <=3 → 永远 respawn。
+# 临时用 _ext_respawn_total 累计「总 respawn 次数」,**独立**于 crash_count,
+# 不被 `_ext_spawn` 重置,>5 强制停。完整修法在 task_f48e99a4 chip。
+_ext_respawn_total: dict[str, int] = {}
 _EXT_LOG_HOOKS = {}        # ext_id -> list[callable](主进程日志钩子,留接口)
 _EXT_INJECT_QUEUE = []     # ui.inject notification 缓冲(主进程同步消费)
 # P2.5+B-3(2026-09-21)run 进度内存队列:run_id → list[payload](按到达顺序 append,带自增 seq)。
@@ -439,6 +444,14 @@ def _ext_reader_loop(ext_id: str):
             ev.set()
             st2["pending"].pop(rid, None)
         if st2["crash_count"] <= 3 and st2.get("enabled", True):
+            # P2.5+21 hotfix:累计 respawn 次数独立 crash_count(后者每次 spawn reset 0)
+            _ext_respawn_total[ext_id] = _ext_respawn_total.get(ext_id, 0) + 1
+            if _ext_respawn_total[ext_id] > 5:
+                try:
+                    _LOGGER.warning("[ext-bridge] %s respawn >5 times (total), STOP. crash_count was reset by _ext_spawn, see chip task_f48e99a4.", ext_id)
+                except Exception:
+                    pass
+                return  # 不再 respawn
             delay = min(2 ** st2["crash_count"], 30)
             _threading.Timer(delay, _ext_spawn, args=[ext_id]).start()
             try:

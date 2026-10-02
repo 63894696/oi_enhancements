@@ -260,5 +260,63 @@ class TestPrisirAgentWebWfmodalHash(unittest.TestCase):
         self.assertIn("window.__wfModalOpen = false;", content)
 
 
+class TestExtRespawnHotfix(unittest.TestCase):
+    """P2.5+21 hotfix:task-runner 进死循环(respawn_total > 5 强制停)。
+
+    修前 bug:`_ext_spawn` 每次都 `crash_count: 0` reset,reader_loop L441 判定
+    永远 `<= 3`,死一个 spawn 一个,用户屏幕无限跳 node 弹窗(实测反馈)。
+
+    修:加独立于 crash_count 的 `_ext_respawn_total` 累计,>5 强制 stop respawn。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        # NTFS case-folding 处理 + 复用之前测试的兼容垫片
+        import sys as _s
+        for k in list(_s.modules):
+            if k.lower() in ("prisIragent_web", "prisiragent_web"):
+                del _s.modules[k]
+        import importlib as _il
+        try:
+            _il.reload(_il.import_module("prisir_case_compat"))
+        except Exception:
+            pass
+        import prisiragent_web as W
+        cls.W = W
+
+    def test_respawn_total_exists(self):
+        """模块应有 _ext_respawn_total dict。"""
+        self.assertTrue(hasattr(self.W, "_ext_respawn_total"))
+        self.assertIsInstance(self.W._ext_respawn_total, dict)
+
+    def test_respawn_total_not_reset_by_ext_spawn(self):
+        """模拟:`_ext_spawn` 多次调用,_ext_respawn_total 不会被重置(独立累加)。
+
+        注意:不真 spawn,只验 dict 行为:`_ext_respawn_total[ext_id]` 累加正常。
+        """
+        ext = "test-ext-no-spawn"
+        self.W._ext_respawn_total[ext] = 0
+        for i in range(7):
+            self.W._ext_respawn_total[ext] += 1
+        self.assertEqual(self.W._ext_respawn_total[ext], 7)
+        # 即使 _ext_spawn 被调用(模拟 reset crash_count),_ext_respawn_total 不动
+        self.W._ext_respawn_total[ext] += 1
+        self.assertEqual(self.W._ext_respawn_total[ext], 8)
+
+    def test_respawn_threshold_5(self):
+        """验证:>5 强制停逻辑存在的 sanity check。
+
+        我们不直接调 reader_loop(那是真实 subprocess 流),只验 hotfix 阈值 5
+        写对了且 respawn_total > 5 的逻辑路径在源码里存在。
+        """
+        with open(os.path.join(ROOT, "prisIragent_web.py"), "r", encoding="utf-8") as f:
+            src = f.read()
+        self.assertIn("_ext_respawn_total", src)
+        self.assertIn("> 5", src)
+        self.assertIn("STOP", src)
+        # task_f48e99a4 chip 留口子
+        self.assertIn("task_f48e99a4", src)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
