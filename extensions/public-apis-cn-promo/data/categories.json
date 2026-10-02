@@ -1,0 +1,272 @@
+[
+  {
+    "name": "AI模型",
+    "slug": "AI模型",
+    "n_items": 23
+  },
+  {
+    "name": "天气",
+    "slug": "天气",
+    "n_items": 36
+  },
+  {
+    "name": "国内物流",
+    "slug": "国内物流",
+    "n_items": 14
+  },
+  {
+    "name": "国际物流",
+    "slug": "国际物流",
+    "n_items": 12
+  },
+  {
+    "name": "视频",
+    "slug": "视频",
+    "n_items": 43
+  },
+  {
+    "name": "车辆",
+    "slug": "车辆",
+    "n_items": 6
+  },
+  {
+    "name": "URL 缩短服务",
+    "slug": "URL 缩短服务",
+    "n_items": 19
+  },
+  {
+    "name": "交通",
+    "slug": "交通",
+    "n_items": 69
+  },
+  {
+    "name": "跟踪",
+    "slug": "跟踪",
+    "n_items": 9
+  },
+  {
+    "name": "文本分析",
+    "slug": "文本分析",
+    "n_items": 15
+  },
+  {
+    "name": "测试数据",
+    "slug": "测试数据",
+    "n_items": 25
+  },
+  {
+    "name": "体育与健身",
+    "slug": "体育与健身",
+    "n_items": 33
+  },
+  {
+    "name": "社交",
+    "slug": "社交",
+    "n_items": 42
+  },
+  {
+    "name": "购物",
+    "slug": "购物",
+    "n_items": 14
+  },
+  {
+    "name": "安全",
+    "slug": "安全",
+    "n_items": 39
+  },
+  {
+    "name": "科学与数学",
+    "slug": "科学与数学",
+    "n_items": 33
+  },
+  {
+    "name": "编程",
+    "slug": "编程",
+    "n_items": 5
+  },
+  {
+    "name": "摄影",
+    "slug": "摄影",
+    "n_items": 29
+  },
+  {
+    "name": "电话",
+    "slug": "电话",
+    "n_items": 5
+  },
+  {
+    "name": "人格",
+    "slug": "人格",
+    "n_items": 23
+  },
+  {
+    "name": "专利",
+    "slug": "专利",
+    "n_items": 4
+  },
+  {
+    "name": "开源项目",
+    "slug": "开源项目",
+    "n_items": 9
+  },
+  {
+    "name": "开放数据",
+    "slug": "开放数据",
+    "n_items": 35
+  },
+  {
+    "name": "新闻",
+    "slug": "新闻",
+    "n_items": 20
+  },
+  {
+    "name": "音乐",
+    "slug": "音乐",
+    "n_items": 33
+  },
+  {
+    "name": "机器学习",
+    "slug": "机器学习",
+    "n_items": 23
+  },
+  {
+    "name": "工作",
+    "slug": "工作",
+    "n_items": 17
+  },
+  {
+    "name": "健康",
+    "slug": "健康",
+    "n_items": 31
+  },
+  {
+    "name": "政府",
+    "slug": "政府",
+    "n_items": 87
+  },
+  {
+    "name": "地理编码",
+    "slug": "地理编码",
+    "n_items": 87
+  },
+  {
+    "name": "游戏与漫画",
+    "slug": "游戏与漫画",
+    "n_items": 96
+  },
+  {
+    "name": "餐饮",
+    "slug": "餐饮",
+    "n_items": 26
+  },
+  {
+    "name": "财务",
+    "slug": "财务",
+    "n_items": 46
+  },
+  {
+    "name": "活动",
+    "slug": "活动",
+    "n_items": 3
+  },
+  {
+    "name": "环境",
+    "slug": "环境",
+    "n_items": 17
+  },
+  {
+    "name": "娱乐",
+    "slug": "娱乐",
+    "n_items": 10
+  },
+  {
+    "name": "电子邮件",
+    "slug": "电子邮件",
+    "n_items": 17
+  },
+  {
+    "name": "文档与生产力",
+    "slug": "文档与生产力",
+    "n_items": 28
+  },
+  {
+    "name": "词典",
+    "slug": "词典",
+    "n_items": 13
+  },
+  {
+    "name": "开发",
+    "slug": "开发",
+    "n_items": 120
+  },
+  {
+    "name": "数据验证",
+    "slug": "数据验证",
+    "n_items": 7
+  },
+  {
+    "name": "货币兑换",
+    "slug": "货币兑换",
+    "n_items": 17
+  },
+  {
+    "name": "加密货币",
+    "slug": "加密货币",
+    "n_items": 65
+  },
+  {
+    "name": "持续集成",
+    "slug": "持续集成",
+    "n_items": 6
+  },
+  {
+    "name": "云存储与文件共享",
+    "slug": "云存储与文件共享",
+    "n_items": 20
+  },
+  {
+    "name": "日历",
+    "slug": "日历",
+    "n_items": 16
+  },
+  {
+    "name": "商业",
+    "slug": "商业",
+    "n_items": 24
+  },
+  {
+    "name": "图书",
+    "slug": "图书",
+    "n_items": 23
+  },
+  {
+    "name": "区块链",
+    "slug": "区块链",
+    "n_items": 11
+  },
+  {
+    "name": "身份验证与授权",
+    "slug": "身份验证与授权",
+    "n_items": 7
+  },
+  {
+    "name": "艺术与设计",
+    "slug": "艺术与设计",
+    "n_items": 20
+  },
+  {
+    "name": "反恶意软件",
+    "slug": "反恶意软件",
+    "n_items": 15
+  },
+  {
+    "name": "动漫",
+    "slug": "动漫",
+    "n_items": 19
+  },
+  {
+    "name": "动物",
+    "slug": "动物",
+    "n_items": 27
+  }
+]

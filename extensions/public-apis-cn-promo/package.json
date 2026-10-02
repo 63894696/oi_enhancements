@@ -1,0 +1,20 @@
+{
+  "name": "public-apis-cn-promo",
+  "displayName": "国内 API 资源导航器",
+  "version": "0.1.0",
+  "description": "汇总 llf007/public-apis-cn 的 54 分类 1493 条国内 API(含中文描述 + 国内可用 + 收费/免费标记),Phase B 4 命令(搜索/列表/详情/随机);Phase C 接入主对话 EXEC 标记。数据本地只读快照。",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:api_cn.find",
+    "ai.invoke.command:api_cn.list_categories",
+    "ai.invoke.command:api_cn.detail",
+    "ai.invoke.command:api_cn.random",
+    "ui.inject.card"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "source": "https://github.com/llf007/public-apis-cn",
+  "snapshot_date": "2026-10-02",
+  "total_categories": 54,
+  "total_services": 1493,
+  "license_note": "Data 来源 llf007/public-apis-cn 公共协作(基于 public-apis 翻译 + 国内补充),MIT-style 公共贡献",
+  "agents_note": "纯本地只读快照,绝不发起 PR/issue/comment;AGENTS.md 未声明禁止但仍按只读保守处理",
+  "schema_note": "每条 service 含 cat/name/url/desc/auth/https/level;中文 desc 整段保留(emoji + 中文标点)"
+}

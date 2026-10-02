@@ -365,6 +365,20 @@ try:
 except Exception:  # noqa: BLE001
     log.exception("Phase C free-for-dev: import free_for_dev_capabilities failed; free EXEC will be disabled")
 
+# P3j 5-项目 ship Sprint 1(2026-10-02)ext-public-apis-promo → 主对话能力注册
+# 4 capability 全 L0(public-apis/public-apis 51 cat / 1953 条,无副作用)
+try:
+    from prisir_work import public_apis_capabilities  # noqa: F401
+except Exception:  # noqa: BLE001
+    log.exception("Phase C public-apis: import public_apis_capabilities failed; api EXEC will be disabled")
+
+# P3j 5-项目 ship Sprint 1(2026-10-02)ext-public-apis-cn-promo → 主对话能力注册
+# 4 capability 全 L0(llf007/public-apis-cn 54 cat / 1493 条,国内可访问)
+try:
+    from prisir_work import public_apis_cn_capabilities  # noqa: F401
+except Exception:  # noqa: BLE001
+    log.exception("Phase C public-apis-cn: import public_apis_cn_capabilities failed; api_cn EXEC will be disabled")
+
 # P3j Phase 1.6(2026-09-28)agency-roles 264 角色查询能力注册
 # 3 capability 全 L0(本地 JSON 只读,无子进程无外网)
 try:
@@ -1047,6 +1061,20 @@ async def build_messages(sess: CallSession, current_user_text: str) -> list[dict
             msgs.append({"role": "system", "content": free_intent_summary()})
         except Exception:  # noqa: BLE001
             log.exception("Phase C free-for-dev: inject free intent_summary failed; fall back to no-free-resource mode")
+    # P3j 5-项目 Sprint 1(2026-10-02): 注入公共 API 资源能力清单
+    if not use_skills_idx:
+        try:
+            from prisir_work.public_apis_capabilities import intent_summary as api_intent_summary
+            msgs.append({"role": "system", "content": api_intent_summary()})
+        except Exception:  # noqa: BLE001
+            log.exception("Phase C public-apis: inject api intent_summary failed; fall back to no-public-api mode")
+    # P3j 5-项目 Sprint 1(2026-10-02): 注入国内 API 资源能力清单
+    if not use_skills_idx:
+        try:
+            from prisir_work.public_apis_cn_capabilities import intent_summary as api_cn_intent_summary
+            msgs.append({"role": "system", "content": api_cn_intent_summary()})
+        except Exception:  # noqa: BLE001
+            log.exception("Phase C public-apis-cn: inject api_cn intent_summary failed; fall back to no-cn-api mode")
     # M3.25:清空上一轮的 knowledge hits,本轮重新填(M3.27.1:前端一轮一清,避免误把上一轮的 hits 挂到这轮 ai 气泡上)
     # M3.27.1:累积 hits 由 _DISPATCH_HITS 全局字典记录,派发时从那里取
     if sess is not None:
