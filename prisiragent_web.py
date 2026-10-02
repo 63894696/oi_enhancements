@@ -1617,11 +1617,11 @@ def _installed_extensions_block() -> str:
         ("todo",               "用户提到任务/待办/优先级/截止时,本地待办增删改查"),
         ("clipboard",          "用户说读剪贴板/复制/粘贴/拿当前选中内容时"),
         ("web-watch",          "用户要盯一个网页变化、降价/上新/内容变更时"),
-        ("scheduled-task",     "用户问每天几点跑、开机启动、定时执行类操作时"),
+        ("scheduled-task",     "[需管理员] 用户问每天几点跑、开机启动、定时执行类操作时"),
         ("app-launcher",       "用户说打开应用/启动程序/打开网页/打开文件管理器时"),
-        ("process-scan",       "用户问哪些程序在跑、内存占用、结束进程时(需授权)"),
+        ("process-scan",       "[需管理员] 用户问哪些程序在跑、内存占用、结束进程时(需授权)"),
         ("window-list",        "用户问当前开了哪些窗口、关某个窗口、置顶时"),
-        ("system-watchdog",    "后台稳定守护:平衡 CPU 占用/拦截卡顿程序/低内存提醒/空闲降频"),
+        ("system-watchdog",    "[需管理员] 后台稳定守护:平衡 CPU 占用/拦截卡顿程序/低内存提醒/空闲降频"),
         ("http-request",       "用户要发网络请求、调用外部接口、检查网址是否能打开时"),
         ("regex-tester",       "写或调试正则表达式(邮箱/手机号/URL 这类匹配规则)时"),
         ("json-format",        "用户给一坨 JSON 要格式化排版、压缩、按 key 排序时"),
@@ -1631,7 +1631,7 @@ def _installed_extensions_block() -> str:
         ("code-snippets",      "写常用代码片段(40+ 内置模板)或插入自定义片段到当前项目"),
         ("pr-review",          "看代码改动并套审查模板给出建议清单(可配置模板)"),
         ("git-stats",          "看代码提交记录、改动排行、谁的提交最多"),
-        ("keystroke-emit",     "模拟键盘输入 + 组合键(复制/粘贴/全选这类)+ 鼠标点击"),
+        ("keystroke-emit",     "[需管理员] 模拟键盘输入 + 组合键(复制/粘贴/全选这类)+ 鼠标点击"),
         ("sequence-builder",   "把一段描述画成时序图(流程参与者谁先谁后)"),
         ("ext-mermaid",        "对话里出现图表代码块时自动渲染成可看的图卡"),
         ("handraw-style",      "海报/卡片/封面提示词:278 种风格 + 36 种颜色 + 120 种版式"),
@@ -1666,6 +1666,8 @@ def _installed_extensions_block() -> str:
         except (OSError, ValueError):
             continue
     parts = ["[已 ship 扩展 — 触发场景,用户问「X 该不该开」时引用此表回答]"]
+    parts.append("注 1:标记 [需管理员] 的扩展,执行任务前若失败/拒绝访问,告知用户**关闭 PrisirAI → 右键 PrisirAI 图标 → 以管理员身份运行 → 重试**(PrisirAI 启动时若非管理员权限,这类扩展只能查不能改)。")
+    parts.append("注 2:用户问「免费 SaaS / 公共 API / 国内 API / 免 key API / 自部署软件 / awesome 索引都有哪些」时,**优先 EXEC 本地缓存**(free.list_categories / api.list_categories / api_cn.list_categories / nokeyapi.list_categories / selfhost.list_categories / awesome-hub 数据),不要让用户上 GitHub。")
     parts.append("| id | 何时启用 | 状态 |")
     parts.append("|---|---|---|")
     for ext_id, use_case in _EXT_USE_CASES:
