@@ -10,6 +10,8 @@ metadata:
 **commit 链**:
 - `3c1d29d` fix(shell): 子窗服务自启 + 工作流 wfmodal + 同源递归弹窗(4 bug)
 - `5496d97` fix(ext-bridge): task-runner respawn_total >5 hotfix(死循环兜底)
+- `b14985a` fix(ext-bridge): task-runner 一次启(不再 auto-respawn)
+- `b1f0704` fix(shell): startWeb 用 readCalendarPort() 而非未声明常量 (修 b14985a ship 漏)
 
 **触发的用户反馈**(2026-10-03):
 > 语伴/音乐/日程,这3样都没能正常启动,点了工作流的浏览器之后系统当前还无限跳node弹窗。扩展没有自己启动的选项,要用是要agent自己启动吗?
@@ -141,6 +143,24 @@ window.open(window.location.origin + '/prisiragent/about')
 - 扩展自启 UI(settings.json 「子服务自动启」开关)— 用户拍板「仅修 4 子窗 + 死循环」,扩展面板留 Phase B
 - Tauri 壳(`src-tauri/`)— 不动
 - 完整修法 task-runner 不死循环(chip 隔离修)— user 拍板「现在就修死循环 bug(推荐)」派独立 chip
+
+---
+
+## 2026-10-03 ship 后实际 E2E 发现
+
+**`b1f0704` 漏坑**:`DEFAULT_CALENDAR_PORT` 常量在 main.js 顶部未声明,
+但 startWeb args 写死了它 → ReferenceError → 后端没起 → 18802 不监听。
+
+修法:用 `require("./port_config").readCalendarPort()` 函数调(HKCU / JSON /
+yaml default 18803,与兄弟端口读法一致)。加保护测试
+`TestMainJsSyntax`:断言代码(非注释)不含 `DEFAULT_CALENDAR_PORT`,
+防止再次漏掉声明常量就 ship。
+
+**E2E 经验**:`node --check` + 关键函数存在性 ≠ 启动成功。
+Electron 启动有完整 ctx(electron API、require、preload),只过
+syntax 检查的 ship 可能暗藏运行时 ReferenceError。
+**修后**:`TestMainJsSyntax` 加代码(非注释)常量引用检查 +
+必须真跑一次 electron 验证 18802 LISTENING 才算 ship 完成。
 
 ---
 
