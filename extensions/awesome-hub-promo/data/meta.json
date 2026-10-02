@@ -1,0 +1,15 @@
+{
+  "source": "https://github.com/sindresorhus/awesome",
+  "source_raw_url": "https://raw.githubusercontent.com/sindresorhus/awesome/main/readme.md",
+  "snapshot_date": "2026-10-02",
+  "snapshot_iso": "2026-10-02T09:44:48+00:00",
+  "total_categories": 27,
+  "total_topics": 677,
+  "total_with_link": 675,
+  "level_breakdown": {
+    "L1": 596,
+    "L2": 81
+  },
+  "license_note": "CC0-1.0",
+  "agents_note": "sindresorhus/awesome 无 AGENTS.md,默认快照制;本扩展只读 README,不联网回写、不发 PR/issue/comment。"
+}

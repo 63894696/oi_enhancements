@@ -1,0 +1,164 @@
+[
+  {
+    "name": "Platforms",
+    "slug": "platforms",
+    "n_topics": 57,
+    "n_with_link": 55
+  },
+  {
+    "name": "Programming Languages",
+    "slug": "programming-languages",
+    "n_topics": 77,
+    "n_with_link": 77
+  },
+  {
+    "name": "Front-End Development",
+    "slug": "front-end-development",
+    "n_topics": 85,
+    "n_with_link": 85
+  },
+  {
+    "name": "Back-End Development",
+    "slug": "back-end-development",
+    "n_topics": 32,
+    "n_with_link": 32
+  },
+  {
+    "name": "Computer Science",
+    "slug": "computer-science",
+    "n_topics": 38,
+    "n_with_link": 38
+  },
+  {
+    "name": "Big Data",
+    "slug": "big-data",
+    "n_topics": 9,
+    "n_with_link": 9
+  },
+  {
+    "name": "Theory",
+    "slug": "theory",
+    "n_topics": 14,
+    "n_with_link": 14
+  },
+  {
+    "name": "Books",
+    "slug": "books",
+    "n_topics": 6,
+    "n_with_link": 6
+  },
+  {
+    "name": "Editors",
+    "slug": "editors",
+    "n_topics": 5,
+    "n_with_link": 5
+  },
+  {
+    "name": "Gaming",
+    "slug": "gaming",
+    "n_topics": 28,
+    "n_with_link": 28
+  },
+  {
+    "name": "Development Environment",
+    "slug": "development-environment",
+    "n_topics": 21,
+    "n_with_link": 21
+  },
+  {
+    "name": "Entertainment",
+    "slug": "entertainment",
+    "n_topics": 5,
+    "n_with_link": 5
+  },
+  {
+    "name": "Databases",
+    "slug": "databases",
+    "n_topics": 17,
+    "n_with_link": 17
+  },
+  {
+    "name": "Media",
+    "slug": "media",
+    "n_topics": 14,
+    "n_with_link": 14
+  },
+  {
+    "name": "Learn",
+    "slug": "learn",
+    "n_topics": 15,
+    "n_with_link": 15
+  },
+  {
+    "name": "Security",
+    "slug": "security",
+    "n_topics": 29,
+    "n_with_link": 29
+  },
+  {
+    "name": "Content Management Systems",
+    "slug": "content-management-systems",
+    "n_topics": 11,
+    "n_with_link": 11
+  },
+  {
+    "name": "Hardware",
+    "slug": "hardware",
+    "n_topics": 11,
+    "n_with_link": 11
+  },
+  {
+    "name": "Business",
+    "slug": "business",
+    "n_topics": 12,
+    "n_with_link": 12
+  },
+  {
+    "name": "Work",
+    "slug": "work",
+    "n_topics": 7,
+    "n_with_link": 7
+  },
+  {
+    "name": "Networking",
+    "slug": "networking",
+    "n_topics": 5,
+    "n_with_link": 5
+  },
+  {
+    "name": "Decentralized Systems",
+    "slug": "decentralized-systems",
+    "n_topics": 17,
+    "n_with_link": 17
+  },
+  {
+    "name": "Health and Social Science",
+    "slug": "health-and-social-science",
+    "n_topics": 12,
+    "n_with_link": 12
+  },
+  {
+    "name": "Events",
+    "slug": "events",
+    "n_topics": 3,
+    "n_with_link": 3
+  },
+  {
+    "name": "Testing",
+    "slug": "testing",
+    "n_topics": 11,
+    "n_with_link": 11
+  },
+  {
+    "name": "Miscellaneous",
+    "slug": "miscellaneous",
+    "n_topics": 131,
+    "n_with_link": 131
+  },
+  {
+    "name": "Related",
+    "slug": "related",
+    "n_topics": 5,
+    "n_with_link": 5
+  }
+]

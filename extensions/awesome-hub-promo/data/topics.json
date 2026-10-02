@@ -1,0 +1,5418 @@
+[
+  {
+    "name": "Node.js",
+    "url": "https://github.com/sindresorhus/awesome-nodejs#readme",
+    "desc": "Async non-blocking event-driven JavaScript runtime built on Chrome's V8 JavaScript engine.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Cross-Platform",
+    "url": "https://github.com/bcoe/awesome-cross-platform-nodejs#readme",
+    "desc": "Writing cross-platform code on Node.js.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Frontend Development",
+    "url": "https://github.com/dypsilon/frontend-dev-bookmarks#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "iOS",
+    "url": "https://github.com/vsouza/awesome-ios#readme",
+    "desc": "Mobile operating system for Apple phones and tablets.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Android",
+    "url": "https://github.com/JStumpp/awesome-android#readme",
+    "desc": "Mobile operating system developed by Google.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "IoT & Hybrid Apps",
+    "url": "https://github.com/weblancaster/awesome-IoT-hybrid#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Electron",
+    "url": "https://github.com/sindresorhus/awesome-electron#readme",
+    "desc": "Cross-platform native desktop apps using JavaScript/HTML/CSS.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Cordova",
+    "url": "https://github.com/busterc/awesome-cordova#readme",
+    "desc": "JavaScript API for hybrid apps.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "React Native",
+    "url": "https://github.com/jondot/awesome-react-native#readme",
+    "desc": "JavaScript framework for writing natively rendering mobile apps for iOS and Android.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Linux",
+    "url": "",
+    "desc": "",
+    "level": 1,
+    "has_link": false,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Containers",
+    "url": "https://github.com/Friz-zy/awesome-linux-containers#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "eBPF",
+    "url": "https://github.com/zoidbergwill/awesome-ebpf#readme",
+    "desc": "Virtual machine that allows you to write more efficient and powerful tracing and monitoring for Linux systems.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Arch-based Projects",
+    "url": "https://github.com/PandaFoss/Awesome-Arch#readme",
+    "desc": "Linux distributions and projects based on Arch Linux.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "AppImage",
+    "url": "https://github.com/AppImageCommunity/awesome-appimage#readme",
+    "desc": "Package apps in a single file that works on various mainstream Linux distributions.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Omarchy",
+    "url": "https://github.com/aorumbayev/awesome-omarchy#readme",
+    "desc": "Opinionated Arch Linux and Hyprland desktop environment from the creator of Ruby on Rails.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "macOS",
+    "url": "",
+    "desc": "Operating system for Apple's Mac computers.",
+    "level": 1,
+    "has_link": false,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Screensavers",
+    "url": "https://github.com/agarrharr/awesome-macos-screensavers#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Apps",
+    "url": "https://github.com/jaywcjlove/awesome-mac#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Open Source Apps",
+    "url": "https://github.com/serhii-londar/open-source-mac-os-apps#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "watchOS",
+    "url": "https://github.com/yenchenlin/awesome-watchos#readme",
+    "desc": "Operating system for the Apple Watch.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "JVM",
+    "url": "https://github.com/deephacks/awesome-jvm#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Salesforce",
+    "url": "https://github.com/mailtoharshit/awesome-salesforce#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Amazon Web Services",
+    "url": "https://github.com/donnemartin/awesome-aws#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Windows",
+    "url": "https://github.com/0pandadev/awesome-windows#readme",
+    "desc": "Consumer desktop operating system.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "PowerToys Run Plugins",
+    "url": "https://github.com/hlaueriksson/awesome-powertoys-run-plugins#readme",
+    "desc": "Community plugins for the Windows quick launcher.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "IPFS",
+    "url": "https://github.com/ipfs/awesome-ipfs#readme",
+    "desc": "P2P hypermedia protocol.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Fuse",
+    "url": "https://github.com/fuse-compound/awesome-fuse#readme",
+    "desc": "Mobile development tools.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Heroku",
+    "url": "https://github.com/ianstormtaylor/awesome-heroku#readme",
+    "desc": "Cloud platform as a service.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Raspberry Pi",
+    "url": "https://github.com/thibmaek/awesome-raspberry-pi#readme",
+    "desc": "Credit card-sized computer aimed at teaching kids programming, but capable of a lot more.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "WebExtensions",
+    "url": "https://github.com/fregante/Awesome-WebExtensions#readme",
+    "desc": "Cross-browser extension system.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Smart TV",
+    "url": "https://github.com/vitalets/awesome-smart-tv#readme",
+    "desc": "Create apps for different TV platforms.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "GNOME",
+    "url": "https://github.com/Kazhnuz/awesome-gnome#readme",
+    "desc": "Simple and distraction-free desktop environment for Linux.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "KDE",
+    "url": "https://github.com/francoism90/awesome-kde#readme",
+    "desc": "A free software community dedicated to creating an open and user-friendly computing experience.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": ".NET",
+    "url": "https://github.com/quozd/awesome-dotnet#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Core",
+    "url": "https://github.com/thangchung/awesome-dotnet-core#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Roslyn",
+    "url": "https://github.com/ironcev/awesome-roslyn#readme",
+    "desc": "Open-source compilers and code analysis APIs for C# and VB.NET languages.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "DigitalOcean",
+    "url": "https://github.com/jonleibowitz/awesome-digitalocean#readme",
+    "desc": "Cloud computing platform designed for developers.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Flutter",
+    "url": "https://github.com/Solido/awesome-flutter#readme",
+    "desc": "Google's mobile SDK for building native iOS and Android apps from a single codebase written in Dart.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Home Assistant",
+    "url": "https://github.com/frenck/awesome-home-assistant#readme",
+    "desc": "Open source home automation that puts local control and privacy first.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "IBM Cloud",
+    "url": "https://github.com/victorshinya/awesome-ibmcloud#readme",
+    "desc": "Cloud platform for developers and companies.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Firebase",
+    "url": "https://github.com/jthegedus/awesome-firebase#readme",
+    "desc": "App development platform built on Google Cloud.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Adafruit IO",
+    "url": "https://github.com/adafruit/awesome-adafruitio#readme",
+    "desc": "Visualize and store data from any device.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Cloudflare",
+    "url": "https://github.com/irazasyed/awesome-cloudflare#readme",
+    "desc": "CDN, DNS, DDoS protection, and security for your site.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Actions on Google",
+    "url": "https://github.com/ravirupareliya/awesome-actions-on-google#readme",
+    "desc": "Developer platform for Google Assistant.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "ESP",
+    "url": "https://github.com/agucova/awesome-esp#readme",
+    "desc": "Low-cost microcontrollers with WiFi and broad IoT applications.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Deno",
+    "url": "https://github.com/denolib/awesome-deno#readme",
+    "desc": "A secure runtime for JavaScript and TypeScript that uses V8 and is built in Rust.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "DOS",
+    "url": "https://github.com/balintkissdev/awesome-dos#readme",
+    "desc": "Operating system for x86-based personal computers that was popular during the 1980s and early 1990s.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Nix",
+    "url": "https://github.com/nix-community/awesome-nix#readme",
+    "desc": "Package manager for Linux and other Unix systems that makes package management reliable and reproducible.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Integration",
+    "url": "https://github.com/stn1slv/awesome-integration#readme",
+    "desc": "Linking together different IT systems (components) to functionally cooperate as a whole.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Node-RED",
+    "url": "https://github.com/naimo84/awesome-nodered#readme",
+    "desc": "A programming tool for wiring together hardware devices, APIs, and online services.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Low Code",
+    "url": "https://github.com/zenitysec/awesome-low-code#readme",
+    "desc": "Allowing business professionals to address their needs on their own with little to no coding skills.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Capacitor",
+    "url": "https://github.com/riderx/awesome-capacitor#readme",
+    "desc": "Cross-platform open source runtime for building Web Native apps.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "ArcGIS Developer",
+    "url": "https://github.com/Esri/awesome-arcgis-developer#readme",
+    "desc": "Mapping and location analysis platform for developers.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Bluetooth Low Energy",
+    "url": "https://github.com/dotintent/awesome-ble#readme",
+    "desc": "Low-power wireless communication protocol ideal for IoT, wearables, and other battery-powered applications.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Uno Platform",
+    "url": "https://github.com/MartinZikmund/awesome-uno-platform#readme",
+    "desc": "Open-source .NET UI platform for building cross-platform apps.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Firebase Genkit",
+    "url": "https://github.com/xavidop/awesome-firebase-genkit#readme",
+    "desc": "An open-source framework for building AI-powered apps and features.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "Backstage",
+    "url": "https://github.com/shano/awesome-backstage#readme",
+    "desc": "Open-source platform for building Internal Developer Portals that unify tools and workflows.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Platforms"
+  },
+  {
+    "name": "JavaScript",
+    "url": "https://github.com/sorrycc/awesome-javascript#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Promises",
+    "url": "https://github.com/wbinnssmith/awesome-promises#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Standard Style",
+    "url": "https://github.com/standard/awesome-standard#readme",
+    "desc": "Style guide and linter.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Must Watch Talks",
+    "url": "https://github.com/bolshchikov/js-must-watch#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Tips",
+    "url": "https://github.com/loverajoel/jstips#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Network Layer",
+    "url": "https://github.com/Kikobeats/awesome-network-js#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Micro npm Packages",
+    "url": "https://github.com/parro-it/awesome-micro-npm-packages#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Mad Science npm Packages",
+    "url": "https://github.com/feross/awesome-mad-science#readme",
+    "desc": "Impossible sounding projects that exist.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Maintenance Modules",
+    "url": "https://github.com/maxogden/maintenance-modules#readme",
+    "desc": "For npm packages.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "npm",
+    "url": "https://github.com/sindresorhus/awesome-npm#readme",
+    "desc": "Package manager.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "AVA",
+    "url": "https://github.com/avajs/awesome-ava#readme",
+    "desc": "Test runner.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "ESLint",
+    "url": "https://github.com/dustinspecker/awesome-eslint#readme",
+    "desc": "Linter.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Functional Programming",
+    "url": "https://github.com/stoeffel/awesome-fp-js#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Observables",
+    "url": "https://github.com/sindresorhus/awesome-observables#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "npm scripts",
+    "url": "https://github.com/RyanZim/awesome-npm-scripts#readme",
+    "desc": "Task runner.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "30 Seconds of Code",
+    "url": "https://github.com/30-seconds/30-seconds-of-code#readme",
+    "desc": "Code snippets you can understand in 30 seconds.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Ponyfills",
+    "url": "https://github.com/Richienb/awesome-ponyfills#readme",
+    "desc": "Like polyfills but without overriding native APIs.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Swift",
+    "url": "https://github.com/matteocrippa/awesome-swift#readme",
+    "desc": "Apple's compiled programming language that is secure, modern, programmer-friendly, and fast.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Education",
+    "url": "https://github.com/hsavit1/Awesome-Swift-Education#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Playgrounds",
+    "url": "https://github.com/uraimo/Awesome-Swift-Playgrounds#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Python",
+    "url": "https://github.com/vinta/awesome-python#readme",
+    "desc": "General-purpose programming language designed for readability.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Asyncio",
+    "url": "https://github.com/timofurrer/awesome-asyncio#readme",
+    "desc": "Asynchronous I/O in Python 3.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Scientific Audio",
+    "url": "https://github.com/faroit/awesome-python-scientific-audio#readme",
+    "desc": "Scientific research in audio/music.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "CircuitPython",
+    "url": "https://github.com/adafruit/awesome-circuitpython#readme",
+    "desc": "A version of Python for microcontrollers.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Data Science",
+    "url": "https://github.com/krzjoa/awesome-python-data-science#readme",
+    "desc": "Data analysis and machine learning.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Typing",
+    "url": "https://github.com/typeddjango/awesome-python-typing#readme",
+    "desc": "Optional static typing for Python.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "MicroPython",
+    "url": "https://github.com/mcauser/awesome-micropython#readme",
+    "desc": "A lean and efficient implementation of Python 3 for microcontrollers.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Rust",
+    "url": "https://github.com/rust-unofficial/awesome-rust#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Pest",
+    "url": "https://github.com/pest-parser/awesome-pest#readme",
+    "desc": "Parser generator.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Haskell",
+    "url": "https://github.com/krispo/awesome-haskell#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "PureScript",
+    "url": "https://github.com/passy/awesome-purescript#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Go",
+    "url": "https://github.com/avelino/awesome-go#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Scala",
+    "url": "https://github.com/lauris/awesome-scala#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Scala Native",
+    "url": "https://github.com/tindzk/awesome-scala-native#readme",
+    "desc": "Optimizing ahead-of-time compiler for Scala based on LLVM.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Ruby",
+    "url": "https://github.com/markets/awesome-ruby#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Clojure",
+    "url": "https://github.com/razum2um/awesome-clojure#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "ClojureScript",
+    "url": "https://github.com/hantuzun/awesome-clojurescript#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Elixir",
+    "url": "https://github.com/h4cc/awesome-elixir#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Elm",
+    "url": "https://github.com/sporto/awesome-elm#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Erlang",
+    "url": "https://github.com/drobakowski/awesome-erlang#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Julia",
+    "url": "https://github.com/svaksha/Julia.jl#readme",
+    "desc": "High-level dynamic programming language designed to address the needs of high-performance numerical analysis and computational science.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Lua",
+    "url": "https://github.com/LewisJEllis/awesome-lua#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "C/C++",
+    "url": "https://github.com/fffaraz/awesome-cpp#readme",
+    "desc": "General-purpose language with a bias toward system programming and embedded, resource-constrained software.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "R",
+    "url": "https://github.com/qinwf/awesome-R#readme",
+    "desc": "Functional programming language and environment for statistical computing and graphics.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Learning",
+    "url": "https://github.com/iamericfletcher/awesome-r-learning-resources#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "D",
+    "url": "https://github.com/dlang-community/awesome-d#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Common Lisp",
+    "url": "https://github.com/CodyReichert/awesome-cl#readme",
+    "desc": "Powerful dynamic multiparadigm language that facilitates iterative and interactive development.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Learning",
+    "url": "https://github.com/GustavBertram/awesome-common-lisp-learning#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Perl",
+    "url": "https://github.com/hachiojipm/awesome-perl#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Groovy",
+    "url": "https://github.com/kdabir/awesome-groovy#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Dart",
+    "url": "https://github.com/yissachar/awesome-dart#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Java",
+    "url": "https://github.com/akullpp/awesome-java#readme",
+    "desc": "Popular secure object-oriented language designed for flexibility to \"write once, run anywhere\".",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "RxJava",
+    "url": "https://github.com/eleventigers/awesome-rxjava#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "J2ME",
+    "url": "https://github.com/hstsethi/awesome-j2me#readme",
+    "desc": "Java specification designed for old keypad phones and PDAs..",
+    "level": 2,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Kotlin",
+    "url": "https://github.com/KotlinBy/awesome-kotlin#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "OCaml",
+    "url": "https://github.com/ocaml-community/awesome-ocaml#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "ColdFusion",
+    "url": "https://github.com/seancoyne/awesome-coldfusion#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Fortran",
+    "url": "https://github.com/rabbiabram/awesome-fortran#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "PHP",
+    "url": "https://github.com/ziadoz/awesome-php#readme",
+    "desc": "Server-side scripting language.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Composer",
+    "url": "https://github.com/jakoch/awesome-composer#readme",
+    "desc": "Package manager.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Pascal",
+    "url": "https://github.com/Fr0sT-Brutal/awesome-pascal#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "AutoHotkey",
+    "url": "https://github.com/ahkscript/awesome-AutoHotkey#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "AutoIt",
+    "url": "https://github.com/J2TeaM/awesome-AutoIt#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Crystal",
+    "url": "https://github.com/veelenga/awesome-crystal#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "CMake",
+    "url": "https://github.com/onqtam/awesome-cmake#readme",
+    "desc": "Build, test, and package software.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "ActionScript 3",
+    "url": "https://github.com/robinrodricks/awesome-actionscript3#readme",
+    "desc": "Object-oriented language targeting Adobe AIR.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Idris",
+    "url": "https://github.com/joaomilho/awesome-idris#readme",
+    "desc": "General purpose pure functional programming language with dependent types influenced by Haskell and ML.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Ada/SPARK",
+    "url": "https://github.com/ohenley/awesome-ada#readme",
+    "desc": "Modern programming language designed for large, long-lived apps where reliability and efficiency are essential.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Q#",
+    "url": "https://github.com/ebraminio/awesome-qsharp#readme",
+    "desc": "Domain-specific programming language used for expressing quantum algorithms.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Imba",
+    "url": "https://github.com/koolamusic/awesome-imba#readme",
+    "desc": "Programming language inspired by Ruby and Python and compiles to performant JavaScript.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Vala",
+    "url": "https://github.com/desiderantes/awesome-vala#readme",
+    "desc": "Programming language designed to take full advantage of the GLib and GNOME ecosystems, while preserving the speed of C code.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Coq",
+    "url": "https://github.com/coq-community/awesome-coq#readme",
+    "desc": "Formal language and environment for programming and specification which facilitates interactive development of machine-checked proofs.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "V",
+    "url": "https://github.com/vlang/awesome-v#readme",
+    "desc": "Simple, fast, safe, compiled language for developing maintainable software.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Move",
+    "url": "https://github.com/MystenLabs/awesome-move#readme",
+    "desc": "Domain-specific programming language for writing safe smart contracts.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "Esolangs",
+    "url": "https://github.com/angrykoala/awesome-esolangs#readme",
+    "desc": "Programming languages designed for experimentation or as jokes rather than actual use.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "VBA",
+    "url": "https://github.com/sancarn/awesome-vba#readme",
+    "desc": "An event-driven version of Visual Basic 6.0 built into most Microsoft Office apps for automation and scripting.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "F#",
+    "url": "https://github.com/fsprojects/awesome-fsharp#readme",
+    "desc": "A .NET-based language with focus on functional programming.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Programming Languages"
+  },
+  {
+    "name": "ES6 Tools",
+    "url": "https://github.com/addyosmani/es6-tools#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Web Performance Optimization",
+    "url": "https://github.com/davidsonfellipe/awesome-wpo#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Web Tools",
+    "url": "https://github.com/lvwzhen/tools#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "CSS",
+    "url": "https://github.com/awesome-css-group/awesome-css#readme",
+    "desc": "Style sheet language that specifies how HTML elements are displayed on screen.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Critical-Path Tools",
+    "url": "https://github.com/addyosmani/critical-path-css-tools#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Scalability",
+    "url": "https://github.com/davidtheclark/scalable-css-reading-list#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Must-Watch Talks",
+    "url": "https://github.com/AllThingsSmitty/must-watch-css#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Protips",
+    "url": "https://github.com/AllThingsSmitty/css-protips#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Frameworks",
+    "url": "https://github.com/troxler/awesome-css-frameworks#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "React",
+    "url": "https://github.com/enaqx/awesome-react#readme",
+    "desc": "JavaScript library for building user interfaces.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Relay",
+    "url": "https://github.com/expede/awesome-relay#readme",
+    "desc": "Framework for building data-driven React apps.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "React Hooks",
+    "url": "https://github.com/glauberfc/awesome-react-hooks#readme",
+    "desc": "Lets you use state and other React features without writing a class.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Web Components",
+    "url": "https://github.com/web-padawan/awesome-web-components#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Polymer",
+    "url": "https://github.com/Granze/awesome-polymer#readme",
+    "desc": "JavaScript library to develop Web Components.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Angular",
+    "url": "https://github.com/PatrickJS/awesome-angular#readme",
+    "desc": "App framework.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Backbone",
+    "url": "https://github.com/sadcitizen/awesome-backbone#readme",
+    "desc": "App framework.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "HTML5",
+    "url": "https://github.com/diegocard/awesome-html5#readme",
+    "desc": "Markup language used for websites & web apps.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "SVG",
+    "url": "https://github.com/willianjusten/awesome-svg#readme",
+    "desc": "XML-based vector image format.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Canvas",
+    "url": "https://github.com/raphamorim/awesome-canvas#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "KnockoutJS",
+    "url": "https://github.com/dnbard/awesome-knockout#readme",
+    "desc": "JavaScript library.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Dojo Toolkit",
+    "url": "https://github.com/petk/awesome-dojo#readme",
+    "desc": "JavaScript toolkit.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Inspiration",
+    "url": "https://github.com/NoahBuscher/Inspire#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Ember",
+    "url": "https://github.com/ember-community-russia/awesome-ember#readme",
+    "desc": "App framework.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Android UI",
+    "url": "https://github.com/wasabeef/awesome-android-ui#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "iOS UI",
+    "url": "https://github.com/cjwirth/awesome-ios-ui#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Meteor",
+    "url": "https://github.com/Urigo/awesome-meteor#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "BEM",
+    "url": "https://github.com/sturobson/BEM-resources#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Flexbox",
+    "url": "https://github.com/afonsopacifer/awesome-flexbox#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Web Typography",
+    "url": "https://github.com/deanhume/typography#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Web Accessibility",
+    "url": "https://github.com/brunopulis/awesome-a11y#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Material Design",
+    "url": "https://github.com/sachin1092/awesome-material#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "D3",
+    "url": "https://github.com/wbkd/awesome-d3#readme",
+    "desc": "Library for producing dynamic, interactive data visualizations.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Emails",
+    "url": "https://github.com/jonathandion/awesome-emails#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "jQuery",
+    "url": "https://github.com/petk/awesome-jquery#readme",
+    "desc": "Easy to use JavaScript library for DOM manipulation.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Tips",
+    "url": "https://github.com/AllThingsSmitty/jquery-tips-everyone-should-know#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Web Audio",
+    "url": "https://github.com/notthetup/awesome-webaudio#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Offline-First",
+    "url": "https://github.com/pazguille/offline-first#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Static Website Services",
+    "url": "https://github.com/agarrharr/awesome-static-website-services#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Cycle.js",
+    "url": "https://github.com/cyclejs-community/awesome-cyclejs#readme",
+    "desc": "Functional and reactive JavaScript framework.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Text Editing",
+    "url": "https://github.com/dok/awesome-text-editing#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Motion UI Design",
+    "url": "https://github.com/fliptheweb/motion-ui-design#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Vue.js",
+    "url": "https://github.com/vuejs/awesome-vue#readme",
+    "desc": "App framework.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Marionette.js",
+    "url": "https://github.com/sadcitizen/awesome-marionette#readme",
+    "desc": "App framework.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Aurelia",
+    "url": "https://github.com/aurelia-contrib/awesome-aurelia#readme",
+    "desc": "App framework.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Charting",
+    "url": "https://github.com/zingchart/awesome-charting#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Ionic Framework",
+    "url": "https://github.com/candelibas/awesome-ionic#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Chrome DevTools",
+    "url": "https://github.com/ChromeDevTools/awesome-chrome-devtools#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "PostCSS",
+    "url": "https://github.com/jdrgomes/awesome-postcss#readme",
+    "desc": "CSS tool.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Draft.js",
+    "url": "https://github.com/nikgraf/awesome-draft-js#readme",
+    "desc": "Rich text editor framework for React.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Service Workers",
+    "url": "https://github.com/TalAter/awesome-service-workers#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Progressive Web Apps",
+    "url": "https://github.com/TalAter/awesome-progressive-web-apps#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "choo",
+    "url": "https://github.com/choojs/awesome-choo#readme",
+    "desc": "App framework.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Redux",
+    "url": "https://github.com/brillout/awesome-redux#readme",
+    "desc": "State container for JavaScript apps.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Browserify",
+    "url": "https://github.com/browserify/awesome-browserify#readme",
+    "desc": "Module bundler.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Sass",
+    "url": "https://github.com/Famolus/awesome-sass#readme",
+    "desc": "CSS preprocessor.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Ant Design",
+    "url": "https://github.com/websemantics/awesome-ant-design#readme",
+    "desc": "Enterprise-class UI design language.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Less",
+    "url": "https://github.com/LucasBassetti/awesome-less#readme",
+    "desc": "CSS preprocessor.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "WebGL",
+    "url": "https://github.com/sjfricke/awesome-webgl#readme",
+    "desc": "JavaScript API for rendering 3D graphics.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Preact",
+    "url": "https://github.com/preactjs/awesome-preact#readme",
+    "desc": "App framework.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Progressive Enhancement",
+    "url": "https://github.com/jbmoelker/progressive-enhancement-resources#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Next.js",
+    "url": "https://github.com/unicodeveloper/awesome-nextjs#readme",
+    "desc": "Framework for server-rendered React apps.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "lit",
+    "url": "https://github.com/web-padawan/awesome-lit#readme",
+    "desc": "Library for building web components with a declarative template system.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "JAMstack",
+    "url": "https://github.com/automata/awesome-jamstack#readme",
+    "desc": "Modern web development architecture based on client-side JavaScript, reusable APIs, and prebuilt markup.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "WordPress-Gatsby",
+    "url": "https://github.com/henrikwirth/awesome-wordpress-gatsby#readme",
+    "desc": "Web development technology stack with WordPress as a back end and Gatsby as a front end.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Mobile Web Development",
+    "url": "https://github.com/myshov/awesome-mobile-web-development#readme",
+    "desc": "Creating a great mobile web experience.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Storybook",
+    "url": "https://github.com/lauthieb/awesome-storybook#readme",
+    "desc": "Development environment for UI components.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Blazor",
+    "url": "https://github.com/AdrienTorris/awesome-blazor#readme",
+    "desc": ".NET web framework using C#/Razor and HTML that runs in the browser with WebAssembly.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "PageSpeed Metrics",
+    "url": "https://github.com/csabapalfi/awesome-pagespeed-metrics#readme",
+    "desc": "Metrics to help understand page speed and user experience.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Tailwind CSS",
+    "url": "https://github.com/aniftyco/awesome-tailwindcss#readme",
+    "desc": "Utility-first CSS framework for rapid UI development.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Seed",
+    "url": "https://github.com/seed-rs/awesome-seed-rs#readme",
+    "desc": "Rust framework for creating web apps running in WebAssembly.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Web Performance Budget",
+    "url": "https://github.com/pajaydev/awesome-web-performance-budget#readme",
+    "desc": "Techniques to ensure certain performance metrics for a website.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Web Animation",
+    "url": "https://github.com/sergey-pimenov/awesome-web-animation#readme",
+    "desc": "Animations in the browser with JavaScript, CSS, SVG, etc.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Yew",
+    "url": "https://github.com/jetli/awesome-yew#readme",
+    "desc": "Rust framework inspired by Elm and React for creating multi-threaded frontend web apps with WebAssembly.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Material-UI",
+    "url": "https://github.com/nadunindunil/awesome-material-ui#readme",
+    "desc": "Material Design React components for faster and easier web development.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Building Blocks for Web Apps",
+    "url": "https://github.com/componently-com/awesome-building-blocks-for-web-apps#readme",
+    "desc": "Standalone features to be integrated into web apps.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Svelte",
+    "url": "https://github.com/TheComputerM/awesome-svelte#readme",
+    "desc": "App framework.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Design systems",
+    "url": "https://github.com/klaufel/awesome-design-systems#readme",
+    "desc": "Collection of reusable components, guided by rules that ensure consistency and speed.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Inertia.js",
+    "url": "https://github.com/innocenzi/awesome-inertiajs#readme",
+    "desc": "Make single-page apps without building an API.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "MDBootstrap",
+    "url": "https://github.com/mdbootstrap/awesome-mdbootstrap#readme",
+    "desc": "Templates, layouts, components, and widgets to rapidly build websites.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Master CSS",
+    "url": "https://github.com/master-co/awesome-master-css#readme",
+    "desc": "A virtual CSS language with enhanced syntax.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Hydrogen",
+    "url": "https://github.com/shopify/awesome-hydrogen#readme",
+    "desc": "Edge-first framework for building Shopify storefronts with React.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Tiny JS",
+    "url": "https://github.com/thoughtspile/awesome-tiny-js#readme",
+    "desc": "Frontend libraries that fit into 2 kB with dependencies.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Frontend GIS",
+    "url": "https://github.com/joewdavies/awesome-frontend-gis#readme",
+    "desc": "Geographic Information Systems (GIS) for web browsers.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "WebGPU",
+    "url": "https://github.com/mikbry/awesome-webgpu#readme",
+    "desc": "JavaScript API for rendering and compute on GPUs.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "WebAssembly",
+    "url": "https://github.com/idematos/awesome-webassembly#readme",
+    "desc": "A portable binary format for running code efficiently across platforms.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Front-End Development"
+  },
+  {
+    "name": "Flask",
+    "url": "https://github.com/mjhea0/awesome-flask#readme",
+    "desc": "Python framework.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "Docker",
+    "url": "https://github.com/veggiemonk/awesome-docker#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "Vagrant",
+    "url": "https://github.com/iJackUA/awesome-vagrant#readme",
+    "desc": "Automation virtual machine environment.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "Pyramid",
+    "url": "https://github.com/uralbash/awesome-pyramid#readme",
+    "desc": "Python framework.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "Play1 Framework",
+    "url": "https://github.com/PerfectCarl/awesome-play1#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "CakePHP",
+    "url": "https://github.com/friendsofcake/awesome-cakephp#readme",
+    "desc": "PHP framework.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "Symfony",
+    "url": "https://github.com/sitepoint-editors/awesome-symfony#readme",
+    "desc": "PHP framework.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "Education",
+    "url": "https://github.com/pehapkari/awesome-symfony-education#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "Laravel",
+    "url": "https://github.com/chiraggude/awesome-laravel#readme",
+    "desc": "PHP framework.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "Education",
+    "url": "https://github.com/fukuball/Awesome-Laravel-Education#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "Rails",
+    "url": "https://github.com/gramantin/awesome-rails#readme",
+    "desc": "Web app framework for Ruby.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "Gems",
+    "url": "https://github.com/hothero/awesome-rails-gem#readme",
+    "desc": "Packages.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "Phalcon",
+    "url": "https://github.com/phalcon/awesome-phalcon#readme",
+    "desc": "PHP framework.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "Useful `.htaccess` Snippets",
+    "url": "https://github.com/phanan/htaccess#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "nginx",
+    "url": "https://github.com/fcambus/nginx-resources#readme",
+    "desc": "Web server.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "Dropwizard",
+    "url": "https://github.com/stve/awesome-dropwizard#readme",
+    "desc": "Java framework.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "Kubernetes",
+    "url": "https://github.com/ramitsurana/awesome-kubernetes#readme",
+    "desc": "Open-source platform that automates Linux container operations.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "Lumen",
+    "url": "https://github.com/unicodeveloper/awesome-lumen#readme",
+    "desc": "PHP micro-framework.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "Serverless Framework",
+    "url": "https://github.com/pmuens/awesome-serverless#readme",
+    "desc": "Serverless computing and serverless architectures.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "Apache Wicket",
+    "url": "https://github.com/PhantomYdn/awesome-wicket#readme",
+    "desc": "Java web app framework.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "Vert.x",
+    "url": "https://github.com/vert-x3/vertx-awesome#readme",
+    "desc": "Toolkit for building reactive apps on the JVM.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "Terraform",
+    "url": "https://github.com/shuaibiyy/awesome-terraform#readme",
+    "desc": "Tool for building, changing, and versioning infrastructure.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "Vapor",
+    "url": "https://github.com/vapor-community/awesome-vapor#readme",
+    "desc": "Server-side development in Swift.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "Dash",
+    "url": "https://github.com/ucg8j/awesome-dash#readme",
+    "desc": "Python web app framework.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "FastAPI",
+    "url": "https://github.com/mjhea0/awesome-fastapi#readme",
+    "desc": "Python web app framework.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "CDK",
+    "url": "https://github.com/kolomied/awesome-cdk#readme",
+    "desc": "Open-source software development framework for defining cloud infrastructure in code.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "IAM",
+    "url": "https://github.com/kdeldycke/awesome-iam#readme",
+    "desc": "User accounts, authentication and authorization.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "Slim",
+    "url": "https://github.com/nekofar/awesome-slim#readme",
+    "desc": "PHP framework.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "Fiber",
+    "url": "https://github.com/gofiber/awesome-fiber#readme",
+    "desc": "Web framework built on top of Fasthttp, the fastest HTTP engine for Go.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "Kustomize",
+    "url": "https://github.com/DevOpsHiveHQ/awesome-kustomize#readme",
+    "desc": "Kubernetes native declarative configuration management tool.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "OpenTofu",
+    "url": "https://github.com/virtualroot/awesome-opentofu#readme",
+    "desc": "Open-source infrastructure as code tool.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "Reflex",
+    "url": "https://github.com/reflex-dev/awesome-reflex#readme",
+    "desc": "Python web framework for building both your frontend and backend with no JavaScript.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Back-End Development"
+  },
+  {
+    "name": "University Courses",
+    "url": "https://github.com/prakhar1989/awesome-courses#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "Data Science",
+    "url": "https://github.com/academic/awesome-datascience#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "Tutorials",
+    "url": "https://github.com/siboehm/awesome-learn-datascience#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "Machine Learning",
+    "url": "https://github.com/josephmisiti/awesome-machine-learning#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "Tutorials",
+    "url": "https://github.com/ujjwalkarn/Machine-Learning-Tutorials#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "ML with Ruby",
+    "url": "https://github.com/arbox/machine-learning-with-ruby#readme",
+    "desc": "Learning, implementing, and applying Machine Learning using Ruby.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "Core ML Models",
+    "url": "https://github.com/likedan/Awesome-CoreML-Models#readme",
+    "desc": "Models for Apple's machine learning framework.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "H2O",
+    "url": "https://github.com/h2oai/awesome-h2o#readme",
+    "desc": "Open source distributed machine learning platform written in Java with APIs in R, Python, and Scala.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "Software Engineering for Machine Learning",
+    "url": "https://github.com/SE-ML/awesome-seml#readme",
+    "desc": "From experiment to production-level machine learning.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "AI in Finance",
+    "url": "https://github.com/georgezouq/awesome-ai-in-finance#readme",
+    "desc": "Solving problems in finance with machine learning.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "JAX",
+    "url": "https://github.com/n2cholas/awesome-jax#readme",
+    "desc": "Automatic differentiation and XLA compilation brought together for high-performance machine learning research.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "XAI",
+    "url": "https://github.com/altamiracorp/awesome-xai#readme",
+    "desc": "Providing insight, explanations, and interpretability to machine learning methods.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "Speech and Natural Language Processing",
+    "url": "https://github.com/edobashira/speech-language-processing#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "Spanish",
+    "url": "https://github.com/dav009/awesome-spanish-nlp#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "NLP with Ruby",
+    "url": "https://github.com/arbox/nlp-with-ruby#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "Question Answering",
+    "url": "https://github.com/seriousran/awesome-qa#readme",
+    "desc": "The science of asking and answering in natural language with a machine.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "Natural Language Generation",
+    "url": "https://github.com/accelerated-text/awesome-nlg#readme",
+    "desc": "Generation of text used in data-to-text, conversational agents, and narrative generation applications.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "Linguistics",
+    "url": "https://github.com/theimpossibleastronaut/awesome-linguistics#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "Cryptography",
+    "url": "https://github.com/sobolevn/awesome-cryptography#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "Papers",
+    "url": "https://github.com/pFarb/awesome-crypto-papers#readme",
+    "desc": "Theory basics for using cryptography by non-cryptographers.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "Computer Vision",
+    "url": "https://github.com/jbhuang0604/awesome-computer-vision#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "Deep Learning",
+    "url": "https://github.com/ChristosChristofidis/awesome-deep-learning#readme",
+    "desc": "Neural networks.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "TensorFlow",
+    "url": "https://github.com/jtoy/awesome-tensorflow#readme",
+    "desc": "Library for machine intelligence.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "TensorFlow.js",
+    "url": "https://github.com/aaronhma/awesome-tensorflow-js#readme",
+    "desc": "WebGL-accelerated machine learning JavaScript library for training and deploying models.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "TensorFlow Lite",
+    "url": "https://github.com/margaretmz/awesome-tensorflow-lite#readme",
+    "desc": "Framework that optimizes TensorFlow models for on-device machine learning.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "Papers",
+    "url": "https://github.com/terryum/awesome-deep-learning-papers#readme",
+    "desc": "The most cited deep learning papers.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "Education",
+    "url": "https://github.com/guillaume-chevalier/awesome-deep-learning-resources#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "Deep Vision",
+    "url": "https://github.com/kjw0612/awesome-deep-vision#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "Open Source Society University",
+    "url": "https://github.com/ossu/computer-science#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "Functional Programming",
+    "url": "https://github.com/lucasviola/awesome-functional-programming#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "Empirical Software Engineering",
+    "url": "https://github.com/dspinellis/awesome-msr#readme",
+    "desc": "Evidence-based research on software systems.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "Static Analysis & Code Quality",
+    "url": "https://github.com/analysis-tools-dev/static-analysis#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "Information Retrieval",
+    "url": "https://github.com/harpribot/awesome-information-retrieval#readme",
+    "desc": "Learn to develop your own search engine.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "Quantum Computing",
+    "url": "https://github.com/desireevl/awesome-quantum-computing#readme",
+    "desc": "Computing that utilizes quantum mechanics and qubits on quantum computers.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "Theoretical Computer Science",
+    "url": "https://github.com/mostafatouny/awesome-theoretical-computer-science#readme",
+    "desc": "The interplay of computer science and pure mathematics, distinguished by its emphasis on mathematical rigour and technique.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "Conversational AI",
+    "url": "https://github.com/jyguyomarch/awesome-conversational-ai#readme",
+    "desc": "Build awesome chatbots and digital assistants.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "Generative AI",
+    "url": "https://github.com/steven2358/awesome-generative-ai#readme",
+    "desc": "Automatically generates a wide range of unique content in text, image, and audio format.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "Position-Based Quantum Cryptography",
+    "url": "https://github.com/Renaller/awesome-position-based-quantum-cryptography#readme",
+    "desc": "Theory on quantum cryptography that utilizes special relativistic constraints to achieve quantum-security under certain conditions.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Computer Science"
+  },
+  {
+    "name": "Big Data",
+    "url": "https://github.com/0xnr/awesome-bigdata#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Big Data"
+  },
+  {
+    "name": "Public Datasets",
+    "url": "https://github.com/awesomedata/awesome-public-datasets#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Big Data"
+  },
+  {
+    "name": "Hadoop",
+    "url": "https://github.com/youngwookim/awesome-hadoop#readme",
+    "desc": "Framework for distributed storage and processing of very large data sets.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Big Data"
+  },
+  {
+    "name": "Data Engineering",
+    "url": "https://github.com/igorbarinov/awesome-data-engineering#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Big Data"
+  },
+  {
+    "name": "Streaming",
+    "url": "https://github.com/manuzhang/awesome-streaming#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Big Data"
+  },
+  {
+    "name": "Apache Spark",
+    "url": "https://github.com/awesome-spark/awesome-spark#readme",
+    "desc": "Unified engine for large-scale data processing.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Big Data"
+  },
+  {
+    "name": "Qlik",
+    "url": "https://github.com/ambster-public/awesome-qlik#readme",
+    "desc": "Business intelligence platform for data visualization, analytics, and reporting apps.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Big Data"
+  },
+  {
+    "name": "Splunk",
+    "url": "https://github.com/sduff/awesome-splunk#readme",
+    "desc": "Platform for searching, monitoring, and analyzing structured and unstructured machine-generated big data in real time.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Big Data"
+  },
+  {
+    "name": "Network Analysis",
+    "url": "https://github.com/briatte/awesome-network-analysis#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Big Data"
+  },
+  {
+    "name": "Papers We Love",
+    "url": "https://github.com/papers-we-love/papers-we-love#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Theory"
+  },
+  {
+    "name": "Talks",
+    "url": "https://github.com/JanVanRyswyck/awesome-talks#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Theory"
+  },
+  {
+    "name": "Algorithms",
+    "url": "https://github.com/tayllan/awesome-algorithms#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Theory"
+  },
+  {
+    "name": "Education",
+    "url": "https://github.com/gaerae/awesome-algorithms-education#readme",
+    "desc": "Learning and practicing.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Theory"
+  },
+  {
+    "name": "Algorithm Visualizations",
+    "url": "https://github.com/enjalot/algovis#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Theory"
+  },
+  {
+    "name": "Artificial Intelligence",
+    "url": "https://github.com/owainlewis/awesome-artificial-intelligence#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Theory"
+  },
+  {
+    "name": "Search Engine Optimization",
+    "url": "https://github.com/marcobiedermann/search-engine-optimization#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Theory"
+  },
+  {
+    "name": "Competitive Programming",
+    "url": "https://github.com/lnishan/awesome-competitive-programming#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Theory"
+  },
+  {
+    "name": "Math",
+    "url": "https://github.com/rossant/awesome-math#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Theory"
+  },
+  {
+    "name": "Recursion Schemes",
+    "url": "https://github.com/passy/awesome-recursion-schemes#readme",
+    "desc": "Traversing nested data structures.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Theory"
+  },
+  {
+    "name": "Audit Algorithms",
+    "url": "https://github.com/erwanlemerrer/awesome-audit-algorithms#readme",
+    "desc": "Algorithmic audits of algorithms.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Theory"
+  },
+  {
+    "name": "AGI & CoCoSci",
+    "url": "https://github.com/YuzheSHI/awesome-agi-cocosci#readme",
+    "desc": "The reciprocation of Artificial General Intelligence (AGI) and Computational Cognitive Sciences (CoCoSci).",
+    "level": 1,
+    "has_link": true,
+    "cat": "Theory"
+  },
+  {
+    "name": "Complex Systems",
+    "url": "https://github.com/sellisd/awesome-complexity#readme",
+    "desc": "The scientific field studying systems with multiple interacting parts and emergent properties.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Theory"
+  },
+  {
+    "name": "VLM Architectures",
+    "url": "https://github.com/gokayfem/awesome-vlm-architectures#readme",
+    "desc": "Vision Language Model architectures.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Theory"
+  },
+  {
+    "name": "Free Programming Books",
+    "url": "https://github.com/EbookFoundation/free-programming-books#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Books"
+  },
+  {
+    "name": "Go Books",
+    "url": "https://github.com/dariubs/GoBooks#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Books"
+  },
+  {
+    "name": "R Books",
+    "url": "https://github.com/RomanTsegelskyi/rbooks#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Books"
+  },
+  {
+    "name": "Mind Expanding Books",
+    "url": "https://github.com/hackerkid/Mind-Expanding-Books#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Books"
+  },
+  {
+    "name": "Book Authoring",
+    "url": "https://github.com/TalAter/awesome-book-authoring#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Books"
+  },
+  {
+    "name": "Elixir Books",
+    "url": "https://github.com/sger/ElixirBooks#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Books"
+  },
+  {
+    "name": "Sublime Text",
+    "url": "https://github.com/dreikanter/sublime-bookmarks#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Editors"
+  },
+  {
+    "name": "Vim",
+    "url": "https://github.com/mhinz/vim-galore#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Editors"
+  },
+  {
+    "name": "Neovim",
+    "url": "https://github.com/rockerBOO/awesome-neovim#readme",
+    "desc": "Vim-fork focused on extensibility and usability.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Editors"
+  },
+  {
+    "name": "Emacs",
+    "url": "https://github.com/emacs-tw/awesome-emacs#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Editors"
+  },
+  {
+    "name": "Visual Studio Code",
+    "url": "https://github.com/viatsko/awesome-vscode#readme",
+    "desc": "Cross-platform open-source text editor.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Editors"
+  },
+  {
+    "name": "Game Development",
+    "url": "https://github.com/ellisonleao/magictools#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Gaming"
+  },
+  {
+    "name": "Game Talks",
+    "url": "https://github.com/hzoo/awesome-gametalks#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Gaming"
+  },
+  {
+    "name": "Godot",
+    "url": "https://github.com/godotengine/awesome-godot#readme",
+    "desc": "Game engine.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Gaming"
+  },
+  {
+    "name": "Open Source Games",
+    "url": "https://github.com/michelpereira/awesome-open-source-games#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Gaming"
+  },
+  {
+    "name": "Chess",
+    "url": "https://github.com/hkirat/awesome-chess#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Gaming"
+  },
+  {
+    "name": "LÖVE",
+    "url": "https://github.com/love2d-community/awesome-love2d#readme",
+    "desc": "Game engine.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Gaming"
+  },
+  {
+    "name": "PICO-8",
+    "url": "https://github.com/pico-8/awesome-PICO-8#readme",
+    "desc": "Fantasy console.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Gaming"
+  },
+  {
+    "name": "Game Boy Development",
+    "url": "https://github.com/gbdev/awesome-gbdev#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Gaming"
+  },
+  {
+    "name": "Construct 2",
+    "url": "https://github.com/ConstructCommunity/awesome-construct#readme",
+    "desc": "Game engine.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Gaming"
+  },
+  {
+    "name": "Gideros",
+    "url": "https://github.com/stetso/awesome-gideros#readme",
+    "desc": "Game engine.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Gaming"
+  },
+  {
+    "name": "Minecraft",
+    "url": "https://github.com/bs-community/awesome-minecraft#readme",
+    "desc": "Sandbox video game.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Gaming"
+  },
+  {
+    "name": "ComputerCraft",
+    "url": "https://github.com/tomodachi94/awesome-computercraft#readme",
+    "desc": "Minecraft mod that adds programmable computers.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Gaming"
+  },
+  {
+    "name": "Game Datasets",
+    "url": "https://github.com/leomaurodesenv/game-datasets#readme",
+    "desc": "Materials and datasets for Artificial Intelligence in games.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Gaming"
+  },
+  {
+    "name": "Haxe Game Development",
+    "url": "https://github.com/Dvergar/awesome-haxe-gamedev#readme",
+    "desc": "A high-level strongly typed programming language used to produce cross-platform native code.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Gaming"
+  },
+  {
+    "name": "libGDX",
+    "url": "https://github.com/rafaskb/awesome-libgdx#readme",
+    "desc": "Java game framework.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Gaming"
+  },
+  {
+    "name": "PlayCanvas",
+    "url": "https://github.com/playcanvas/awesome-playcanvas#readme",
+    "desc": "Game engine.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Gaming"
+  },
+  {
+    "name": "Game Remakes",
+    "url": "https://github.com/radek-sprta/awesome-game-remakes#readme",
+    "desc": "Actively maintained open-source game remakes.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Gaming"
+  },
+  {
+    "name": "Flame",
+    "url": "https://github.com/flame-engine/awesome-flame#readme",
+    "desc": "Game engine for Flutter.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Gaming"
+  },
+  {
+    "name": "Discord Communities",
+    "url": "https://github.com/mhxion/awesome-discord-communities#readme",
+    "desc": "Chat with friends and communities.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Gaming"
+  },
+  {
+    "name": "CHIP-8",
+    "url": "https://github.com/tobiasvl/awesome-chip-8#readme",
+    "desc": "Virtual computer game machine from the 70s.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Gaming"
+  },
+  {
+    "name": "Games of Coding",
+    "url": "https://github.com/michelpereira/awesome-games-of-coding#readme",
+    "desc": "Learn a programming language by making games.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Gaming"
+  },
+  {
+    "name": "Esports",
+    "url": "https://github.com/strift/awesome-esports#readme",
+    "desc": "Video games played as a sport.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Gaming"
+  },
+  {
+    "name": "Learn Gamedev",
+    "url": "https://github.com/notpresident35/awesome-learn-gamedev#readme",
+    "desc": "The craft of video game creation.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Gaming"
+  },
+  {
+    "name": "Game Engine Development",
+    "url": "https://github.com/stevinz/awesome-game-engine-dev#readme",
+    "desc": "Building software to speed up game creation.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Gaming"
+  },
+  {
+    "name": "GameMaker",
+    "url": "https://github.com/bytecauldron/awesome-gamemaker#readme",
+    "desc": "Game engine.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Gaming"
+  },
+  {
+    "name": "Game Production",
+    "url": "https://github.com/vhladiienko/awesome-game-production#readme",
+    "desc": "Leading the process of designing, developing, testing and distributing a video game from concept to release.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Gaming"
+  },
+  {
+    "name": "Babylon.js",
+    "url": "https://github.com/Symbitic/awesome-babylonjs#readme",
+    "desc": "Game engine for cross-platform web and native game development.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Gaming"
+  },
+  {
+    "name": "Roblox",
+    "url": "https://github.com/awesome-roblox/awesome-roblox#readme",
+    "desc": "Immersive platform for hosting millions of diverse experiences.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Gaming"
+  },
+  {
+    "name": "Quick Look Plugins",
+    "url": "https://github.com/sindresorhus/quick-look-plugins#readme",
+    "desc": "For macOS.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Development Environment"
+  },
+  {
+    "name": "Dev Env",
+    "url": "https://github.com/jondot/awesome-devenv#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Development Environment"
+  },
+  {
+    "name": "Dotfiles",
+    "url": "https://github.com/webpro/awesome-dotfiles#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Development Environment"
+  },
+  {
+    "name": "Shell",
+    "url": "https://github.com/alebcay/awesome-shell#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Development Environment"
+  },
+  {
+    "name": "Fish",
+    "url": "https://github.com/jorgebucaran/awsm.fish#readme",
+    "desc": "User-friendly shell.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Development Environment"
+  },
+  {
+    "name": "Command-Line Apps",
+    "url": "https://github.com/agarrharr/awesome-cli-apps#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Development Environment"
+  },
+  {
+    "name": "ZSH Plugins",
+    "url": "https://github.com/unixorn/awesome-zsh-plugins#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Development Environment"
+  },
+  {
+    "name": "GitHub",
+    "url": "https://github.com/phillipadsmith/awesome-github#readme",
+    "desc": "Hosting service for Git repositories.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Development Environment"
+  },
+  {
+    "name": "Browser Extensions",
+    "url": "https://github.com/stefanbuck/awesome-browser-extensions-for-github#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Development Environment"
+  },
+  {
+    "name": "Cheat Sheet",
+    "url": "https://github.com/tiimgreen/github-cheat-sheet#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Development Environment"
+  },
+  {
+    "name": "Pinned Gists",
+    "url": "https://github.com/matchai/awesome-pinned-gists#readme",
+    "desc": "Dynamic pinned gists for your GitHub profile.",
+    "level": 2,
+    "has_link": true,
+    "cat": "Development Environment"
+  },
+  {
+    "name": "Git Cheat Sheet & Git Flow",
+    "url": "https://github.com/arslanbilal/git-cheat-sheet#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Development Environment"
+  },
+  {
+    "name": "Git Tips",
+    "url": "https://github.com/git-tips/tips#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Development Environment"
+  },
+  {
+    "name": "Git Add-ons",
+    "url": "https://github.com/stevemao/awesome-git-addons#readme",
+    "desc": "Enhance the `git` CLI.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Development Environment"
+  },
+  {
+    "name": "Git Hooks",
+    "url": "https://github.com/compscilauren/awesome-git-hooks#readme",
+    "desc": "Scripts for automating tasks during `git` workflows.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Development Environment"
+  },
+  {
+    "name": "SSH",
+    "url": "https://github.com/moul/awesome-ssh#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Development Environment"
+  },
+  {
+    "name": "FOSS for Developers",
+    "url": "https://github.com/tvvocold/FOSS-for-Dev#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Development Environment"
+  },
+  {
+    "name": "Hyper",
+    "url": "https://github.com/bnb/awesome-hyper#readme",
+    "desc": "Cross-platform terminal app built on web technologies.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Development Environment"
+  },
+  {
+    "name": "Terminals Are Sexy",
+    "url": "https://github.com/k4m4/terminals-are-sexy#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Development Environment"
+  },
+  {
+    "name": "GitHub Actions",
+    "url": "https://github.com/sdras/awesome-actions#readme",
+    "desc": "Create tasks to automate your workflow and share them with others on GitHub.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Development Environment"
+  },
+  {
+    "name": "WezTerm",
+    "url": "https://github.com/michaelbrusegard/awesome-wezterm#readme",
+    "desc": "Powerful cross-platform terminal emulator.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Development Environment"
+  },
+  {
+    "name": "Science Fiction",
+    "url": "https://github.com/sindresorhus/awesome-scifi#readme",
+    "desc": "Scifi.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Entertainment"
+  },
+  {
+    "name": "Fantasy",
+    "url": "https://github.com/RichardLitt/awesome-fantasy#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Entertainment"
+  },
+  {
+    "name": "Podcasts",
+    "url": "https://github.com/ayr-ton/awesome-geek-podcasts#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Entertainment"
+  },
+  {
+    "name": "Email Newsletters",
+    "url": "https://github.com/zudochkin/awesome-newsletters#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Entertainment"
+  },
+  {
+    "name": "IT Quotes",
+    "url": "https://github.com/victorlaerte/awesome-it-quotes#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Entertainment"
+  },
+  {
+    "name": "Database",
+    "url": "https://github.com/numetriclabz/awesome-db#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Databases"
+  },
+  {
+    "name": "MySQL",
+    "url": "https://github.com/shlomi-noach/awesome-mysql#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Databases"
+  },
+  {
+    "name": "SQLAlchemy",
+    "url": "https://github.com/dahlia/awesome-sqlalchemy#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Databases"
+  },
+  {
+    "name": "InfluxDB",
+    "url": "https://github.com/mark-rushakoff/awesome-influxdb#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Databases"
+  },
+  {
+    "name": "Neo4j",
+    "url": "https://github.com/neueda/awesome-neo4j#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Databases"
+  },
+  {
+    "name": "MongoDB",
+    "url": "https://github.com/ramnes/awesome-mongodb#readme",
+    "desc": "NoSQL database.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Databases"
+  },
+  {
+    "name": "RethinkDB",
+    "url": "https://github.com/d3viant0ne/awesome-rethinkdb#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Databases"
+  },
+  {
+    "name": "TinkerPop",
+    "url": "https://github.com/mohataher/awesome-tinkerpop#readme",
+    "desc": "Graph computing framework.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Databases"
+  },
+  {
+    "name": "PostgreSQL",
+    "url": "https://github.com/dhamaniasad/awesome-postgres#readme",
+    "desc": "Object-relational database.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Databases"
+  },
+  {
+    "name": "CouchDB",
+    "url": "https://github.com/quangv/awesome-couchdb#readme",
+    "desc": "Document-oriented NoSQL database.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Databases"
+  },
+  {
+    "name": "HBase",
+    "url": "https://github.com/rayokota/awesome-hbase#readme",
+    "desc": "Distributed, scalable, big data store.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Databases"
+  },
+  {
+    "name": "NoSQL Guides",
+    "url": "https://github.com/erictleung/awesome-nosql-guides#readme",
+    "desc": "Help on using non-relational, distributed, open-source, and horizontally scalable databases.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Databases"
+  },
+  {
+    "name": "Database Tools",
+    "url": "https://github.com/mgramin/awesome-db-tools#readme",
+    "desc": "Everything that makes working with databases easier.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Databases"
+  },
+  {
+    "name": "TypeDB",
+    "url": "https://github.com/vaticle/typedb-awesome#readme",
+    "desc": "Logical database to organize large and complex networks of data as one body of knowledge.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Databases"
+  },
+  {
+    "name": "Supabase",
+    "url": "https://github.com/lyqht/awesome-supabase#readme",
+    "desc": "An open-source alternative to Firebase.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Databases"
+  },
+  {
+    "name": "PocketBase",
+    "url": "https://github.com/benallfree/awesome-pocketbase#readme",
+    "desc": "An open-source, Go-based backend in one file.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Databases"
+  },
+  {
+    "name": "Neon",
+    "url": "https://github.com/tyaga001/awesome-neon#readme",
+    "desc": "An open-source alternative to AWS Aurora.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Databases"
+  },
+  {
+    "name": "Fonts",
+    "url": "https://github.com/brabadu/awesome-fonts#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Media"
+  },
+  {
+    "name": "Codeface",
+    "url": "https://github.com/chrissimpkins/codeface#readme",
+    "desc": "Text editor fonts.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Media"
+  },
+  {
+    "name": "Stock Resources",
+    "url": "https://github.com/neutraltone/awesome-stock-resources#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Media"
+  },
+  {
+    "name": "GIF",
+    "url": "https://github.com/davisonio/awesome-gif#readme",
+    "desc": "Image format known for animated images.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Media"
+  },
+  {
+    "name": "Music",
+    "url": "https://github.com/ciconia/awesome-music#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Media"
+  },
+  {
+    "name": "Open Source Documents",
+    "url": "https://github.com/44bits/awesome-opensource-documents#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Media"
+  },
+  {
+    "name": "Audio Visualization",
+    "url": "https://github.com/willianjusten/awesome-audio-visualization#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Media"
+  },
+  {
+    "name": "Broadcasting",
+    "url": "https://github.com/ebu/awesome-broadcasting#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Media"
+  },
+  {
+    "name": "Pixel Art",
+    "url": "https://github.com/Siilwyn/awesome-pixel-art#readme",
+    "desc": "Pixel-level digital art.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Media"
+  },
+  {
+    "name": "FFmpeg",
+    "url": "https://github.com/transitive-bullshit/awesome-ffmpeg#readme",
+    "desc": "Cross-platform solution to record, convert and stream audio and video.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Media"
+  },
+  {
+    "name": "Icons",
+    "url": "https://github.com/notlmn/awesome-icons#readme",
+    "desc": "Downloadable SVG/PNG/font icon projects.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Media"
+  },
+  {
+    "name": "Audiovisual",
+    "url": "https://github.com/stingalleman/awesome-audiovisual#readme",
+    "desc": "Lighting, audio and video in professional environments.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Media"
+  },
+  {
+    "name": "VLC",
+    "url": "https://github.com/mfkl/awesome-vlc#readme",
+    "desc": "Cross-platform media player software and streaming server.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Media"
+  },
+  {
+    "name": "Audio Over IP",
+    "url": "https://github.com/Mo-way/awesome-aoip#readme",
+    "desc": "Reliably transmit uncompressed, low-latency audio over an IP (layer 3) network.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Media"
+  },
+  {
+    "name": "CLI Workshoppers",
+    "url": "https://github.com/therebelrobot/awesome-workshopper#readme",
+    "desc": "Interactive tutorials.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Learn"
+  },
+  {
+    "name": "Learn to Program",
+    "url": "https://github.com/karlhorky/learn-to-program#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Learn"
+  },
+  {
+    "name": "Speaking",
+    "url": "https://github.com/matteofigus/awesome-speaking#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Learn"
+  },
+  {
+    "name": "Tech Videos",
+    "url": "https://github.com/lucasviola/awesome-tech-videos#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Learn"
+  },
+  {
+    "name": "Computer History",
+    "url": "https://github.com/watson/awesome-computer-history#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Learn"
+  },
+  {
+    "name": "Programming for Kids",
+    "url": "https://github.com/HollyAdele/awesome-programming-for-kids#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Learn"
+  },
+  {
+    "name": "STEAM",
+    "url": "https://github.com/RahulBirCodes/awesome-steam#readme",
+    "desc": "Supplements for specific science, technology, engineering, arts, and math (STEAM) courses across all grade levels.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Learn"
+  },
+  {
+    "name": "Educational Games",
+    "url": "https://github.com/yrgo/awesome-educational-games#readme",
+    "desc": "Learn while playing.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Learn"
+  },
+  {
+    "name": "JavaScript Learning",
+    "url": "https://github.com/micromata/awesome-javascript-learning#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Learn"
+  },
+  {
+    "name": "CSS Learning",
+    "url": "https://github.com/micromata/awesome-css-learning#readme",
+    "desc": "Mainly about CSS – the language and the modules.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Learn"
+  },
+  {
+    "name": "Product Management",
+    "url": "https://github.com/dend/awesome-product-management#readme",
+    "desc": "Learn how to be a better product manager.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Learn"
+  },
+  {
+    "name": "Roadmaps",
+    "url": "https://github.com/liuchong/awesome-roadmaps#readme",
+    "desc": "Gives you a clear route to improve your knowledge and skills.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Learn"
+  },
+  {
+    "name": "YouTubers",
+    "url": "https://github.com/JoseDeFreitas/awesome-youtubers#readme",
+    "desc": "Watch video tutorials from YouTubers that teach you about technology.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Learn"
+  },
+  {
+    "name": "Hackathon",
+    "url": "https://github.com/dribdat/awesome-hackathon#readme",
+    "desc": "Running fun and productive hackathons.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Learn"
+  },
+  {
+    "name": "Certificates",
+    "url": "https://github.com/PanXProject/awesome-certificates#readme",
+    "desc": "Free computer science certifications to showcase your knowledge.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Learn"
+  },
+  {
+    "name": "Application Security",
+    "url": "https://github.com/paragonie/awesome-appsec#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Security"
+  },
+  {
+    "name": "Security",
+    "url": "https://github.com/sbilly/awesome-security#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Security"
+  },
+  {
+    "name": "CTF",
+    "url": "https://github.com/apsdehal/awesome-ctf#readme",
+    "desc": "Capture The Flag.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Security"
+  },
+  {
+    "name": "Cyber Security University",
+    "url": "https://github.com/brootware/awesome-cyber-security-university#readme",
+    "desc": "Free educational resources that focus on learning by doing.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Security"
+  },
+  {
+    "name": "Malware Analysis",
+    "url": "https://github.com/rshipp/awesome-malware-analysis#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Security"
+  },
+  {
+    "name": "Android Security",
+    "url": "https://github.com/ashishb/android-security-awesome#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Security"
+  },
+  {
+    "name": "Hacking",
+    "url": "https://github.com/carpedm20/awesome-hacking#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Security"
+  },
+  {
+    "name": "Hacking Spots",
+    "url": "https://github.com/daviddias/awesome-hacking-locations#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Security"
+  },
+  {
+    "name": "Honeypots",
+    "url": "https://github.com/paralax/awesome-honeypots#readme",
+    "desc": "Deception trap, designed to entice an attacker into attempting to compromise the information systems in an organization.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Security"
+  },
+  {
+    "name": "Incident Response",
+    "url": "https://github.com/meirwah/awesome-incident-response#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Security"
+  },
+  {
+    "name": "Vehicle Security and Car Hacking",
+    "url": "https://github.com/jaredthecoder/awesome-vehicle-security#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Security"
+  },
+  {
+    "name": "Web Security",
+    "url": "https://github.com/qazbnm456/awesome-web-security#readme",
+    "desc": "Security of web apps & services.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Security"
+  },
+  {
+    "name": "Lockpicking",
+    "url": "https://github.com/fabacab/awesome-lockpicking#readme",
+    "desc": "The art of unlocking a lock by manipulating its components without the key.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Security"
+  },
+  {
+    "name": "Cybersecurity Blue Team",
+    "url": "https://github.com/fabacab/awesome-cybersecurity-blueteam#readme",
+    "desc": "Groups of individuals who identify security flaws in information technology systems.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Security"
+  },
+  {
+    "name": "Fuzzing",
+    "url": "https://github.com/cpuu/awesome-fuzzing#readme",
+    "desc": "Automated software testing technique that involves feeding pseudo-randomly generated input data.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Security"
+  },
+  {
+    "name": "Embedded and IoT Security",
+    "url": "https://github.com/fkie-cad/awesome-embedded-and-iot-security#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Security"
+  },
+  {
+    "name": "GDPR",
+    "url": "https://github.com/bakke92/awesome-gdpr#readme",
+    "desc": "Regulation on data protection and privacy for all individuals within EU.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Security"
+  },
+  {
+    "name": "DevSecOps",
+    "url": "https://github.com/TaptuIT/awesome-devsecops#readme",
+    "desc": "Integration of security practices into [DevOps](https://en.wikipedia.org/wiki/DevOps).",
+    "level": 1,
+    "has_link": true,
+    "cat": "Security"
+  },
+  {
+    "name": "Executable Packing",
+    "url": "https://github.com/dhondta/awesome-executable-packing#readme",
+    "desc": "Packing and unpacking executable formats.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Security"
+  },
+  {
+    "name": "Malware Persistence",
+    "url": "https://github.com/Karneades/awesome-malware-persistence#readme",
+    "desc": "Techniques that adversaries use to keep access to systems across restarts.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Security"
+  },
+  {
+    "name": "EVM Security",
+    "url": "https://github.com/kareniel/awesome-evm-security#readme",
+    "desc": "Understanding the Ethereum Virtual Machine security ecosystem.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Security"
+  },
+  {
+    "name": "Password Cracking",
+    "url": "https://github.com/n0kovo/awesome-password-cracking#readme",
+    "desc": "The process of recovering passwords from data that has been stored in or transmitted by a system in scrambled form.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Security"
+  },
+  {
+    "name": "Security Card Games",
+    "url": "https://github.com/Karneades/awesome-security-card-games#readme",
+    "desc": "Train your skills and discuss various security topics.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Security"
+  },
+  {
+    "name": "Suricata",
+    "url": "https://github.com/satta/awesome-suricata#readme",
+    "desc": "Intrusion detection/prevention system and network security monitoring engine.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Security"
+  },
+  {
+    "name": "Prompt Injection",
+    "url": "https://github.com/FonduAI/awesome-prompt-injection#readme",
+    "desc": "A type of vulnerability that specifically targets machine learning models.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Security"
+  },
+  {
+    "name": "Detection Engineering",
+    "url": "https://github.com/infosecB/awesome-detection-engineering#readme",
+    "desc": "Design, build, and operate detective cybersecurity controls.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Security"
+  },
+  {
+    "name": "Annual Security Reports",
+    "url": "https://github.com/jacobdjwilson/awesome-annual-security-reports#readme",
+    "desc": "Exploring cybersecurity trends, insights, and challenges.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Security"
+  },
+  {
+    "name": "CI/CD Attacks",
+    "url": "https://github.com/TupleType/awesome-cicd-attacks#readme",
+    "desc": "Offensive research of systems and processes related to developing and deploying code.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Security"
+  },
+  {
+    "name": "OpenID Connect",
+    "url": "https://github.com/cerberauth/awesome-openid-connect#readme",
+    "desc": "Identity standard and authentication protocol built on OAuth 2.0 for user identity assertion.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Security"
+  },
+  {
+    "name": "Umbraco",
+    "url": "https://github.com/umbraco-community/awesome-umbraco#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Content Management Systems"
+  },
+  {
+    "name": "Refinery CMS",
+    "url": "https://github.com/refinerycms-contrib/awesome-refinerycms#readme",
+    "desc": "Ruby on Rails CMS.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Content Management Systems"
+  },
+  {
+    "name": "Wagtail",
+    "url": "https://github.com/springload/awesome-wagtail#readme",
+    "desc": "Django CMS focused on flexibility and user experience.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Content Management Systems"
+  },
+  {
+    "name": "Textpattern",
+    "url": "https://github.com/drmonkeyninja/awesome-textpattern#readme",
+    "desc": "Lightweight PHP-based CMS.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Content Management Systems"
+  },
+  {
+    "name": "Drupal",
+    "url": "https://github.com/nirgn975/awesome-drupal#readme",
+    "desc": "Extensible PHP-based CMS.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Content Management Systems"
+  },
+  {
+    "name": "Craft CMS",
+    "url": "https://github.com/craftcms/awesome#readme",
+    "desc": "Content-first CMS.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Content Management Systems"
+  },
+  {
+    "name": "Sitecore",
+    "url": "https://github.com/MartinMiles/Awesome-Sitecore#readme",
+    "desc": ".NET digital marketing platform that combines CMS with tools for managing multiple websites.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Content Management Systems"
+  },
+  {
+    "name": "Silverstripe CMS",
+    "url": "https://github.com/wernerkrauss/awesome-silverstripe-cms#readme",
+    "desc": "PHP MVC framework that serves as a classic or headless CMS.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Content Management Systems"
+  },
+  {
+    "name": "Directus",
+    "url": "https://github.com/directus-community/awesome-directus#readme",
+    "desc": "A real-time API and app dashboard for managing SQL database content.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Content Management Systems"
+  },
+  {
+    "name": "Plone",
+    "url": "https://github.com/collective/awesome-plone#readme",
+    "desc": "Open source Python CMS.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Content Management Systems"
+  },
+  {
+    "name": "Payload",
+    "url": "https://github.com/DanailMinchev/awesome-payload#readme",
+    "desc": "Next.js native and open source headless CMS.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Content Management Systems"
+  },
+  {
+    "name": "Robotics",
+    "url": "https://github.com/Kiloreux/awesome-robotics#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Hardware"
+  },
+  {
+    "name": "Internet of Things",
+    "url": "https://github.com/HQarroum/awesome-iot#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Hardware"
+  },
+  {
+    "name": "Electronics",
+    "url": "https://github.com/kitspace/awesome-electronics#readme",
+    "desc": "For electronic engineers and hobbyists.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Hardware"
+  },
+  {
+    "name": "Bluetooth Beacons",
+    "url": "https://github.com/rabschi/awesome-beacon#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Hardware"
+  },
+  {
+    "name": "Electric Guitar Specifications",
+    "url": "https://github.com/gitfrage/guitarspecs#readme",
+    "desc": "Checklist for building your own electric guitar.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Hardware"
+  },
+  {
+    "name": "Plotters",
+    "url": "https://github.com/beardicus/awesome-plotters#readme",
+    "desc": "Computer-controlled drawing machines and other visual art robots.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Hardware"
+  },
+  {
+    "name": "Robotic Tooling",
+    "url": "https://github.com/protontypes/awesome-robotic-tooling#readme",
+    "desc": "Free and open tools for professional robotic development.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Hardware"
+  },
+  {
+    "name": "LIDAR",
+    "url": "https://github.com/szenergy/awesome-lidar#readme",
+    "desc": "Sensor for measuring distances by illuminating the target with laser light.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Hardware"
+  },
+  {
+    "name": "Open Hardware",
+    "url": "https://github.com/delftopenhardware/awesome-open-hardware#readme",
+    "desc": "Open-source hardware projects.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Hardware"
+  },
+  {
+    "name": "ADS-B",
+    "url": "https://github.com/rickstaa/awesome-adsb#readme",
+    "desc": "Technology broadcasting aircraft's identity, position, and data periodically.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Hardware"
+  },
+  {
+    "name": "Flying FPV",
+    "url": "https://github.com/Matthias84/awesome-flying-fpv#readme",
+    "desc": "Open hardware and software related to drones / UAVs.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Hardware"
+  },
+  {
+    "name": "Open Companies",
+    "url": "https://github.com/opencompany/awesome-open-company#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Business"
+  },
+  {
+    "name": "Places to Post Your Startup",
+    "url": "https://github.com/mmccaff/PlacesToPostYourStartup#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Business"
+  },
+  {
+    "name": "OKR Methodology",
+    "url": "https://github.com/domenicosolazzo/awesome-okr#readme",
+    "desc": "Goal setting & communication best practices.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Business"
+  },
+  {
+    "name": "Indie",
+    "url": "https://github.com/mezod/awesome-indie#readme",
+    "desc": "Independent developer businesses.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Business"
+  },
+  {
+    "name": "Tools of the Trade",
+    "url": "https://github.com/cjbarber/ToolsOfTheTrade#readme",
+    "desc": "Tools used by companies on Hacker News.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Business"
+  },
+  {
+    "name": "Clean Tech",
+    "url": "https://github.com/nglgzz/awesome-clean-tech#readme",
+    "desc": "Fighting climate change with technology.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Business"
+  },
+  {
+    "name": "Wardley Maps",
+    "url": "https://github.com/wardley-maps-community/awesome-wardley-maps#readme",
+    "desc": "Provides high situational awareness to help improve strategic planning and decision making.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Business"
+  },
+  {
+    "name": "Social Enterprise",
+    "url": "https://github.com/RayBB/awesome-social-enterprise#readme",
+    "desc": "Building an organization primarily focused on social impact that is at least partially self-funded.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Business"
+  },
+  {
+    "name": "Engineering Team Management",
+    "url": "https://github.com/kdeldycke/awesome-engineering-team-management#readme",
+    "desc": "How to transition from software development to engineering management.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Business"
+  },
+  {
+    "name": "Developer-First Products",
+    "url": "https://github.com/agamm/awesome-developer-first#readme",
+    "desc": "Products that target developers as the user.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Business"
+  },
+  {
+    "name": "Billing",
+    "url": "https://github.com/kdeldycke/awesome-billing#readme",
+    "desc": "Payments, invoicing, pricing, accounting, marketplace, fraud, and business intelligence.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Business"
+  },
+  {
+    "name": "Engineering Strategy",
+    "url": "https://github.com/aleixmorgadas/awesome-engineering-strategy#readme",
+    "desc": "How to design and execute engineering strategies for tech leadership.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Business"
+  },
+  {
+    "name": "Slack",
+    "url": "https://github.com/matiassingers/awesome-slack#readme",
+    "desc": "Team collaboration.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Work"
+  },
+  {
+    "name": "Communities",
+    "url": "https://github.com/filipelinhares/awesome-slack#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Work"
+  },
+  {
+    "name": "Remote Jobs",
+    "url": "https://github.com/lukasz-madon/awesome-remote-job#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Work"
+  },
+  {
+    "name": "Productivity",
+    "url": "https://github.com/jyguyomarch/awesome-productivity#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Work"
+  },
+  {
+    "name": "Niche Job Boards",
+    "url": "https://github.com/tramcar/awesome-job-boards#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Work"
+  },
+  {
+    "name": "Code Review",
+    "url": "https://github.com/joho/awesome-code-review#readme",
+    "desc": "Reviewing code.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Work"
+  },
+  {
+    "name": "Creative Technology",
+    "url": "https://github.com/j0hnm4r5/awesome-creative-technology#readme",
+    "desc": "Businesses & groups that specialize in combining computing, design, art, and user experience.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Work"
+  },
+  {
+    "name": "PCAPTools",
+    "url": "https://github.com/caesar0301/awesome-pcaptools#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Networking"
+  },
+  {
+    "name": "Real-Time Communications",
+    "url": "https://github.com/rtckit/awesome-rtc#readme",
+    "desc": "Network protocols for near simultaneous exchange of media and data.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Networking"
+  },
+  {
+    "name": "SNMP",
+    "url": "https://github.com/eozer/awesome-snmp#readme",
+    "desc": "A protocol for collecting, modifying, and organizing information about managed devices on IP networks.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Networking"
+  },
+  {
+    "name": "Scapy",
+    "url": "https://github.com/secdev/awesome-scapy#readme",
+    "desc": "Python-based interactive packet manipulation.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Networking"
+  },
+  {
+    "name": "Cilium",
+    "url": "https://github.com/seifrajhi/awesome-cilium#readme",
+    "desc": "Provides networking and security capabilities for containerized apps, microservices, and virtual machines.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Networking"
+  },
+  {
+    "name": "Bitcoin",
+    "url": "https://github.com/igorbarinov/awesome-bitcoin#readme",
+    "desc": "Services and tools for Bitcoin software developers.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Decentralized Systems"
+  },
+  {
+    "name": "Ripple",
+    "url": "https://github.com/vhpoet/awesome-ripple#readme",
+    "desc": "Open source distributed settlement network.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Decentralized Systems"
+  },
+  {
+    "name": "Non-Financial Blockchain",
+    "url": "https://github.com/machinomy/awesome-non-financial-blockchain#readme",
+    "desc": "Applications of Blockchain beyond finance.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Decentralized Systems"
+  },
+  {
+    "name": "Mastodon",
+    "url": "https://github.com/hyperupcall/awesome-mastodon#readme",
+    "desc": "Open source decentralized microblogging network.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Decentralized Systems"
+  },
+  {
+    "name": "Ethereum",
+    "url": "https://github.com/ttumiel/Awesome-Ethereum#readme",
+    "desc": "Distributed computing platform for smart contract development.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Decentralized Systems"
+  },
+  {
+    "name": "Blockchain AI",
+    "url": "https://github.com/steven2358/awesome-blockchain-ai#readme",
+    "desc": "AI and machine-learning projects built on Blockchain.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Decentralized Systems"
+  },
+  {
+    "name": "EOSIO",
+    "url": "https://github.com/DanailMinchev/awesome-eosio#readme",
+    "desc": "A decentralized operating system supporting industrial-scale apps.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Decentralized Systems"
+  },
+  {
+    "name": "Corda",
+    "url": "https://github.com/chainstack/awesome-corda#readme",
+    "desc": "Open source Blockchain platform designed for business.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Decentralized Systems"
+  },
+  {
+    "name": "Waves",
+    "url": "https://github.com/msmolyakov/awesome-waves#readme",
+    "desc": "Open source Blockchain platform and development toolset for Web 3.0 apps and decentralized solutions.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Decentralized Systems"
+  },
+  {
+    "name": "Substrate",
+    "url": "https://github.com/substrate-developer-hub/awesome-substrate#readme",
+    "desc": "Framework for writing scalable, upgradeable blockchains in Rust.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Decentralized Systems"
+  },
+  {
+    "name": "Golem",
+    "url": "https://github.com/golemfactory/awesome-golem#readme",
+    "desc": "Open source peer-to-peer marketplace for computing resources.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Decentralized Systems"
+  },
+  {
+    "name": "Stacks",
+    "url": "https://github.com/friedger/awesome-stacks-chain#readme",
+    "desc": "A smart contract platform secured by Bitcoin.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Decentralized Systems"
+  },
+  {
+    "name": "Algorand",
+    "url": "https://github.com/aorumbayev/awesome-algorand#readme",
+    "desc": "An open-source, proof of stake Blockchain and smart contract computing platform.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Decentralized Systems"
+  },
+  {
+    "name": "ZeroNet",
+    "url": "https://github.com/zolagonano/awesome-zeronet#readme",
+    "desc": "A decentralized web-like network of peer-to-peer users.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Decentralized Systems"
+  },
+  {
+    "name": "Cosmos SDK",
+    "url": "https://github.com/cosmos/awesome-cosmos#readme",
+    "desc": "Modular framework for building app-specific blockchains in Go.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Decentralized Systems"
+  },
+  {
+    "name": "Tor",
+    "url": "https://github.com/polycarbohydrate/awesome-tor#readme",
+    "desc": "A free overlay network for enabling anonymous communication.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Decentralized Systems"
+  },
+  {
+    "name": "ATProto",
+    "url": "https://github.com/atblueprints/awesome-atproto#readme",
+    "desc": "Open, decentralized network for building social apps.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Decentralized Systems"
+  },
+  {
+    "name": "Biomedical Information Extraction",
+    "url": "https://github.com/caufieldjh/awesome-bioie#readme",
+    "desc": "How to extract information from unstructured biomedical data and text.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Health and Social Science"
+  },
+  {
+    "name": "Computational Neuroscience",
+    "url": "https://github.com/eselkin/awesome-computational-neuroscience#readme",
+    "desc": "A multidisciplinary science which uses computational approaches to study the nervous system.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Health and Social Science"
+  },
+  {
+    "name": "Diversity",
+    "url": "https://github.com/folkswhocode/awesome-diversity#readme",
+    "desc": "Creating a more inclusive and diverse tech community.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Health and Social Science"
+  },
+  {
+    "name": "Digital History",
+    "url": "https://github.com/maehr/awesome-digital-history#readme",
+    "desc": "Computer-aided scientific investigation of history.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Health and Social Science"
+  },
+  {
+    "name": "Empathy in Engineering",
+    "url": "https://github.com/KimberlyMunoz/empathy-in-engineering#readme",
+    "desc": "Building and promoting more compassionate engineering cultures.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Health and Social Science"
+  },
+  {
+    "name": "Healthcare",
+    "url": "https://github.com/kakoni/awesome-healthcare#readme",
+    "desc": "Open source healthcare software for facilities, providers, developers, policy experts, and researchers.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Health and Social Science"
+  },
+  {
+    "name": "Mental Health",
+    "url": "https://github.com/dreamingechoes/awesome-mental-health#readme",
+    "desc": "Awareness and self-care in the software industry.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Health and Social Science"
+  },
+  {
+    "name": "Neuroscience",
+    "url": "https://github.com/analyticalmonk/awesome-neuroscience#readme",
+    "desc": "Study of the nervous system and brain.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Health and Social Science"
+  },
+  {
+    "name": "Digital Humanities",
+    "url": "https://github.com/dh-tech/awesome-digital-humanities#readme",
+    "desc": "Software for humanities scholars using quantitative or computational methods.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Health and Social Science"
+  },
+  {
+    "name": "Lucid Dreams",
+    "url": "https://github.com/IAmCoder/awesome-lucid-dreams#readme",
+    "desc": "A dream where one becomes aware they are dreaming.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Health and Social Science"
+  },
+  {
+    "name": "Neuroimaging",
+    "url": "https://github.com/NPACore/awesome-neuroimaging#readme",
+    "desc": "Software for analyzing brain data from living subjects.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Health and Social Science"
+  },
+  {
+    "name": "Transgender",
+    "url": "https://github.com/cvyl/awesome-transgender#readme",
+    "desc": "Someone whose gender identity differs from their assigned birth sex.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Health and Social Science"
+  },
+  {
+    "name": "Creative Tech Events",
+    "url": "https://github.com/danvoyce/awesome-creative-tech-events#readme",
+    "desc": "Events around the globe for creative coding, tech, design, music, arts and cool stuff.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Events"
+  },
+  {
+    "name": "Events in Italy",
+    "url": "https://github.com/ildoc/awesome-italy-events#readme",
+    "desc": "Tech-related events in Italy.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Events"
+  },
+  {
+    "name": "Events in the Netherlands",
+    "url": "https://github.com/awkward/awesome-netherlands-events#readme",
+    "desc": "Tech-related events in the Netherlands.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Events"
+  },
+  {
+    "name": "Testing",
+    "url": "https://github.com/TheJambo/awesome-testing#readme",
+    "desc": "Software testing.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Testing"
+  },
+  {
+    "name": "Visual Regression Testing",
+    "url": "https://github.com/mojoaxel/awesome-regression-testing#readme",
+    "desc": "Ensures changes did not break the functionality or style.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Testing"
+  },
+  {
+    "name": "Selenium",
+    "url": "https://github.com/christian-bromann/awesome-selenium#readme",
+    "desc": "Open-source browser automation framework and ecosystem.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Testing"
+  },
+  {
+    "name": "Appium",
+    "url": "https://github.com/SrinivasanTarget/awesome-appium#readme",
+    "desc": "Test automation tool for apps.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Testing"
+  },
+  {
+    "name": "TAP",
+    "url": "https://github.com/sindresorhus/awesome-tap#readme",
+    "desc": "Test Anything Protocol.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Testing"
+  },
+  {
+    "name": "JMeter",
+    "url": "https://github.com/aliesbelik/awesome-jmeter#readme",
+    "desc": "Load testing and performance measurement tool.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Testing"
+  },
+  {
+    "name": "k6",
+    "url": "https://github.com/grafana/awesome-k6#readme",
+    "desc": "Open-source, developer-centric performance monitoring and load testing solution.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Testing"
+  },
+  {
+    "name": "Playwright",
+    "url": "https://github.com/mxschmitt/awesome-playwright#readme",
+    "desc": "Node.js library to automate Chromium, Firefox and WebKit with a single API.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Testing"
+  },
+  {
+    "name": "Quality Assurance Roadmap",
+    "url": "https://github.com/fityanos/awesome-quality-assurance-roadmap#readme",
+    "desc": "How to start & build a career in software testing.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Testing"
+  },
+  {
+    "name": "Gatling",
+    "url": "https://github.com/aliesbelik/awesome-gatling#readme",
+    "desc": "Open-source load and performance testing framework based on Scala, Akka, and Netty.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Testing"
+  },
+  {
+    "name": "CodeRabbit",
+    "url": "https://github.com/coderabbitai/awesome-coderabbit#readme",
+    "desc": "AI-powered code review platform.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Testing"
+  },
+  {
+    "name": "Scientific Writing",
+    "url": "https://github.com/writing-resources/awesome-scientific-writing#readme",
+    "desc": "Distraction-free scientific writing with Markdown, reStructuredText and Jupyter notebooks.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "JSON",
+    "url": "https://github.com/burningtree/awesome-json#readme",
+    "desc": "Text based data interchange format.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "GeoJSON",
+    "url": "https://github.com/tmcw/awesome-geojson#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "CSV",
+    "url": "https://github.com/secretGeek/awesomeCSV#readme",
+    "desc": "A text file format that stores tabular data and uses a comma to separate values.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Discounts for Student Developers",
+    "url": "https://github.com/AchoArnold/discount-for-student-dev#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Radio",
+    "url": "https://github.com/kyleterry/awesome-radio#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Awesome",
+    "url": "https://github.com/sindresorhus/awesome#readme",
+    "desc": "Recursion illustrated.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Analytics",
+    "url": "https://github.com/0xnr/awesome-analytics#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "REST",
+    "url": "https://github.com/marmelab/awesome-rest#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Continuous Integration and Continuous Delivery",
+    "url": "https://github.com/cicdops/awesome-ciandcd#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Services Engineering",
+    "url": "https://github.com/mmcgrana/services-engineering#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Free for Developers",
+    "url": "https://github.com/ripienaar/free-for-dev#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Boilerplate Projects",
+    "url": "https://github.com/melvin0008/awesome-projects-boilerplates#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Readme",
+    "url": "https://github.com/matiassingers/awesome-readme#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "GitHub Wiki",
+    "url": "https://github.com/MyHoneyBadger/awesome-github-wiki#readme",
+    "desc": "Comprehensive documentation on GitHub beyond README.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Design and Development Guides",
+    "url": "https://github.com/NARKOZ/guides#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Software Engineering Blogs",
+    "url": "https://github.com/kilimchoi/engineering-blogs#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Self Hosted",
+    "url": "https://github.com/awesome-selfhosted/awesome-selfhosted#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "FOSS Production Apps",
+    "url": "https://github.com/DataDaoDe/awesome-foss-apps#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Gulp",
+    "url": "https://github.com/alferov/awesome-gulp#readme",
+    "desc": "Task runner.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "AMA",
+    "url": "https://github.com/sindresorhus/amas#readme",
+    "desc": "Ask Me Anything.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Answers",
+    "url": "https://github.com/stoeffel/awesome-ama-answers#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Open Source Photography",
+    "url": "https://github.com/ibaaj/awesome-OpenSourcePhotography#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "OpenGL",
+    "url": "https://github.com/eug/awesome-opengl#readme",
+    "desc": "Cross-platform API for rendering 2D and 3D graphics.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "GraphQL",
+    "url": "https://github.com/chentsulin/awesome-graphql#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Urban & Regional Planning",
+    "url": "https://github.com/APA-Technology-Division/urban-and-regional-planning-resources#readme",
+    "desc": "Concerning the built environment and communities.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Research Tools",
+    "url": "https://github.com/emptymalei/awesome-research#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Data Visualization",
+    "url": "https://github.com/javierluraschi/awesome-dataviz#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Microservices",
+    "url": "https://github.com/mfornos/awesome-microservices#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Unicode",
+    "url": "https://github.com/jagracey/Awesome-Unicode#readme",
+    "desc": "Standards, quirks, packages and resources for Unicode.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Code Points",
+    "url": "https://github.com/Codepoints/awesome-codepoints#readme",
+    "desc": "",
+    "level": 2,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Beginner-Friendly Projects",
+    "url": "https://github.com/MunGell/awesome-for-beginners#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Katas",
+    "url": "https://github.com/gamontal/awesome-katas#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Tools for Activism",
+    "url": "https://github.com/drewrwilson/toolsforactivism#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Citizen Science",
+    "url": "https://github.com/dylanrees/citizen-science#readme",
+    "desc": "For community-based and non-institutional scientists.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "MQTT",
+    "url": "https://github.com/hobbyquaker/awesome-mqtt#readme",
+    "desc": "\"Internet of Things\" connectivity protocol.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "For Girls",
+    "url": "https://github.com/cristianoliveira/awesome4girls#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Vorpal",
+    "url": "https://github.com/vorpaljs/awesome-vorpal#readme",
+    "desc": "Node.js CLI framework.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Vulkan",
+    "url": "https://github.com/vinjn/awesome-vulkan#readme",
+    "desc": "Low-overhead, cross-platform 3D graphics and compute API.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "LaTeX",
+    "url": "https://github.com/egeerardyn/awesome-LaTeX#readme",
+    "desc": "Typesetting language.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Economics",
+    "url": "https://github.com/antontarasenko/awesome-economics#readme",
+    "desc": "An economist's starter kit.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Funny Markov Chains",
+    "url": "https://github.com/sublimino/awesome-funny-markov#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Bioinformatics",
+    "url": "https://github.com/danielecook/Awesome-Bioinformatics#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Cheminformatics",
+    "url": "https://github.com/hsiaoyi0504/awesome-cheminformatics#readme",
+    "desc": "Informatics techniques applied to problems in chemistry.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Colorful",
+    "url": "https://github.com/Siddharth11/Colorful#readme",
+    "desc": "Choose your next color scheme.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Steam",
+    "url": "https://github.com/scholtzm/awesome-steam#readme",
+    "desc": "Digital distribution platform.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Bots",
+    "url": "https://github.com/hackerkid/bots#readme",
+    "desc": "Building bots.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Site Reliability Engineering",
+    "url": "https://github.com/dastergon/awesome-sre#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "DTrace",
+    "url": "https://github.com/xen0l/awesome-dtrace#readme",
+    "desc": "Dynamic tracing framework.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Userscripts",
+    "url": "https://github.com/bvolpato/awesome-userscripts#readme",
+    "desc": "Enhance your browsing experience.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Pokémon",
+    "url": "https://github.com/tobiasbueschel/awesome-pokemon#readme",
+    "desc": "Resources for Pokémon and Pokémon GO.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "ChatOps",
+    "url": "https://github.com/exAspArk/awesome-chatops#readme",
+    "desc": "Managing technical and business operations through a chat.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Falsehood",
+    "url": "https://github.com/kdeldycke/awesome-falsehood#readme",
+    "desc": "Falsehoods programmers believe in.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Domain-Driven Design",
+    "url": "https://github.com/heynickc/awesome-ddd#readme",
+    "desc": "Software development approach for complex needs by connecting the implementation to an evolving model.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Quantified Self",
+    "url": "https://github.com/woop/awesome-quantified-self#readme",
+    "desc": "Self-tracking through technology.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Web Design",
+    "url": "https://github.com/nicolesaidy/awesome-web-design#readme",
+    "desc": "For digital designers.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Creative Coding",
+    "url": "https://github.com/terkelg/awesome-creative-coding#readme",
+    "desc": "Programming something expressive instead of something functional.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "No-Login Web Apps",
+    "url": "https://github.com/aviaryan/awesome-no-login-web-apps#readme",
+    "desc": "Web apps that work without login.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Free Software",
+    "url": "https://github.com/johnjago/awesome-free-software#readme",
+    "desc": "Free as in freedom.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Framer",
+    "url": "https://github.com/podo/awesome-framer#readme",
+    "desc": "Prototyping interactive UI designs.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Markdown",
+    "url": "https://github.com/BubuAnabelas/awesome-markdown#readme",
+    "desc": "Markup language.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Dev Fun",
+    "url": "https://github.com/mislavcimpersak/awesome-dev-fun#readme",
+    "desc": "Funny developer projects.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Magento 2",
+    "url": "https://github.com/DavidLambauer/awesome-magento2#readme",
+    "desc": "Open Source eCommerce built with PHP.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "TikZ",
+    "url": "https://github.com/xiaohanyu/awesome-tikz#readme",
+    "desc": "Graph drawing packages for TeX/LaTeX/ConTeXt.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Ad-Free",
+    "url": "https://github.com/johnjago/awesome-ad-free#readme",
+    "desc": "Alternatives without ads.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Prometheus",
+    "url": "https://github.com/roaldnefs/awesome-prometheus#readme",
+    "desc": "Open-source monitoring system.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Homematic",
+    "url": "https://github.com/homematic-community/awesome-homematic#readme",
+    "desc": "Smart home devices.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Ledger",
+    "url": "https://github.com/sfischer13/awesome-ledger#readme",
+    "desc": "Double-entry accounting on the command-line.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Web Monetization",
+    "url": "https://github.com/thomasbnt/awesome-web-monetization#readme",
+    "desc": "A free open web standard service that allows you to send money directly in your browser.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Uncopyright",
+    "url": "https://github.com/johnjago/awesome-uncopyright#readme",
+    "desc": "Public domain works.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Crypto Currency Tools & Algorithms",
+    "url": "https://github.com/Zheaoli/awesome-coins#readme",
+    "desc": "Digital currency where encryption is used to regulate the generation of units and verify transfers.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Open Source Supporters",
+    "url": "https://github.com/zachflower/awesome-open-source-supporters#readme",
+    "desc": "Companies that offer their tools and services for free to open source projects.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Design Principles",
+    "url": "https://github.com/robinstickel/awesome-design-principles#readme",
+    "desc": "Create better and more consistent designs and experiences.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Theravada",
+    "url": "https://github.com/johnjago/awesome-theravada#readme",
+    "desc": "Teachings from the Theravada Buddhist tradition.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "inspectIT",
+    "url": "https://github.com/inspectit-labs/awesome-inspectit#readme",
+    "desc": "Open source Java app performance management tool.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Open Source Maintainers",
+    "url": "https://github.com/nayafia/awesome-maintainers#readme",
+    "desc": "The experience of being an open source maintainer.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Calculators",
+    "url": "https://github.com/xxczaki/awesome-calculators#readme",
+    "desc": "Tools for every platform.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Captcha",
+    "url": "https://github.com/ZYSzys/awesome-captcha#readme",
+    "desc": "A type of challenge–response test used in computing to determine whether or not the user is human.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Jupyter",
+    "url": "https://github.com/markusschanta/awesome-jupyter#readme",
+    "desc": "Create and share documents that contain code, equations, visualizations and narrative text.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "FIRST Robotics Competition",
+    "url": "https://github.com/andrewda/awesome-frc#readme",
+    "desc": "International high school robotics championship.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Speakers",
+    "url": "https://github.com/karlhorky/awesome-speakers#readme",
+    "desc": "Conference and meetup speakers in the programming and design community.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Board Games",
+    "url": "https://github.com/edm00se/awesome-board-games#readme",
+    "desc": "Table-top gaming fun for all.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Software Patreons",
+    "url": "https://github.com/uraimo/awesome-software-patreons#readme",
+    "desc": "Fund individual programmers or the development of open source projects.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Parasite",
+    "url": "https://github.com/ecohealthalliance/awesome-parasite#readme",
+    "desc": "Parasites and host-pathogen interactions.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Food",
+    "url": "https://github.com/jzarca01/awesome-food#readme",
+    "desc": "Projects on GitHub related to food.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Bitcoin Payment Processors",
+    "url": "https://github.com/alexk111/awesome-bitcoin-payment-processors#readme",
+    "desc": "Start accepting Bitcoin.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Scientific Computing",
+    "url": "https://github.com/nschloe/awesome-scientific-computing#readme",
+    "desc": "Solving complex scientific problems using computers.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Amazon Sellers",
+    "url": "https://github.com/ScaleLeap/awesome-amazon-seller#readme",
+    "desc": "",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Agriculture",
+    "url": "https://github.com/brycejohnston/awesome-agriculture#readme",
+    "desc": "Open source technology for farming and gardening.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Product Design",
+    "url": "https://github.com/ttt30ga/awesome-product-design#readme",
+    "desc": "Design a product from the initial concept to production.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Prisma",
+    "url": "https://github.com/catalinmiron/awesome-prisma#readme",
+    "desc": "Turn your database into a GraphQL API.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Software Architecture",
+    "url": "https://github.com/simskij/awesome-software-architecture#readme",
+    "desc": "The discipline of designing and building software.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Connectivity Data and Reports",
+    "url": "https://github.com/stevesong/awesome-connectivity-info#readme",
+    "desc": "Better understand who has access to telecommunication and internet infrastructure and on what terms.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Stacks",
+    "url": "https://github.com/stackshareio/awesome-stacks#readme",
+    "desc": "Tech stacks for building different apps and features.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Cytodata",
+    "url": "https://github.com/cytodata/awesome-cytodata#readme",
+    "desc": "Image-based profiling of biological phenotypes for computational biologists.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "IRC",
+    "url": "https://github.com/davisonio/awesome-irc#readme",
+    "desc": "Open source messaging protocol.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Advertising",
+    "url": "https://github.com/cenoura/awesome-ads#readme",
+    "desc": "Programmatic media and ad tech for websites.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Earth",
+    "url": "https://github.com/philsturgeon/awesome-earth#readme",
+    "desc": "Find ways to resolve the climate crisis.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Naming",
+    "url": "https://github.com/gruhn/awesome-naming#readme",
+    "desc": "Guides for naming things in computer science.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Web Archiving",
+    "url": "https://github.com/iipc/awesome-web-archiving#readme",
+    "desc": "An effort to preserve the Web for future generations.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "WP-CLI",
+    "url": "https://github.com/schlessera/awesome-wp-cli#readme",
+    "desc": "Command-line interface for WordPress.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Credit Modeling",
+    "url": "https://github.com/mourarthur/awesome-credit-modeling#readme",
+    "desc": "Methods for classifying credit applicants into risk classes.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Ansible",
+    "url": "https://github.com/ansible-community/awesome-ansible#readme",
+    "desc": "A Python-based, open-source IT configuration management and automation platform.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Biological Visualizations",
+    "url": "https://github.com/keller-mark/awesome-biological-visualizations#readme",
+    "desc": "Interactive visualization of biological data on the web.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "QR Code",
+    "url": "https://github.com/make-github-pseudonymous-again/awesome-qr-code#readme",
+    "desc": "A type of matrix barcode that can be used to store and share a small amount of information.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Veganism",
+    "url": "https://github.com/sdassow/awesome-veganism#readme",
+    "desc": "Making the plant-based lifestyle easy and accessible.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Translations",
+    "url": "https://github.com/mbiesiad/awesome-translations#readme",
+    "desc": "The transfer of the meaning of a text from one language to another.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Scriptable",
+    "url": "https://github.com/dersvenhesse/awesome-scriptable#readme",
+    "desc": "An iOS app for automation in JavaScript.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "WebXR",
+    "url": "https://github.com/msub2/awesome-webxr#readme",
+    "desc": "Enables immersive virtual reality and augmented reality content on the web.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Computational Geometry",
+    "url": "https://github.com/atkirtland/awesome-computational-geometry#readme",
+    "desc": "Computational approaches for problems in geometry.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "OpenStreetMap",
+    "url": "https://github.com/osmlab/awesome-openstreetmap#readme",
+    "desc": "An open data mapping project utilized by many apps and devices.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Computational Biology",
+    "url": "https://github.com/inoue0426/awesome-computational-biology#readme",
+    "desc": "Computational approaches applied to problems in biology.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Read the Docs",
+    "url": "https://github.com/readthedocs-examples/awesome-read-the-docs#readme",
+    "desc": "Example documentation projects to inspire and help bootstrap new documentation projects.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Quarto",
+    "url": "https://github.com/mcanouil/awesome-quarto#readme",
+    "desc": "Scientific and technical open-source publishing system built on Pandoc.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Biological Image Analysis",
+    "url": "https://github.com/hallvaaw/awesome-biological-image-analysis#readme",
+    "desc": "Interpreting biological phenomena using images.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "ChatGPT",
+    "url": "https://github.com/sindresorhus/awesome-chatgpt#readme",
+    "desc": "Artificial intelligence chatbot developed by OpenAI.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Whisper",
+    "url": "https://github.com/sindresorhus/awesome-whisper#readme",
+    "desc": "Open-source AI-powered speech recognition system developed by OpenAI.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Stock Trading",
+    "url": "https://github.com/shi-rudo/awesome-stock-trading#readme",
+    "desc": "Purchase and sale of equities of publicly traded companies to generate profits.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Steam Deck",
+    "url": "https://github.com/airscripts/awesome-steam-deck#readme",
+    "desc": "A handheld gaming computer developed by Valve.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Astrophotography",
+    "url": "https://github.com/lunohodov/awesome-astrophotography#readme",
+    "desc": "Photography of astronomical objects, celestial events, or areas of the night sky.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "HPC",
+    "url": "https://github.com/dstdev/awesome-hpc#readme",
+    "desc": "High Performance Computing.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Geocaching",
+    "url": "https://github.com/FoxFil/awesome-geocaching#readme",
+    "desc": "Outdoor treasure-hunting activity that uses GPS-enabled devices.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Regex",
+    "url": "https://github.com/slevithan/awesome-regex#readme",
+    "desc": "Specialized language for matching patterns in text.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Event-Driven Architecture",
+    "url": "https://github.com/lutzh/awesome-event-driven-architecture#readme",
+    "desc": "A software architecture approach where services collaborate by publishing and subscribing to events.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Permacomputing",
+    "url": "https://github.com/idematos/awesome-permacomputing#readme",
+    "desc": "Resilient and regenerative computing practices inspired by permaculture.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Standards",
+    "url": "https://github.com/donBarbos/awesome-standards#readme",
+    "desc": "Proposals and standards that define and enhance software, languages, and related technologies.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Claude Code",
+    "url": "https://github.com/hesreallyhim/awesome-claude-code#readme",
+    "desc": "Terminal-based AI coding assistant by Anthropic.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Gemini CLI",
+    "url": "https://github.com/Piebald-AI/awesome-gemini-cli#readme",
+    "desc": "Terminal-based AI coding assistant by Google.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "SAP Commerce",
+    "url": "https://github.com/eminyagiz42/awesome-sap-commerce#readme",
+    "desc": "An e-commerce platform built with Java, Spring MVC, and Angular.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Tech Ethics",
+    "url": "https://github.com/sampart/awesome-tech-ethics#readme",
+    "desc": "Mitigating and avoiding the potential negative effects of technology on society.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "Copilot Agents",
+    "url": "https://github.com/Code-and-Sorts/awesome-copilot-agents#readme",
+    "desc": "AI pair programming assistant by GitHub that provides code suggestions and completions.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Miscellaneous"
+  },
+  {
+    "name": "All Awesome Lists",
+    "url": "https://github.com/topics/awesome",
+    "desc": "All the Awesome lists on GitHub.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Related"
+  },
+  {
+    "name": "Awesome Search",
+    "url": "https://awesomelists.top",
+    "desc": "Quick search for Awesome lists.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Related"
+  },
+  {
+    "name": "StumbleUponAwesome",
+    "url": "https://github.com/basharovV/StumbleUponAwesome",
+    "desc": "Discover random pages from the Awesome dataset using a browser extension.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Related"
+  },
+  {
+    "name": "Awesome CLI",
+    "url": "https://github.com/umutphp/awesome-cli",
+    "desc": "A simple command-line tool to dive into Awesome lists.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Related"
+  },
+  {
+    "name": "Track Awesome List",
+    "url": "https://www.trackawesomelist.com",
+    "desc": "View the latest updates of Awesome lists.",
+    "level": 1,
+    "has_link": true,
+    "cat": "Related"
+  }
+]
