@@ -1,0 +1,20 @@
+{
+  "name": "n0shake-public-apis-promo",
+  "displayName": "免 key API 资源导航器",
+  "version": "0.1.0",
+  "description": "汇总 n0shake/Public-APIs 的 56 分类 481 条免 key/试用/开源 API,Sprint 2 4 命令(搜索/列表/详情/随机);Phase C 接入主对话 EXEC 标记。命名空间 nokeyapi.* 避开 public-apis 的 api.*;数据本地只读快照,合 CC BY-NC-SA 上游许可。",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:nokeyapi.find",
+    "ai.invoke.command:nokeyapi.list_categories",
+    "ai.invoke.command:nokeyapi.detail",
+    "ai.invoke.command:nokeyapi.random",
+    "ui.inject.card"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}

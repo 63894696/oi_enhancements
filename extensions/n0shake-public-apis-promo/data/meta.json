@@ -1,0 +1,14 @@
+{
+  "source": "https://github.com/n0shake/Public-APIs",
+  "snapshot_date": "2026-10-02",
+  "total_categories": 56,
+  "total_services": 481,
+  "open_trial_distribution": {
+    "N/A": 327,
+    "Open Source": 83,
+    "💸": 70,
+    "Unknown": 1
+  },
+  "license_note": "Data 来源 n0shake/Public-APIs(CC BY-NC-SA 4.0,见 README 末尾);二次使用属各服务方各自条款",
+  "agents_note": "无 AGENTS.md 限制;上游无 AGENTS.md 也不收 PR 邀请,本扩展只读快照,绝不发起 PR/issue/comment"
+}

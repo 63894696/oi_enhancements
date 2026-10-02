@@ -379,6 +379,20 @@ try:
 except Exception:  # noqa: BLE001
     log.exception("Phase C public-apis-cn: import public_apis_cn_capabilities failed; api_cn EXEC will be disabled")
 
+# P3j 5-项目 ship Sprint 2(2026-10-02)ext-n0shake-public-apis-promo → 主对话能力注册
+# 4 capability 全 L0(n0shake/Public-APIs 56 cat / 481 条,免 key/试用/开源)
+try:
+    from prisir_work import nokeyapi_capabilities  # noqa: F401
+except Exception:  # noqa: BLE001
+    log.exception("Phase C nokeyapi: import nokeyapi_capabilities failed; nokeyapi EXEC will be disabled")
+
+# P3j 5-项目 ship Sprint 2(2026-10-02)ext-awesome-selfhosted-promo → 主对话能力注册
+# 4 capability 全 L0(awesome-selfhosted 95 cat / 1260 条,自部署/自托管/开源替代 SaaS)
+try:
+    from prisir_work import selfhost_capabilities  # noqa: F401
+except Exception:  # noqa: BLE001
+    log.exception("Phase C selfhost: import selfhost_capabilities failed; selfhost EXEC will be disabled")
+
 # P3j Phase 1.6(2026-09-28)agency-roles 264 角色查询能力注册
 # 3 capability 全 L0(本地 JSON 只读,无子进程无外网)
 try:
@@ -1075,6 +1089,20 @@ async def build_messages(sess: CallSession, current_user_text: str) -> list[dict
             msgs.append({"role": "system", "content": api_cn_intent_summary()})
         except Exception:  # noqa: BLE001
             log.exception("Phase C public-apis-cn: inject api_cn intent_summary failed; fall back to no-cn-api mode")
+    # P3j 5-项目 Sprint 2(2026-10-02): 注入免 key API 资源能力清单
+    if not use_skills_idx:
+        try:
+            from prisir_work.nokeyapi_capabilities import intent_summary as nokeyapi_intent_summary
+            msgs.append({"role": "system", "content": nokeyapi_intent_summary()})
+        except Exception:  # noqa: BLE001
+            log.exception("Phase C nokeyapi: inject nokeyapi intent_summary failed; fall back to no-nokeyapi mode")
+    # P3j 5-项目 Sprint 2(2026-10-02): 注入自部署软件资源能力清单
+    if not use_skills_idx:
+        try:
+            from prisir_work.selfhost_capabilities import intent_summary as selfhost_intent_summary
+            msgs.append({"role": "system", "content": selfhost_intent_summary()})
+        except Exception:  # noqa: BLE001
+            log.exception("Phase C selfhost: inject selfhost intent_summary failed; fall back to no-selfhost mode")
     # M3.25:清空上一轮的 knowledge hits,本轮重新填(M3.27.1:前端一轮一清,避免误把上一轮的 hits 挂到这轮 ai 气泡上)
     # M3.27.1:累积 hits 由 _DISPATCH_HITS 全局字典记录,派发时从那里取
     if sess is not None:

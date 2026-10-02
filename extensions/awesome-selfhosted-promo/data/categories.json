@@ -1,0 +1,477 @@
+[
+  {
+    "name": "Analytics",
+    "slug": "analytics",
+    "n_items": 31
+  },
+  {
+    "name": "Archiving and Digital Preservation (DP)",
+    "slug": "archiving-and-digital-preservation-dp",
+    "n_items": 14
+  },
+  {
+    "name": "Automation",
+    "slug": "automation",
+    "n_items": 27
+  },
+  {
+    "name": "Backup",
+    "slug": "backup",
+    "n_items": 0
+  },
+  {
+    "name": "Blogging Platforms",
+    "slug": "blogging-platforms",
+    "n_items": 14
+  },
+  {
+    "name": "Booking and Scheduling",
+    "slug": "booking-and-scheduling",
+    "n_items": 8
+  },
+  {
+    "name": "Bookmarks and Link Sharing",
+    "slug": "bookmarks-and-link-sharing",
+    "n_items": 17
+  },
+  {
+    "name": "Calendar & Contacts",
+    "slug": "calendar-and-contacts",
+    "n_items": 8
+  },
+  {
+    "name": "Communication - Custom Communication Systems",
+    "slug": "communication-custom-communication-systems",
+    "n_items": 39
+  },
+  {
+    "name": "Communication - Email - Complete Solutions",
+    "slug": "communication-email-complete-solutions",
+    "n_items": 17
+  },
+  {
+    "name": "Communication - Email - Mail Delivery Agents",
+    "slug": "communication-email-mail-delivery-agents",
+    "n_items": 3
+  },
+  {
+    "name": "Communication - Email - Mail Transfer Agents",
+    "slug": "communication-email-mail-transfer-agents",
+    "n_items": 9
+  },
+  {
+    "name": "Communication - Email - Mailing Lists and Newsletters",
+    "slug": "communication-email-mailing-lists-and-newsletters",
+    "n_items": 10
+  },
+  {
+    "name": "Communication - Email - Webmail Clients",
+    "slug": "communication-email-webmail-clients",
+    "n_items": 4
+  },
+  {
+    "name": "Communication - IRC",
+    "slug": "communication-irc",
+    "n_items": 11
+  },
+  {
+    "name": "Communication - SIP",
+    "slug": "communication-sip",
+    "n_items": 12
+  },
+  {
+    "name": "Communication - Social Networks and Forums",
+    "slug": "communication-social-networks-and-forums",
+    "n_items": 40
+  },
+  {
+    "name": "Communication - Video Conferencing",
+    "slug": "communication-video-conferencing",
+    "n_items": 9
+  },
+  {
+    "name": "Communication - XMPP - Servers",
+    "slug": "communication-xmpp-servers",
+    "n_items": 6
+  },
+  {
+    "name": "Communication - XMPP - Web Clients",
+    "slug": "communication-xmpp-web-clients",
+    "n_items": 3
+  },
+  {
+    "name": "Community-Supported Agriculture (CSA)",
+    "slug": "community-supported-agriculture-csa",
+    "n_items": 8
+  },
+  {
+    "name": "Conference Management",
+    "slug": "conference-management",
+    "n_items": 5
+  },
+  {
+    "name": "Content Management Systems (CMS)",
+    "slug": "content-management-systems-cms",
+    "n_items": 41
+  },
+  {
+    "name": "Customer Relationship Management (CRM)",
+    "slug": "customer-relationship-management-crm",
+    "n_items": 7
+  },
+  {
+    "name": "Database Management",
+    "slug": "database-management",
+    "n_items": 17
+  },
+  {
+    "name": "DNS",
+    "slug": "dns",
+    "n_items": 6
+  },
+  {
+    "name": "Document Management",
+    "slug": "document-management",
+    "n_items": 18
+  },
+  {
+    "name": "Document Management - E-books",
+    "slug": "document-management-e-books",
+    "n_items": 13
+  },
+  {
+    "name": "Document Management - Institutional Repository and Digital Library Software",
+    "slug": "document-management-institutional-repository-and-digital-library-software",
+    "n_items": 6
+  },
+  {
+    "name": "Document Management - Integrated Library Systems (ILS)",
+    "slug": "document-management-integrated-library-systems-ils",
+    "n_items": 3
+  },
+  {
+    "name": "E-commerce",
+    "slug": "e-commerce",
+    "n_items": 21
+  },
+  {
+    "name": "Federated Identity & Authentication",
+    "slug": "federated-identity-and-authentication",
+    "n_items": 0
+  },
+  {
+    "name": "Feed Readers",
+    "slug": "feed-readers",
+    "n_items": 24
+  },
+  {
+    "name": "File Transfer & Synchronization",
+    "slug": "file-transfer-and-synchronization",
+    "n_items": 16
+  },
+  {
+    "name": "File Transfer - Distributed Filesystems",
+    "slug": "file-transfer-distributed-filesystems",
+    "n_items": 0
+  },
+  {
+    "name": "File Transfer - Object Storage & File Servers",
+    "slug": "file-transfer-object-storage-and-file-servers",
+    "n_items": 5
+  },
+  {
+    "name": "File Transfer - Peer-to-peer Filesharing",
+    "slug": "file-transfer-peer-to-peer-filesharing",
+    "n_items": 7
+  },
+  {
+    "name": "File Transfer - Single-click & Drag-n-drop Upload",
+    "slug": "file-transfer-single-click-and-drag-n-drop-upload",
+    "n_items": 29
+  },
+  {
+    "name": "File Transfer - Web-based File Managers",
+    "slug": "file-transfer-web-based-file-managers",
+    "n_items": 15
+  },
+  {
+    "name": "Games",
+    "slug": "games",
+    "n_items": 19
+  },
+  {
+    "name": "Games - Administrative Utilities & Control Panels",
+    "slug": "games-administrative-utilities-and-control-panels",
+    "n_items": 21
+  },
+  {
+    "name": "Genealogy",
+    "slug": "genealogy",
+    "n_items": 5
+  },
+  {
+    "name": "Generative Artificial Intelligence (GenAI)",
+    "slug": "generative-artificial-intelligence-genai",
+    "n_items": 13
+  },
+  {
+    "name": "Groupware",
+    "slug": "groupware",
+    "n_items": 13
+  },
+  {
+    "name": "Health and Fitness",
+    "slug": "health-and-fitness",
+    "n_items": 7
+  },
+  {
+    "name": "Human Resources Management (HRM)",
+    "slug": "human-resources-management-hrm",
+    "n_items": 3
+  },
+  {
+    "name": "Identity Management",
+    "slug": "identity-management",
+    "n_items": 0
+  },
+  {
+    "name": "Internet of Things (IoT)",
+    "slug": "internet-of-things-iot",
+    "n_items": 20
+  },
+  {
+    "name": "Inventory Management",
+    "slug": "inventory-management",
+    "n_items": 9
+  },
+  {
+    "name": "Knowledge Management Tools",
+    "slug": "knowledge-management-tools",
+    "n_items": 6
+  },
+  {
+    "name": "Learning and Courses",
+    "slug": "learning-and-courses",
+    "n_items": 15
+  },
+  {
+    "name": "Manufacturing",
+    "slug": "manufacturing",
+    "n_items": 6
+  },
+  {
+    "name": "Maps and Global Positioning System (GPS)",
+    "slug": "maps-and-global-positioning-system-gps",
+    "n_items": 17
+  },
+  {
+    "name": "Media Management",
+    "slug": "media-management",
+    "n_items": 31
+  },
+  {
+    "name": "Media Streaming",
+    "slug": "media-streaming",
+    "n_items": 0
+  },
+  {
+    "name": "Media Streaming - Audio Streaming",
+    "slug": "media-streaming-audio-streaming",
+    "n_items": 27
+  },
+  {
+    "name": "Media Streaming - Multimedia Streaming",
+    "slug": "media-streaming-multimedia-streaming",
+    "n_items": 16
+  },
+  {
+    "name": "Media Streaming - Video Streaming",
+    "slug": "media-streaming-video-streaming",
+    "n_items": 14
+  },
+  {
+    "name": "Miscellaneous",
+    "slug": "miscellaneous",
+    "n_items": 74
+  },
+  {
+    "name": "Money, Budgeting & Management",
+    "slug": "money-budgeting-and-management",
+    "n_items": 38
+  },
+  {
+    "name": "Monitoring & Status Pages",
+    "slug": "monitoring-and-status-pages",
+    "n_items": 0
+  },
+  {
+    "name": "Network Utilities",
+    "slug": "network-utilities",
+    "n_items": 11
+  },
+  {
+    "name": "Note-taking & Editors",
+    "slug": "note-taking-and-editors",
+    "n_items": 21
+  },
+  {
+    "name": "Office Suites",
+    "slug": "office-suites",
+    "n_items": 6
+  },
+  {
+    "name": "Password Managers",
+    "slug": "password-managers",
+    "n_items": 7
+  },
+  {
+    "name": "Pastebins",
+    "slug": "pastebins",
+    "n_items": 21
+  },
+  {
+    "name": "Personal Dashboards",
+    "slug": "personal-dashboards",
+    "n_items": 19
+  },
+  {
+    "name": "Photo Galleries",
+    "slug": "photo-galleries",
+    "n_items": 21
+  },
+  {
+    "name": "Polls and Events",
+    "slug": "polls-and-events",
+    "n_items": 19
+  },
+  {
+    "name": "Proxy",
+    "slug": "proxy",
+    "n_items": 9
+  },
+  {
+    "name": "Recipe Management",
+    "slug": "recipe-management",
+    "n_items": 10
+  },
+  {
+    "name": "Remote Access",
+    "slug": "remote-access",
+    "n_items": 9
+  },
+  {
+    "name": "Resource Planning",
+    "slug": "resource-planning",
+    "n_items": 8
+  },
+  {
+    "name": "Search Engines",
+    "slug": "search-engines",
+    "n_items": 14
+  },
+  {
+    "name": "Self-hosting Solutions",
+    "slug": "self-hosting-solutions",
+    "n_items": 21
+  },
+  {
+    "name": "Software Development",
+    "slug": "software-development",
+    "n_items": 0
+  },
+  {
+    "name": "Software Development - API Management",
+    "slug": "software-development-api-management",
+    "n_items": 13
+  },
+  {
+    "name": "Software Development - Continuous Integration & Deployment",
+    "slug": "software-development-continuous-integration-and-deployment",
+    "n_items": 0
+  },
+  {
+    "name": "Software Development - FaaS & Serverless",
+    "slug": "software-development-faas-and-serverless",
+    "n_items": 0
+  },
+  {
+    "name": "Software Development - Feature Toggle",
+    "slug": "software-development-feature-toggle",
+    "n_items": 5
+  },
+  {
+    "name": "Software Development - IDE & Tools",
+    "slug": "software-development-ide-and-tools",
+    "n_items": 12
+  },
+  {
+    "name": "Software Development - Localization",
+    "slug": "software-development-localization",
+    "n_items": 4
+  },
+  {
+    "name": "Software Development - Low Code",
+    "slug": "software-development-low-code",
+    "n_items": 9
+  },
+  {
+    "name": "Software Development - Project Management",
+    "slug": "software-development-project-management",
+    "n_items": 36
+  },
+  {
+    "name": "Software Development - Testing",
+    "slug": "software-development-testing",
+    "n_items": 3
+  },
+  {
+    "name": "Static Site Generators",
+    "slug": "static-site-generators",
+    "n_items": 0
+  },
+  {
+    "name": "Task Management & To-do Lists",
+    "slug": "task-management-and-to-do-lists",
+    "n_items": 23
+  },
+  {
+    "name": "Ticketing",
+    "slug": "ticketing",
+    "n_items": 12
+  },
+  {
+    "name": "Time Tracking",
+    "slug": "time-tracking",
+    "n_items": 10
+  },
+  {
+    "name": "Travel Organization",
+    "slug": "travel-organization",
+    "n_items": 1
+  },
+  {
+    "name": "URL Shorteners",
+    "slug": "url-shorteners",
+    "n_items": 9
+  },
+  {
+    "name": "Video Surveillance",
+    "slug": "video-surveillance",
+    "n_items": 8
+  },
+  {
+    "name": "VPN",
+    "slug": "vpn",
+    "n_items": 0
+  },
+  {
+    "name": "Web Servers",
+    "slug": "web-servers",
+    "n_items": 19
+  },
+  {
+    "name": "Wikis",
+    "slug": "wikis",
+    "n_items": 23
+  }
+]

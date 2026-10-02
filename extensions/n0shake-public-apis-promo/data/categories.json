@@ -1,0 +1,282 @@
+[
+  {
+    "name": "Advertising",
+    "slug": "advertising",
+    "n_items": 7
+  },
+  {
+    "name": "Analytics",
+    "slug": "analytics",
+    "n_items": 13
+  },
+  {
+    "name": "Augmented Reality",
+    "slug": "augmented-reality",
+    "n_items": 2
+  },
+  {
+    "name": "BarCode",
+    "slug": "barcode",
+    "n_items": 6
+  },
+  {
+    "name": "Big Data and Analytics",
+    "slug": "big-data-and-analytics",
+    "n_items": 4
+  },
+  {
+    "name": "Cryptocurrency/Crypto Wallets",
+    "slug": "cryptocurrency-crypto-wallets",
+    "n_items": 21
+  },
+  {
+    "name": "Calendar",
+    "slug": "calendar",
+    "n_items": 4
+  },
+  {
+    "name": "Captcha",
+    "slug": "captcha",
+    "n_items": 3
+  },
+  {
+    "name": "Check-In",
+    "slug": "check-in",
+    "n_items": 3
+  },
+  {
+    "name": "Commerce",
+    "slug": "commerce",
+    "n_items": 8
+  },
+  {
+    "name": "Communication",
+    "slug": "communication",
+    "n_items": 9
+  },
+  {
+    "name": "Content",
+    "slug": "content",
+    "n_items": 11
+  },
+  {
+    "name": "Currency",
+    "slug": "currency",
+    "n_items": 12
+  },
+  {
+    "name": "Design",
+    "slug": "design",
+    "n_items": 4
+  },
+  {
+    "name": "Dictionary",
+    "slug": "dictionary",
+    "n_items": 10
+  },
+  {
+    "name": "Entertainment",
+    "slug": "entertainment",
+    "n_items": 26
+  },
+  {
+    "name": "Events",
+    "slug": "events",
+    "n_items": 1
+  },
+  {
+    "name": "Face Recognition",
+    "slug": "face-recognition",
+    "n_items": 2
+  },
+  {
+    "name": "File Storage and Manipulation",
+    "slug": "file-storage-and-manipulation",
+    "n_items": 12
+  },
+  {
+    "name": "Finance",
+    "slug": "finance",
+    "n_items": 20
+  },
+  {
+    "name": "Fitness",
+    "slug": "fitness",
+    "n_items": 6
+  },
+  {
+    "name": "Google",
+    "slug": "google",
+    "n_items": 12
+  },
+  {
+    "name": "Identity Verification",
+    "slug": "identity-verification",
+    "n_items": 3
+  },
+  {
+    "name": "Image Moderation",
+    "slug": "image-moderation",
+    "n_items": 1
+  },
+  {
+    "name": "IoT",
+    "slug": "iot",
+    "n_items": 9
+  },
+  {
+    "name": "Legal",
+    "slug": "legal",
+    "n_items": 2
+  },
+  {
+    "name": "Login Authentication",
+    "slug": "login-authentication",
+    "n_items": 10
+  },
+  {
+    "name": "Machine Learning",
+    "slug": "machine-learning",
+    "n_items": 8
+  },
+  {
+    "name": "Maps",
+    "slug": "maps",
+    "n_items": 13
+  },
+  {
+    "name": "Math",
+    "slug": "math",
+    "n_items": 1
+  },
+  {
+    "name": "Medical",
+    "slug": "medical",
+    "n_items": 2
+  },
+  {
+    "name": "Miscellaneous",
+    "slug": "miscellaneous",
+    "n_items": 57
+  },
+  {
+    "name": "Movies",
+    "slug": "movies",
+    "n_items": 4
+  },
+  {
+    "name": "Music",
+    "slug": "music",
+    "n_items": 11
+  },
+  {
+    "name": "Music Discovery",
+    "slug": "music-discovery",
+    "n_items": 3
+  },
+  {
+    "name": "Music Identification",
+    "slug": "music-identification",
+    "n_items": 3
+  },
+  {
+    "name": "Music Lyrics",
+    "slug": "music-lyrics",
+    "n_items": 3
+  },
+  {
+    "name": "Music Stores",
+    "slug": "music-stores",
+    "n_items": 2
+  },
+  {
+    "name": "News Services",
+    "slug": "news-services",
+    "n_items": 7
+  },
+  {
+    "name": "Natural Language Processing",
+    "slug": "natural-language-processing",
+    "n_items": 17
+  },
+  {
+    "name": "Placeholder Images",
+    "slug": "placeholder-images",
+    "n_items": 4
+  },
+  {
+    "name": "Places",
+    "slug": "places",
+    "n_items": 8
+  },
+  {
+    "name": "Product",
+    "slug": "product",
+    "n_items": 1
+  },
+  {
+    "name": "Quotes",
+    "slug": "quotes",
+    "n_items": 7
+  },
+  {
+    "name": "Retail",
+    "slug": "retail",
+    "n_items": 1
+  },
+  {
+    "name": "Science",
+    "slug": "science",
+    "n_items": 5
+  },
+  {
+    "name": "Screenshots",
+    "slug": "screenshots",
+    "n_items": 3
+  },
+  {
+    "name": "Social Media",
+    "slug": "social-media",
+    "n_items": 36
+  },
+  {
+    "name": "Source Control",
+    "slug": "source-control",
+    "n_items": 7
+  },
+  {
+    "name": "Sport",
+    "slug": "sport",
+    "n_items": 11
+  },
+  {
+    "name": "Test Data",
+    "slug": "test-data",
+    "n_items": 2
+  },
+  {
+    "name": "Transportation",
+    "slug": "transportation",
+    "n_items": 9
+  },
+  {
+    "name": "URL Shorteners",
+    "slug": "url-shorteners",
+    "n_items": 8
+  },
+  {
+    "name": "Videogames",
+    "slug": "videogames",
+    "n_items": 12
+  },
+  {
+    "name": "Weather",
+    "slug": "weather",
+    "n_items": 11
+  },
+  {
+    "name": "Resources For Design and Discovery of APIs",
+    "slug": "resources-for-design-and-discovery-of-apis",
+    "n_items": 4
+  }
+]

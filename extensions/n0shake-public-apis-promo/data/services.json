@@ -1,0 +1,3850 @@
+[
+  {
+    "cat": "Advertising",
+    "name": "Amazon Mobile Ads",
+    "url": "https://developer.amazon.com/mobile-ads",
+    "desc": "Monetize across platforms with multiple ad formats.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Advertising",
+    "name": "Facebook Marketing API",
+    "url": "https://developers.facebook.com/docs/marketing-apis",
+    "desc": "Manage ads and campaigns using the Facebook API.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Advertising",
+    "name": "Google AdSense",
+    "url": "https://developers.google.com/adsense/?hl=en",
+    "desc": "Free, flexible way to earn money from your websites, mobile sites, and site search results.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Advertising",
+    "name": "Google AdWords API",
+    "url": "https://developers.google.com/adwords/api/docs/guides/start",
+    "desc": "Manage Google AdWords campaigns programmatically.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Advertising",
+    "name": "Kevel Ad APIs",
+    "url": "https://dev.kevel.co",
+    "desc": "Build your own ad server with Kevel's ad APIs.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Advertising",
+    "name": "Microsoft Advertising Platform - Bing Ads API",
+    "url": "https://msdn.microsoft.com/en-us/library/bing-ads-api.aspx",
+    "desc": "Provides programmatic access to various advertising technologies.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Advertising",
+    "name": "Yahoo Gemini API",
+    "url": "https://developer.yahoo.com/gemini/",
+    "desc": "Allows advertisers to manage complex Gemini accounts and campaigns more efficiently.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Analytics",
+    "name": "Amazon Mobile Analytics",
+    "url": "https://aws.amazon.com/documentation/mobileanalytics/",
+    "desc": "Service for collecting, visualizing, and understanding app usage data at scale.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Analytics",
+    "name": "Clicky",
+    "url": "https://clicky.com/help/api",
+    "desc": "Allows you to extract your website's traffic data into several formats, making it easy to integrate, analyze, or store your data within your own application.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Analytics",
+    "name": "Companies taking action",
+    "url": "https://ditchcarbon.com/free-sbti-api-access/",
+    "desc": "API access to the \"companies taking action\" list from SBTI.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Analytics",
+    "name": "DitchCarbon API",
+    "url": "https://docs.ditchcarbon.com/",
+    "desc": "DitchCarbon provides API access to their dataset of company and product carbon emissions disclosures, also includes reccommended actions for each company to decarbonise.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Analytics",
+    "name": "Fabric",
+    "url": "https://firebase.google.com/",
+    "desc": "A platform that helps your mobile team build better apps, understand your users, and grow your business.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Analytics",
+    "name": "Google Analytics",
+    "url": "https://developers.google.com/analytics/?hl=en",
+    "desc": "Google Analytics provides APIs to collect, configure, and report on user-interactions with your online content.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Analytics",
+    "name": "Localytics",
+    "url": "http://docs.localytics.com/dev/query-api.html#query-api",
+    "desc": "Interface to Localytics analytics platform.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Analytics",
+    "name": "Matomo",
+    "url": "https://matomo.org/docs/analytics-api/",
+    "desc": "Matomo is an all-in-one premium web analytics platform designed to give you the most conclusive insights.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Analytics",
+    "name": "MixPanel",
+    "url": "https://developer.mixpanel.com/docs/implement-mixpanel",
+    "desc": "Analytics for mobile and web which helps you analyze the actions people take in your application.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Analytics",
+    "name": "Open Web Analytics",
+    "url": "https://github.com/padams/Open-Web-Analytics/wiki/Data-Access-API",
+    "desc": "Provides a way to request and work with your data outside of the OWA reporting interface.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Analytics",
+    "name": "Ticksel",
+    "url": "https://ticksel.com",
+    "desc": "Friendly website analytics made for humans. Secure and powerful yet simple to use.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Analytics",
+    "name": "Woopra",
+    "url": "https://www.woopra.com/docs/developer/analytics-api/",
+    "desc": "Real-time website analysis tool that targets customer engagement.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Analytics",
+    "name": "Zoho Reports API",
+    "url": "https://zohoreportsapi.wiki.zoho.com/",
+    "desc": "Build powerful reporting and analytical capabilities into your application.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Augmented Reality",
+    "name": "Vuforia",
+    "url": "https://library.vuforia.com/",
+    "desc": "Solid SDK with robust development options.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Augmented Reality",
+    "name": "Wikitude",
+    "url": "http://www.wikitude.com/download/",
+    "desc": "Wikitude’s all-in-one AR solution includes image recognition & tracking, 3D model rendering, video overlay, location based AR.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "BarCode",
+    "name": "Dynamic QR Code",
+    "url": "https://rapidapi.com/updeploy-tools/api/qr-code-dynamic-and-static1/details",
+    "desc": "Generate dynamic and static QR Codes.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "BarCode",
+    "name": "Google Barcode",
+    "url": "https://developers.google.com/vision/barcodes-overview?hl=en",
+    "desc": "The Barcode API detects barcodes in real-time, on device, in any orientation. It can also detect multiple barcodes at once.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "BarCode",
+    "name": "EAN-Search",
+    "url": "https://www.ean-search.org/ean-database-api.html",
+    "desc": "The EAN-Search API allows you to lookup products by EAN, UPC or GTIN barcode.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "BarCode",
+    "name": "QR Code API",
+    "url": "https://fungenerators.com/api/qrcode/",
+    "desc": "QR Code REST API. Can create QR code images or read existing images and return the contents.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "BarCode",
+    "name": "QR Code Generator API",
+    "url": "https://docs.openqr.io/",
+    "desc": "Static and Dynamic QR code generator API",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "BarCode",
+    "name": "Stakdek's QR Generator API",
+    "url": "https://api.stakdek.de/blog?id=1006",
+    "desc": "Returns QR code image. Uses `python qrcode`.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Big Data and Analytics",
+    "name": "Google Charts",
+    "url": "https://developers.google.com/chart/interactive/docs/",
+    "desc": "Free tool with a wide range of capabilities for visualizing data from a website.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Big Data and Analytics",
+    "name": "Keen IO",
+    "url": "https://keen.io/docs/api/",
+    "desc": "Keen IO is a powerful, flexible, and scalable solution that’s literally Big Data, easy-to-implement and at your fingertips.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Big Data and Analytics",
+    "name": "Mongo DB",
+    "url": "https://github.com/mongodb",
+    "desc": "mongoDB is ideal for developers who want precise control over the final results and processes for handling Big Data.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Big Data and Analytics",
+    "name": "LinkedData.Center",
+    "url": "http://linkeddata.center/home/gdaas",
+    "desc": "a RDF graph database as a service with W3C SPARQL query and SPARQL update apis.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Cryptocurrency/Crypto Wallets",
+    "name": "Bitcoin",
+    "url": "https://developer.bitcoin.org/",
+    "desc": "Find useful resources, guides and reference material for developers.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Cryptocurrency/Crypto Wallets",
+    "name": "Bitcoincharts",
+    "url": "https://bitcoincharts.com/about/markets-api/",
+    "desc": "You can use this API to include markets data in your websites, mobile apps or desktop applets.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Cryptocurrency/Crypto Wallets",
+    "name": "bitpay",
+    "url": "https://bitpay.com/developers",
+    "desc": "A simple, RESTful API to the most powerful bitcoin infrastructure on the planet.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Cryptocurrency/Crypto Wallets",
+    "name": "Block",
+    "url": "https://block.io/",
+    "desc": "The most versatile and secure wallet for all your coins.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Cryptocurrency/Crypto Wallets",
+    "name": "BlockCypher",
+    "url": "https://www.blockcypher.com/",
+    "desc": "BlockCypher is the infrastructure fabric for blockchain applications.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Cryptocurrency/Crypto Wallets",
+    "name": "BlockFacts.io",
+    "url": "https://blockfacts.io/",
+    "desc": "Compliance-first digital asset data with REST and WebSocket API support. Real-time cryptocurrency data from multiple exchanges via a single unified API. SDKs for integration, rich historic tick data.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Cryptocurrency/Crypto Wallets",
+    "name": "Coinbase",
+    "url": "https://developers.coinbase.com/",
+    "desc": "Coinbase APIs and developer tools make building bitcoin and blockchain apps much easier.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Cryptocurrency/Crypto Wallets",
+    "name": "CoinDesk",
+    "url": "http://www.coindesk.com/api/",
+    "desc": "Bitcoin Price Index.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Cryptocurrency/Crypto Wallets",
+    "name": "Coingecko",
+    "url": "https://coingecko.com/en/api",
+    "desc": "Free and Public Cryptocurrency API which you can use without an API key.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Cryptocurrency/Crypto Wallets",
+    "name": "Coinlore",
+    "url": "https://www.coinlore.com/cryptocurrency-data-api",
+    "desc": "Cryptocurrency tick data API.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Cryptocurrency/Crypto Wallets",
+    "name": "CoinMarketCap",
+    "url": "https://coinmarketcap.com/api/",
+    "desc": "Cryptocurrencies Prices.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Cryptocurrency/Crypto Wallets",
+    "name": "coinpaprika",
+    "url": "https://api.coinpaprika.com",
+    "desc": "Cryptocurrencies prices, market capitalization, volume and more.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Cryptocurrency/Crypto Wallets",
+    "name": "CryptoCompare",
+    "url": "https://www.cryptocompare.com/api",
+    "desc": "Cryptocurrencies Comparison.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Cryptocurrency/Crypto Wallets",
+    "name": "Cryptonator",
+    "url": "https://www.cryptonator.com/api/",
+    "desc": "Cryptocurrencies Exchange Rates.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Cryptocurrency/Crypto Wallets",
+    "name": "Coinigy",
+    "url": "https://coinigy.docs.apiary.io",
+    "desc": "Interact with Coinigy Accounts and Exchange Accounts Directly.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Cryptocurrency/Crypto Wallets",
+    "name": "Covalent",
+    "url": "https://www.covalenthq.com/docs/api/",
+    "desc": "Multi-blockchain data aggregator at one unified API.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Cryptocurrency/Crypto Wallets",
+    "name": "Exchange Rates API",
+    "url": "https://blockchain.info/api/exchange_rates_api",
+    "desc": "Market Prices and exchanges rates api.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Cryptocurrency/Crypto Wallets",
+    "name": "PENDAX",
+    "url": "https://github.com/CompendiumFi/PENDAX-SDK",
+    "desc": "Javascript SDK for Trading, Data, and Websockets for FTX, FTXUS, OKX, Bybit, & More.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Cryptocurrency/Crypto Wallets",
+    "name": "Poloniex",
+    "url": "https://poloniex.com/support/api/",
+    "desc": "US based digital asset exchange.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Cryptocurrency/Crypto Wallets",
+    "name": "ShapeShift.io",
+    "url": "https://shapeshift.io/",
+    "desc": "Exchange between cryptocurrencies without an account. Well documented API for easy use.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Cryptocurrency/Crypto Wallets",
+    "name": "Technical Analysis",
+    "url": "https://technical-analysis-api.com",
+    "desc": "Cryptocurrency prices, technical analysis and sentiment detection.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Calendar",
+    "name": "CalendarIndex",
+    "url": "https://www.calendarindex.com",
+    "desc": "Worldwide Holidays and Working Days API.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Calendar",
+    "name": "DigiDates API",
+    "url": "https://digidates.de/en/",
+    "desc": "Rest API for date and time calculations.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Calendar",
+    "name": "Holiday API",
+    "url": "https://holidayapi.pl/",
+    "desc": "Public holiday API service for several supported countries.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Calendar",
+    "name": "OpenHolidays API",
+    "url": "https://www.openholidaysapi.org/",
+    "desc": "Public and school holidays for European countries via an open REST API.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Captcha",
+    "name": "Anti-Captcha",
+    "url": "https://anti-captcha.com/apidoc",
+    "desc": "Access to Anti-Captcha’s API.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Captcha",
+    "name": "ProxyCrawl",
+    "url": "https://proxycrawl.com",
+    "desc": "Crawl and scrape websites without the need for proxies, infrastructure or browsers. We solve captchas for you and prevent you being blocked while speeding up your development.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Captcha",
+    "name": "Google reCAPTCHA",
+    "url": "https://developers.google.com/recaptcha/intro?hl=en",
+    "desc": "ReCAPTCHA lets you embed a CAPTCHA in your web pages in order to protect them against spam and other types of automated abuse.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Check-In",
+    "name": "Facebook Check-In",
+    "url": "https://developers.facebook.com/docs/graph-api/reference/v2.3/checkin",
+    "desc": "A check-in made to a location-based Page.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Check-In",
+    "name": "Google Places",
+    "url": "https://developers.google.com/places/?hl=en",
+    "desc": "Access to Google Places’ API.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Check-In",
+    "name": "Foursquare Check-In",
+    "url": "https://developer.foursquare.com/reference/v2-checkins-add",
+    "desc": "Allows you to check in to a place.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Commerce",
+    "name": "Commerce Layer",
+    "url": "https://docs.commercelayer.io/api/",
+    "desc": "Commerce Layer is a headless commerce platform that lets you add global ecommerce capabilities to any website, mobile app, chatbot, or IoT device, with ease. Using the language, CMS, and tools you already master and love.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Commerce",
+    "name": "envoice",
+    "url": "https://www.envoice.in/reference/api/docs",
+    "desc": "Invoicing for online businesses. Simplify your invoicing process and get paid online with a debit or credit card via your payment gateway.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Commerce",
+    "name": "koomalooma",
+    "url": "http://business.koomalooma.com",
+    "desc": "A Loyalty BPaaS (Business Process as a Service) for mobile and web companies. Merchants issue points for actions their customers/users make, for example a purchase or a referral. koomalooma takes care of all the rest, from signing up users, keeping track of points and delivering rewards in over 80 countries.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Commerce",
+    "name": "Moltin",
+    "url": "https://www.moltin.com/developers",
+    "desc": "Unified APIs for inventory, carts, the checkout process, payments and more, so you can focus on creating seamless customer experiences at any scale.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Commerce",
+    "name": "Stripe",
+    "url": "https://stripe.com/docs/api",
+    "desc": "Allows both private individuals and businesses to accept payments over the Internet.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Commerce",
+    "name": "Repetiti",
+    "url": "https://developers.repetiti.com",
+    "desc": "Repetiti 3d Printer Management Service, access and control 3d Printers easily.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Commerce",
+    "name": "Braintree",
+    "url": "https://developers.braintreepayments.com",
+    "desc": "Specializes in mobile and web payment systems for ecommerce companies.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Commerce",
+    "name": "Yellow Pages API",
+    "url": "https://github.com/Hrushi11/Yellow-Pages-End-API",
+    "desc": "Get data for all categories of businesses in any city of the US.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Communication",
+    "name": "Africa's Talking",
+    "url": "https://africastalking.com/",
+    "desc": "Access African telco services through a HTTP API.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Communication",
+    "name": "iP1sms",
+    "url": "https://www.ip1sms.com/en/developer/",
+    "desc": "Send and receive SMS messages worldwide.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Communication",
+    "name": "Eqivo",
+    "url": "https://eqivo.org",
+    "desc": "Telephony/Programmable-Voice API platform.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Communication",
+    "name": "MailGun",
+    "url": "https://mailgun.com",
+    "desc": "Transactional Email API Service For Developers. Free first 10000 emails per month.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Communication",
+    "name": "Nexmo",
+    "url": "https://developer.nexmo.com",
+    "desc": "Make and receive phone calls, send and receive SMS worldwide. Libraries in Node, Ruby, Java, PHP, .NET & Python.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Communication",
+    "name": "Sakari",
+    "url": "https://developer.sakari.io",
+    "desc": "Send and Receive SMS to over 200+ countries around the world. Send one or one million messages from a single API call.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Communication",
+    "name": "Telnyx",
+    "url": "https://developers.telnyx.com/",
+    "desc": "Build Voice, SMS, Fax, Networking and Cellular IoT applications on a private, purpose-built global communications network.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Communication",
+    "name": "The SMS Works",
+    "url": "https://thesmsworks.co.uk/sms-api",
+    "desc": "The SMS Works provides a low-cost, reliable SMS API for developers. Pay only for delivered texts, all failed messages are refunded.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Communication",
+    "name": "Twilio",
+    "url": "https://www.twilio.com/solutions",
+    "desc": "APIs for SMS, Voice, Video and more.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Content",
+    "name": "Bible",
+    "url": "https://github.com/wldeh/bible-api",
+    "desc": "Lightning-fast Bible API, featuring support for over 200+ translations and counting.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Content",
+    "name": "Bible",
+    "url": "https://bible-api.com/",
+    "desc": "JSON API for public domain and open bible translations.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Content",
+    "name": "Fruits API",
+    "url": "https://github.com/Franqsanz/fruits-api",
+    "desc": "API GraphQL with information on fruit trees of the world.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Content",
+    "name": "Jokes",
+    "url": "https://jokes.one/api/joke/",
+    "desc": "Full featured Jokes API",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Content",
+    "name": "Perfect Tense API",
+    "url": "https://www.perfecttense.com/developers",
+    "desc": "The Perfect Tense API is the only spelling and grammar checking API that uses artificial intelligence to correct all of your text automatically in one call.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Content",
+    "name": "qKast Channel Content",
+    "url": "https://github.com/egfx/qKast",
+    "desc": "Access live content collections sourced from any page around the web.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Content",
+    "name": "Random Data Generator",
+    "url": "https://randommer.io/randommer-api",
+    "desc": "API Generator for telephones, text, numbers, passwords, names, social security numbers, and cards.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Content",
+    "name": "Random Facts",
+    "url": "https://fungenerators.com/api/facts/",
+    "desc": "Random Facts API",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Content",
+    "name": "SLF",
+    "url": "https://github.com/slftool/slftool.github.io/blob/master/API.md",
+    "desc": "German city, country, river, database.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Content",
+    "name": "Today in History",
+    "url": "https://history.muffinlabs.com/",
+    "desc": "Daily historical events, births and deaths API.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Content",
+    "name": "Wikipedia",
+    "url": "https://en.wikipedia.org/w/api.php",
+    "desc": "Free multilingual Encyclopedia.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Currency",
+    "name": "1Forge.com",
+    "url": "https://1forge.com/",
+    "desc": "Real-time forex and crypto quotes via [JSON](https://en.wikipedia.org/wiki/JSON) and WebSocket.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Currency",
+    "name": "Coingecko.com",
+    "url": "https://www.coingecko.com/en/api",
+    "desc": "Free, comprehensive cryptocurrency API.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Currency",
+    "name": "Currency-api",
+    "url": "https://github.com/fawazahmed0/currency-api#readme",
+    "desc": "Free Currency Exchange Rates API with 150+ Currencies & No Rate Limits.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Currency",
+    "name": "CurrencyLayer.com",
+    "url": "https://currencylayer.com/documentation",
+    "desc": "Exchange rates and currency conversion API.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Currency",
+    "name": "CurrencyScoop.com",
+    "url": "https://currencyscoop.com/",
+    "desc": "Real-time and historical currency rates [JSON](https://en.wikipedia.org/wiki/JSON) API.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Currency",
+    "name": "Ecb.europa.eu",
+    "url": "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml",
+    "desc": "Free currency exchange rates from european central bank(personal use).",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Currency",
+    "name": "ExchangeRate-API.com",
+    "url": "https://www.exchangerate-api.com/docs/overview",
+    "desc": "Currency conversion API.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Currency",
+    "name": "ExchangeRatesAPI.io",
+    "url": "https://exchangeratesapi.io/",
+    "desc": "Foreign exchange rates API with currency conversion.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Currency",
+    "name": "Fixer.io",
+    "url": "http://fixer.io/",
+    "desc": "[JSON](https://en.wikipedia.org/wiki/JSON) API for foreign exchange rates and currency conversion. End of day data only.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Currency",
+    "name": "Frankfurter.app",
+    "url": "https://www.frankfurter.app/docs/",
+    "desc": "Exchange rates and currency data API.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Currency",
+    "name": "OpenRates.io",
+    "url": "http://www.openrates.io/",
+    "desc": "Live exchange rates and currency conversion API.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Currency",
+    "name": "ratesapi.io",
+    "url": "https://ratesapi.io/",
+    "desc": "Free foreign currency exchange rates and currency conversion.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Design",
+    "name": "Dribbble",
+    "url": "http://developer.dribbble.com/",
+    "desc": "Dribbble is a community of designers answering that question each day.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Design",
+    "name": "Icon Horse",
+    "url": "https://icon.horse/usage",
+    "desc": "Get the favicon logo for any web address, customizable and complete with a fallback if it fails.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Design",
+    "name": "Pexels",
+    "url": "https://www.pexels.com/api/",
+    "desc": "Pexels provides high quality and completely free stock photos licensed under the Creative Commons Zero (CC0) license.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Design",
+    "name": "PHP-Noise",
+    "url": "https://php-noise.com/",
+    "desc": "Noise background image generator api with various parameters.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Dictionary",
+    "name": "Agarathi",
+    "url": "https://agarathi.com/api/dictionary",
+    "desc": "Tamil language Dictionary API.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Dictionary",
+    "name": "Cambridge Dictionaries Online",
+    "url": "http://dictionary.cambridge.org/license.html",
+    "desc": "Access to Cambridge’s custom-developed API.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Dictionary",
+    "name": "Datamuse API",
+    "url": "https://www.datamuse.com/api/",
+    "desc": "Word-finding query engine that finds words that match a given set of constraints and that are likely in a given context.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Dictionary",
+    "name": "Free Dictionary API",
+    "url": "https://dictionaryapi.dev/",
+    "desc": "Get word definitions for free.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Dictionary",
+    "name": "Lingua Robot API",
+    "url": "https://www.linguarobot.io/",
+    "desc": "Definition of words, pronunciations, synonyms and antonyms, lemmatization and morpheme segmentation.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Dictionary",
+    "name": "Merriam-Webster Dictionary API",
+    "url": "http://www.dictionaryapi.com/",
+    "desc": "Gives developers access to a big ass resource of dictionary and thesaurus content as well as specialized medical, Spanish, ESL, and student-friendly vocabulary.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Dictionary",
+    "name": "Oxford Dictionary API",
+    "url": "https://developer.oxforddictionaries.com/",
+    "desc": "Access to Oxford Dictionary services with several different subscription options including a free tier.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Dictionary",
+    "name": "Wordnik",
+    "url": "http://developer.wordnik.com/docs.html#!/word",
+    "desc": "Dictionary functions.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Dictionary",
+    "name": "Words API",
+    "url": "https://www.wordsapi.com/",
+    "desc": "Use it to find definitions for more than 150,000 words.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Dictionary",
+    "name": "Wiktionary API",
+    "url": "https://en.wiktionary.org/w/api.php",
+    "desc": "Collaborative, free-content multilingual dictionary.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Entertainment",
+    "name": "Anilist",
+    "url": "https://anilist.gitbook.io/anilist-apiv2-docs/",
+    "desc": "Free Graphql api for thousands of animes, mangas, characters and staff",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Entertainment",
+    "name": "Bob's Burgers API",
+    "url": "https://www.bobsburgersapi.com/documentation",
+    "desc": "Get data for hundreds of characters, episodes, running gags, and images from the show.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Entertainment",
+    "name": "Breaking Bad & Better Call Saul API",
+    "url": "https://breakingbadapi.com/documentation",
+    "desc": "Get data about characters, episodes, quotes, and deaths.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Entertainment",
+    "name": "Buffy the Vampire Slayer and Angel API",
+    "url": "https://github.com/Thatskat/btvs-angel-api",
+    "desc": "Get episode, cast and crew data from Buffy the Vampire Slayer and Angel",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Entertainment",
+    "name": "Cat as a Service (CATAAS)",
+    "url": "https://cataas.com/#/",
+    "desc": "Is a REST API to spread peace and love (or not) thanks to cats.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Entertainment",
+    "name": "Comic Vine",
+    "url": "http://comicvine.gamespot.com/api/",
+    "desc": "An extremely mature, well organized and continually updated resource of comic information.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Entertainment",
+    "name": "Comichron Data",
+    "url": "https://github.com/comichron-data/api",
+    "desc": "API for comic sales data from comichron.com.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Entertainment",
+    "name": "Danbooru",
+    "url": "https://danbooru.donmai.us/posts?tags=help%3Aapi",
+    "desc": "Get images categorized by tags.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Entertainment",
+    "name": "Dune",
+    "url": "https://github.com/ywalia01/dune-api",
+    "desc": "A simple API which provides you with book, character, movie and quotes JSON data.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Entertainment",
+    "name": "Final Space API",
+    "url": "https://finalspaceapi.com/docs/",
+    "desc": "A RESTful API that provides information and images about the Final Space show.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Entertainment",
+    "name": "Fun Translations API",
+    "url": "https://funtranslations.com/api/",
+    "desc": "Translate to over 50+ languages from various TV Series and Movies.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Entertainment",
+    "name": "Jandapress API",
+    "url": "https://github.com/sinkaroid/jandapress",
+    "desc": "A doujinshi API with gather in mind.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Entertainment",
+    "name": "Lord of the Rings API",
+    "url": "https://the-one-api.dev/documentation",
+    "desc": "Get data about the books, the movie trilogy, many characters and quotes.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Entertainment",
+    "name": "Lustpress API",
+    "url": "https://github.com/sinkaroid/lustpress",
+    "desc": "Porn videos API that gather from popular adult sites.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Entertainment",
+    "name": "Marvel",
+    "url": "https://developer.marvel.com/",
+    "desc": "Access over 70 years of comic data with Marvel's official developer API.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Entertainment",
+    "name": "My Anime List API",
+    "url": "https://jikan.moe/",
+    "desc": "Get data about any specific anime or anime genre of your choice.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Entertainment",
+    "name": "Nick Cannon Baby API",
+    "url": "https://nick-cannon-baby-api.onrender.com/",
+    "desc": "JSON API for entertainer Nick Cannon's many children and baby mamas.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Entertainment",
+    "name": "Owen Wilson Wow API",
+    "url": "https://owen-wilson-wow-api.onrender.com/",
+    "desc": "JSON API for actor Owen Wilson's \"wow\" exclamations in movies.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Entertainment",
+    "name": "Pokéapi",
+    "url": "https://pokeapi.co/",
+    "desc": "All the Pokémon data you'll ever need, in one place.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Entertainment",
+    "name": "Rick and Morty",
+    "url": "https://rickandmortyapi.com/",
+    "desc": "All the Rick and Morty information, including images.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Entertainment",
+    "name": "Riddles API",
+    "url": "https://riddles-api.vercel.app/",
+    "desc": "An API to get random riddles",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Entertainment",
+    "name": "Star Trek API (STAPI)",
+    "url": "https://stapi.co/api-documentation",
+    "desc": "STAPI, a Star Trek API.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Entertainment",
+    "name": "Star Wars API (SWAPI)",
+    "url": "https://www.swapi.tech/",
+    "desc": "All things Star Wars, based on Wookpedia and other sources. Reboot of original swapi.co, guaranteed to be maintained.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Entertainment",
+    "name": "Studio Ghibli",
+    "url": "https://ghibliapi.vercel.app/",
+    "desc": "Resources from Studio Ghibli films.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Entertainment",
+    "name": "StockX API",
+    "url": "https://stockx.vlour.me/",
+    "desc": "Unofficial API listing 150k+ sneakers and fashion products with daily-updated prices.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Entertainment",
+    "name": "TCGdex",
+    "url": "https://www.tcgdex.dev/",
+    "desc": "A Multilanguage Pokémon TCG Database with Cards Pictures and most of the information contained on the cards.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Events",
+    "name": "Picatic",
+    "url": "http://developer.picatic.com/?utm_medium=web&utm_source=github&utm_campaign=public-apis%20repo&utm_content=abhishekbanthia",
+    "desc": "Sell tickets directly from your app or website.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Face Recognition",
+    "name": "Kairos",
+    "url": "https://www.kairos.com/",
+    "desc": "Face recognition, emotion analysis and measuring engagement of people in images or videos for any mobile or web application. 30 Day Trial",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Face Recognition",
+    "name": "Skybiometry",
+    "url": "https://www.skybiometry.com",
+    "desc": "Face detection, emotional analysis, face grouping, recognition service and tagging the photo.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "File Storage and Manipulation",
+    "name": "Amazon S3",
+    "url": "https://aws.amazon.com/de/documentation/s3/",
+    "desc": "API that provides access to stored files and can be added easily to any service - and it's free for twelve months.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "File Storage and Manipulation",
+    "name": "Cloudinary",
+    "url": "http://cloudinary.com/documentation",
+    "desc": "API for image and video storage and manipulation - free for up to 75,000 images and 7,500 manipulations per month, good documentation. It can also manipulate GIFs and PDFs.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "File Storage and Manipulation",
+    "name": "DigitalOcean Spaces",
+    "url": "https://www.digitalocean.com/products/spaces",
+    "desc": "API that provides easy access to store and receive files as simple object storage with easy to understand pricing. 2 Month Free Trial",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "File Storage and Manipulation",
+    "name": "Dropbox",
+    "url": "https://www.dropbox.com/developers",
+    "desc": "API for accessing stored files and pictures which is easy to use and free for small amounts of data.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "File Storage and Manipulation",
+    "name": "Filestack",
+    "url": "https://filestack.com/docs/",
+    "desc": "API for image and file manipulation, 250 uploads and 500 uploads per month for free, free CDN, HTML widget.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "File Storage and Manipulation",
+    "name": "Microsoft Graph",
+    "url": "https://graph.microsoft.io/en-us/docs/api-reference/v1.0/resources/onedrive",
+    "desc": "API for accessing stored files and photos for personal and enterprise users with high resolution thumbnails and Microsoft Office APIs.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "File Storage and Manipulation",
+    "name": "PDF Blocks",
+    "url": "https://www.pdfblocks.com/docs/api/getting-started",
+    "desc": "API for working with PDF documents (merge, add password, watermark, and more). Well documented, easy to use. 14-day free trial.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "File Storage and Manipulation",
+    "name": "SignNow API – eSign API by airSlate",
+    "url": "https://docs.signnow.com/docs/signnow/welcome",
+    "desc": "Embed branded eSignature workflows in your app and quickly customize them to your user needs.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "File Storage and Manipulation",
+    "name": "Smash",
+    "url": "https://api.fromsmash.com/",
+    "desc": "Smash API & SDK to upload large files on websites, mobile apps, SaaS solutions and custom workflows.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "File Storage and Manipulation",
+    "name": "Vector Express",
+    "url": "https://github.com/smidyo/vectorexpress-api",
+    "desc": "API for converting, processing and analyzing vector files.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "File Storage and Manipulation",
+    "name": "Verizon Cloud",
+    "url": "http://www.verizon.com/cloudstorageapi",
+    "desc": "API for accessing stored pictures and other files stored by users of Verizon Cloud app.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "File Storage and Manipulation",
+    "name": "Vertopal",
+    "url": "https://www.vertopal.com/en/developer/api/introduction",
+    "desc": "The Vertopal API lets you convert files to a variety of formats.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Finance",
+    "name": "Alpha Vantage",
+    "url": "https://www.alphavantage.co/",
+    "desc": "Y Combinator backed API provider for stock, ETF, mutual fund, forex, and crypto data. There is also a 2000+ star [Python wrapper](https://github.com/RomelTorres/alpha_vantage) for it on GitHub.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Finance",
+    "name": "Atom Finance",
+    "url": "https://docs.atom.finance/",
+    "desc": "Atom Finance provides access to market, earnings and news data.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Finance",
+    "name": "IEX",
+    "url": "https://iextrading.com/developer/",
+    "desc": "Free Stocks and Market Data.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Finance",
+    "name": "Twelve Data",
+    "url": "https://twelvedata.com/docs/",
+    "desc": "Stock market data (real-time & historical).",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Finance",
+    "name": "Australia",
+    "url": "https://www.rba.gov.au/statistics/tables/",
+    "desc": "Plenty of kinds of data in [CSV](https://en.wikipedia.org/wiki/Comma-separated_values) format.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Finance",
+    "name": "Canada",
+    "url": "https://www.bankofcanada.ca/rates/",
+    "desc": "Daily exchange rates and statistical data tables in [CSV](https://en.wikipedia.org/wiki/Comma-separated_values), [XML](https://en.wikipedia.org/wiki/XML) or [JSON](https://en.wikipedia.org/wiki/JSON) formats.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Finance",
+    "name": "Exchange Rates",
+    "url": "https://exchangeratesapi.io/",
+    "desc": "Foreign exchange rates API with currency conversion. [JSON](https://en.wikipedia.org/wiki/JSON) & [CORS](https://en.wikipedia.org/wiki/Cross-origin_resource_sharing).",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Finance",
+    "name": "IBANAPI",
+    "url": "https://ibanapi.com/get-api",
+    "desc": "Validate IBAN number & get bank account from it.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Finance",
+    "name": "Ireland",
+    "url": "https://data.gov.ie/data/search?publisher=central-bank-of-ireland",
+    "desc": "Variety of data mainly in [XLS](https://en.wikipedia.org/wiki/Microsoft_Excel#File_formats) format.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Finance",
+    "name": "Myanmar",
+    "url": "http://forex.cbm.gov.mm/api/",
+    "desc": "Currency exchange rates in [JSON](https://en.wikipedia.org/wiki/JSON) format.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Finance",
+    "name": "Moldova",
+    "url": "https://bnm.md/en/content/official-exchange-rates",
+    "desc": "Currency exchange rates in [XML](https://en.wikipedia.org/wiki/XML), [JSON](https://en.wikipedia.org/wiki/JSON) and [XLS](https://en.wikipedia.org/wiki/Microsoft_Excel#File_formats) formats.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Finance",
+    "name": "New Zealand",
+    "url": "https://www.rbnz.govt.nz/statistics",
+    "desc": "Variety of data in [XLS](https://en.wikipedia.org/wiki/Microsoft_Excel#File_formats) format.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Finance",
+    "name": "Nigeria",
+    "url": "https://www.cbn.gov.ng/rates/",
+    "desc": "Exchange rates and other info in [CSV](https://en.wikipedia.org/wiki/Comma-separated_values) format",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Finance",
+    "name": "Parqet Logo API",
+    "url": "https://developers.parqet.com/docs/assets/logos",
+    "desc": "Free Company Logo API for 400k+ stocks, ETF, mutual funds, crypto and more in [SVG](https://en.wikipedia.org/wiki/Microsoft_Excel#File_formats), [PNG](https://de.wikipedia.org/wiki/Portable_Network_Graphics) and [JPG](https://de.wikipedia.org/wiki/JPEG) format.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Finance",
+    "name": "Peru",
+    "url": "https://estadisticas.bcrp.gob.pe/estadisticas/series/ayuda/api",
+    "desc": "Variety of data in [XLSX](https://en.wikipedia.org/wiki/Microsoft_Excel#File_formats) format.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Finance",
+    "name": "Poland",
+    "url": "https://api.nbp.pl",
+    "desc": "Currency exchange rates and gold prices in the [XML](https://en.wikipedia.org/wiki/XML) and [JSON](https://en.wikipedia.org/wiki/JSON) formats.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Finance",
+    "name": "Russian Federation",
+    "url": "https://www.cbr.ru/development/",
+    "desc": "History of exchange rates via REST [XML](https://en.wikipedia.org/wiki/XML) and far more macroeconomical info via SOAP.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Finance",
+    "name": "Switzerland",
+    "url": "https://data.snb.ch/en",
+    "desc": "Rich variety of data in [XLS](https://en.wikipedia.org/wiki/Microsoft_Excel#File_formats) and [CSV](https://en.wikipedia.org/wiki/Comma-separated_values) formats.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Finance",
+    "name": "Ukraine",
+    "url": "https://bank.gov.ua/control/en/publish/article?art_id=25365630",
+    "desc": "Exchange rates and bond placements in [JSON](https://en.wikipedia.org/wiki/JSON) and [XML](https://en.wikipedia.org/wiki/XML) formats.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Finance",
+    "name": "Portfolio Optimizer",
+    "url": "https://portfoliooptimizer.io/",
+    "desc": "API for investment portfolio optimization.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Fitness",
+    "name": "FitBit",
+    "url": "https://dev.fitbit.com/build/reference/",
+    "desc": "Web API for accessing data from Fitbit activity trackers, Aria scale, and manually entered logs.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Fitness",
+    "name": "HealthGraph",
+    "url": "https://runkeeper.com/developer/healthgraph/registration-authorization",
+    "desc": "RunKeeper's web-based HealthGraph API presents Health Graph data, and provides information about a user and friends.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Fitness",
+    "name": "Open Food Facts",
+    "url": "https://en.wiki.openfoodfacts.org/API",
+    "desc": "Open Food Facts is a database of food products with ingredients, allergens, nutrition facts and all the tidbits of information we can find on product labels.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Fitness",
+    "name": "Strava",
+    "url": "https://strava.github.io/api/",
+    "desc": "API for accessing and managing data about athletes, activities and segments.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Fitness",
+    "name": "VeganCheck",
+    "url": "https://jokenetwork.de/vegancheck-api",
+    "desc": "API that provides a couple of information about a food or non-food product based on its EAN/UPC code.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Fitness",
+    "name": "Withings",
+    "url": "http://oauth.withings.com/api",
+    "desc": "Access to data from Withings activity trackers and body measures.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Google",
+    "name": "Gmail API",
+    "url": "https://developers.google.com/gmail/api/?hl=en",
+    "desc": "The Gmail REST API. _v1_",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Google",
+    "name": "Google BigQuery API",
+    "url": "https://cloud.google.com/bigquery/docs/reference/rest/v2/",
+    "desc": "A data platform for customers to create, manage, share and query data. _v2_",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Google",
+    "name": "Google Books API",
+    "url": "https://developers.google.com/books/",
+    "desc": "Lets you search for books and manage your Google Books library. _v1_",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Google",
+    "name": "Google Calendar API",
+    "url": "https://developers.google.com/google-apps/calendar/?hl=en",
+    "desc": "Lets you manipulate events and other calendar data. _v3_",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Google",
+    "name": "Google Classroom API",
+    "url": "https://developers.google.com/classroom/?hl=en",
+    "desc": "The Google Classroom API. _v1_",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Google",
+    "name": "Google CustomSearch API",
+    "url": "https://developers.google.com/custom-search/json-api/v1/overview",
+    "desc": "Lets you search over a website or collection of websites. _v1_",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Google",
+    "name": "Google Drive API",
+    "url": "https://developers.google.com/drive/v2/reference/",
+    "desc": "The API to interact with Google Drive. _v3_",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Google",
+    "name": "Google Fitness API",
+    "url": "https://developers.google.com/fit/?hl=en",
+    "desc": "The Fit API. _v1_",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Google",
+    "name": "The Google Fonts Developer API.",
+    "url": "https://developers.google.com/fonts/?hl=en",
+    "desc": "The Google Fonts API helps you add fonts to any web page. _v1_",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Google",
+    "name": "Google Genomics API",
+    "url": "https://cloud.google.com/genomics/reference/rest/",
+    "desc": "Provides access to Genomics data. _v1beta2_",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Google",
+    "name": "Google Identity Toolkit API.",
+    "url": "https://developers.google.com/identity/",
+    "desc": "Helps third party sites implement federated login. _v1_",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Google",
+    "name": "Google Monitoring API",
+    "url": "https://cloud.google.com/monitoring/api/v3/",
+    "desc": "API for accessing Google Cloud and API monitoring data. _v2beta2_",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Identity Verification",
+    "name": "BlockScore",
+    "url": "https://docs.blockscore.com/",
+    "desc": "A real-time API for verifying an identity by name, address, date of birth, and social security number.",
+    "open_trial": "Unknown",
+    "level": 1
+  },
+  {
+    "cat": "Identity Verification",
+    "name": "Cognito",
+    "url": "https://cognitohq.com/docs",
+    "desc": "A powerful API for verifying and retrieving identity information. Can take a customer's cellphone number and return name, address history, full SSN, and date of birth.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Identity Verification",
+    "name": "Whitepages Pro",
+    "url": "https://pro.whitepages.com/",
+    "desc": "Global Identity Verification API. Get a clearer picture of your customer. Instantly know if a name, address, phone number, email, and IP all belong to the same person. Every country in the world is supported.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Image Moderation",
+    "name": "WebPurify",
+    "url": "https://www.webpurify.com/image-moderation/",
+    "desc": "Provides live image moderation by humans. Free for the first 100 images. 2¢ per image after.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "IoT",
+    "name": "Ably",
+    "url": "https://www.ably.com/documentation",
+    "desc": "API for making cross-protocol real time communication between devices easy.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "IoT",
+    "name": "Particle",
+    "url": "https://docs.particle.io/reference/api/",
+    "desc": "API to manage Particle devices (including their own Arduino-compatible ones and the Raspberry Pi) and control them. Free for up to 25 devices and 250k events/month.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "IoT",
+    "name": "PubNub",
+    "url": "https://www.pubnub.com/docs",
+    "desc": "API to make real time applications with a variety of hardware devices including Arduino, RPi, Kinoma, Atmel, Samsung Smart TV WebOS, and more.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "IoT",
+    "name": "Philips Hue",
+    "url": "https://developers.meethue.com/documentation/getting-started",
+    "desc": "Registration (free) and local Hue Bridge (not free) required - Control Hue brand lights made by Philips. API calls are made to the Hue Bridge residing on the local network. Includes a web based UI.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "IoT",
+    "name": "SmartThings",
+    "url": "http://developer.smartthings.com/",
+    "desc": "API for Samsung SmartThings Smart Home Hub products (ZigBee, Z-Wave, IP).",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "IoT",
+    "name": "Temboo SDK",
+    "url": "https://temboo.com/download",
+    "desc": "This platform acts as a layer on top of third-party APIs, using code snippets to trigger complex processes that run through their cloud platform.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "IoT",
+    "name": "ThingSpeak",
+    "url": "https://github.com/iobridge/ThingSpeak",
+    "desc": "“Internet of Things” application and API to store and retrieve data from things using HTTP over the Internet or via a Local Area Network.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "IoT",
+    "name": "Xively",
+    "url": "https://developer.xively.com/reference",
+    "desc": "Uses free and open libraries to let you connect different types of hardware, using a variety of languages to their cloud service.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "IoT",
+    "name": "Zetta",
+    "url": "https://github.com/zettajs/zetta/wiki",
+    "desc": "An open source platform built on Node.js for creating IoT servers that run across geo-distributed computers and the cloud.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Legal",
+    "name": "GitHub Licenses API",
+    "url": "https://developer.github.com/v3/licenses/",
+    "desc": "**N/A**",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Legal",
+    "name": "ToSDR Terms Of Service API",
+    "url": "https://tosdr.org/api.html",
+    "desc": "**N/A**",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Login Authentication",
+    "name": "Auth0",
+    "url": "https://auth0.com",
+    "desc": "Authenticate and authorize apps and APIs with any identity provider running on any stack, any device or cloud. Free for 700 active users.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Login Authentication",
+    "name": "Facebook Login for Apps",
+    "url": "https://developers.facebook.com/docs/facebook-login",
+    "desc": "Secure, fast, convenient way to login in your app/website.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Login Authentication",
+    "name": "Firebase",
+    "url": "https://firebase.google.com/docs/reference/",
+    "desc": "Authentication, analytics, cloud messaging, crash reporting, ads and more.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Login Authentication",
+    "name": "GitHub Authentication",
+    "url": "https://developer.github.com/guides/basics-of-authentication/",
+    "desc": "Access to GitHub’s Authentication API.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Login Authentication",
+    "name": "Instagram",
+    "url": "https://developers.facebook.com/docs/instagram-api/overview",
+    "desc": "Access to Instagram’s OAuth API.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Login Authentication",
+    "name": "LinkedIn",
+    "url": "https://developer.linkedin.com/docs/signin-with-linkedin",
+    "desc": "Make it convenient for your users to sign in with their professional identity.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Login Authentication",
+    "name": "PayPal",
+    "url": "https://developer.paypal.com/docs/integration/direct/identity/log-in-with-paypal/",
+    "desc": "Enables your customers to sign in to your website quickly and securely using their PayPal login credentials.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Login Authentication",
+    "name": "Salesforce",
+    "url": "https://developer.salesforce.com/docs/atlas.en-us.api_rest.meta/api_rest/intro_understanding_authentication.htm",
+    "desc": "Salesforce uses the OAuth protocol to allow users of applications to securely access data without having to reveal username and password credentials.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Login Authentication",
+    "name": "Twitter Sign-in",
+    "url": "[https://developer.twitter.com/web/sign-in](https://developer.twitter.com/en/docs/authentication/guides/log-in-with-twitter",
+    "desc": "Works on websites, iOS, mobile and desktop applications.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Login Authentication",
+    "name": "WorkOS",
+    "url": "https://workos.com/docs",
+    "desc": "Support Single Sign-On for common Enterprise Identity Providers (Okta, Azure, OneLogin).",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Machine Learning",
+    "name": "Amazon ML API",
+    "url": "http://docs.aws.amazon.com/machine-learning/latest/APIReference/Welcome.html",
+    "desc": "Amazon Machine Learning API simplifies the process of making predictions that require lots of expertise around model building, data cleansing and statistical analysis.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Machine Learning",
+    "name": "AYLIEN",
+    "url": "http://aylien.com/",
+    "desc": "AYLIEN Text Analysis API is a package of Natural Language Processing, Information Retrieval and Machine Learning tools for extracting meaning and insight from textual and visual content with ease.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Machine Learning",
+    "name": "Big ML",
+    "url": "http://bigml.com/api/",
+    "desc": "BigML is a user-friendly and developer-friendly Machine learning API that mainly concentrates on decision trees.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Machine Learning",
+    "name": "Cloud Machine Learning Engine",
+    "url": "https://cloud.google.com/ml-engine/docs/",
+    "desc": "Cloud-based machine learning and pattern matching tool.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Machine Learning",
+    "name": "Microsoft Azure Machine Learning API",
+    "url": "https://azure.microsoft.com/en-us/services/cognitive-services/",
+    "desc": "Helps data scientists publish in minutes which once used to take days after they had developed a feasible model.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Machine Learning",
+    "name": "ObjectCut",
+    "url": "https://objectcut.com",
+    "desc": "Automatic background removal service powered by AI. From an input image given its public-accessible URL or being the image itself, ObjectCut returns the same image but without background.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Machine Learning",
+    "name": "OVHcloud AI Endpoints",
+    "url": "https://endpoints.ai.cloud.ovh.net/",
+    "desc": "Simplify GenAI & ML integration with secure, ready-to-use APIs.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Machine Learning",
+    "name": "Unplugg",
+    "url": "http://unplu.gg/test_api.html",
+    "desc": "Automated Forecasting API for timeseries data which can be used to forecast energy consumption, temperature, or any other timeseries data which has some seasonality effect.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Maps",
+    "name": "Amazon Maps API v2",
+    "url": "https://developer.amazon.com/maps",
+    "desc": "Add interactive 3D maps, graphics, and custom overlays to your Fire Tablet and Fire phone apps.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Maps",
+    "name": "Bing Maps",
+    "url": "https://www.microsoft.com/maps/choose-your-bing-maps-API.aspx",
+    "desc": "Bing Maps platform provides multiple API options for your application.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Maps",
+    "name": "Cartes.io",
+    "url": "https://github.com/M-Media-Group/Cartes.io/wiki/API",
+    "desc": "Create maps and markers for anything, without authentication.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Maps",
+    "name": "CartoDB",
+    "url": "https://carto.com/developers/#apis",
+    "desc": "Allows you to generate maps based on data hosted in your CartoDB account.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Maps",
+    "name": "Daum Maps API",
+    "url": "http://apis.map.daum.net/",
+    "desc": "Daum Maps provides multiple APIs for the Korean map.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Maps",
+    "name": "Google Maps API",
+    "url": "https://developers.google.com/maps/?hl=en",
+    "desc": "Google Maps APIs are available for Android, iOS, web browsers and through HTTP web services. [Clients can be found here.](https://github.com/googlemaps/)",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Maps",
+    "name": "HERE Maps API",
+    "url": "https://developer.here.com/",
+    "desc": "Wide range of APIs available through JavaScript, iOS, Android, or REST services.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Maps",
+    "name": "Leaflet.js",
+    "url": "http://leafletjs.com/",
+    "desc": "An open-source JavaScript library for mobile-friendly interactive maps.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Maps",
+    "name": "Mapbox",
+    "url": "https://www.mapbox.com/developers/api/maps/",
+    "desc": "Access to MapBox’s API.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Maps",
+    "name": "Open Street Map",
+    "url": "http://wiki.openstreetmap.org/wiki/API",
+    "desc": "API access to OSM.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Maps",
+    "name": "Scribble",
+    "url": "https://www.scribblemaps.com/api/",
+    "desc": "The Scribble Maps API is a cross browser, mobile ready, HTML5/JavaScript, interactive map builder.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Maps",
+    "name": "Yahoo Maps",
+    "url": "https://developer.yahoo.com/maps/",
+    "desc": "Yahoo Maps lets you easily embed rich and interactive maps using your choice of platform.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Maps",
+    "name": "Yandex",
+    "url": "https://tech.yandex.com/maps/",
+    "desc": "API for installing Yandex.Maps and the necessary tools for working it on your web app or site.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Math",
+    "name": "Newton",
+    "url": "https://newton.now.sh/",
+    "desc": "An API for Arithmetic and Symbolic Math.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Medical",
+    "name": "COVID-19 Data",
+    "url": "https://github.com/M-Media-Group/Covid-19-API",
+    "desc": "Get live and historical data regarding Coronavirus cases per country.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Medical",
+    "name": "Infermedica",
+    "url": "https://developer.infermedica.com/docs/introduction",
+    "desc": "AI-based engine for patient triage and preliminary medical diagnosis. _v2_",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Aadhaar Bridge",
+    "url": "https://www.aadhaarbridge.com/",
+    "desc": "Aadhaar is a 12-digit unique identification number issued by the Indian government to every individual resident of India. API allows you to authenticate and perform ekYC and eSign using Aadhar.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Mozilla Addons",
+    "url": "https://addons-server.readthedocs.io/en/latest/topics/api/index.html",
+    "desc": "Mozilla's catalogue of addons for Firefox-compatible web browsers.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Art Institute of Chicago API",
+    "url": "https://api.artic.edu/docs/",
+    "desc": "Allows developers to explore and integrate the Art Institute of Chicago's public data into their projects.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Bored API",
+    "url": "https://www.boredapi.com/documentation",
+    "desc": "Generates tasks to do when bored.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Bhagavad Gita",
+    "url": "https://bhagavadgita.io/",
+    "desc": "Bhagavad Gita in various languages.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "BrowserCat",
+    "url": "https://www.browsercat.com/docs",
+    "desc": "Headless browser API for automation, scraping, AI agent web access, image/pdf generation, and more.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Bruzu",
+    "url": "https://docs.bruzu.com",
+    "desc": "Dynamically generate Images with a URL string. This service allows you to create dynamic images using nothing more than a URL string.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Callook.info",
+    "url": "https://callook.info",
+    "desc": "Look up information about United States ham radio callsigns.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "ChuckNorris.io",
+    "url": "https://api.chucknorris.io",
+    "desc": "A free [JSON](https://en.wikipedia.org/wiki/JSON) API for hand curated Chuck Norris facts.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Cloudflare Trace",
+    "url": "https://www.cloudflare.com/cdn-cgi/trace",
+    "desc": "Get IP Address, Timestamp, User Agent, Country Code, IATA, HTTP Version, TLS/SSL Version & More.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Cloudlayer.io",
+    "url": "https://cloudlayer.io",
+    "desc": "Document Generation Service that allows you to generate PDFs and Images from websites, HTML, or Templates.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Codewars API",
+    "url": "https://dev.codewars.com/#introduction",
+    "desc": "Coding challenge website API that allows access usernames, leaderboards, and real time statistics for coding problems.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Congress.gov API",
+    "url": "https://api.congress.gov",
+    "desc": "The beta Congress.gov Application Programming Interface (API) provides a method for Congress and the public to view, retrieve, and re-use machine-readable data from collections available on Congress.gov.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Dataflow Kit",
+    "url": "https://dataflowkit.com/doc-api",
+    "desc": "Web Scraper API to extract information from websites, scrape SERPs, convert web pages to PDF, and capture screenshots.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Data Science Toolkit",
+    "url": "https://github.com/petewarden/dstk",
+    "desc": "A collection of the best open data sets and open-source tools for data science.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Don't Kill My App",
+    "url": "https://github.com/urbandroid-team/dont-kill-my-app",
+    "desc": "Database of ways mobile vendors inhibit background activity of apps.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Domainsdb.info",
+    "url": "https://domainsdb.info",
+    "desc": "Registered domain names search checks the lists of registered domains for names containing particular words/phrases/numbers or symbols.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Evil Insult Generator",
+    "url": "https://evilinsult.com/api/",
+    "desc": "Offers the most evil insults.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Flowdash",
+    "url": "https://docs.flowdash.com/docs/api-introduction",
+    "desc": "Create, edit, delete, and read your workflow data on demand.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Game of Thrones Quotes",
+    "url": "https://gameofthronesquotes.xyz",
+    "desc": "A free API to retrieve some quotes of Game of Thrones!",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Geocodify",
+    "url": "https://geocodify.com",
+    "desc": "Worldwide geocoding, geoparsing and autocomplete for addresses.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Giphy",
+    "url": "https://developers.giphy.com/docs/",
+    "desc": "Worlds largest library of GIFs.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Httpbin",
+    "url": "https://httpbin.org/",
+    "desc": "A Simple HTTP Request & Response Service.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Httpbin Cloudflare",
+    "url": "https://cloudflare-quic.com/b/",
+    "desc": "A Simple HTTP Request & Response Service with HTTP/3 Support by Cloudflare.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Icanhazepoch",
+    "url": "https://icanhazepoch.com",
+    "desc": "Get Epoch time.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Icanhazip",
+    "url": "https://major.io/icanhazip-com-faq/",
+    "desc": "IP Address API.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Image-Charts",
+    "url": "https://www.image-charts.com",
+    "desc": "1 URL = 1 Chart: Get a chart image in response to a URL GET or POST request. A drop-in-replacement for the deprecated Google Image Charts.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Jobicy",
+    "url": "https://jobicy.com/jobs-rss-feed",
+    "desc": "The latest remote job listings from a diverse range of industries and companies.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "JSONbin.io",
+    "url": "https://jsonbin.io/api-reference",
+    "desc": "Free [JSON](https://en.wikipedia.org/wiki/JSON) data storage service, ideal for small scale web apps, website, mobile apps.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Judge0 API",
+    "url": "https://api.judge0.com/",
+    "desc": "Compile and run source code.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Labs64 NetLicensing (API Test Center)",
+    "url": "https://netlicensing.io/wiki/restful-api",
+    "desc": "Innovative License Management Solution.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "LaunchLibrary",
+    "url": "https://launchlibrary.net/docs/1.3/api.html",
+    "desc": "Aggregated info about space launches.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "LetsValidate",
+    "url": "https://github.com/letsvalidate/api",
+    "desc": "Uncovers the technologies used on websites and URL to thumbnail.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "LinkPreview",
+    "url": "https://www.linkpreview.net",
+    "desc": "RESTful API that returns [JSON](https://en.wikipedia.org/wiki/JSON) formatted summary with title, description and preview image for any requested URL. Free & paid plans.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "LiveChat",
+    "url": "https://developers.livechatinc.com/",
+    "desc": "Online Customer Service software with customizable chat, embeddable widgets, help desk and web analytics tools. APIs include webhooks support, SDKs and open-source libraries to build on.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Lottery Number Generation",
+    "url": "https://fungenerators.com/api/lottery/",
+    "desc": "Generate lottery numbers. Hundreds of lottery games from various countries are supported.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "NetworkCalc",
+    "url": "https://networkcalc.com/api/docs",
+    "desc": "REST APIs that provide network calculator tools, such as subnet calculations, binary number conversion, and certificate lookup.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "PDFmyURL",
+    "url": "https://pdfmyurl.com/html-to-pdf-api",
+    "desc": "RESTful API that converts web pages to PDF quickly and even does entire websites to PDF.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "PDF from URL",
+    "url": "https://api.stakdek.de/blog?id=1070",
+    "desc": "API that converts websites from URL to PDF and even does convert HTML Strings to PDF for free.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Pastebin",
+    "url": "https://pastebin.com/doc_scraping_api",
+    "desc": "Quickly share text or code, with support for over 250 languages for syntax highlighting.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "PhantAuth",
+    "url": "https://www.phantauth.net/",
+    "desc": "Random User Generator + OpenID Connect Provider. Like Lorem Ipsum, but for user accounts and authentication.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "QuickChart",
+    "url": "https://quickchart.io",
+    "desc": "Generate Chart.js image charts for email, dashboards, etc. Provides a replacement API for the old Google Image Charts service.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Quran API",
+    "url": "https://alquran.cloud/api",
+    "desc": "A RESTful Quran API to retrieve an Ayah, Surah, Juz or the enitre Holy Quran.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Quran-api",
+    "url": "https://github.com/fawazahmed0/quran-api#readme",
+    "desc": "Free Quran API Service with 90+ different languages and 400+ translations.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Rocketium Video API",
+    "url": "https://rocketium.com/api/?utm_source=github&utm_medium=repository&utm_campaign=abhishekbanthia&utm_content=api_solution",
+    "desc": "Rocketium Video API allows you to create Buzzfeed-like videos programmatically.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Scraper API",
+    "url": "https://www.scraperapi.com",
+    "desc": "Scraper API handles proxies, browsers, and CAPTCHAs so developers can easily build scalable web scrapers.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "SearchApi",
+    "url": "https://www.searchapi.io/",
+    "desc": "Real-time API for scraping structured data from search engines.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Shadify",
+    "url": "https://github.com/cheatsnake/shadify",
+    "desc": "Service for generating data and executing logic to create various games and puzzles.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Shotstack Video Editing API",
+    "url": "https://shotstack.io/docs/guide/getting-started/core-concepts/?utm_source=github&utm_medium=api_repository",
+    "desc": "Allows you to build scalable video automation workflows and video-first applications with capability to edit and generate thousands of customized videos.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Spreaker",
+    "url": "https://developers.spreaker.com/",
+    "desc": "Enables developers to read and write data to Spreaker.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "SSL-Checker",
+    "url": "https://ssl-checker.io/",
+    "desc": "Python script with free API that collects SSL/TLS information from hosts with JSON/CSV export.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "StackExchange",
+    "url": "https://api.stackexchange.com/",
+    "desc": "The StackExchange API provides RESTful services to all the sites on the StackExchange domain.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "RestCountries",
+    "url": "https://restcountries.eu",
+    "desc": "Get information about countries via a RESTful API.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Typeform",
+    "url": "https://developer.typeform.com/",
+    "desc": "Typeform's APIs allow you to create and edit Typeform surveys, and retrieve survey responses on demand.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Wallhaven",
+    "url": "https://wallhaven.cc/help/api",
+    "desc": "A huge wallpaper library.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "Who Hosts This",
+    "url": "https://www.who-hosts-this.com/API",
+    "desc": "Detect the hosting provider powering any website.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Miscellaneous",
+    "name": "WolframAlpha",
+    "url": "http://products.wolframalpha.com/api/",
+    "desc": "Integrate top of the line computational knowledge into your applications through the WolframAlpha API.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Movies",
+    "name": "OMDB",
+    "url": "https://www.omdbapi.com/",
+    "desc": "OMDb provides a subscription based web service to obtain information and metadata about movies.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Movies",
+    "name": "TMDb",
+    "url": "https://www.themoviedb.org/documentation/api",
+    "desc": "TMDb provides powerful searches as well as powerful movie discovery.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Movies",
+    "name": "Trakt",
+    "url": "https://trakt.docs.apiary.io/",
+    "desc": "Trakt collects lots of information about what TV shows and movies everyone is watching.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Movies",
+    "name": "TVmaze",
+    "url": "https://www.tvmaze.com/api",
+    "desc": "TV Show and web series database. Episode guide, cast, crew and character information. Recaps, reviews, episode trailers, celebrity photos and more.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Music",
+    "name": "AI Mastering",
+    "url": "https://aimastering.com/api_docs/",
+    "desc": "AI Mastering API provides an automated audio mastering service. You can upload your audio, master it, and download the mastered audio.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Music",
+    "name": "Deezer",
+    "url": "http://developers.deezer.com/api",
+    "desc": "Deezer API provides a nice set of services to build up web applications, allowing the discovery of Deezer's music catalogue.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Music",
+    "name": "Discogs",
+    "url": "https://www.discogs.com/developers/",
+    "desc": "Access database of artists, labels, releases, marketplace and more.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Music",
+    "name": "Last.fm",
+    "url": "http://www.last.fm/api",
+    "desc": "The Last.fm API allows anyone to build their own programs using Last.fm data, whether they're on the web, the desktop or mobile devices.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Music",
+    "name": "musicApi",
+    "url": "https://github.com/LIU9293/musicAPI",
+    "desc": "Centralized Node.JS API SDK for the top 3 music providers in China, Xiami, Netease, and QQ music.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Music",
+    "name": "NPR API",
+    "url": "https://dev.npr.org/",
+    "desc": "NPR's API is a content API, which essentially provides a structured way for other computer applications to get NPR stories in a  predictable, flexible and powerful way.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Music",
+    "name": "Rhapsody",
+    "url": "https://developer.rhapsody.com/",
+    "desc": "Access metadata, user’s entire library of music and do much more.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Music",
+    "name": "SearchLy",
+    "url": "https://github.com/AlbertSuarez/searchly",
+    "desc": "Song similarity search API based on lyrics.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Music",
+    "name": "SoundCloud",
+    "url": "https://developers.soundcloud.com",
+    "desc": "Using the SoundCloud API, you can build applications that take sound on the web to the next level.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Music",
+    "name": "Spotify",
+    "url": "https://beta.developer.spotify.com/documentation/web-api",
+    "desc": "Spotify’s Web API lets your applications fetch data from the Spotify music catalog, manage users' playlists and saved music, get recommendations, control Spotify Connect, and more.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Music",
+    "name": "TheAudioDB",
+    "url": "http://www.theaudiodb.com",
+    "desc": "Free [JSON](https://en.wikipedia.org/wiki/JSON) API for music data, artwork, charting, ratings and hashes.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Music Discovery",
+    "name": "Setlist.fm",
+    "url": "https://api.setlist.fm/docs/1.0/index.html",
+    "desc": "The setlist.fm API has been designed to give you easy access to setlist data in order to build fancy websites and other applications.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Music Discovery",
+    "name": "TuneFind",
+    "url": "http://www.tunefind.com/api",
+    "desc": "Allows developers to enhance their services with song, show, and movie data from TuneFind.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Music Discovery",
+    "name": "Genius",
+    "url": "https://docs.genius.com/#/getting-started-h1",
+    "desc": "Allows users to find details about Genius artists and songs.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Music Identification",
+    "name": "Acoustid",
+    "url": "https://acoustid.org/webservice",
+    "desc": "Supports searching through their fingerprint database.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Music Identification",
+    "name": "AudD",
+    "url": "https://docs.audd.io/",
+    "desc": "Recognize music in microphone recordings, audio files and UGC.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Music Identification",
+    "name": "Gracenote",
+    "url": "https://developer.gracenote.com/",
+    "desc": "Largest source of music and video metadata on the planet.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Music Lyrics",
+    "name": "ChartLyrics Lyrics API",
+    "url": "http://www.chartlyrics.com/api.aspx",
+    "desc": "Allows users to search for lyrics using the artist name, song title, or lyric text.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Music Lyrics",
+    "name": "Lololyrics API",
+    "url": "http://api.lololyrics.com/",
+    "desc": "Given an artist and track name, obtains its lyrics and metadata such as the year released and album art. Specializes more in electronic dance music genres such as hardstyle.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Music Lyrics",
+    "name": "Musixmatch",
+    "url": "https://developer.musixmatch.com/",
+    "desc": "Power your music project by licensing access to the world’s most authoritative lyrics DB.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Music Stores",
+    "name": "iTunes Search",
+    "url": "https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/Searching.html#//apple_ref/doc/uid/TP40017632-CH5-SW1",
+    "desc": "The Search API allows you to place search fields in your website to search for content within the iTunes Store, App Store, iBooks Store and Mac App Store.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Music Stores",
+    "name": "Reverb",
+    "url": "https://dev.reverb.com/",
+    "desc": "Sell and buy music related merchandise.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "News Services",
+    "name": "Faroo",
+    "url": "http://www.faroo.com/hp/api/api.html",
+    "desc": "Alternative to Google Web Search API / Google News Search API, allows you to search news within dates, fetch trending news, topics and terms.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "News Services",
+    "name": "Mediastack",
+    "url": "https://mediastack.com/documentation",
+    "desc": "Scalable [JSON](https://en.wikipedia.org/wiki/JSON) API delivering worldwide news, headlines and blog articles in real-time.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "News Services",
+    "name": "New York Times",
+    "url": "http://developer.nytimes.com/",
+    "desc": "Article search, best sellers, campaign finance, community, most popular, real estate, movie reviews, NY state legislature, Times newswire, tags, and people.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "News Services",
+    "name": "NewsAPI",
+    "url": "https://newsapi.org/",
+    "desc": "70+ news sources and their headlines, one API.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "News Services",
+    "name": "NewsCatcherAPI",
+    "url": "https://newscatcherapi.com/news-api",
+    "desc": "News API to find news articles by any topic, country, language, website or keyword.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "News Services",
+    "name": "RSS API",
+    "url": "https://docs.rssapi.net",
+    "desc": "API to parse and subscribe to RSS Feeds to get webhooks when new items are published.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "News Services",
+    "name": "The Guardian",
+    "url": "http://open-platform.theguardian.com/",
+    "desc": "Access a huge range of content from The Guardian.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Natural Language Processing",
+    "name": "Cloudmersive NLP APIs",
+    "url": "https://cloudmersive.com/nlp-api",
+    "desc": "Wide array of unified NLP APIs including language translation, rephrasing, sentiment analysis, hate speech detection, and more.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Natural Language Processing",
+    "name": "Cohere",
+    "url": "https://docs.cohere.com/reference/about",
+    "desc": "Offers text summarization, entity extraction, text generation, and semantic search.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Natural Language Processing",
+    "name": "DialogFlow",
+    "url": "https://dialogflow.com/",
+    "desc": "Natural Language Interactions for Bots, Applications, Services, and Devices.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Natural Language Processing",
+    "name": "Datum Box",
+    "url": "http://www.datumbox.com/machine-learning-api/",
+    "desc": "Datumbox offers a powerful open-source Machine Learning Framework written in Java.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Natural Language Processing",
+    "name": "Lemonfox.ai",
+    "url": "https://www.lemonfox.ai/apis/speech-to-text",
+    "desc": "Speech-to-text API to transcribe audio and video files. The API is powered by the open-source Whisper model, supports 100+ languages and speaker recognition.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Natural Language Processing",
+    "name": "LUIS AI",
+    "url": "https://www.luis.ai/",
+    "desc": "Language Understanding Intelligent Service offers a fast and effective way of adding language understanding to applications.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Natural Language Processing",
+    "name": "MeaningCloud",
+    "url": "https://www.meaningcloud.com",
+    "desc": "Text analysis APIs for topic extraction, sentiment analysis, automatic classification, morphosyntactic analysis, language detection and more. Several languages are supported.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Natural Language Processing",
+    "name": "OpenAI API",
+    "url": "https://platform.openai.com/docs/introduction",
+    "desc": "OpenAI's API provides access to GPT-3, which performs a wide variety of natural language tasks, and Codex, which translates natural language to code. The API is designed to allow users to try it on virtually any task in the English language.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Natural Language Processing",
+    "name": "ParallelDots",
+    "url": "https://www.paralleldots.com/text-analysis-apis",
+    "desc": "ParallelDots AI APIs are the most comprehensive set of document classification and NLP APIs for software developers that provide state-of-the-art accuracy on most common NLP use-cases such as sentiment analysis and emotion detection.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Natural Language Processing",
+    "name": "Shakespeare Translator API",
+    "url": "https://funtranslations.com/api/shakespeare",
+    "desc": "Shakespeare English Translation API.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Natural Language Processing",
+    "name": "SpeechText.AI API",
+    "url": "https://speechtext.ai/speech-recognition-api",
+    "desc": "Cloud Speech Recognition API. Transform speech to text with high accuracy in multiple languages. Generate summaries with important highlights from audio and video files.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Natural Language Processing",
+    "name": "SummarizeBot API",
+    "url": "https://www.summarizebot.com/summarization_business.html",
+    "desc": "AI web data extraction and analysis. Multilingual summarization, keywords and sentiment analysis, language recognition, article extraction, comments identification, multimedia analysis, image and face recognition solutions.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Natural Language Processing",
+    "name": "Semantria",
+    "url": "https://www.lexalytics.com/",
+    "desc": "SAAS API based on Lexalytics engine.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Natural Language Processing",
+    "name": "TextRazor",
+    "url": "https://www.textrazor.com/plans",
+    "desc": "Helps you extract and understand the Who, What, Why, and How from your supplied text.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Natural Language Processing",
+    "name": "VoiceRSS",
+    "url": "http://www.voicerss.org/",
+    "desc": "An API to convert Text to Speech, supporting 15+ major languages.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Natural Language Processing",
+    "name": "Wit AI",
+    "url": "https://wit.ai/",
+    "desc": "Provides an intent-based NLP API to easily build text and audio based chat bots.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Natural Language Processing",
+    "name": "Word Associations API",
+    "url": "https://wordassociations.net/en/api",
+    "desc": "Provides service to get associations for a word or phrase. Words are grouped by semantics, meaning, and psychological perception.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Placeholder Images",
+    "name": "DummyImage",
+    "url": "https://dummyimage.com/",
+    "desc": "Particularly nice, when compared to some of its competitors, in that it offers a great deal of flexibility.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Placeholder Images",
+    "name": "Pixabay",
+    "url": "https://pixabay.com/api/docs/",
+    "desc": "Restful API for searching and retrieving free images and videos.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Placeholder Images",
+    "name": "SingleColorImage",
+    "url": "https://singlecolorimage.com/api.html",
+    "desc": "Free API for generating single color images with dimensions up to 5000x5000.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Placeholder Images",
+    "name": "Lorem Picsum",
+    "url": "https://picsum.photos/",
+    "desc": "Beautiful placeholders using images from the popular [Unsplash.](https://unsplash.com/)",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Places",
+    "name": "bng2latlong",
+    "url": "https://www.getthedata.com/bng2latlong",
+    "desc": "Convert an OSGB36 easting and northing (British National Grid) to WGS84 latitude and longitude.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Places",
+    "name": "CountryAPI",
+    "url": "https://fabian7593.github.io/CountryAPI/",
+    "desc": "Get all the countries, and obtain the most important information of these.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Places",
+    "name": "Factual",
+    "url": "https://developer.factual.com/docs/getting-started",
+    "desc": "Providing a places search that can be searched by latitude/longitude, and “where” using full text search query string.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Places",
+    "name": "Foursquare Venue",
+    "url": "https://developer.foursquare.com/overview/venues",
+    "desc": "Providing a places search that can be searched by  hierarchical list of categories, longitude/latitude etc.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Places",
+    "name": "Google Places API",
+    "url": "https://developers.google.com/maps/documentation/places/web-service/overview",
+    "desc": "Providing a places search that can be searched by latitude/longitude, keyword matched against all fields, name of place, type of place restricted by radius.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Places",
+    "name": "Nokia",
+    "url": "https://developer.here.com/develop/javascript-api",
+    "desc": "Providing a JavaScript places search that can be searched by search term, with a detail search for display by JS widget.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Places",
+    "name": "World Wonders API",
+    "url": "https://github.com/Rolv-Apneseth/world-wonders-api",
+    "desc": "Provides information about famous wonders from around the world.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Places",
+    "name": "Yelp",
+    "url": "https://docs.developer.yelp.com/docs/getting-started",
+    "desc": "You can search location using longitude and latitude, neighborhood, address or city and filter listings by “where”, using a list of support categories.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Product",
+    "name": "Product Hunt",
+    "url": "https://api.producthunt.com/v2/docs",
+    "desc": "The best new products, every day.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Quotes",
+    "name": "Breaking Bad",
+    "url": "https://breakingbadquotes.xyz",
+    "desc": "Gives quotes from \"Breaking Bad\".",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Quotes",
+    "name": "FavQs",
+    "url": "https://favqs.com/api",
+    "desc": "FavQs allows you to collect, discover, and share your favorite quotes.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Quotes",
+    "name": "Forismatic",
+    "url": "http://api.forismatic.com/api/1.0/",
+    "desc": "Gives you a random quote per click.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Quotes",
+    "name": "Hindi Quotes",
+    "url": "https://hindi-quotes.vercel.app/",
+    "desc": "Get random Hindi quotes of different categories.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Quotes",
+    "name": "Quotable",
+    "url": "https://github.com/lukePeavey/quotable",
+    "desc": "Fetch quotes based on your query parameters, which includes random quotes by author, ID, tags and more.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Quotes",
+    "name": "South Park",
+    "url": "https://github.com/Thatskat/southpark-quotes-api",
+    "desc": "Get and search quotes from South Park, mmkay!",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Quotes",
+    "name": "They Said So",
+    "url": "http://quotes.rest/qod.json?category=inspire",
+    "desc": "Gives you a random quote per day.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Retail",
+    "name": "Amazon Product Advertising API",
+    "url": "http://docs.aws.amazon.com/AWSECommerceService/latest/DG/Welcome.html",
+    "desc": "Get access to the data used by Amazon including items for sale, customer reviews, seller reviews, item search, product promotions, and more.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Science",
+    "name": "MPDS",
+    "url": "https://developer.mpds.io",
+    "desc": "Provides experimental materials science data excerpted from the peer-reviewed publications.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Science",
+    "name": "NASA",
+    "url": "https://api.nasa.gov/index.html",
+    "desc": "Get NASA data, including imagery, list of asteroids based on their closest approach date to Earth and much more.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Science",
+    "name": "Open Science Framework",
+    "url": "https://osf.io/y9jdt/wiki/home/",
+    "desc": "A free, open source workflow/project management system for storing, collaborating on, and sharing research across the scholarly life cycle.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Science",
+    "name": "Open Access Button",
+    "url": "https://openaccessbutton.org/api",
+    "desc": "Free, legal research articles delivered instantly or automatically requested from authors.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Science",
+    "name": "SHARE",
+    "url": "http://share-research.readthedocs.io/en/latest/",
+    "desc": "A free, open dataset of scholarly research activity across the scholarly lifecycle.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Screenshots",
+    "name": "ApiFlash",
+    "url": "https://apiflash.com/",
+    "desc": "Chrome based screenshot API to convert URLs to images.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Screenshots",
+    "name": "SavePage.io",
+    "url": "https://docs.savepage.io",
+    "desc": "A free, RESTful API used to screenshot any desktop or mobile website with the real Chrome browser.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Screenshots",
+    "name": "ScreenshotAPI.net",
+    "url": "https://screenshotapi.net",
+    "desc": "Use one simple API call to generate screenshots of any website.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "Ayrshare",
+    "url": "https://docs.ayrshare.com",
+    "desc": "Social media APIs for scheduling, analytics, comments, and more.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "Daily Motion",
+    "url": "https://developer.dailymotion.com/",
+    "desc": "Build applications centered around DailyMotion.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "Delicious",
+    "url": "https://github.com/domainersuitedev/delicious-api",
+    "desc": "Access to Delicious’s API.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "DeviantArt",
+    "url": "https://www.deviantart.com/developers/",
+    "desc": "The largest social networking website for artists and art enthusiasts.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "EventBrite",
+    "url": "https://github.com/eventbrite/eventbrite-sdk-python",
+    "desc": "The Eventbrite Python SDK makes it trivial to interact with the Eventbrite API.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "Facebook",
+    "url": "https://developers.facebook.com/",
+    "desc": "For ads, games, payments, login, sharing stats, and user data.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "Flickr",
+    "url": "https://www.flickr.com/services/api/",
+    "desc": "Search through user Flickr content, contacts, upload or replace photos.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "Foursquare",
+    "url": "https://developer.foursquare.com/",
+    "desc": "Access to Foursquare database and ability to interact with Foursquare users.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "GoodReads",
+    "url": "https://www.goodreads.com/api",
+    "desc": "Allows developers access to Goodreads data in order to help websites or applications that deal with books.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "Gravatar",
+    "url": "https://en.gravatar.com/site/implement/",
+    "desc": "Create profiles and avatars using this web service.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "Hacker News",
+    "url": "https://github.com/HackerNews/API",
+    "desc": "Anything that good hackers would find interesting.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "Hacker News GraphQL",
+    "url": "https://metamate.io/blog/most-advanced-hackernews-api/",
+    "desc": "Convenient HackerNews GraphQL wrapper API.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "Imgur",
+    "url": "https://api.imgur.com/",
+    "desc": "Imgur's API exposes the entire Imgur infrastructure via a standardized programmatic interface.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "Instagram",
+    "url": "https://www.instagram.com/developer/",
+    "desc": "Search photos by location, user, tags, view trending photos, and make custom items.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "LinkedIn",
+    "url": "https://developer.linkedin.com/",
+    "desc": "Enables apps to connect to user accounts, data, connections, groups, communications, and social streams.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "Mastodon",
+    "url": "https://docs.joinmastodon.org/",
+    "desc": "Access to [Mastodon](https://github.com/tootsuite/mastodon)’s APIs, the Open-source twitter competitor.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "Microlink",
+    "url": "https://microlink.io",
+    "desc": "Turns any link into information. Take screenshots, extract predominant palette colors.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "Pinterest",
+    "url": "https://www.pinterest.com/login/?next=http%3A%2F%2Fdevelopers.pinterest.com%2Fapi_docs%2F",
+    "desc": "Enables apps to view the most clicked-through or repinned Pins, view related posts, and user profiles.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "Reddit",
+    "url": "https://github.com/reddit/reddit/wiki/API",
+    "desc": "API to build clients, crawlers, scrapers, and browser extensions.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "Saidit",
+    "url": "https://github.com/IThinkImOKAY/rsaw",
+    "desc": "Open source API wrapper made for the Reddit alternative Saidit.net.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "Snapchat",
+    "url": "https://github.com/mgp25/SC-API",
+    "desc": "PHP library of Snapchat’s private API.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "Telegram",
+    "url": "https://core.telegram.org/",
+    "desc": "The Telegram API allows you to build your own customized Telegram clients.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "TikTok",
+    "url": "https://developers.tiktok.com/",
+    "desc": "TikTok Display API allows you to display TikTok creator's videos and their profile information and many more features.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "Trash Nothing",
+    "url": "https://trashnothing.com/developer",
+    "desc": "Build apps on top of one of the largest freecycling and reuse communities with millions of people giving away thousands of free items every day.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "Twitch",
+    "url": "https://dev.twitch.tv/docs",
+    "desc": "The Twitch API enables you to develop your own applications using the rich feature set that Twitch provides.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "Twitter",
+    "url": "https://developer.twitter.com/",
+    "desc": "Enables an app to interact with many of Twitter’s functions.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "Tumblr",
+    "url": "https://www.tumblr.com/docs/en/api/v2",
+    "desc": "Create new ways to use Tumblr with access to content, likes, followers, and drafts.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "Vimeo",
+    "url": "https://developer.vimeo.com/",
+    "desc": "Access to Vimeo’s API.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "Viber",
+    "url": "https://developers.viber.com/docs/api/",
+    "desc": "With Viber’s APIs, you can create unique experiences for users at scale.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "VK",
+    "url": "https://vk.com/dev",
+    "desc": "Access to VKontakte's API. This has a variety of features, such as authorization via VK, embedding VK comments for things like blogs, and taking payments via VK. Additionally, you may use the VK API to control much of the functionality on the website (for example, adjusting shop inventory in your VK community's market section).",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "Weibo",
+    "url": "http://open.weibo.com/wiki/API%E6%96%87%E6%A1%A3/en",
+    "desc": "Programmatic access to China’s most popular microblogging site.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "Whatsapp Document Interaction",
+    "url": "https://faq.whatsapp.com/en/iphone/23559013",
+    "desc": "If your application creates photos, videos or audio notes and you’d like your users to share these media using WhatsApp. #Limited",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "Wordpress",
+    "url": "https://codex.wordpress.org/WordPress_APIs",
+    "desc": "Access to Wordpress’ API.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "Untappd",
+    "url": "https://untappd.com/api/docs",
+    "desc": "Untappd is a mobile web app that allows you to socially share beers that you're enjoying.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "YouTube",
+    "url": "https://developers.google.com/youtube/",
+    "desc": "Add YouTube functionality to your sites and apps.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Social Media",
+    "name": "Zomato",
+    "url": "https://developers.zomato.com/api",
+    "desc": "Zomato APIs give you access to the freshest and most exhaustive information for over 1.5 million restaurants across 10,000 cities globally.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Source Control",
+    "name": "Bitbucket",
+    "url": "https://developer.atlassian.com/bitbucket/api/2/reference/",
+    "desc": "Access to Bitbucket's API.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Source Control",
+    "name": "GitHub",
+    "url": "https://developer.github.com/v3/",
+    "desc": "Build real-world GitHub applications right from authentication, to manipulating results, to combining results with other services.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Source Control",
+    "name": "GitHub Gists",
+    "url": "https://developer.github.com/v3/gists/",
+    "desc": "Access to GitHub’s Gists API.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Source Control",
+    "name": "GitLab",
+    "url": "https://docs.gitlab.com/ce/api/README.html",
+    "desc": "Access to GitLab's API.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Source Control",
+    "name": "Mercurial",
+    "url": "https://www.mercurial-scm.org/wiki/MercurialApi",
+    "desc": "Access to Mercurial’s API.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Source Control",
+    "name": "SVN",
+    "url": "https://subversion.apache.org/docs/api/1.8/",
+    "desc": "Collection of modular libraries written in the C programming language.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Source Control",
+    "name": "Team Foundation Server",
+    "url": "https://docs.microsoft.com/en-us/azure/devops/integrate/?view=azure-devops",
+    "desc": "TFS APIs are based on REST, OAuth, Json and service hooks.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Sport",
+    "name": "Ergast Formula 1",
+    "url": "http://ergast.com/mrd/",
+    "desc": "Provides access to current and historical Formula 1 race data from 1950 to today.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Sport",
+    "name": "FIFA women's world cup 2019",
+    "url": "https://worldcup.sfg.io/",
+    "desc": "FIFA women's world cup 2019 matches and group stage results.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Sport",
+    "name": "Football Prediction",
+    "url": "https://boggio-analytics.com/fp-api/",
+    "desc": "Predictions for upcoming football matches, odds, results and stats.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Sport",
+    "name": "LIVE-SCORE API",
+    "url": "https://live-score-api.com/documentation/reference/",
+    "desc": "Football API for live-scores, fixtures, group standings, history data and match events.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Sport",
+    "name": "NBA GraphQL",
+    "url": "https://nbaapi.com/graphql/",
+    "desc": "Current and historical NBA Stats",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Sport",
+    "name": "NBA REST API",
+    "url": "http://rest.nbaapi.com/index.html",
+    "desc": "Up-to-date Current and Historical NBA Stats and Shot Chart API.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Sport",
+    "name": "OpenF1",
+    "url": "https://openf1.org/",
+    "desc": "Provides real-time and historical Formula 1 data (lap timings, car telemetry, radio communications, ...).",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Sport",
+    "name": "OpenLigaDB API",
+    "url": "https://www.openligadb.de/",
+    "desc": "Provides sports data, especially football (soccer) league information.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Sport",
+    "name": "Roanuz Cricket API",
+    "url": "https://www.cricketapi.com/v5/docs/",
+    "desc": "Provides cricket-related data, including scores and player information.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Sport",
+    "name": "Sports Data API Providers",
+    "url": "https://sportsapi.com/api-directory/",
+    "desc": "Reviews, coverage and prices from sports data providers.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Sport",
+    "name": "TheSportsDB",
+    "url": "http://www.thesportsdb.com/",
+    "desc": "Various sports events, results, players, teams and high quality artwork.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Test Data",
+    "name": "ExtendsClass",
+    "url": "https://extendsclass.com/fake-api.html",
+    "desc": "Collection of free REST APIs designed to help web developers with prototyping.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Test Data",
+    "name": "Faker API",
+    "url": "https://fakerapi.it",
+    "desc": "Collection of completely free APIs that helps web developers and web designers with generating fake data.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Transportation",
+    "name": "ADS-B Exchange",
+    "url": "https://www.adsbexchange.com/data/",
+    "desc": "Access real-time and historical data of any and all airborne aircraft.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Transportation",
+    "name": "AfterShip",
+    "url": "https://www.aftership.com/docs/api/4/overview",
+    "desc": "Provides multi-carrier shipment tracking APIs.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Transportation",
+    "name": "CarsXE API",
+    "url": "https://api.carsxe.com/",
+    "desc": "Get access to millions of vehicle records, specs, ownership costs and market values.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Transportation",
+    "name": "Edmunds",
+    "url": "http://developer.edmunds.com/",
+    "desc": "A dataset containing all the car makes.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Transportation",
+    "name": "HyperTrack",
+    "url": "https://docs.hypertrack.com",
+    "desc": "Build applications that track the movement of your business.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Transportation",
+    "name": "Lyft",
+    "url": "https://www.lyft.com/developers",
+    "desc": "Get real-time ETAs, availability, price estimates, ride status through the Lyft API.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Transportation",
+    "name": "Postmen",
+    "url": "https://docs.postmen.com/",
+    "desc": "Add shipping capability of FedEx, UPS, DHL, USPS and over 40 carriers worldwide.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Transportation",
+    "name": "Ola",
+    "url": "https://developers.olacabs.com/",
+    "desc": "Help your users find, book and track Ola rides with ease. Ola is India’s most popular cab booking app with availability of rides in more than 100 cities across India.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Transportation",
+    "name": "Uber",
+    "url": "https://developer.uber.com/",
+    "desc": "Uber provides API for customizing trip experiences, requesting rides, powering logistics, creating bots and so much more.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "URL Shorteners",
+    "name": "Bitly",
+    "url": "http://dev.bitly.com/links.html",
+    "desc": "Access to Bitly’s API.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "URL Shorteners",
+    "name": "GoTiny",
+    "url": "https://github.com/robvanbakel/gotiny-api",
+    "desc": "Lightweight and easy to implement URL shortener. Supports custom links and offers JavaScript SDK.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "URL Shorteners",
+    "name": "Is.gd",
+    "url": "https://is.gd/developers.php",
+    "desc": "Simple URL shortener. Supports custom short link ending.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "URL Shorteners",
+    "name": "ShrtURI",
+    "url": "https://shrturi.com/docs",
+    "desc": "URL shortening API for creating short URLs from long URLs.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "URL Shorteners",
+    "name": "Tiny.cc",
+    "url": "https://tiny.cc/api-docs",
+    "desc": "Easy-to-use URL shortener. Supports custom short link ending.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "URL Shorteners",
+    "name": "Tiny.UID",
+    "url": "https://tinyuid.com/docs",
+    "desc": "API for shortening long URLs.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "URL Shorteners",
+    "name": "V.gd",
+    "url": "https://v.gd/developers.php",
+    "desc": "Simple URL shortener. Supports custom short link ending.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "URL Shorteners",
+    "name": "Yourls",
+    "url": "https://yourls.org/#API",
+    "desc": "Generate or get existing short URLs, with sequential or custom keywords.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Videogames",
+    "name": "Autochess VNG API",
+    "url": "https://github.com/didadadida93/autochess-vng-api",
+    "desc": "API that provides data about Autochess VNG.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Videogames",
+    "name": "CSGO API",
+    "url": "https://bymykel.github.io/CSGO-API/",
+    "desc": "An unofficial JSON API for Counter-Strike: Global Offensive.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Videogames",
+    "name": "Clash Of Clans",
+    "url": "https://developer.clashofclans.com/",
+    "desc": "An API for Clash of Clans to fetch all information about players, clans, wars, etc.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Videogames",
+    "name": "Clash Royale",
+    "url": "https://github.com/martincarrera/clash-royale-api",
+    "desc": "API that provides information about the Clash Royale game.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Videogames",
+    "name": "FreeToGame",
+    "url": "https://www.freetogame.com/api-doc",
+    "desc": "Free-to-play games database API.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Videogames",
+    "name": "GamerPower",
+    "url": "https://www.gamerpower.com/api-read",
+    "desc": "Access programmatically the best giveaways in gaming, from free games to beta keys to free in-game loot and more.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Videogames",
+    "name": "GiantBomb",
+    "url": "http://www.giantbomb.com/api/",
+    "desc": "API to query the GiantBomb database for videogames, characters, companies, genres and many more.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Videogames",
+    "name": "Hyrule Compendium",
+    "url": "http://github.com/gadhagod/Hyrule-Compendium-API",
+    "desc": "API serving data on all interactive items in _The Legend of Zelda: Breath of the Wild_.",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Videogames",
+    "name": "IGDB",
+    "url": "https://www.igdb.com/api",
+    "desc": "Access the International Games Database and get information about video games, characters, companies, genres and many more. Commercial usage is allowed.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Videogames",
+    "name": "MMO Games",
+    "url": "https://www.mmobomb.com/api",
+    "desc": "MMO Games database, news and giveaways.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Videogames",
+    "name": "RAWG",
+    "url": "https://rawg.io/apidocs",
+    "desc": "Open video game database. Find games by platform, genre, company or find game developers, stores, publishers and many more.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Videogames",
+    "name": "Riot Games",
+    "url": "https://developer.riotgames.com/",
+    "desc": "Riot Games game information API",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Weather",
+    "name": "AccuWeather",
+    "url": "https://developer.accuweather.com/",
+    "desc": "AccuWeather provides hourly and minute by minute forecasts with Superior accuracy. AccuWeather provides the world’s most sophisticated weather intelligence.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Weather",
+    "name": "AerisWeather",
+    "url": "https://www.aerisweather.com",
+    "desc": "Global weather data and imagery APIs, with a free developer subscription tier, boasting detailed documentation for simple to advanced queries, free SDKs and a Map Builder to get you up and running faster.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Weather",
+    "name": "BlueSky API",
+    "url": "https://blueskyapi.io/docs/api",
+    "desc": "Global weather data, both live forecasts and forecast history, free tier available.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Weather",
+    "name": "Open-Meteo",
+    "url": "https://open-meteo.com/en/docs",
+    "desc": "Global weather forecast API. Free for non-commercial use. **No API key required**. [CORS](https://en.wikipedia.org/wiki/Cross-origin_resource_sharing) supported.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Weather",
+    "name": "Open Weather",
+    "url": "http://openweathermap.org/api",
+    "desc": "Access current weather data for any location on Earth including over 200,000 cities!",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Weather",
+    "name": "Storm Glass Marine Weather API",
+    "url": "https://stormglass.io",
+    "desc": "Global marine weather data from multiple sources in one single API!",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Weather",
+    "name": "Weather-API",
+    "url": "https://github.com/robertoduessmann/weather-api",
+    "desc": "A free RESTful API to check the weather.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Weather",
+    "name": "Weatherbit",
+    "url": "https://www.weatherbit.io/api",
+    "desc": "Access forecasts, current weather, and historical weather data for any point on the Earth!",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Weather",
+    "name": "Weather Source",
+    "url": "http://weathersource.com/weather-api",
+    "desc": "Powerful Weather API built for systems that demand speed, reliability and heavy load.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Weather",
+    "name": "Weatherstack",
+    "url": "https://weatherstack.com/documentation",
+    "desc": "Real-Time & Historical World Weather Data API.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Weather",
+    "name": "Wunderground API",
+    "url": "https://www.wunderground.com/weather/api/",
+    "desc": "Reliable data, accurate forecast, & global coverage in 80 languages.",
+    "open_trial": "N/A",
+    "level": 1
+  },
+  {
+    "cat": "Resources For Design and Discovery of APIs",
+    "name": "Abstract",
+    "url": "https://www.abstractapi.com",
+    "desc": "Suite of utility API's (validate emails, create user avatars, calculate VAT, and more)",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Resources For Design and Discovery of APIs",
+    "name": "Apiary",
+    "url": "https://apiary.io/",
+    "desc": "Collaborative tool to design APIs.",
+    "open_trial": "💸",
+    "level": 1
+  },
+  {
+    "cat": "Resources For Design and Discovery of APIs",
+    "name": "OpenAPI",
+    "url": "https://www.openapis.org",
+    "desc": "Standard, language-agnostic interface to REST APIs (based on [Swagger](http://swagger.io/)).",
+    "open_trial": "Open Source",
+    "level": 1
+  },
+  {
+    "cat": "Resources For Design and Discovery of APIs",
+    "name": "Swagger",
+    "url": "http://swagger.io/",
+    "desc": "Tools for designing, building, and documenting RESTful APIs.",
+    "open_trial": "Open Source",
+    "level": 1
+  }
+]

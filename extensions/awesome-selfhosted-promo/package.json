@@ -1,0 +1,20 @@
+{
+  "name": "awesome-selfhosted-promo",
+  "displayName": "自部署软件导航器",
+  "version": "0.1.0",
+  "description": "汇总 awesome-selfhosted/awesome-selfhosted 的 95 分类 1260 条自部署软件,Phase B 4 命令(搜索/列表/详情/随机);Phase C 接入主对话 EXEC 标记。数据本地只读快照,合 CC-BY-SA-3.0 归属要求。",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:selfhost.find",
+    "ai.invoke.command:selfhost.list_categories",
+    "ai.invoke.command:selfhost.detail",
+    "ai.invoke.command:selfhost.random",
+    "ui.inject.card"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}
