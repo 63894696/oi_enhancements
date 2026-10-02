@@ -1614,37 +1614,37 @@ def _installed_extensions_block() -> str:
     _EXT_USE_CASES = (
         ("pomodoro",           "用户长时间专注写作/编码/任务块、需要 25/5 节奏时"),
         ("quick-note",         "用户随口提到笔记/记住/备忘/想法时,快速落 Markdown"),
-        ("todo",               "用户提到任务/待办/优先级/截止时,本地 JSON 增删改查"),
+        ("todo",               "用户提到任务/待办/优先级/截止时,本地待办增删改查"),
         ("clipboard",          "用户说读剪贴板/复制/粘贴/拿当前选中内容时"),
-        ("web-watch",          "用户要盯一个 URL 变化、降价/上新/内容变更时"),
-        ("scheduled-task",     "Windows 计划任务相关:每天几点跑、开机启动"),
-        ("app-launcher",       "用户说打开应用/启动 exe/打开网页/打开文件管理器时"),
-        ("process-scan",       "用户问进程/PID/内存占用/杀进程时(高权限)"),
+        ("web-watch",          "用户要盯一个网页变化、降价/上新/内容变更时"),
+        ("scheduled-task",     "用户问每天几点跑、开机启动、定时执行类操作时"),
+        ("app-launcher",       "用户说打开应用/启动程序/打开网页/打开文件管理器时"),
+        ("process-scan",       "用户问哪些程序在跑、内存占用、结束进程时(需授权)"),
         ("window-list",        "用户问当前开了哪些窗口、关某个窗口、置顶时"),
-        ("system-watchdog",    "后台稳定守护:ProBalance/Disallowed/LowMem/IdleSaver"),
-        ("http-request",       "用户要发 API/REST/POST/GET 调用、检查 URL 健康时"),
-        ("regex-tester",       "写正则、调试 pattern、看 match groups 时"),
-        ("json-format",        "用户给一坨 JSON 要格式化/排序/压缩时"),
-        ("base64-codec",       "Base64/URL-safe/Hex 编解码,中文/二进制互转"),
-        ("timestamp",          "Unix 时间戳转中文日期/ISO/相对时间/几分钟前"),
-        ("ascii-tree",         "把目录/JSON/缩进文本变可读树形字符"),
-        ("code-snippets",      "写常用代码片段(40+ 内置)/插自定义片段到 workdir"),
-        ("pr-review",          "git diff 切 hunks + 套审查模板(可配置)"),
-        ("git-stats",          "git log --numstat / 文件变更排行 / shortlog"),
-        ("keystroke-emit",     "SendInput 模拟键入 + 组合键 + 鼠标点击"),
-        ("sequence-builder",   "自然语言 → Mermaid sequenceDiagram / ASCII 时序图"),
-        ("ext-mermaid",        "对话含 mermaid fenced code block 时自动渲染 SVG 卡片"),
-        ("handraw-style",      "海报/卡片/封面 prompt:278 风格 + 36 颜色 + 120 版式"),
-        ("agency-roles",       "查找/选用 264 个 AI agent 角色模板(agency.list_divisions 等)"),
-        ("free-for-dev",       "用户要找免费 SaaS/工具/服务时(free.find 等 4 cap)"),
-        ("public-apis",        "用户要免费公共 API 端点(api.find 等 4 cap)"),
-        ("public-apis-cn",     "国内可访问的免费 API(api_cn.find 等 4 cap)"),
-        ("n0shake",            "免 key 试用/开源 API(nokeyapi.find 等 4 cap)"),
-        ("selfhost",           "自部署替代 SaaS(selfhost.find 等 4 cap)"),
-        ("awesome-hub",        "找 awesome 资源列表索引(LLM 直接读 JSON)"),
-        ("marketplace",        "远端 workflow bundle 镜像(论坛 bbs.babelspan.com)"),
-        ("task-runner",        "DAG 派单 + 定时调度 + 执行历史(Node node:sqlite)"),
-        ("sdk",                "扩展 SDK 自身,其他 ext 调用,不需要用户触发"),
+        ("system-watchdog",    "后台稳定守护:平衡 CPU 占用/拦截卡顿程序/低内存提醒/空闲降频"),
+        ("http-request",       "用户要发网络请求、调用外部接口、检查网址是否能打开时"),
+        ("regex-tester",       "写或调试正则表达式(邮箱/手机号/URL 这类匹配规则)时"),
+        ("json-format",        "用户给一坨 JSON 要格式化排版、压缩、按 key 排序时"),
+        ("base64-codec",       "Base64 / Hex 这类二进制-文本互转,中文/二进制互转"),
+        ("timestamp",          "Unix 时间戳 ↔ 中文日期/标准时间/「几分钟前」相对时间"),
+        ("ascii-tree",         "把目录/JSON/缩进文本变可读树形结构图"),
+        ("code-snippets",      "写常用代码片段(40+ 内置模板)或插入自定义片段到当前项目"),
+        ("pr-review",          "看代码改动并套审查模板给出建议清单(可配置模板)"),
+        ("git-stats",          "看代码提交记录、改动排行、谁的提交最多"),
+        ("keystroke-emit",     "模拟键盘输入 + 组合键(复制/粘贴/全选这类)+ 鼠标点击"),
+        ("sequence-builder",   "把一段描述画成时序图(流程参与者谁先谁后)"),
+        ("ext-mermaid",        "对话里出现图表代码块时自动渲染成可看的图卡"),
+        ("handraw-style",      "海报/卡片/封面提示词:278 种风格 + 36 种颜色 + 120 种版式"),
+        ("agency-roles",       "查找/选用 264 个 AI 角色模板(专业分工)"),
+        ("free-for-dev",       "用户要找免费在线工具/服务时(免费 SaaS)"),
+        ("public-apis",        "用户要免费公共接口(给程序调用的网络端点)时"),
+        ("public-apis-cn",     "国内可访问的免费接口(中文 API 描述)"),
+        ("n0shake",            "免注册、免 key 就能试用的开源接口"),
+        ("selfhost",           "自部署替代 SaaS(自己搭一套替代云服务)"),
+        ("awesome-hub",        "找各类精选资源列表(LLM 直接从数据集读)"),
+        ("marketplace",        "远端工作流包镜像(Prisir 论坛 PrisirAI 对话子版)"),
+        ("task-runner",        "DAG 工作流编排 + 定时调度 + 执行历史(任务派单)"),
+        ("sdk",                "扩展 SDK 自身,其他扩展调用,用户不需要手动启用"),
     )
     # 合并 installed.json(enabled 状态)
     installed_map = {}
@@ -14951,15 +14951,43 @@ class Handler(BaseHTTPRequestHandler):
         items = []
         # 资源检索 5 件套 + 数据扩展 → 自定义 title(2026-10-02 sprint 1-3 ship)
         _RESOURCE_TITLES = {
-            "free-for-dev-promo":        ("🎁 自由软件",       "Ripienaar/free-for-dev 全量快照 · 57 cat · 1324 svc · 主对话 EXEC L0 capability"),
-            "public-apis-promo":         ("🔌 公共 API",       "public-apis/public-apis · 51 cat · 1953 API · Auth/HTTPS/CORS 三档"),
-            "public-apis-cn-promo":      ("🇨🇳 国内 API",      "llf007/public-apis-cn · 54 cat · 1493 entry · 中文描述 + 认证 + HTTPS"),
-            "n0shake-public-apis-promo": ("🔓 免 key API",     "n0shake/Public-APIs · 56 cat · 481 svc · N/A/💸/Open Source 三档"),
-            "awesome-selfhosted-promo":  ("🏠 自部署",         "awesome-selfhosted/awesome-selfhosted · 95 cat · 1260 svc · License/Language"),
-            "awesome-hub-promo":         ("📚 awesome 索引",   "sindresorhus/awesome · 27 cat · 677 topics · 仅 Phase A 数据"),
-            "handraw-style-prompter":    ("🎨 风格海报提示词",  "yang0/handraw-style · 278 风格 + 36 颜色 + 120 版式 · L0 主对话 capability"),
-            "marketplace":               ("🌐 marketplace",   "工作流编排远端镜像 · 论坛 bbs.babelspan.com PrisirAI 对话子版 · PoW+签名"),
-            "task-runner":               ("🛠 task-runner",   "P2.5+B-1 ship · SDK invokeExt + Python 转发层 + 死循环防护"),
+            "free-for-dev-promo":        ("🎁 自由软件",       "GitHub 上最全的免费在线服务清单 · 57 个分类 · 1300+ 个工具 · 主对话可直接调用"),
+            "public-apis-promo":         ("🔌 公共 API",       "免费可调用的网络接口大全 · 51 个分类 · 1953 个接口 · 标明认证方式 + 是否 HTTPS + 是否支持浏览器直连"),
+            "public-apis-cn-promo":      ("🇨🇳 国内 API",      "国内可访问的免费接口 · 54 个分类 · 1493 个条目 · 中文描述 + 国内可用 + 认证方式"),
+            "n0shake-public-apis-promo": ("🔓 免 key API",     "免注册免密钥就能试用的开源接口 · 56 个分类 · 481 个接口 · 标明免费/付费/开源"),
+            "awesome-selfhosted-promo":  ("🏠 自部署",         "自己搭一套替代云服务的开源软件清单 · 95 个分类 · 1260 个项目 · 标明开源协议 + 编程语言"),
+            "awesome-hub-promo":         ("📚 awesome 索引",   "GitHub 上各类精选资源列表的索引 · 27 个主题 · 677 个清单 · 模型可直接读数据集回答"),
+            "handraw-style-prompter":    ("🎨 风格海报提示词",  "海报/卡片/封面提示词库 · 278 种风格 + 36 种颜色 + 120 种版式 · 主对话可直接调用"),
+            "marketplace":               ("🌐 工作流包市场",   "远端工作流包镜像 · 从 Prisir 论坛 PrisirAI 对话子版拉取 · 无需注册,有防垃圾签名"),
+            "task-runner":               ("🛠 任务派单",       "把任务排成流程图自动跑 · 支持手动触发 + 定时执行 · 有完整执行历史可回看"),
+        }
+        # 通用工具扩展 → 用户可读说明(2026-10-02 user 反馈:内部代号/jargon 要改写)
+        _EXT_DESCRIPTIONS = {
+            "pomodoro":           "番茄钟 · 25 分钟专注 + 5 分钟休息 · 自动计时 + 今日完成计数",
+            "quick-note":         "轻量 Markdown 笔记 · 支持增删改查 + 关键词搜索 · 主对话提到「记一下」时会自动建议",
+            "todo":               "本地待办清单 · 按优先级/截止日期/标签分类 · 可设简单提醒",
+            "clipboard":          "剪贴板读写 · Windows 复制粘贴内容 + 最近 50 条历史记录",
+            "web-watch":          "网页变化监控 · 价格变动/上新提醒 · 内容变了自动弹通知",
+            "scheduled-task":     "Windows 计划任务 · 定时执行/开机启动 · 可视化创建/启停",
+            "app-launcher":       "启动应用/打开网页/打开文件夹 · 支持带参数和工作目录",
+            "process-scan":       "查看正在运行的程序 · 看内存占用 · 结束进程(需授权)",
+            "window-list":        "查看当前打开的所有窗口 · 关闭/最小化/置顶某个窗口",
+            "system-watchdog":    "后台守护 · 自动平衡 CPU 占用 + 拦截卡顿程序 + 低内存提醒 + 空闲降频",
+            "http-request":       "发网络请求 · 调用外部接口 · 检查网址是否能打开 · 支持各类请求方式",
+            "regex-tester":       "正则表达式测试 · 邮箱/手机号/网址这类匹配规则实时调试 + 替换预览",
+            "json-format":        "JSON 格式化排版 · 按字段排序 · 提取指定字段 · 校验格式",
+            "base64-codec":       "Base64 / 十六进制 编解码 · 支持中文/二进制互转 · 自动识别输入格式",
+            "timestamp":          "时间戳转换 · Unix ↔ 标准时间 ↔ 「几分钟前」 · 支持多种时间格式",
+            "ascii-tree":         "目录树/JSON/缩进文本 → 树形结构图 · 看清嵌套层级关系",
+            "code-snippets":      "常用代码片段模板库 · 40+ 内置片段 · 一键插入到当前项目",
+            "pr-review":          "代码改动审查 · 自动套审查模板给出建议清单(可配置模板)",
+            "git-stats":          "代码提交记录统计 · 看改动排行 · 看谁的提交最多 · 无需联网",
+            "keystroke-emit":     "模拟键盘输入 + 快捷键(复制/粘贴/全选)+ 鼠标点击 · 自动化操作",
+            "sequence-builder":   "把一段描述画成时序图 · 看清流程里谁先谁后 · 支持图和文本两种形式",
+            "ext-mermaid":        "对话里出现图表代码块时自动渲染成可看的图卡(支持流程图/时序图/架构图等)",
+            "agency-roles":       "AI 角色模板库 · 264 个专业分工角色 · 按需选用 · 模型可直接读",
+            "sdk":                "扩展 SDK 工具包 · 给其他扩展作者用的开发工具集 · 普通用户不需要启用",
+            "web-watch":          "网页变化监控 · 价格变动/上新提醒 · 内容变了自动弹通知",
         }
         # installed.json 加载 enabled 状态(ext 进程可能因崩溃被清但 installed.json 仍 enabled)
         installed_map = {}  # ext_id -> {enabled, name}
@@ -15000,12 +15028,22 @@ class Handler(BaseHTTPRequestHandler):
                 except (OSError, ValueError):
                     continue
                 ext_id = pkg.get("name") or entry
+                # 剥 npm scope 拿到干净 id(@prisir/web-watch → web-watch)
+                if "/" in ext_id:
+                    ext_id = ext_id.split("/", 1)[-1]
                 seen_ids.add(ext_id)
-                # 自定义 title 优先;否则 package.json name + description
+                # 优先级:_RESOURCE_TITLES(资源检索) > _EXT_DESCRIPTIONS(用户可读文案)
+                #         > package.json display_name/name/description(兜底)
                 if ext_id in _RESOURCE_TITLES:
                     title, meta = _RESOURCE_TITLES[ext_id]
+                elif ext_id in _EXT_DESCRIPTIONS:
+                    raw_title = pkg.get("display_name") or pkg.get("name") or entry
+                    title = raw_title.split("/")[-1] if "/" in raw_title else raw_title
+                    meta = _EXT_DESCRIPTIONS[ext_id]
                 else:
-                    title = pkg.get("display_name") or pkg.get("name") or entry
+                    # 兜底:剥 npm scope(@prisir/)和目录名当显示
+                    raw_title = pkg.get("display_name") or pkg.get("name") or entry
+                    title = raw_title.split("/")[-1] if "/" in raw_title else raw_title
                     meta = pkg.get("description") or ""
                 items.append({
                     "id":      ext_id,
