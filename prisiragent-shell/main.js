@@ -245,9 +245,13 @@ function startWeb() {
     // 兼容旧名 OIAGENT_SHELL_NO_LAN。
     const wantLan = !(process.env.PRISIRAGENT_SHELL_NO_LAN || process.env.OIAGENT_SHELL_NO_LAN);
     const lanArgs = wantLan ? ["--lan"] : [];
+    // calendar 端口从 port_config 读(HKCU / JSON / yaml default 18803)。
+    // 修 2026-10-03 ship 漏:之前写死 DEFAULT_CALENDAR_PORT 常量但未声明,
+    // 启动抛 ReferenceError,后端没起来,18802 不监听。
+    const calendarPort = require("./port_config").readCalendarPort();
     const args = useExe
-      ? ["--port", String(WEB_PORT), "--calendar-port", String(DEFAULT_CALENDAR_PORT), ...lanArgs]
-      : [WEB_SCRIPT, "--port", String(WEB_PORT), "--calendar-port", String(DEFAULT_CALENDAR_PORT), ...lanArgs];
+      ? ["--port", String(WEB_PORT), "--calendar-port", String(calendarPort), ...lanArgs]
+      : [WEB_SCRIPT, "--port", String(WEB_PORT), "--calendar-port", String(calendarPort), ...lanArgs];
     // v2.0:stdout/stderr 落 spawn-{out,err}.log(原本 stdio: "ignore" 用户看不到任何错)。
     // Windows spawn 只接受文件路径 / 'pipe' / 'ignore',不接受 WriteStream 对象。
     // 用 'pipe' + 自己写文件:跨平台稳,且日志可加锁/轮转。

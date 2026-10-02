@@ -237,6 +237,15 @@ class TestMainJsSyntax(unittest.TestCase):
         self.assertIn("musicProc.kill()", content)
         # calendar-port 已传入 args
         self.assertIn("--calendar-port", content)
+        # 修 2026-10-03 ship 漏:启动抛 DEFAULT_CALENDAR_PORT is not defined,
+        # 后端没起,18802 不监听。验源码无对此未声明常量的运行时引用(注释里讲
+        # 修复历史是允许的)。
+        code_only = "\n".join(
+            line for line in content.splitlines()
+            if not line.lstrip().startswith("//")
+        )
+        self.assertNotIn("DEFAULT_CALENDAR_PORT", code_only,
+            "main.js 代码里不应引用未声明的 DEFAULT_CALENDAR_PORT,应走 readCalendarPort()")
 
 
 class TestPrisirAgentWebWfmodalHash(unittest.TestCase):
