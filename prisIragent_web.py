@@ -448,11 +448,29 @@ def _ext_reader_loop(ext_id: str):
 
 
 def _ext_rpc_call(ext_id: str, method: str, params=None, timeout: float = 5.0) -> dict:
-    """Python → Node ext 同步 RPC。返 dict(键 'result' 或 'error')。超时/未跑 = 显式 error。"""
+    """Python → Node ext 同步 RPC。返 dict(键 'result' 或 'error')。超时/未跑 = 显式 error。
+
+    2026-10-03 修复(P3j T24 user 反馈): L0 资源扩展没手动 enable 时主对话调 EXEC
+    必失败 — 「找不到 free-for-dev 扩展的实际路径」。本函数现在在 `_EXT_PROCS`
+    缺失 / 已退场时先 _ext_spawn(run lazy-spawn),spawn 失败/入口缺失再 graceful 返 ext_not_running。
+    """
     params = params if params is not None else {}
     box: dict = {}
     with _EXT_BRIDGE_LOCK:
         st = _EXT_PROCS.get(ext_id)
+        # ── lazy-spawn: 没起就尝试 spawn ──
+        if not st or not st.get("proc") or st["proc"].poll() is not None:
+            entry = _ext_entry(ext_id)
+            if os.path.exists(entry):
+                try:
+                    _ext_spawn(ext_id)  # 内部 _EXT_BRIDGE_LOCK 重入 OK(RLock)
+                    st = _EXT_PROCS.get(ext_id)
+                except Exception as e:  # noqa: BLE001
+                    try:
+                        _LOGGER.warning("[ext-bridge] lazy-spawn %s failed: %s",
+                                        ext_id, e)
+                    except Exception:
+                        pass
         if not st or not st.get("proc") or st["proc"].poll() is not None:
             return {"error": f"ext_not_running: {ext_id}"}
         req_id = f"py_{int(time.time() * 1000)}_{random.randrange(1 << 16):04x}"
