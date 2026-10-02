@@ -8107,6 +8107,7 @@ function extRenderList(items){
   }
   list.innerHTML = items.map(function(e){
     var badge = e.runtime ? '<span style="color:#2a9d6a;">●运行中</span>'
+                : e.enabled ? '<span style="color:var(--gh-green-deep);">◉已启用</span>'
                 : e.served ? '<span style="color:var(--gh-ink-soft);">已 ship 未启用</span>'
                 : '<span style="color:var(--gh-seal);">未 ship</span>';
     return '<div class="mi" style="display:block;padding:10px 14px;border-bottom:1px solid var(--gh-line);">'
@@ -14851,49 +14852,94 @@ class Handler(BaseHTTPRequestHandler):
     def _handle_extensions_list(self):
         """GET /prisIragent/api/extensions/list → 已 ship 扩展注册表。
 
-        2026-10-02 UI 改动:资源检索扩展 5 件套(free/api/api_cn/nokeyapi/selfhost)
-        + marketplace + awesome-hub 数据只读 snapshot。返回结构供「🧩 扩展」弹层渲染:
+        2026-10-02 UI2 改动:扫描 extensions/ 目录全部 package.json,合并 installed.json
+        的 enabled/runtime 状态。资源检索 5 件套有定制 title,其他扩展从 package.json
+        拿 name/description 渲染。返回结构供「🧩 扩展」弹层渲染:
           [{ id, title, meta, runtime, served }]
-        - runtime=True: 子进程已 spawn(读 _EXT_PROCS)
-        - served=True: ext 已 ship 到 installed.json
+        - runtime=True: 子进程已 spawn(读 _EXT_PROCS)或 installed.json 标 enabled
+        - served=True:   extensions/{id}/package.json 存在
         - meta: 用户看的简短说明
         """
         items = []
-        # 1. 资源检索 5 件套(主对话 EXEC capability,2026-10-02 ship)
-        for ext_id, title, meta in (
-            ("free-for-dev-promo",        "🎁 自由软件",
-             "Ripienaar/free-for-dev 全量快照 · 57 cat · 1324 svc · L0 capability"),
-            ("public-apis-promo",         "🔌 公共 API",
-             "public-apis/public-apis · 51 cat · 1953 API · Auth/HTTPS/CORS 三档"),
-            ("public-apis-cn-promo",      "🇨🇳 国内 API",
-             "llf007/public-apis-cn · 54 cat · 1493 entry · 中文描述 + 认证 + HTTPS"),
-            ("n0shake-public-apis-promo", "🔓 免 key API",
-             "n0shake/Public-APIs · 56 cat · 481 svc · N/A/💸/Open Source 三档"),
-            ("awesome-selfhosted-promo",  "🏠 自部署",
-             "awesome-selfhosted/awesome-selfhosted · 95 cat · 1260 svc · License/Language"),
-            ("awesome-hub-promo",         "📚 awesome 索引",
-             "sindresorhus/awesome · 27 cat · 677 topics · 仅 Phase A 数据"),
+        # 资源检索 5 件套 + 数据扩展 → 自定义 title(2026-10-02 sprint 1-3 ship)
+        _RESOURCE_TITLES = {
+            "free-for-dev-promo":        ("🎁 自由软件",       "Ripienaar/free-for-dev 全量快照 · 57 cat · 1324 svc · 主对话 EXEC L0 capability"),
+            "public-apis-promo":         ("🔌 公共 API",       "public-apis/public-apis · 51 cat · 1953 API · Auth/HTTPS/CORS 三档"),
+            "public-apis-cn-promo":      ("🇨🇳 国内 API",      "llf007/public-apis-cn · 54 cat · 1493 entry · 中文描述 + 认证 + HTTPS"),
+            "n0shake-public-apis-promo": ("🔓 免 key API",     "n0shake/Public-APIs · 56 cat · 481 svc · N/A/💸/Open Source 三档"),
+            "awesome-selfhosted-promo":  ("🏠 自部署",         "awesome-selfhosted/awesome-selfhosted · 95 cat · 1260 svc · License/Language"),
+            "awesome-hub-promo":         ("📚 awesome 索引",   "sindresorhus/awesome · 27 cat · 677 topics · 仅 Phase A 数据"),
+            "handraw-style-prompter":    ("🎨 风格海报提示词",  "yang0/handraw-style · 278 风格 + 36 颜色 + 120 版式 · L0 主对话 capability"),
+            "marketplace":               ("🌐 marketplace",   "工作流编排远端镜像 · 论坛 bbs.babelspan.com PrisirAI 对话子版 · PoW+签名"),
+            "task-runner":               ("🛠 task-runner",   "P2.5+B-1 ship · SDK invokeExt + Python 转发层 + 死循环防护"),
+        }
+        # installed.json 加载 enabled 状态(ext 进程可能因崩溃被清但 installed.json 仍 enabled)
+        installed_map = {}  # ext_id -> {enabled, name}
+        for path in (
+            os.path.join(os.path.expanduser("~"), ".prisir", "installed.json"),
+            os.path.join(os.path.expanduser("~"), ".prisir", "extensions", "installed.json"),
         ):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    raw = json.load(f)
+                if isinstance(raw, dict) and "extensions" in raw and isinstance(raw["extensions"], list):
+                    for e in raw["extensions"]:
+                        if isinstance(e, dict) and e.get("id"):
+                            installed_map[e["id"]] = {"enabled": bool(e.get("enabled")), "name": e.get("id")}
+                elif isinstance(raw, dict):
+                    for k, v in raw.items():
+                        if isinstance(v, dict):
+                            installed_map[k] = {"enabled": bool(v.get("enabled")), "name": v.get("name", k)}
+            except (OSError, ValueError):
+                continue
+
+        # 扫 extensions/ 目录(package.json + index.js 都有的才算可运行 ext)
+        ext_dir = os.path.join(os.path.dirname(__file__), "extensions")
+        seen_ids = set()
+        try:
+            for entry in sorted(os.listdir(ext_dir)):
+                full = os.path.join(ext_dir, entry)
+                if not os.path.isdir(full) or entry.startswith("_") or entry == "extensions":
+                    continue
+                pkg_path = os.path.join(full, "package.json")
+                idx_path = os.path.join(full, "index.js")
+                if not (os.path.exists(pkg_path) and os.path.exists(idx_path)):
+                    continue  # 缺关键文件,跳过(data-only 扩展不强制进)
+                # 拿 name + desc
+                try:
+                    with open(pkg_path, "r", encoding="utf-8") as f:
+                        pkg = json.load(f)
+                except (OSError, ValueError):
+                    continue
+                ext_id = pkg.get("name") or entry
+                seen_ids.add(ext_id)
+                # 自定义 title 优先;否则 package.json name + description
+                if ext_id in _RESOURCE_TITLES:
+                    title, meta = _RESOURCE_TITLES[ext_id]
+                else:
+                    title = pkg.get("display_name") or pkg.get("name") or entry
+                    meta = pkg.get("description") or ""
+                items.append({
+                    "id":      ext_id,
+                    "title":   title,
+                    "meta":    meta,
+                    "served":  True,
+                    "runtime": (ext_id in _EXT_PROCS) or installed_map.get(ext_id, {}).get("enabled", False),
+                    "enabled": installed_map.get(ext_id, {}).get("enabled", False),
+                })
+        except OSError:
+            pass
+        # 加 data-only 扩展(无 index.js,只入 showcase 而不 runtime)
+        for data_id in ("awesome-hub-promo",):
+            if data_id in seen_ids: continue
+            title, meta = _RESOURCE_TITLES.get(data_id, (data_id, ""))
             items.append({
-                "id":      ext_id,
+                "id":      data_id,
                 "title":   title,
                 "meta":    meta,
-                "served":  True,  # 都是已 ship(extens 目录 ship 了)
-                "runtime": ext_id in _EXT_PROCS,
-            })
-        # 2. 其他已 ship 扩展(P2.5+B-0 ext_bridge + P2.5+B-4 marketplace)
-        for ext_id, title, meta in (
-            ("marketplace",    "🌐 marketplace(远端技能市场)",
-             "工作流编排远端镜像 · 论坛 bbs.babelspan.com PrisirAI 对话子版 · PoW+签名"),
-            ("task-runner",    "🛠 task-runner(派单)",
-             "P2.5+B-1 ship · SDK invokeExt + Python 转发层 + 死循环防护"),
-        ):
-            items.append({
-                "id":      ext_id,
-                "title":   title,
-                "meta":    meta,
-                "served":  os.path.exists(os.path.join(os.path.dirname(__file__), "extensions", ext_id)),
-                "runtime": ext_id in _EXT_PROCS,
+                "served":  os.path.exists(os.path.join(ext_dir, data_id)),
+                "runtime": False,
+                "enabled": False,
             })
         self._json({"ok": True, "extensions": items})
 
