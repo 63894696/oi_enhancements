@@ -448,11 +448,29 @@ def _ext_reader_loop(ext_id: str):
 
 
 def _ext_rpc_call(ext_id: str, method: str, params=None, timeout: float = 5.0) -> dict:
-    """Python → Node ext 同步 RPC。返 dict(键 'result' 或 'error')。超时/未跑 = 显式 error。"""
+    """Python → Node ext 同步 RPC。返 dict(键 'result' 或 'error')。超时/未跑 = 显式 error。
+
+    2026-10-03 修复(P3j T24 user 反馈): L0 资源扩展没手动 enable 时主对话调 EXEC
+    必失败 — 「找不到 free-for-dev 扩展的实际路径」。本函数现在在 `_EXT_PROCS`
+    缺失 / 已退场时先 _ext_spawn(run lazy-spawn),spawn 失败/入口缺失再 graceful 返 ext_not_running。
+    """
     params = params if params is not None else {}
     box: dict = {}
     with _EXT_BRIDGE_LOCK:
         st = _EXT_PROCS.get(ext_id)
+        # ── lazy-spawn: 没起就尝试 spawn ──
+        if not st or not st.get("proc") or st["proc"].poll() is not None:
+            entry = _ext_entry(ext_id)
+            if os.path.exists(entry):
+                try:
+                    _ext_spawn(ext_id)  # 内部 _EXT_BRIDGE_LOCK 重入 OK(RLock)
+                    st = _EXT_PROCS.get(ext_id)
+                except Exception as e:  # noqa: BLE001
+                    try:
+                        _LOGGER.warning("[ext-bridge] lazy-spawn %s failed: %s",
+                                        ext_id, e)
+                    except Exception:
+                        pass
         if not st or not st.get("proc") or st["proc"].poll() is not None:
             return {"error": f"ext_not_running: {ext_id}"}
         req_id = f"py_{int(time.time() * 1000)}_{random.randrange(1 << 16):04x}"
@@ -8380,6 +8398,20 @@ let _wfRunsCollapsed = false;
 let _wfNodeEditing = null;
 let _wfExtListCache = null;   // 节点编辑时动态 ext 下拉缓存
 
+// P2.5+21(2026-10-03):Electron 壳的「🔀 工作流」子窗加载 URL 形如 `${WEB_URL}#wfmodal`。
+// fragment 不会进 HTTP 请求,后端只返主页 HTML;这里监听 hashchange + DOMContentLoaded
+// 触发 openWorkflow(),否则子窗会显示主 web 首页,wfmodal 永远 display:none。
+window.addEventListener('hashchange', () => {
+  if (location.hash === '#wfmodal' && !window.__wfModalOpen) {
+    openWorkflow();
+  }
+});
+if (location.hash === '#wfmodal') {
+  document.addEventListener('DOMContentLoaded', () => {
+    if (!window.__wfModalOpen) openWorkflow();
+  }, { once: true });
+}
+
 async function openWorkflow() {
   // P2.5+19 分支 1:装包后 Tauri 壳注入 → 弹独立 workflow-window(独立窗体验)
   if (typeof window !== 'undefined' && window.__TAURI_INTERNALS__
@@ -8392,6 +8424,9 @@ async function openWorkflow() {
       console.warn('[openWorkflow] tauri invoke err, fallback to in-modal:', e);
     }
   }
+  // P2.5+21(2026-10-03):幂等标记 — hashchange + 按钮 双触发防双开。
+  if (window.__wfModalOpen) return;
+  window.__wfModalOpen = true;
   // 分支 2:开发模式(Electron 壳 / 浏览器)→ 主窗 wfmodal 全屏打开
   document.getElementById('wfmodal').classList.add('open');
   await wfRenderTaskList();
@@ -8433,6 +8468,8 @@ function closeWorkflow() {
   document.getElementById('wfmodal').classList.remove('open');
   document.getElementById('wf-node-modal').classList.remove('open');
   document.getElementById('wf-tpl-modal').classList.remove('open');
+  // P2.5+21(2026-10-03):清幂等标记,允许下次 hashchange/按钮重开。
+  window.__wfModalOpen = false;
   // P2.5+B-3(2026-09-21)关 modal 不杀任务 — 后端 run 继续跑,前端只停轮询
   wfStopProgressPoll();
 }

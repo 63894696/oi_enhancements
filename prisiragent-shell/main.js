@@ -116,6 +116,13 @@ function prisirTokenPresent() {
 // ---------- prisiragent_web 子进程看护 ----------
 let webProc = null;
 let webReady = false;
+// P2.5+21(2026-10-03):语伴 / 音乐 子进程(仅在用户托盘点击时按需 spawn,
+// 不自启是因为 Tauri 壳模式才能接管这两路。Electron 壳里补全是为了 dev 体验)。
+let companionProc = null;
+let musicProc = null;
+// 同源 window.open 去重:同一 URL 5s 内只 allow 一次,阻死循环。
+const _recentlyOpenedUrls = new Map();
+const _RECENT_MS = 5000;
 
 function webUp(host, port, cb) {
   const req = http.get({ host, port, path: "/", timeout: 1500 }, (res) => {
@@ -124,6 +131,97 @@ function webUp(host, port, cb) {
   });
   req.on("error", () => cb(false));
   req.on("timeout", () => { req.destroy(); cb(false); });
+}
+
+// 端口轮询(用户点子窗后端未起时的探活)。返 Promise<boolean>。
+async function waitForPort(host, port, timeoutSec) {
+  const deadline = Date.now() + timeoutSec * 1000;
+  while (Date.now() < deadline) {
+    const ok = await new Promise((resolve) => webUp(host, port, resolve));
+    if (ok) return true;
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  return false;
+}
+
+// setWindowOpenHandler 的纯函数决策:让测试能 import 该函数。
+//   - 同 URL 5s 内二次 open → deny(死循环防抖)
+//   - 同源但不同 URL → allow
+//   - 外链 → "external"(由 Electron 侧转 shell.openExternal)
+function _decideSameOriginOpen(rawUrl, webUrl, recent) {
+  const isSameOrigin = rawUrl === webUrl || rawUrl.startsWith(webUrl + "/");
+  if (!isSameOrigin) return { action: "external" };
+  // recent 既支持 Map(主流程)又支持 plain {url: ts} 对象(测试)。
+  const last = (typeof recent.get === "function")
+    ? (recent.get(rawUrl) || 0)
+    : (recent[rawUrl] || 0);
+  if (Date.now() - last < _RECENT_MS) return { action: "deny", reason: "debounce" };
+  return { action: "allow" };
+}
+
+// 简化版 pipe-to-log(用于语伴/音乐后端:无 sentinel 解析,只需落日志)。
+function _pipeProcToLog(proc, label) {
+  try {
+    const outFd = fs.openSync(LOG_STDOUT, "a");
+    const errFd = fs.openSync(LOG_STDERR, "a");
+    proc.stdout.on("data", (chunk) => { try { fs.writeSync(outFd, `[${label}] ${chunk}`); } catch (_) {} });
+    proc.stderr.on("data", (chunk) => { try { fs.writeSync(errFd, `[${label}] ${chunk}`); } catch (_) {} });
+    proc.on("close", () => { try { fs.closeSync(outFd); fs.closeSync(errFd); } catch (_) {} });
+  } catch (e) {
+    logWarn(label, "pipe-to-log failed", `err=${e.message}`);
+  }
+}
+
+function startCompanion() {
+  if (companionProc) return;
+  const port = require("./port_config").readCompanionPort();
+  webUp(WEB_HOST, port, (up) => {
+    if (up) { logInfo("startCompanion", "port already up, reusing", `port=${port}`); return; }
+    const script = path.join(REPO_ROOT, "companion", "prisIragent-companion-web.py");
+    const args = [script, "--port", String(port)];
+    logInfo("startCompanion", "spawning", `cmd=python args=${JSON.stringify(args)}`);
+    try {
+      companionProc = spawn(PYTHON, args, {
+        cwd: REPO_ROOT, stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
+      });
+    } catch (e) {
+      logError("startCompanion", "spawn failed", `err=${e.message}`);
+      companionProc = null; return;
+    }
+    _pipeProcToLog(companionProc, "companion");
+    companionProc.on("spawn", () => logInfo("companionProc", "spawned", `pid=${companionProc.pid}`));
+    companionProc.on("exit", (code, signal) => {
+      logWarn("companionProc", "exited", `code=${code} signal=${signal} pid=${companionProc && companionProc.pid}`);
+      companionProc = null;
+    });
+    companionProc.on("error", (err) => logError("companionProc", "error event", `err=${err.message}`));
+  });
+}
+
+function startMusic() {
+  if (musicProc) return;
+  const port = require("./port_config").readMusicPort();
+  webUp(WEB_HOST, port, (up) => {
+    if (up) { logInfo("startMusic", "port already up, reusing", `port=${port}`); return; }
+    const script = path.join(REPO_ROOT, "companion", "prisIragent-music-web.py");
+    const args = [script, "--port", String(port)];
+    logInfo("startMusic", "spawning", `cmd=python args=${JSON.stringify(args)}`);
+    try {
+      musicProc = spawn(PYTHON, args, {
+        cwd: REPO_ROOT, stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
+      });
+    } catch (e) {
+      logError("startMusic", "spawn failed", `err=${e.message}`);
+      musicProc = null; return;
+    }
+    _pipeProcToLog(musicProc, "music");
+    musicProc.on("spawn", () => logInfo("musicProc", "spawned", `pid=${musicProc.pid}`));
+    musicProc.on("exit", (code, signal) => {
+      logWarn("musicProc", "exited", `code=${code} signal=${signal} pid=${musicProc && musicProc.pid}`);
+      musicProc = null;
+    });
+    musicProc.on("error", (err) => logError("musicProc", "error event", `err=${err.message}`));
+  });
 }
 
 function startWeb() {
@@ -148,8 +246,8 @@ function startWeb() {
     const wantLan = !(process.env.PRISIRAGENT_SHELL_NO_LAN || process.env.OIAGENT_SHELL_NO_LAN);
     const lanArgs = wantLan ? ["--lan"] : [];
     const args = useExe
-      ? ["--port", String(WEB_PORT), ...lanArgs]
-      : [WEB_SCRIPT, "--port", String(WEB_PORT), ...lanArgs];
+      ? ["--port", String(WEB_PORT), "--calendar-port", String(DEFAULT_CALENDAR_PORT), ...lanArgs]
+      : [WEB_SCRIPT, "--port", String(WEB_PORT), "--calendar-port", String(DEFAULT_CALENDAR_PORT), ...lanArgs];
     // v2.0:stdout/stderr 落 spawn-{out,err}.log(原本 stdio: "ignore" 用户看不到任何错)。
     // Windows spawn 只接受文件路径 / 'pipe' / 'ignore',不接受 WriteStream 对象。
     // 用 'pipe' + 自己写文件:跨平台稳,且日志可加锁/轮转。
@@ -277,14 +375,25 @@ function _createChildWindow(spec) {
   // 兜底 3.5s 强制亮相(后端慢 / 端口冲突 fallback 场景)
   setTimeout(() => { if (w && !w.isDestroyed() && !w.isVisible()) { w.show(); w.focus(); } }, 3500);
   // 外链交系统浏览器,壳内子窗口不复用主窗口 setWindowOpenHandler(子窗独立配置)
+  // P2.5+21(2026-10-03):同源 window.open 用 _decideSameOriginOpen 纯函数决策,
+  // 5s 内同 URL 只 allow 1 次,避免「关于 / 隐私 / 远程」同源 open 触发多窗递归。
   w.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith(WEB_URL)) return { action: "allow", overrideBrowserWindowOptions: {
+    const dec = _decideSameOriginOpen(url, WEB_URL, _recentlyOpenedUrls);
+    if (dec.action === "deny") {
+      logWarn("setWindowOpenHandler", "denied", `reason=${dec.reason || "same-origin"} url=${url}`);
+      return { action: "deny" };
+    }
+    if (dec.action === "external") {
+      shell.openExternal(url);
+      return { action: "deny" };
+    }
+    // dec.action === "allow"
+    _recentlyOpenedUrls.set(url, Date.now());
+    return { action: "allow", overrideBrowserWindowOptions: {
       autoHideMenuBar: true,
       backgroundColor: "#f6f1e7",
       webPreferences: _commonWebPreferences(),
     }};
-    shell.openExternal(url);
-    return { action: "deny" };
   });
   // close 仅 hide(常驻),quit 时才真销毁
   w.on("close", (e) => {
@@ -349,7 +458,18 @@ function createWindow() {
   // 同源(回环)window.open 弹出的新窗口(手机遥控/关于/隐私等)也要隐藏菜单栏 + 先藏后亮,
   // 否则这些子窗口仍带 File/Edit/View 菜单且可能白闪(用户实测反馈)。
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith(WEB_URL)) return { action: "allow", overrideBrowserWindowOptions: {
+    // P2.5+21(2026-10-03):同源递归去重(主窗版) — 跟子窗共用 _decideSameOriginOpen。
+    const dec = _decideSameOriginOpen(url, WEB_URL, _recentlyOpenedUrls);
+    if (dec.action === "deny") {
+      logWarn("setWindowOpenHandler", "denied", `reason=${dec.reason || "same-origin"} url=${url}`);
+      return { action: "deny" };
+    }
+    if (dec.action === "external") {
+      shell.openExternal(url);
+      return { action: "deny" };
+    }
+    _recentlyOpenedUrls.set(url, Date.now());
+    return { action: "allow", overrideBrowserWindowOptions: {
       autoHideMenuBar: true,
       // 注意:子窗不设 show:false。window.open 的子窗不经 createWindow,拿不到句柄挂
       // ready-to-show,也没有 3.5s 兜底——设了 show:false 会永远 hidden(用户点"手机遥控"/
@@ -362,8 +482,6 @@ function createWindow() {
         sandbox: true,
       },
     }};
-    shell.openExternal(url);
-    return { action: "deny" };
   });
 
   loadWhenReady();
@@ -521,18 +639,50 @@ const _CHILD_SPEC = {
 };
 
 function openCompanionWindow() {
+  // P2.5+21(2026-10-03):Electron 壳现在自己 spawn 语伴后端。点托盘后先启后端,
+  // 探活 ≤3s,起来再弹子窗;起不来兜底主 web。
+  startCompanion();
   const port = require("./port_config").readCompanionPort();
-  openInShell(`http://${WEB_HOST}:${port}/`, "companion");
+  waitForPort(WEB_HOST, port, 3.0).then((ok) => {
+    if (!ok) {
+      logWarn("openCompanionWindow", "port not ready in 3s", `port=${port}`);
+      openInShell(WEB_URL, "main");
+      return;
+    }
+    openInShell(`http://${WEB_HOST}:${port}/`, "companion");
+  });
 }
 function openMusicWindow() {
-  const port = require("./port_config").readMusicPort();
-  // music 端口可能 0(动态分配但未就绪)—— 兜底回主面板,等 music web 真起来再点
-  if (port <= 0) {
-    logWarn("trayOpen", "music port not ready", `port=${port}`);
-    openInShell(WEB_URL, "main");
-    return;
-  }
-  openInShell(`http://${WEB_HOST}:${port}/`, "music");
+  // P2.5+21(2026-10-03):Electron 壳自己 spawn music 后端(端口动态分配)。
+  // music web 起来后 `--port 0` 时会写 HKCU / _prisir_registry/music_port.json,
+  // port_config.js 的 readMusicPort() 读动态端口;我们 spawn 时不预知,先起来
+  // 等 3s 后读端口再弹子窗。
+  startMusic();
+  const deadline = Date.now() + 3000;
+  const tick = () => {
+    const port = require("./port_config").readMusicPort();
+    if (port > 0) {
+      // 端口有值后再探活 1 次,确保 music web 真 ready
+      waitForPort(WEB_HOST, port, 1.0).then((ok) => {
+        if (ok) {
+          openInShell(`http://${WEB_HOST}:${port}/`, "music");
+        } else if (Date.now() < deadline) {
+          setTimeout(tick, 300);
+        } else {
+          logWarn("openMusicWindow", "music web not ready in 3s", `port=${port}`);
+          openInShell(WEB_URL, "main");
+        }
+      });
+      return;
+    }
+    if (Date.now() < deadline) {
+      setTimeout(tick, 300);
+    } else {
+      logWarn("openMusicWindow", "music port 0 after 3s", `port=${port}`);
+      openInShell(WEB_URL, "main");
+    }
+  };
+  tick();
 }
 function openCalendarWindow() {
   // 日历 走 prisiragent_web.py 的 /prisiragent/calendar 路由。
@@ -723,7 +873,13 @@ if (!gotLock) {
     app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
   });
 
-  app.on("before-quit", () => { quitting = true; destroyAllChildWindows(); logInfo("app", "before-quit"); });
+  app.on("before-quit", () => {
+    quitting = true; destroyAllChildWindows();
+    // P2.5+21(2026-10-03):杀语伴 / 音乐 子进程,避免残留占用端口。
+    if (companionProc) { try { companionProc.kill(); } catch (_) {} companionProc = null; }
+    if (musicProc) { try { musicProc.kill(); } catch (_) {} musicProc = null; }
+    logInfo("app", "before-quit");
+  });
   app.on("will-quit", () => {
     logInfo("app", "will-quit");
     globalShortcut.unregisterAll();
