@@ -516,7 +516,7 @@ function openInShell(url, label) {
 const _CHILD_SPEC = {
   companion: { width: 920, height: 680, minWidth: 640, minHeight: 480, title: "PrisirAI · 语伴" },
   music:     { width: 880, height: 620, minWidth: 640, minHeight: 480, title: "PrisirAI · 音乐" },
-  calendar:  { width: 960, height: 720, minWidth: 720, minHeight: 540, title: "PrisirAI · 📅 日历" },
+  calendar:  { width: 960, height: 720, minWidth: 720, minHeight: 540, title: "PrisirAI · 📅 日程" },
   workflow:  { width: 1000, height: 720, minWidth: 800, minHeight: 560, title: "PrisirAI · 🔀 工作流" },
 };
 
@@ -565,7 +565,7 @@ function createTray() {
     // P2.5+16(2026-09-22):每个子项独立 BrowserWindow,不再复用主窗口。
     { label: "语伴",      click: openCompanionWindow },
     { label: "音乐",      click: openMusicWindow },
-    { label: "📅 日历",   click: openCalendarWindow },
+    { label: "📅 日程",   click: openCalendarWindow },
     { label: "🔀 工作流", click: openWorkflowWindow },
     { type: "separator" },
     { label: "关闭所有子窗口", click: () => closeAllChildWindows() },

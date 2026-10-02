@@ -71,6 +71,11 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs, quote
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+# 2026-10-02 mini-ship:大小写兼容垫片(项目里 46 处 import 写小写
+# 但文件名大写 I,Windows + Python 3.13 上大小写敏感。装这层,
+# 以后谁都别撞)。
+import prisir_case_compat  # noqa: E402, F401
 # M3.22(2026-09-16): companion_llm_providers 在 companion/ 子目录里,
 # 兜底把 sibling 子目录加 sys.path 让根目录脚本也能 import。
 # 装包态(prisir-backend.exe)会把 companion_llm_providers 同 bundle,
@@ -2869,7 +2874,7 @@ def _schedule_extractor_push_consent_card() -> None:
         _sse_broadcast({
             "type": "schedule_consent_required",
             "title": "AI 日程主动编排",
-            "summary": "本对话可能提到时间/事件/任务,PrisirAI 将自动建日历事件、todo 任务,"
+            "summary": "本对话可能提到时间/事件/任务,PrisirAI 将自动建日程、todo 任务,"
                        "并建议番茄钟时段。",
             "details": [
                 "可写入:本地 SQLite 日历事件(可导出 ICS)",
@@ -4699,9 +4704,9 @@ window.__PRISIR_FORUM_URL__ = "__PRISIR_FORUM_URL_PLACEHOLDER__";
         _markShown();
         _showBanner(
           "AI 日程主动编排",
-          "本对话提到时间/事件/任务时,PrisirAI 会自动建日历事件与 todo 任务,并建议番茄钟时段。",
+          "本对话提到时间/事件/任务时,PrisirAI 会自动建日程与 todo 任务,并建议番茄钟时段。",
           [
-            "可写入:本地 SQLite 日历事件(可在 📅 日历入口查看)",
+            "可写入:本地 SQLite 日程(可在 📅 日程入口查看)",
             "可写入:todo 扩展 JSON 文件(可在 todo 抽屉查看/删除)",
             "可记录:番茄钟建议(只控制台记录,不主动开始计时)",
             "不会:发送任何数据到云端",
@@ -5211,6 +5216,22 @@ window.__PRISIR_FORUM_URL__ = "__PRISIR_FORUM_URL_PLACEHOLDER__";
     vertical-align:top; }
   #patchmodal th { color:var(--gh-ink-faint); font-weight:600; }
   #patchmodal .mini { font-size:11px; padding:2px 8px; }
+
+  /* 2026-10-02 扩展管理弹层(同 patchmodal 结构:默认 hidden,加 .open 才 flex) */
+  #extmodal { position:fixed; inset:0; background:rgba(47,58,52,.4); display:none; z-index:113;
+    align-items:center; justify-content:center; }
+  #extmodal.open { display:flex; }
+  #extmodal .card { background:var(--gh-paper); border-radius:14px; padding:24px; width:680px; max-width:92vw;
+    max-height:80vh; overflow-y:auto; box-shadow:0 12px 40px rgba(0,0,0,.25); }
+  #extmodal h3 { font-size:16px; color:var(--gh-green-deep); margin:0; }
+  #extmodal .sub { font-size:12px; color:var(--gh-ink-faint); margin-bottom:14px; }
+  #extmodal .ext-row { display:flex; justify-content:space-between; align-items:center;
+    padding:10px 12px; border-bottom:1px solid var(--gh-line); font-size:13px; }
+  #extmodal .ext-row:last-child { border-bottom:none; }
+  #extmodal .ext-name { font-weight:600; color:var(--gh-green-deep); }
+  #extmodal .ext-meta { font-size:11px; color:var(--gh-ink-faint); margin-top:2px; }
+  #extmodal .ext-badge { font-size:10px; padding:2px 8px; border-radius:10px;
+    background:var(--gh-paper-2); color:var(--gh-ink); margin-left:8px; }
 
   /* M3.31:git 安装权限闸(未检测到 git 命令时启动弹一次)。
      复用 fbmodal/patchmodal 的 fixed 居中遮罩 + 卡片风格,z-index 拉高避让 dlg。 */
@@ -5761,9 +5782,9 @@ window.__PRISIR_FORUM_URL__ = "__PRISIR_FORUM_URL_PLACEHOLDER__";
   <button class="topbtn" id="files-btn" onclick="toggleFiles()" data-i18n="files" data-i18n-title="files_title">📁 文件</button>
   <button class="topbtn" id="doc-btn" onclick="toggleDocPanel()" data-i18n="doc_panel" data-i18n-title="doc_panel_title">📑 文档</button>
   <button class="topbtn" onclick="openKeys()" data-i18n="model_key">🔑 模型 Key</button>
-  <button class="topbtn" onclick="openFeedback()" data-i18n-title="feedback_title"><span data-i18n="feedback">⚙ 反馈问题</span></button>
-  <button class="topbtn" id="topbtnCompanion" onclick="openCompanion()" data-i18n-title="companion_title" title="陪聊(语音/文字轻量对话,可派发到主面板)">📞 陪聊</button>
+  <button class="topbtn" id="topbtnCompanion" onclick="openCompanion()" data-i18n-title="companion_title" title="语伴(语音/文字轻量对话,可派发到主面板)">📞 语伴</button>
   <button class="topbtn" id="topbtnWorkflow" onclick="openWorkflow()" data-i18n-title="workflow_title" title="工作流编排(拖拽 DAG + 重试 + 运行历史)">🔀 工作流</button>
+  <button class="topbtn" id="topbtnExt" onclick="openExtensions()" data-i18n-title="extensions_title" title="扩展(资源检索 / 技能市场 / 已装扩展管理)">🧩 扩展</button>
   <button class="topbtn" onclick="newSession()" data-i18n="new_session">+ 新会话</button>
 </div>
 <div id="main">
@@ -5824,6 +5845,7 @@ window.__PRISIR_FORUM_URL__ = "__PRISIR_FORUM_URL_PLACEHOLDER__";
           <div class="mi" onclick="openSplitScreen()" data-i18n="split">🗔 分屏接续(带交接)</div>
           <div class="mi" onclick="window.open('/prisiragent/remote','_blank')" data-i18n="remote">📱 手机遥控</div>
           <div class="divider"></div>
+          <div class="mi" onclick="openFeedback()" data-i18n="feedback" data-i18n-title="feedback_title">⚙ 反馈问题</div>
           <div class="mi" onclick="openPatch()" data-i18n="patch" data-i18n-title="patch_title">🩹 补丁</div>
           <div class="mi" onclick="window.open('/prisiragent/about','_blank')" data-i18n="about">ℹ️ 关于</div>
           <div class="divider"></div>
@@ -6334,6 +6356,22 @@ window.__PRISIR_FORUM_URL__ = "__PRISIR_FORUM_URL_PLACEHOLDER__";
       <button class="topbtn" onclick="closePatch()" data-i18n="close">关闭</button>
     </div>
   </div>
+</div>
+
+<!-- 2026-10-02 扩展管理弹层:#102 ship 后接 #40 Marketplace,#M3.36 Phase 2.x ship 后 UI 整合 -->
+<div id="extmodal">
+   <div class="card" style="max-width:680px;max-height:80vh;overflow-y:auto;">
+     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+       <h3 style="margin:0">🧩 扩展管理</h3>
+       <button class="topbtn" onclick="closeExtensions()">✕</button>
+     </div>
+     <div class="sub" style="margin-bottom:14px">本机已 ship 的资源检索扩展(主对话 EXEC 触发) + 即将上线的 marketplace / 远端镜像。</div>
+     <div id="ext-list" style="border:1px solid var(--gh-line);border-radius:8px;overflow:hidden;"></div>
+     <div style="margin-top:14px;display:flex;justify-content:space-between;align-items:center">
+       <span style="font-size:12px;color:var(--gh-ink-soft)">💡 marketplace(远端技能市场)与工作流编排共享,见「🔀 工作流」弹层 marketplace tab。</span>
+       <button class="topbtn" onclick="openWorkflow()">🔀 工作流</button>
+     </div>
+   </div>
 </div>
 
 <!-- M3.31:git 安装权限闸(未检测到 git 命令时启动弹一次,选「暂不启用」后不再弹) -->
@@ -7972,7 +8010,7 @@ function onPlatformPick(){
     }
     // 调主面板 /api/asr/active → 转发到 18850 切 active_provider
     openAsrProvider(rawName);
-    if(note) note.textContent = (LANG==='zh'?('🎤 已切 ASR 到「'+rawName+'」 — 完整配置请到 📞 陪聊 → ⚙ 设置'):('🎤 ASR switched to "'+rawName+'" — full config via 📞 Companion → ⚙ Settings'));
+    if(note) note.textContent = (LANG==='zh'?('🎤 已切 ASR 到「'+rawName+'」 — 完整配置请到 📞 语伴 → ⚙ 设置'):('🎤 ASR switched to "'+rawName+'" — full config via 📞 Companion → ⚙ Settings'));
     return;
   }
   if(v === '__custom__'){
@@ -8045,6 +8083,40 @@ function closeFeedback(){ document.getElementById('fbmodal').classList.remove('o
 function openPatch(){ document.getElementById('patchmodal').classList.add('open'); patchRefreshList(); }
 function closePatch(){ document.getElementById('patchmodal').classList.remove('open'); }
 
+/* ===== 2026-10-02 扩展管理:列出已装扩展 + 跳 marketplace(资源检索 5 件套 + 技能市场) ===== */
+async function openExtensions(){
+  var modal = document.getElementById('extmodal');
+  if (!modal) return;
+  modal.classList.add('open');
+  // 拉扩展注册表(served/unshipped/runtime 3 列 + 资源检索 capability 摘要)
+  try {
+    var r = await fetch('/prisIragent/api/extensions/list', {cache:'no-store'});
+    var j = await r.json();
+    extRenderList(j.extensions || []);
+  } catch(e) {
+    extRenderList([{id:'__err__', title:'扩展注册表拉取失败', meta:String(e), runtime:false}]);
+  }
+}
+function closeExtensions(){ document.getElementById('extmodal').classList.remove('open'); }
+function extRenderList(items){
+  var list = document.getElementById('ext-list');
+  if (!list) return;
+  if (!items.length) {
+    list.innerHTML = '<div class="mi" style="color:var(--gh-ink-soft);">暂未安装任何扩展</div>';
+    return;
+  }
+  list.innerHTML = items.map(function(e){
+    var badge = e.runtime ? '<span style="color:#2a9d6a;">●运行中</span>'
+                : e.served ? '<span style="color:var(--gh-ink-soft);">已 ship 未启用</span>'
+                : '<span style="color:var(--gh-seal);">未 ship</span>';
+    return '<div class="mi" style="display:block;padding:10px 14px;border-bottom:1px solid var(--gh-line);">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;">'
+      +   '<b>' + (e.title || e.id) + '</b> ' + badge + '</div>'
+      + '<div style="font-size:12px;color:var(--gh-ink-soft);margin-top:4px;">' + (e.meta || '') + '</div>'
+      + '</div>';
+  }).join('');
+}
+
 /* ===== M3.27.3 陪聊入口:探活 + 开窗 =====
  * P2.5+19(2026-09-22)双分支:
  *   - 装包后(Tauri 主 WebView 注入 __TAURI_INTERNALS__)→ 调 Rust 命令
@@ -8071,7 +8143,7 @@ async function openCompanion(){
     }
     window.open(url, "_blank");
   } catch(e) {
-    var msg = "⚠ 陪聊服务未启动(端口 " + port + ")。\n启动命令:python -B companion/prisiragent-companion-web.py --port " + port + "\n(或通过 Tauri 壳托盘「启动陪聊」)";
+    var msg = "⚠ 语伴服务未启动(端口 " + port + ")。\n启动命令:python -B companion/prisiragent-companion-web.py --port " + port + "\n(或通过 Tauri 壳托盘「启动语伴」)";
     if(typeof toast === 'function'){
       toast(msg, false);
     } else if(typeof showToast === 'function'){
@@ -13506,6 +13578,8 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_calendar_timeline(qs)
         elif path == "/prisIragent/api/calendar/export.ics":
             self._handle_calendar_export()
+        elif path == "/prisIragent/api/extensions/list":
+            self._handle_extensions_list()
         else:
             self._json({"error": "not found"}, 404)
 
@@ -14773,6 +14847,55 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(ics_bytes)
+
+    def _handle_extensions_list(self):
+        """GET /prisIragent/api/extensions/list → 已 ship 扩展注册表。
+
+        2026-10-02 UI 改动:资源检索扩展 5 件套(free/api/api_cn/nokeyapi/selfhost)
+        + marketplace + awesome-hub 数据只读 snapshot。返回结构供「🧩 扩展」弹层渲染:
+          [{ id, title, meta, runtime, served }]
+        - runtime=True: 子进程已 spawn(读 _EXT_PROCS)
+        - served=True: ext 已 ship 到 installed.json
+        - meta: 用户看的简短说明
+        """
+        items = []
+        # 1. 资源检索 5 件套(主对话 EXEC capability,2026-10-02 ship)
+        for ext_id, title, meta in (
+            ("free-for-dev-promo",        "🎁 自由软件",
+             "Ripienaar/free-for-dev 全量快照 · 57 cat · 1324 svc · L0 capability"),
+            ("public-apis-promo",         "🔌 公共 API",
+             "public-apis/public-apis · 51 cat · 1953 API · Auth/HTTPS/CORS 三档"),
+            ("public-apis-cn-promo",      "🇨🇳 国内 API",
+             "llf007/public-apis-cn · 54 cat · 1493 entry · 中文描述 + 认证 + HTTPS"),
+            ("n0shake-public-apis-promo", "🔓 免 key API",
+             "n0shake/Public-APIs · 56 cat · 481 svc · N/A/💸/Open Source 三档"),
+            ("awesome-selfhosted-promo",  "🏠 自部署",
+             "awesome-selfhosted/awesome-selfhosted · 95 cat · 1260 svc · License/Language"),
+            ("awesome-hub-promo",         "📚 awesome 索引",
+             "sindresorhus/awesome · 27 cat · 677 topics · 仅 Phase A 数据"),
+        ):
+            items.append({
+                "id":      ext_id,
+                "title":   title,
+                "meta":    meta,
+                "served":  True,  # 都是已 ship(extens 目录 ship 了)
+                "runtime": ext_id in _EXT_PROCS,
+            })
+        # 2. 其他已 ship 扩展(P2.5+B-0 ext_bridge + P2.5+B-4 marketplace)
+        for ext_id, title, meta in (
+            ("marketplace",    "🌐 marketplace(远端技能市场)",
+             "工作流编排远端镜像 · 论坛 bbs.babelspan.com PrisirAI 对话子版 · PoW+签名"),
+            ("task-runner",    "🛠 task-runner(派单)",
+             "P2.5+B-1 ship · SDK invokeExt + Python 转发层 + 死循环防护"),
+        ):
+            items.append({
+                "id":      ext_id,
+                "title":   title,
+                "meta":    meta,
+                "served":  os.path.exists(os.path.join(os.path.dirname(__file__), "extensions", ext_id)),
+                "runtime": ext_id in _EXT_PROCS,
+            })
+        self._json({"ok": True, "extensions": items})
 
     def _handle_calendar_dismiss(self, body: dict):
         """POST /prisIragent/api/calendar/dismiss → dismiss_event + ledger_sink。
