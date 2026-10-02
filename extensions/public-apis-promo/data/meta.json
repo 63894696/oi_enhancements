@@ -1,0 +1,24 @@
+{
+  "source": "https://github.com/public-apis/public-apis",
+  "snapshot_date": "2026-10-02",
+  "total_categories": 51,
+  "total_services": 1953,
+  "auth_distribution": {
+    "No": 930,
+    "apiKey": 865,
+    "OAuth": 150,
+    "X-Mashape-Key": 6,
+    "User-Agent": 2
+  },
+  "https_distribution": {
+    "Yes": 1865,
+    "No": 88
+  },
+  "cors_distribution": {
+    "Unknown": 1017,
+    "Yes": 728,
+    "No": 208
+  },
+  "license_note": "Data 来源 public-apis/public-apis(MIT);二次使用属各服务方各自条款",
+  "agents_note": "无 AGENTS.md 限制,本扩展只读快照,绝不发起 PR/issue/comment"
+}

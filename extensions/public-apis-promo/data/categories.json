@@ -1,0 +1,257 @@
+[
+  {
+    "name": "Animals",
+    "slug": "animals",
+    "n_items": 24
+  },
+  {
+    "name": "Anime",
+    "slug": "anime",
+    "n_items": 19
+  },
+  {
+    "name": "Anti-Malware",
+    "slug": "anti-malware",
+    "n_items": 18
+  },
+  {
+    "name": "Art & Design",
+    "slug": "art-and-design",
+    "n_items": 27
+  },
+  {
+    "name": "Authentication & Authorization",
+    "slug": "authentication-and-authorization",
+    "n_items": 7
+  },
+  {
+    "name": "Blockchain",
+    "slug": "blockchain",
+    "n_items": 16
+  },
+  {
+    "name": "Books",
+    "slug": "books",
+    "n_items": 26
+  },
+  {
+    "name": "Business",
+    "slug": "business",
+    "n_items": 38
+  },
+  {
+    "name": "Calendar",
+    "slug": "calendar",
+    "n_items": 18
+  },
+  {
+    "name": "Cloud Storage & File Sharing",
+    "slug": "cloud-storage-and-file-sharing",
+    "n_items": 19
+  },
+  {
+    "name": "Continuous Integration",
+    "slug": "continuous-integration",
+    "n_items": 6
+  },
+  {
+    "name": "Cryptocurrency",
+    "slug": "cryptocurrency",
+    "n_items": 86
+  },
+  {
+    "name": "Currency Exchange",
+    "slug": "currency-exchange",
+    "n_items": 26
+  },
+  {
+    "name": "Data Validation",
+    "slug": "data-validation",
+    "n_items": 14
+  },
+  {
+    "name": "Development",
+    "slug": "development",
+    "n_items": 193
+  },
+  {
+    "name": "Dictionaries",
+    "slug": "dictionaries",
+    "n_items": 16
+  },
+  {
+    "name": "Documents & Productivity",
+    "slug": "documents-and-productivity",
+    "n_items": 45
+  },
+  {
+    "name": "Email",
+    "slug": "email",
+    "n_items": 32
+  },
+  {
+    "name": "Entertainment",
+    "slug": "entertainment",
+    "n_items": 18
+  },
+  {
+    "name": "Environment",
+    "slug": "environment",
+    "n_items": 25
+  },
+  {
+    "name": "Events",
+    "slug": "events",
+    "n_items": 4
+  },
+  {
+    "name": "Finance",
+    "slug": "finance",
+    "n_items": 83
+  },
+  {
+    "name": "Food & Drink",
+    "slug": "food-and-drink",
+    "n_items": 31
+  },
+  {
+    "name": "Games & Comics",
+    "slug": "games-and-comics",
+    "n_items": 107
+  },
+  {
+    "name": "Geocoding",
+    "slug": "geocoding",
+    "n_items": 103
+  },
+  {
+    "name": "Government",
+    "slug": "government",
+    "n_items": 115
+  },
+  {
+    "name": "Health",
+    "slug": "health",
+    "n_items": 42
+  },
+  {
+    "name": "Jobs",
+    "slug": "jobs",
+    "n_items": 29
+  },
+  {
+    "name": "Machine Learning",
+    "slug": "machine-learning",
+    "n_items": 42
+  },
+  {
+    "name": "Music",
+    "slug": "music",
+    "n_items": 35
+  },
+  {
+    "name": "News",
+    "slug": "news",
+    "n_items": 26
+  },
+  {
+    "name": "Open Data",
+    "slug": "open-data",
+    "n_items": 63
+  },
+  {
+    "name": "Open Source Projects",
+    "slug": "open-source-projects",
+    "n_items": 11
+  },
+  {
+    "name": "Patent",
+    "slug": "patent",
+    "n_items": 4
+  },
+  {
+    "name": "Personality",
+    "slug": "personality",
+    "n_items": 26
+  },
+  {
+    "name": "Phone",
+    "slug": "phone",
+    "n_items": 7
+  },
+  {
+    "name": "Photography",
+    "slug": "photography",
+    "n_items": 34
+  },
+  {
+    "name": "Programming",
+    "slug": "programming",
+    "n_items": 5
+  },
+  {
+    "name": "Science & Math",
+    "slug": "science-and-math",
+    "n_items": 47
+  },
+  {
+    "name": "Security",
+    "slug": "security",
+    "n_items": 54
+  },
+  {
+    "name": "Shopping",
+    "slug": "shopping",
+    "n_items": 21
+  },
+  {
+    "name": "Social",
+    "slug": "social",
+    "n_items": 54
+  },
+  {
+    "name": "Sports & Fitness",
+    "slug": "sports-and-fitness",
+    "n_items": 56
+  },
+  {
+    "name": "Test Data",
+    "slug": "test-data",
+    "n_items": 33
+  },
+  {
+    "name": "Text Analysis",
+    "slug": "text-analysis",
+    "n_items": 19
+  },
+  {
+    "name": "Tracking",
+    "slug": "tracking",
+    "n_items": 11
+  },
+  {
+    "name": "Transportation",
+    "slug": "transportation",
+    "n_items": 88
+  },
+  {
+    "name": "URL Shorteners",
+    "slug": "url-shorteners",
+    "n_items": 21
+  },
+  {
+    "name": "Vehicle",
+    "slug": "vehicle",
+    "n_items": 14
+  },
+  {
+    "name": "Video",
+    "slug": "video",
+    "n_items": 52
+  },
+  {
+    "name": "Weather",
+    "slug": "weather",
+    "n_items": 43
+  }
+]
