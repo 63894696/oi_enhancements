@@ -71,6 +71,11 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs, quote
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+# 2026-10-02 mini-ship:大小写兼容垫片(项目里 46 处 import 写小写
+# 但文件名大写 I,Windows + Python 3.13 上大小写敏感。装这层,
+# 以后谁都别撞)。
+import prisir_case_compat  # noqa: E402, F401
 # M3.22(2026-09-16): companion_llm_providers 在 companion/ 子目录里,
 # 兜底把 sibling 子目录加 sys.path 让根目录脚本也能 import。
 # 装包态(prisir-backend.exe)会把 companion_llm_providers 同 bundle,
@@ -1279,6 +1284,14 @@ def _shell_system_prompt(user_text: str, sid: str = "") -> str:
     env_block = _local_env_block()
     if env_block:
         parts.append(env_block)
+    # 2026-10-02 user 反馈:用户问「X 扩展该什么时候开」时,模型之前完全瞎答。
+    # 注入 [已 ship 扩展 — 触发场景] 表(60s 缓存)。每扩展 ≤ 30 字场景描述,
+    # 命中关键词(user_text 含 ext_id 或近义/同义)时优先显示;无条件全表也行。
+    # 不与 companion intent_summary 重复(intent_summary 是 EXEC 协议 + cap 细节,
+    # 这块是「什么时候该开 + 运行时」决策,对象不同)。
+    ext_inv = _installed_extensions_block()
+    if ext_inv:
+        parts.append(ext_inv)
     # 预设优先级:命中项目关键词时,把方案库「优先查位置」注入(输入法/装包/对话链等)
     preset_block = _preset_priority_block(user_text)
     if preset_block:
@@ -1586,6 +1599,88 @@ def _local_env_block() -> str:
     _ENV_CACHE["text"] = text
     _ENV_CACHE["ts"] = now
     return text
+
+# 2026-10-02 user 反馈:模型需要知道「本机装了什么扩展 + 何时该开」。
+# 与 _local_env_block 共享 60s 缓存(放同一 _ENV_CACHE)。
+# 设计:只列 id + 一句话触发场景,不重复 package.json description(用户已能在 🧩 扩展 UI 看到)。
+# 不带 EXEC 协议(那是 build_messages intent_summary 段的事)。
+def _installed_extensions_block() -> str:
+    """组 [已 ship 扩展 — 触发场景] 块。每扩展 = id + 何时启用 + runtime 状态。
+    让模型能在用户问「X 该不该开/什么时候开」时,引用具体能力而非瞎答。
+    触发场景是手动维护的精简表(不读 README,精度高于 description)。
+    """
+    # 触发场景表(手维护:每扩展 ≤ 30 字场景描述,新增 ext 1 行即生效)
+    # 顺序按用户使用频率预估排:工具型在前,资源检索类靠后(后者能力已被 intent_summary 详述)。
+    _EXT_USE_CASES = (
+        ("pomodoro",           "用户长时间专注写作/编码/任务块、需要 25/5 节奏时"),
+        ("quick-note",         "用户随口提到笔记/记住/备忘/想法时,快速落 Markdown"),
+        ("todo",               "用户提到任务/待办/优先级/截止时,本地待办增删改查"),
+        ("clipboard",          "用户说读剪贴板/复制/粘贴/拿当前选中内容时"),
+        ("web-watch",          "用户要盯一个网页变化、降价/上新/内容变更时"),
+        ("scheduled-task",     "[需管理员] 用户问每天几点跑、开机启动、定时执行类操作时"),
+        ("app-launcher",       "用户说打开应用/启动程序/打开网页/打开文件管理器时"),
+        ("process-scan",       "[需管理员] 用户问哪些程序在跑、内存占用、结束进程时(需授权)"),
+        ("window-list",        "用户问当前开了哪些窗口、关某个窗口、置顶时"),
+        ("system-watchdog",    "[需管理员] 后台稳定守护:平衡 CPU 占用/拦截卡顿程序/低内存提醒/空闲降频"),
+        ("http-request",       "用户要发网络请求、调用外部接口、检查网址是否能打开时"),
+        ("regex-tester",       "写或调试正则表达式(邮箱/手机号/URL 这类匹配规则)时"),
+        ("json-format",        "用户给一坨 JSON 要格式化排版、压缩、按 key 排序时"),
+        ("base64-codec",       "Base64 / Hex 这类二进制-文本互转,中文/二进制互转"),
+        ("timestamp",          "Unix 时间戳 ↔ 中文日期/标准时间/「几分钟前」相对时间"),
+        ("ascii-tree",         "把目录/JSON/缩进文本变可读树形结构图"),
+        ("code-snippets",      "写常用代码片段(40+ 内置模板)或插入自定义片段到当前项目"),
+        ("pr-review",          "看代码改动并套审查模板给出建议清单(可配置模板)"),
+        ("git-stats",          "看代码提交记录、改动排行、谁的提交最多"),
+        ("keystroke-emit",     "[需管理员] 模拟键盘输入 + 组合键(复制/粘贴/全选这类)+ 鼠标点击"),
+        ("sequence-builder",   "把一段描述画成时序图(流程参与者谁先谁后)"),
+        ("ext-mermaid",        "对话里出现图表代码块时自动渲染成可看的图卡"),
+        ("handraw-style",      "海报/卡片/封面提示词:278 种风格 + 36 种颜色 + 120 种版式"),
+        ("agency-roles",       "查找/选用 264 个 AI 角色模板(专业分工)"),
+        ("free-for-dev",       "用户要找免费在线工具/服务时(免费 SaaS)"),
+        ("public-apis",        "用户要免费公共接口(给程序调用的网络端点)时"),
+        ("public-apis-cn",     "国内可访问的免费接口(中文 API 描述)"),
+        ("n0shake",            "免注册、免 key 就能试用的开源接口"),
+        ("selfhost",           "自部署替代 SaaS(自己搭一套替代云服务)"),
+        ("awesome-hub",        "找各类精选资源列表(LLM 直接从数据集读)"),
+        ("marketplace",        "远端工作流包镜像(Prisir 论坛 PrisirAI 对话子版)"),
+        ("task-runner",        "DAG 工作流编排 + 定时调度 + 执行历史(任务派单)"),
+        ("sdk",                "扩展 SDK 自身,其他扩展调用,用户不需要手动启用"),
+    )
+    # 合并 installed.json(enabled 状态)
+    installed_map = {}
+    for path in (
+        os.path.join(os.path.expanduser("~"), ".prisir", "installed.json"),
+        os.path.join(os.path.expanduser("~"), ".prisir", "extensions", "installed.json"),
+    ):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+            if isinstance(raw, dict) and "extensions" in raw and isinstance(raw["extensions"], list):
+                for e in raw["extensions"]:
+                    if isinstance(e, dict) and e.get("id"):
+                        installed_map[e["id"]] = bool(e.get("enabled"))
+            elif isinstance(raw, dict):
+                for k, v in raw.items():
+                    if isinstance(v, dict):
+                        installed_map[k] = bool(v.get("enabled"))
+        except (OSError, ValueError):
+            continue
+    parts = ["[已 ship 扩展 — 触发场景,用户问「X 该不该开」时引用此表回答]"]
+    parts.append("注 1:标记 [需管理员] 的扩展,执行任务前若失败/拒绝访问,告知用户**关闭 PrisirAI → 右键 PrisirAI 图标 → 以管理员身份运行 → 重试**(PrisirAI 启动时若非管理员权限,这类扩展只能查不能改)。")
+    parts.append("注 2:用户问「免费 SaaS / 公共 API / 国内 API / 免 key API / 自部署软件 / awesome 索引都有哪些」时,**优先 EXEC 本地缓存**(free.list_categories / api.list_categories / api_cn.list_categories / nokeyapi.list_categories / selfhost.list_categories / awesome-hub 数据),不要让用户上 GitHub。")
+    parts.append("| id | 何时启用 | 状态 |")
+    parts.append("|---|---|---|")
+    for ext_id, use_case in _EXT_USE_CASES:
+        if ext_id in _EXT_PROCS:
+            st = "●运行中"
+        elif installed_map.get(ext_id, False):
+            st = "◉已启用"
+        else:
+            st = "○未启用"
+        parts.append(f"| {ext_id} | {use_case} | {st} |")
+    parts.append("[扩展表结束]")
+    return "\n".join(parts)
+
 
 # 运行中会话的内存锁/状态(结果落 SQLite,运行状态在内存)
 _running: dict[str, bool] = {}
@@ -2869,7 +2964,7 @@ def _schedule_extractor_push_consent_card() -> None:
         _sse_broadcast({
             "type": "schedule_consent_required",
             "title": "AI 日程主动编排",
-            "summary": "本对话可能提到时间/事件/任务,PrisirAI 将自动建日历事件、todo 任务,"
+            "summary": "本对话可能提到时间/事件/任务,PrisirAI 将自动建日程、todo 任务,"
                        "并建议番茄钟时段。",
             "details": [
                 "可写入:本地 SQLite 日历事件(可导出 ICS)",
@@ -4699,9 +4794,9 @@ window.__PRISIR_FORUM_URL__ = "__PRISIR_FORUM_URL_PLACEHOLDER__";
         _markShown();
         _showBanner(
           "AI 日程主动编排",
-          "本对话提到时间/事件/任务时,PrisirAI 会自动建日历事件与 todo 任务,并建议番茄钟时段。",
+          "本对话提到时间/事件/任务时,PrisirAI 会自动建日程与 todo 任务,并建议番茄钟时段。",
           [
-            "可写入:本地 SQLite 日历事件(可在 📅 日历入口查看)",
+            "可写入:本地 SQLite 日程(可在 📅 日程入口查看)",
             "可写入:todo 扩展 JSON 文件(可在 todo 抽屉查看/删除)",
             "可记录:番茄钟建议(只控制台记录,不主动开始计时)",
             "不会:发送任何数据到云端",
@@ -5211,6 +5306,22 @@ window.__PRISIR_FORUM_URL__ = "__PRISIR_FORUM_URL_PLACEHOLDER__";
     vertical-align:top; }
   #patchmodal th { color:var(--gh-ink-faint); font-weight:600; }
   #patchmodal .mini { font-size:11px; padding:2px 8px; }
+
+  /* 2026-10-02 扩展管理弹层(同 patchmodal 结构:默认 hidden,加 .open 才 flex) */
+  #extmodal { position:fixed; inset:0; background:rgba(47,58,52,.4); display:none; z-index:113;
+    align-items:center; justify-content:center; }
+  #extmodal.open { display:flex; }
+  #extmodal .card { background:var(--gh-paper); border-radius:14px; padding:24px; width:680px; max-width:92vw;
+    max-height:80vh; overflow-y:auto; box-shadow:0 12px 40px rgba(0,0,0,.25); }
+  #extmodal h3 { font-size:16px; color:var(--gh-green-deep); margin:0; }
+  #extmodal .sub { font-size:12px; color:var(--gh-ink-faint); margin-bottom:14px; }
+  #extmodal .ext-row { display:flex; justify-content:space-between; align-items:center;
+    padding:10px 12px; border-bottom:1px solid var(--gh-line); font-size:13px; }
+  #extmodal .ext-row:last-child { border-bottom:none; }
+  #extmodal .ext-name { font-weight:600; color:var(--gh-green-deep); }
+  #extmodal .ext-meta { font-size:11px; color:var(--gh-ink-faint); margin-top:2px; }
+  #extmodal .ext-badge { font-size:10px; padding:2px 8px; border-radius:10px;
+    background:var(--gh-paper-2); color:var(--gh-ink); margin-left:8px; }
 
   /* M3.31:git 安装权限闸(未检测到 git 命令时启动弹一次)。
      复用 fbmodal/patchmodal 的 fixed 居中遮罩 + 卡片风格,z-index 拉高避让 dlg。 */
@@ -5761,9 +5872,9 @@ window.__PRISIR_FORUM_URL__ = "__PRISIR_FORUM_URL_PLACEHOLDER__";
   <button class="topbtn" id="files-btn" onclick="toggleFiles()" data-i18n="files" data-i18n-title="files_title">📁 文件</button>
   <button class="topbtn" id="doc-btn" onclick="toggleDocPanel()" data-i18n="doc_panel" data-i18n-title="doc_panel_title">📑 文档</button>
   <button class="topbtn" onclick="openKeys()" data-i18n="model_key">🔑 模型 Key</button>
-  <button class="topbtn" onclick="openFeedback()" data-i18n-title="feedback_title"><span data-i18n="feedback">⚙ 反馈问题</span></button>
-  <button class="topbtn" id="topbtnCompanion" onclick="openCompanion()" data-i18n-title="companion_title" title="陪聊(语音/文字轻量对话,可派发到主面板)">📞 陪聊</button>
+  <button class="topbtn" id="topbtnCompanion" onclick="openCompanion()" data-i18n-title="companion_title" title="语伴(语音/文字轻量对话,可派发到主面板)">📞 语伴</button>
   <button class="topbtn" id="topbtnWorkflow" onclick="openWorkflow()" data-i18n-title="workflow_title" title="工作流编排(拖拽 DAG + 重试 + 运行历史)">🔀 工作流</button>
+  <button class="topbtn" id="topbtnExt" onclick="openExtensions()" data-i18n-title="extensions_title" title="扩展(资源检索 / 技能市场 / 已装扩展管理)">🧩 扩展</button>
   <button class="topbtn" onclick="newSession()" data-i18n="new_session">+ 新会话</button>
 </div>
 <div id="main">
@@ -5824,6 +5935,7 @@ window.__PRISIR_FORUM_URL__ = "__PRISIR_FORUM_URL_PLACEHOLDER__";
           <div class="mi" onclick="openSplitScreen()" data-i18n="split">🗔 分屏接续(带交接)</div>
           <div class="mi" onclick="window.open('/prisiragent/remote','_blank')" data-i18n="remote">📱 手机遥控</div>
           <div class="divider"></div>
+          <div class="mi" onclick="openFeedback()" data-i18n="feedback" data-i18n-title="feedback_title">⚙ 反馈问题</div>
           <div class="mi" onclick="openPatch()" data-i18n="patch" data-i18n-title="patch_title">🩹 补丁</div>
           <div class="mi" onclick="window.open('/prisiragent/about','_blank')" data-i18n="about">ℹ️ 关于</div>
           <div class="divider"></div>
@@ -6334,6 +6446,22 @@ window.__PRISIR_FORUM_URL__ = "__PRISIR_FORUM_URL_PLACEHOLDER__";
       <button class="topbtn" onclick="closePatch()" data-i18n="close">关闭</button>
     </div>
   </div>
+</div>
+
+<!-- 2026-10-02 扩展管理弹层:#102 ship 后接 #40 Marketplace,#M3.36 Phase 2.x ship 后 UI 整合 -->
+<div id="extmodal">
+   <div class="card" style="max-width:680px;max-height:80vh;overflow-y:auto;">
+     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+       <h3 style="margin:0">🧩 扩展管理</h3>
+       <button class="topbtn" onclick="closeExtensions()">✕</button>
+     </div>
+     <div class="sub" style="margin-bottom:14px">本机已 ship 的资源检索扩展(主对话 EXEC 触发) + 即将上线的 marketplace / 远端镜像。</div>
+     <div id="ext-list" style="border:1px solid var(--gh-line);border-radius:8px;overflow:hidden;"></div>
+     <div style="margin-top:14px;display:flex;justify-content:space-between;align-items:center">
+       <span style="font-size:12px;color:var(--gh-ink-soft)">💡 marketplace(远端技能市场)与工作流编排共享,见「🔀 工作流」弹层 marketplace tab。</span>
+       <button class="topbtn" onclick="openWorkflow()">🔀 工作流</button>
+     </div>
+   </div>
 </div>
 
 <!-- M3.31:git 安装权限闸(未检测到 git 命令时启动弹一次,选「暂不启用」后不再弹) -->
@@ -7972,7 +8100,7 @@ function onPlatformPick(){
     }
     // 调主面板 /api/asr/active → 转发到 18850 切 active_provider
     openAsrProvider(rawName);
-    if(note) note.textContent = (LANG==='zh'?('🎤 已切 ASR 到「'+rawName+'」 — 完整配置请到 📞 陪聊 → ⚙ 设置'):('🎤 ASR switched to "'+rawName+'" — full config via 📞 Companion → ⚙ Settings'));
+    if(note) note.textContent = (LANG==='zh'?('🎤 已切 ASR 到「'+rawName+'」 — 完整配置请到 📞 语伴 → ⚙ 设置'):('🎤 ASR switched to "'+rawName+'" — full config via 📞 Companion → ⚙ Settings'));
     return;
   }
   if(v === '__custom__'){
@@ -8045,6 +8173,41 @@ function closeFeedback(){ document.getElementById('fbmodal').classList.remove('o
 function openPatch(){ document.getElementById('patchmodal').classList.add('open'); patchRefreshList(); }
 function closePatch(){ document.getElementById('patchmodal').classList.remove('open'); }
 
+/* ===== 2026-10-02 扩展管理:列出已装扩展 + 跳 marketplace(资源检索 5 件套 + 技能市场) ===== */
+async function openExtensions(){
+  var modal = document.getElementById('extmodal');
+  if (!modal) return;
+  modal.classList.add('open');
+  // 拉扩展注册表(served/unshipped/runtime 3 列 + 资源检索 capability 摘要)
+  try {
+    var r = await fetch('/prisIragent/api/extensions/list', {cache:'no-store'});
+    var j = await r.json();
+    extRenderList(j.extensions || []);
+  } catch(e) {
+    extRenderList([{id:'__err__', title:'扩展注册表拉取失败', meta:String(e), runtime:false}]);
+  }
+}
+function closeExtensions(){ document.getElementById('extmodal').classList.remove('open'); }
+function extRenderList(items){
+  var list = document.getElementById('ext-list');
+  if (!list) return;
+  if (!items.length) {
+    list.innerHTML = '<div class="mi" style="color:var(--gh-ink-soft);">暂未安装任何扩展</div>';
+    return;
+  }
+  list.innerHTML = items.map(function(e){
+    var badge = e.runtime ? '<span style="color:#2a9d6a;">●运行中</span>'
+                : e.enabled ? '<span style="color:var(--gh-green-deep);">◉已启用</span>'
+                : e.served ? '<span style="color:var(--gh-ink-soft);">已 ship 未启用</span>'
+                : '<span style="color:var(--gh-seal);">未 ship</span>';
+    return '<div class="mi" style="display:block;padding:10px 14px;border-bottom:1px solid var(--gh-line);">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;">'
+      +   '<b>' + (e.title || e.id) + '</b> ' + badge + '</div>'
+      + '<div style="font-size:12px;color:var(--gh-ink-soft);margin-top:4px;">' + (e.meta || '') + '</div>'
+      + '</div>';
+  }).join('');
+}
+
 /* ===== M3.27.3 陪聊入口:探活 + 开窗 =====
  * P2.5+19(2026-09-22)双分支:
  *   - 装包后(Tauri 主 WebView 注入 __TAURI_INTERNALS__)→ 调 Rust 命令
@@ -8071,7 +8234,7 @@ async function openCompanion(){
     }
     window.open(url, "_blank");
   } catch(e) {
-    var msg = "⚠ 陪聊服务未启动(端口 " + port + ")。\n启动命令:python -B companion/prisiragent-companion-web.py --port " + port + "\n(或通过 Tauri 壳托盘「启动陪聊」)";
+    var msg = "⚠ 语伴服务未启动(端口 " + port + ")。\n启动命令:python -B companion/prisiragent-companion-web.py --port " + port + "\n(或通过 Tauri 壳托盘「启动语伴」)";
     if(typeof toast === 'function'){
       toast(msg, false);
     } else if(typeof showToast === 'function'){
@@ -13506,6 +13669,8 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_calendar_timeline(qs)
         elif path == "/prisIragent/api/calendar/export.ics":
             self._handle_calendar_export()
+        elif path == "/prisIragent/api/extensions/list":
+            self._handle_extensions_list()
         else:
             self._json({"error": "not found"}, 404)
 
@@ -14773,6 +14938,138 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(ics_bytes)
+
+    def _handle_extensions_list(self):
+        """GET /prisIragent/api/extensions/list → 已 ship 扩展注册表。
+
+        2026-10-02 UI2 改动:扫描 extensions/ 目录全部 package.json,合并 installed.json
+        的 enabled/runtime 状态。资源检索 5 件套有定制 title,其他扩展从 package.json
+        拿 name/description 渲染。返回结构供「🧩 扩展」弹层渲染:
+          [{ id, title, meta, runtime, served }]
+        - runtime=True: 子进程已 spawn(读 _EXT_PROCS)或 installed.json 标 enabled
+        - served=True:   extensions/{id}/package.json 存在
+        - meta: 用户看的简短说明
+        """
+        items = []
+        # 资源检索 5 件套 + 数据扩展 → 自定义 title(2026-10-02 sprint 1-3 ship)
+        _RESOURCE_TITLES = {
+            "free-for-dev-promo":        ("🎁 自由软件",       "GitHub 上最全的免费在线服务清单 · 57 个分类 · 1300+ 个工具 · 主对话可直接调用"),
+            "public-apis-promo":         ("🔌 公共 API",       "免费可调用的网络接口大全 · 51 个分类 · 1953 个接口 · 标明认证方式 + 是否 HTTPS + 是否支持浏览器直连"),
+            "public-apis-cn-promo":      ("🇨🇳 国内 API",      "国内可访问的免费接口 · 54 个分类 · 1493 个条目 · 中文描述 + 国内可用 + 认证方式"),
+            "n0shake-public-apis-promo": ("🔓 免 key API",     "免注册免密钥就能试用的开源接口 · 56 个分类 · 481 个接口 · 标明免费/付费/开源"),
+            "awesome-selfhosted-promo":  ("🏠 自部署",         "自己搭一套替代云服务的开源软件清单 · 95 个分类 · 1260 个项目 · 标明开源协议 + 编程语言"),
+            "awesome-hub-promo":         ("📚 awesome 索引",   "GitHub 上各类精选资源列表的索引 · 27 个主题 · 677 个清单 · 模型可直接读数据集回答"),
+            "handraw-style-prompter":    ("🎨 风格海报提示词",  "海报/卡片/封面提示词库 · 278 种风格 + 36 种颜色 + 120 种版式 · 主对话可直接调用"),
+            "marketplace":               ("🌐 工作流包市场",   "远端工作流包镜像 · 从 Prisir 论坛 PrisirAI 对话子版拉取 · 无需注册,有防垃圾签名"),
+            "task-runner":               ("🛠 任务派单",       "把任务排成流程图自动跑 · 支持手动触发 + 定时执行 · 有完整执行历史可回看"),
+        }
+        # 通用工具扩展 → 用户可读说明(2026-10-02 user 反馈:内部代号/jargon 要改写)
+        _EXT_DESCRIPTIONS = {
+            "pomodoro":           "番茄钟 · 25 分钟专注 + 5 分钟休息 · 自动计时 + 今日完成计数",
+            "quick-note":         "轻量 Markdown 笔记 · 支持增删改查 + 关键词搜索 · 主对话提到「记一下」时会自动建议",
+            "todo":               "本地待办清单 · 按优先级/截止日期/标签分类 · 可设简单提醒",
+            "clipboard":          "剪贴板读写 · Windows 复制粘贴内容 + 最近 50 条历史记录",
+            "web-watch":          "网页变化监控 · 价格变动/上新提醒 · 内容变了自动弹通知",
+            "scheduled-task":     "Windows 计划任务 · 定时执行/开机启动 · 可视化创建/启停",
+            "app-launcher":       "启动应用/打开网页/打开文件夹 · 支持带参数和工作目录",
+            "process-scan":       "查看正在运行的程序 · 看内存占用 · 结束进程(需授权)",
+            "window-list":        "查看当前打开的所有窗口 · 关闭/最小化/置顶某个窗口",
+            "system-watchdog":    "后台守护 · 自动平衡 CPU 占用 + 拦截卡顿程序 + 低内存提醒 + 空闲降频",
+            "http-request":       "发网络请求 · 调用外部接口 · 检查网址是否能打开 · 支持各类请求方式",
+            "regex-tester":       "正则表达式测试 · 邮箱/手机号/网址这类匹配规则实时调试 + 替换预览",
+            "json-format":        "JSON 格式化排版 · 按字段排序 · 提取指定字段 · 校验格式",
+            "base64-codec":       "Base64 / 十六进制 编解码 · 支持中文/二进制互转 · 自动识别输入格式",
+            "timestamp":          "时间戳转换 · Unix ↔ 标准时间 ↔ 「几分钟前」 · 支持多种时间格式",
+            "ascii-tree":         "目录树/JSON/缩进文本 → 树形结构图 · 看清嵌套层级关系",
+            "code-snippets":      "常用代码片段模板库 · 40+ 内置片段 · 一键插入到当前项目",
+            "pr-review":          "代码改动审查 · 自动套审查模板给出建议清单(可配置模板)",
+            "git-stats":          "代码提交记录统计 · 看改动排行 · 看谁的提交最多 · 无需联网",
+            "keystroke-emit":     "模拟键盘输入 + 快捷键(复制/粘贴/全选)+ 鼠标点击 · 自动化操作",
+            "sequence-builder":   "把一段描述画成时序图 · 看清流程里谁先谁后 · 支持图和文本两种形式",
+            "ext-mermaid":        "对话里出现图表代码块时自动渲染成可看的图卡(支持流程图/时序图/架构图等)",
+            "agency-roles":       "AI 角色模板库 · 264 个专业分工角色 · 按需选用 · 模型可直接读",
+            "sdk":                "扩展 SDK 工具包 · 给其他扩展作者用的开发工具集 · 普通用户不需要启用",
+            "web-watch":          "网页变化监控 · 价格变动/上新提醒 · 内容变了自动弹通知",
+        }
+        # installed.json 加载 enabled 状态(ext 进程可能因崩溃被清但 installed.json 仍 enabled)
+        installed_map = {}  # ext_id -> {enabled, name}
+        for path in (
+            os.path.join(os.path.expanduser("~"), ".prisir", "installed.json"),
+            os.path.join(os.path.expanduser("~"), ".prisir", "extensions", "installed.json"),
+        ):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    raw = json.load(f)
+                if isinstance(raw, dict) and "extensions" in raw and isinstance(raw["extensions"], list):
+                    for e in raw["extensions"]:
+                        if isinstance(e, dict) and e.get("id"):
+                            installed_map[e["id"]] = {"enabled": bool(e.get("enabled")), "name": e.get("id")}
+                elif isinstance(raw, dict):
+                    for k, v in raw.items():
+                        if isinstance(v, dict):
+                            installed_map[k] = {"enabled": bool(v.get("enabled")), "name": v.get("name", k)}
+            except (OSError, ValueError):
+                continue
+
+        # 扫 extensions/ 目录(package.json + index.js 都有的才算可运行 ext)
+        ext_dir = os.path.join(os.path.dirname(__file__), "extensions")
+        seen_ids = set()
+        try:
+            for entry in sorted(os.listdir(ext_dir)):
+                full = os.path.join(ext_dir, entry)
+                if not os.path.isdir(full) or entry.startswith("_") or entry == "extensions":
+                    continue
+                pkg_path = os.path.join(full, "package.json")
+                idx_path = os.path.join(full, "index.js")
+                if not (os.path.exists(pkg_path) and os.path.exists(idx_path)):
+                    continue  # 缺关键文件,跳过(data-only 扩展不强制进)
+                # 拿 name + desc
+                try:
+                    with open(pkg_path, "r", encoding="utf-8") as f:
+                        pkg = json.load(f)
+                except (OSError, ValueError):
+                    continue
+                ext_id = pkg.get("name") or entry
+                # 剥 npm scope 拿到干净 id(@prisir/web-watch → web-watch)
+                if "/" in ext_id:
+                    ext_id = ext_id.split("/", 1)[-1]
+                seen_ids.add(ext_id)
+                # 优先级:_RESOURCE_TITLES(资源检索) > _EXT_DESCRIPTIONS(用户可读文案)
+                #         > package.json display_name/name/description(兜底)
+                if ext_id in _RESOURCE_TITLES:
+                    title, meta = _RESOURCE_TITLES[ext_id]
+                elif ext_id in _EXT_DESCRIPTIONS:
+                    raw_title = pkg.get("display_name") or pkg.get("name") or entry
+                    title = raw_title.split("/")[-1] if "/" in raw_title else raw_title
+                    meta = _EXT_DESCRIPTIONS[ext_id]
+                else:
+                    # 兜底:剥 npm scope(@prisir/)和目录名当显示
+                    raw_title = pkg.get("display_name") or pkg.get("name") or entry
+                    title = raw_title.split("/")[-1] if "/" in raw_title else raw_title
+                    meta = pkg.get("description") or ""
+                items.append({
+                    "id":      ext_id,
+                    "title":   title,
+                    "meta":    meta,
+                    "served":  True,
+                    "runtime": (ext_id in _EXT_PROCS) or installed_map.get(ext_id, {}).get("enabled", False),
+                    "enabled": installed_map.get(ext_id, {}).get("enabled", False),
+                })
+        except OSError:
+            pass
+        # 加 data-only 扩展(无 index.js,只入 showcase 而不 runtime)
+        for data_id in ("awesome-hub-promo",):
+            if data_id in seen_ids: continue
+            title, meta = _RESOURCE_TITLES.get(data_id, (data_id, ""))
+            items.append({
+                "id":      data_id,
+                "title":   title,
+                "meta":    meta,
+                "served":  os.path.exists(os.path.join(ext_dir, data_id)),
+                "runtime": False,
+                "enabled": False,
+            })
+        self._json({"ok": True, "extensions": items})
 
     def _handle_calendar_dismiss(self, body: dict):
         """POST /prisIragent/api/calendar/dismiss → dismiss_event + ledger_sink。
