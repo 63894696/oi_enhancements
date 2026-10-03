@@ -157,7 +157,7 @@ export const usePlayerStore = defineStore('player', () => {
         title: t.title,
         artist: t.artist,
         album: t.album || '',
-        duration: t.duration || 0,
+        duration: t.duration_sec ?? t.duration ?? 0,
         source: t.source || 'lx',
       }))
       cursor.value = q.cursor ?? -1
@@ -204,6 +204,9 @@ export const usePlayerStore = defineStore('player', () => {
 
   async function playById(songId: string) {
     // 从 /api/songs 拉详情 → 调 PlayerService
+    // P3.9(2026-10-03):后端 SongMeta 加 duration_sec 字段(真歌名池 v2 估算时长),
+    //   优先用 duration_sec 兜底(v2 mock.js googleapis mp3 时长不稳),
+    //   旧字段 song.duration 仍兼容(v1 没改)。
     const r = await api(`/api/songs`)
     if (!r.ok) return null
     const song = (r.songs as any[]).find((s) => s.id === songId)
@@ -213,7 +216,7 @@ export const usePlayerStore = defineStore('player', () => {
       title: song.title,
       artist: song.artist,
       album: song.album || '',
-      duration: song.duration || 0,
+      duration: song.duration_sec ?? song.duration ?? 0,
       source: 'lx',
     })
     return song

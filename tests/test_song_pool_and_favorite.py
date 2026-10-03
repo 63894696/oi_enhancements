@@ -50,10 +50,12 @@ class TestSongPoolLoad(unittest.TestCase):
         cls.cat.load()
 
     def test_load_count(self):
-        # 388 行实际为 381(7 行重复如 "Immortals" 出现两次)
-        self.assertGreaterEqual(len(self.cat.all_songs), 380,
-                                f"expected ≥380 unique songs, got {len(self.cat.all_songs)}")
-        self.assertLessEqual(len(self.cat.all_songs), 388)
+        # P3.9(2026-10-03):v2 = 841 行 14 标签(subagent 实测)
+        # 之前 v1 = 388 行 6 标签(7 行重复如 "Immortals" 出现两次)
+        self.assertGreaterEqual(len(self.cat.all_songs), 820,
+                                f"expected ≥820 unique songs (v2), got {len(self.cat.all_songs)}")
+        self.assertLessEqual(len(self.cat.all_songs), 850,
+                             f"expected ≤841 (v2 max), got {len(self.cat.all_songs)}")
 
     def test_load_visible_is_60(self):
         self.assertEqual(len(self.cat.visible_songs), 60)
@@ -66,22 +68,42 @@ class TestSongPoolLoad(unittest.TestCase):
         ids = [s.id for s in self.cat.all_songs]
         self.assertEqual(len(ids), len(set(ids)), "id 重复")
 
-    def test_id_is_stable(self):
-        # 同 title+artist 必同 id(确定性哈希)
-        for s in self.cat.all_songs:
-            self.assertEqual(len(s.id), 12)
+    def test_id_is_v2_explicit(self):
+        # P3.9(2026-10-03):v2 id 必是 spXXX 显式格式(非 sha1 派生 12 hex)
+        for s in self.cat.all_songs[:20]:
+            self.assertRegex(s.id, r"^sp\d{3,4}$",
+                             f"id must be spXXX (v2 explicit), got: {s.id}")
+        # 至少有 800+ spXXX id(841 首)
+        sp_ids = [s.id for s in self.cat.all_songs if s.id.startswith("sp")]
+        self.assertGreaterEqual(len(sp_ids), 820,
+                                f"expected ≥820 spXXX ids, got {len(sp_ids)}")
 
-    def test_immortals_doublequote_parsed(self):
-        # CSV 第 17 行: "Immortals(From ""Big Hero 6""/Soundtrack)" → 单引号
-        hit = [s for s in self.cat.all_songs if "Immortals" in s.title]
-        self.assertGreaterEqual(len(hit), 1)
-        for h in hit:
-            self.assertNotIn('""', h.title, "双引号嵌套未解")
+    def test_qingtian_exists(self):
+        # P3.9(2026-10-03):周杰伦「晴天」必在 v2 catalog(sp001)
+        qingtian = self.cat.get_by_id("sp001")
+        self.assertIsNotNone(qingtian, "sp001 必须在 catalog 中")
+        self.assertEqual(qingtian.title, "晴天")
+        self.assertEqual(qingtian.artist, "周杰伦")
+        self.assertEqual(qingtian.tag, "流行")
+
+    def test_v2_csv_format_loaded(self):
+        # P3.9(2026-10-03):SongMeta.duration_sec 必非空(从 CSV 第 5 列读)
+        non_zero = [s for s in self.cat.all_songs if s.duration_sec > 0]
+        self.assertGreaterEqual(len(non_zero), 800,
+                                f"expected ≥800 songs with duration_sec>0, got {len(non_zero)}")
+        # 抽样 sp001 必 dur > 0
+        sp001 = self.cat.get_by_id("sp001")
+        self.assertEqual(sp001.duration_sec, 269, "sp001=晴天 必 dur=269")
 
     def test_tags_present(self):
+        # P3.9(2026-10-03):v2 14 标签(对比 v1 6 标签)
         tags = set(self.cat.list_tags())
-        for expected in ("ACG神曲", "熬夜修仙", "巴士随身听", "古风"):
-            self.assertIn(expected, tags, f"missing tag {expected}")
+        for expected in ("流行", "古风", "纯音乐", "电子"):
+            self.assertIn(expected, tags, f"missing v2 tag {expected}")
+        # 不应再含 v1-specific
+        for deprecated in ("ACG神曲", "熬夜修仙", "巴士随身听"):
+            self.assertNotIn(deprecated, tags,
+                             f"v1-specific tag {deprecated} should NOT appear in v2")
 
     def test_all_have_title(self):
         for s in self.cat.all_songs:
@@ -104,11 +126,12 @@ class TestSongPoolShuffle(unittest.TestCase):
     def test_list_visible_tag_filter(self):
         cat = SongPoolCatalog()
         cat.load()
-        acg = cat.list_visible(tag="ACG神曲")
-        for s in acg:
-            self.assertEqual(s.tag, "ACG神曲")
-        # visible 中至少有 1 首 ACG 神曲(388 中 ~88 首,visible 60 中必含)
-        self.assertGreater(len(acg), 0, "visible 中无 ACG 神曲")
+        # P3.9(2026-10-03):v2 标签用「古风」(v1 用「ACG神曲」)
+        gufeng = cat.list_visible(tag="古风")
+        for s in gufeng:
+            self.assertEqual(s.tag, "古风")
+        # visible 中至少有 1 首古风(841 中 53 首,visible 60 必含)
+        self.assertGreater(len(gufeng), 0, "visible 中无 古风")
 
     def test_list_tags_only_unique(self):
         cat = SongPoolCatalog()
