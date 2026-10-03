@@ -644,12 +644,13 @@ const _CHILD_SPEC = {
 
 function openCompanionWindow() {
   // P2.5+21(2026-10-03):Electron 壳现在自己 spawn 语伴后端。点托盘后先启后端,
-  // 探活 ≤3s,起来再弹子窗;起不来兜底主 web。
+  // 探活 ≤10s,起来再弹子窗;起不来兜底主 web。
+  // 修 2026-10-03:3s 太短,后端初始化 + listening 实际要 ~6-8s,fallback 主 web。
   startCompanion();
   const port = require("./port_config").readCompanionPort();
-  waitForPort(WEB_HOST, port, 3.0).then((ok) => {
+  waitForPort(WEB_HOST, port, 10.0).then((ok) => {
     if (!ok) {
-      logWarn("openCompanionWindow", "port not ready in 3s", `port=${port}`);
+      logWarn("openCompanionWindow", "port not ready in 10s", `port=${port}`);
       openInShell(WEB_URL, "main");
       return;
     }
@@ -689,10 +690,12 @@ function openMusicWindow() {
   tick();
 }
 function openCalendarWindow() {
-  // 日历 走 prisiragent_web.py 的 /prisiragent/calendar 路由。
+  // 日历 走 prisiragent_web.py 的 /prisIragent/calendar 路由。
   // P2.5+14 起日历独立端口(同进程双端口 listen),从 port_config 读。
+  // 修 2026-10-03:写错大小写 /prisiragent/calendar(小写 p)→ 404,
+  // 正确应是 /prisIragent/calendar(大写 I)。
   const port = require("./port_config").readCalendarPort();
-  openInShell(`http://${WEB_HOST}:${port}/prisiragent/calendar`, "calendar");
+  openInShell(`http://${WEB_HOST}:${port}/prisIragent/calendar`, "calendar");
 }
 // P2.5+16:工作流窗口 = 主 web 端口 + /prisiragent/#wfmodal 路由锚点(URL fragment 触发 wfmodal 全屏)。
 // 工作流本身是 web 端 wfmodal 组件,不需要新后端,独立 BrowserWindow 让用户能从托盘直开。

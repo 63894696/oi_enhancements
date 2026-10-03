@@ -247,6 +247,42 @@ class TestMainJsSyntax(unittest.TestCase):
         self.assertNotIn("DEFAULT_CALENDAR_PORT", code_only,
             "main.js 代码里不应引用未声明的 DEFAULT_CALENDAR_PORT,应走 readCalendarPort()")
 
+    def test_open_calendar_window_uses_correct_route(self):
+        """修 2026-10-03:openCalendarWindow 必须用 /prisIragent/calendar(大写 I),
+        /prisiragent/calendar(小写 p)404。Python 端路由是 prisIragent 大小写敏感。"""
+        with open(MAIN_JS, "r", encoding="utf-8") as f:
+            content = f.read()
+        # openCalendarWindow 函数体内必须用大写 I
+        import re
+        m = re.search(r"function\s+openCalendarWindow\s*\([^)]*\)\s*\{(.*?)^\}", content,
+                      re.MULTILINE | re.DOTALL)
+        self.assertIsNotNone(m, "openCalendarWindow function not found")
+        body = m.group(1)
+        self.assertIn("/prisIragent/calendar", body,
+            "openCalendarWindow 必须用 /prisIragent/calendar(大写 I) — Python 端路由大小写敏感")
+        # 注意:历史注释里写过小写路径不算违规;但运行时 URL 必须是大写
+        url_in_open = re.search(r"openInShell\(`http://[^`]+`", body)
+        self.assertIsNotNone(url_in_open)
+        self.assertIn("/prisIragent/calendar", url_in_open.group(0),
+            "openInShell 的实际 URL 必须用 /prisIragent/calendar")
+
+    def test_open_companion_window_timeout_is_at_least_5s(self):
+        """修 2026-10-03:openCompanionWindow waitForPort 超时从 3s 升到 ≥5s。
+        语伴后端初始化 ~6-8s,3s 必 fallback 主 web。"""
+        with open(MAIN_JS, "r", encoding="utf-8") as f:
+            content = f.read()
+        import re
+        m = re.search(r"function\s+openCompanionWindow\s*\([^)]*\)\s*\{(.*?)^\}",
+                      content, re.MULTILINE | re.DOTALL)
+        self.assertIsNotNone(m, "openCompanionWindow function not found")
+        body = m.group(1)
+        # 抓 waitForPort 第 3 个参数(timeout)
+        m2 = re.search(r"waitForPort\([^,]+,\s*[^,]+,\s*([0-9.]+)\s*\)", body)
+        self.assertIsNotNone(m2, "openCompanionWindow must call waitForPort with timeout")
+        timeout = float(m2.group(1))
+        self.assertGreaterEqual(timeout, 5.0,
+            f"openCompanionWindow waitForPort timeout={timeout}s 至少要 5s,语伴后端启动 ~6-8s")
+
 
 class TestPrisirAgentWebWfmodalHash(unittest.TestCase):
     """prisIragent_web.py 加了 hashchange + DOMContentLoaded wfmodal 监听。"""
@@ -267,6 +303,74 @@ class TestPrisirAgentWebWfmodalHash(unittest.TestCase):
         self.assertIn("if (window.__wfModalOpen) return;", content)
         # closeWorkflow 清标记
         self.assertIn("window.__wfModalOpen = false;", content)
+
+    def test_prisiragent_web_close_workflow_clears_hash(self):
+        """P2.5+22:closeWorkflow 必须清 URL hash,否则浏览器返回/前进会再开 modal。"""
+        path = os.path.join(ROOT, "prisIragent_web.py")
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+        import re
+        m = re.search(r"function\s+closeWorkflow\s*\([^)]*\)\s*\{(.*?)^\}",
+                      content, re.MULTILINE | re.DOTALL)
+        self.assertIsNotNone(m, "closeWorkflow function not found")
+        body = m.group(1)
+        # 必须清 hash
+        self.assertIn("history.replaceState", body,
+            "closeWorkflow 应 history.replaceState 清 hash,避免按返回再开 modal")
+        self.assertIn("#wfmodal", body,
+            "closeWorkflow 应判断 hash === '#wfmodal' 才清")
+
+    def test_prisiragent_web_no_top_workflow_button(self):
+        """P2.5+22:用户拍板 — 扩展旁边的工作流按钮去掉,工作流只能从托盘开。"""
+        path = os.path.join(ROOT, "prisIragent_web.py")
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+        # 顶栏 topbtnWorkflow 按钮必须被删
+        self.assertNotIn('id="topbtnWorkflow"', content,
+            "主 web 顶栏 'topbtnWorkflow' 工作流按钮应删除(用户拍板)")
+        # 但 wfmodal 容器 + 关闭按钮必须保留(其他入口(托盘)还要用)
+        self.assertIn('id="wfmodal"', content, "wfmodal 容器必须保留")
+        self.assertIn("closeWorkflow()", content, "wfmodal 关闭按钮必须保留")
+
+
+class TestMusicToast(unittest.TestCase):
+    """P2.5+22:music 队列空时点播放给 toast 提示,不静默 return 让用户以为卡了。"""
+
+    def test_music_app_js_has_show_music_toast(self):
+        """companion/static/music/app.js 必须有 showMusicToast helper。"""
+        path = os.path.join(ROOT, "companion", "static", "music", "app.js")
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+        self.assertIn("function showMusicToast", content,
+            "music app.js 缺 showMusicToast helper")
+        # play handler 空队列分支调用它
+        self.assertIn("showMusicToast", content)
+        # 不能含 console.log 调试残留
+        # (不强求,仅 sanity:helper 应能被 el 引用)
+
+    def test_music_app_js_play_btn_handles_empty_queue(self):
+        """空队列分支必须有 toast 提示,不能静默 return。"""
+        path = os.path.join(ROOT, "companion", "static", "music", "app.js")
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+        # playBtn.onclick 在文件里就一处,直接搜 start/end 行号
+        import re
+        m = re.search(r"els\.playBtn\.onclick\s*=\s*async", content)
+        self.assertIsNotNone(m, "els.playBtn.onclick handler not found")
+        # 从 m.start() 往后抓花括号配对
+        i = content.index("{", m.start())
+        depth = 1
+        j = i + 1
+        while j < len(content) and depth > 0:
+            if content[j] == "{": depth += 1
+            elif content[j] == "}": depth -= 1
+            j += 1
+        body = content[i:j]
+        # else 分支调 showMusicToast
+        self.assertIn("showMusicToast", body,
+            "playBtn.onclick 空队列分支必须调 showMusicToast 提示")
+        self.assertIn("state.queue.length > 0", body,
+            "playBtn.onclick 必须判 state.queue.length > 0 才播")
 
 
 class TestExtRespawnHotfix(unittest.TestCase):

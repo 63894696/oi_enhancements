@@ -3,6 +3,27 @@
 // - ws /ws/state 推 player 状态
 // - ws /ws/lyrics 推 lyric_line + lyric_cfg
 // - 控制条: ⏮ ▶/⏸ ⏭ ⏹
+
+// P2.5+22(2026-10-03):轻量 toast(队列空提示等)。2s 自动消失,顶部居中浮层。
+function showMusicToast(msg) {
+    let host = document.getElementById('music-toast-host');
+    if (!host) {
+        host = document.createElement('div');
+        host.id = 'music-toast-host';
+        host.style.cssText = 'position:fixed;top:24px;left:50%;transform:translateX(-50%);z-index:9999;pointer-events:none;';
+        document.body.appendChild(host);
+    }
+    const t = document.createElement('div');
+    t.textContent = msg;
+    t.style.cssText = 'background:rgba(60,40,20,0.92);color:#f6f1e7;padding:10px 18px;border-radius:6px;' +
+        'font-size:14px;margin-top:6px;box-shadow:0 2px 8px rgba(0,0,0,0.2);opacity:0;transition:opacity 0.2s;';
+    host.appendChild(t);
+    requestAnimationFrame(() => { t.style.opacity = '1'; });
+    setTimeout(() => {
+        t.style.opacity = '0';
+        setTimeout(() => t.remove(), 250);
+    }, 2000);
+}
 // - 折叠歌词区(点击 lyric-head 折叠/展开)
 // - 队列点击切歌
 
@@ -181,6 +202,10 @@
             // 没曲 — 播放队列第 1 首
             if (state.queue.length > 0) {
                 await playTrack(state.queue[0].id);
+            } else {
+                // P2.5+22(2026-10-03):队列空时给提示,不要静默 return 让用户以为卡了。
+                // 走轻量 toast,2s 自动消失,顶部提示搜索关键词再选曲。
+                showMusicToast("队列为空,先搜索一首曲加入队列再播放");
             }
             return;
         }

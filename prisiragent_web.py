@@ -5913,7 +5913,6 @@ window.__PRISIR_FORUM_URL__ = "__PRISIR_FORUM_URL_PLACEHOLDER__";
   <button class="topbtn" id="doc-btn" onclick="toggleDocPanel()" data-i18n="doc_panel" data-i18n-title="doc_panel_title">📑 文档</button>
   <button class="topbtn" onclick="openKeys()" data-i18n="model_key">🔑 模型 Key</button>
   <button class="topbtn" id="topbtnCompanion" onclick="openCompanion()" data-i18n-title="companion_title" title="语伴(语音/文字轻量对话,可派发到主面板)">📞 语伴</button>
-  <button class="topbtn" id="topbtnWorkflow" onclick="openWorkflow()" data-i18n-title="workflow_title" title="工作流编排(拖拽 DAG + 重试 + 运行历史)">🔀 工作流</button>
   <button class="topbtn" id="topbtnExt" onclick="openExtensions()" data-i18n-title="extensions_title" title="扩展(资源检索 / 技能市场 / 已装扩展管理)">🧩 扩展</button>
   <button class="topbtn" onclick="newSession()" data-i18n="new_session">+ 新会话</button>
 </div>
@@ -8492,6 +8491,14 @@ function closeWorkflow() {
   document.getElementById('wf-tpl-modal').classList.remove('open');
   // P2.5+21(2026-10-03):清幂等标记,允许下次 hashchange/按钮重开。
   window.__wfModalOpen = false;
+  // P2.5+22(2026-10-03):清 URL hash,避免按浏览器返回/前进 或 URL 复制粘贴
+  // 时再次触发 hashchange 重复开 modal。history.replaceState 不留历史记录,
+  // 用户体验 =「关掉就回主对话」。
+  try {
+    if (location.hash === '#wfmodal') {
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+  } catch (_) {}
   // P2.5+B-3(2026-09-21)关 modal 不杀任务 — 后端 run 继续跑,前端只停轮询
   wfStopProgressPoll();
 }
