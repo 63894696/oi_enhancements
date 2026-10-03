@@ -345,6 +345,53 @@ let quitting = false;
 //      子窗口尺寸比主窗口小(语伴 920×680 / 音乐 880×620 / 日历 960×720 / 工作流 1000×720)。
 const childWindows = new Map();   // label → BrowserWindow
 
+// P2.5+26(2026-10-03):桌面歌词窗状态持久化 — userData/lyric-window-state.json。
+// 存 alwaysOnTop + lockDrag + bounds(x/y/w/h)。重启壳自动还原。
+// 仿 brand-notify-seen.json 模式(同模块前 976 行)。
+// 默认值与 P2.5+25 ship 行为一致(alwaysOnTop=true, lockDrag=false, 居中 720×360)。
+function _lyric_state_path() {
+  return path.join(app.getPath("userData"), "lyric-window-state.json");
+}
+function _lyric_state_load() {
+  // 容错静默:任何坏返默认 + 备份原文件(用户手动编辑失败可查)
+  const p = _lyric_state_path();
+  try {
+    const raw = fs.readFileSync(p, "utf-8");
+    const obj = JSON.parse(raw);
+    const out = {
+      alwaysOnTop: obj.alwaysOnTop !== false,  // 默认 true
+      lockDrag: obj.lockDrag === true,
+      bounds: {
+        x: Number.isFinite(obj.bounds?.x) ? obj.bounds.x : null,
+        y: Number.isFinite(obj.bounds?.y) ? obj.bounds.y : null,
+        w: Number.isFinite(obj.bounds?.w) && obj.bounds.w >= 480 ? obj.bounds.w : 720,
+        h: Number.isFinite(obj.bounds?.h) && obj.bounds.h >= 240 ? obj.bounds.h : 360,
+      },
+    };
+    return out;
+  } catch (e) {
+    if (fs.existsSync(p)) {
+      try { fs.renameSync(p, `${p}.corrupt-${Date.now()}`); } catch (_) {}
+      logWarn("lyricState", "corrupt, backed up", `path=${p} err=${e.message}`);
+    } else {
+      logInfo("lyricState", "first run, using defaults", `path=${p}`);
+    }
+    return {
+      alwaysOnTop: true,
+      lockDrag: false,
+      bounds: { x: null, y: null, w: 720, h: 360 },
+    };
+  }
+}
+function _lyric_state_save(s) {
+  try {
+    fs.writeFileSync(_lyric_state_path(), JSON.stringify(s, null, 2), "utf-8");
+  } catch (e) {
+    logWarn("lyricState", "save failed", `err=${e.message}`);
+  }
+}
+let _lyric_state = _lyric_state_load();   // 模块加载即初始化(boot 一次)
+
 function _commonWebPreferences() {
   return {
     preload: path.join(__dirname, "preload.js"),
@@ -429,7 +476,47 @@ function _createChildWindow(spec) {
   logInfo("childWindow", "create", `label=${spec.label} url=${spec.url}`);
   w.loadURL(spec.url);
   childWindows.set(spec.label, w);
+  // P2.5+26(2026-10-03):桌面歌词窗状态注入(只对 label=lyric)。
+  // ready-to-show 之后再调 bounds(否则 Win 上 setBounds 在隐藏态无效)。
+  if (spec.label === "lyric") {
+    w.once("ready-to-show", () => _lyric_apply_state(w));
+    // 兜底:ready-to-show 没触发(罕见)3.5s 后强制 apply(此时 w.show 已触发)
+    setTimeout(() => { if (w && !w.isDestroyed()) _lyric_apply_state(w); }, 3500);
+    // 移动 / 缩放 持久化(bounds)— 250ms debounce(高频 move 事件不疯狂落盘)
+    let _bvTimer = null;
+    const _bvPersist = () => {
+      if (_bvTimer) clearTimeout(_bvTimer);
+      _bvTimer = setTimeout(() => {
+        if (w && !w.isDestroyed()) {
+          const b = w.getBounds();
+          _lyric_state.bounds = { x: b.x, y: b.y, w: b.width, h: b.height };
+          _lyric_state_save(_lyric_state);
+        }
+      }, 250);
+    };
+    w.on("move", _bvPersist);
+    w.on("resize", _bvPersist);
+  }
   return w;
+}
+
+// P2.5+26(2026-10-03):把 _lyric_state 落到 BrowserWindow 上(alwaysOnTop + bounds)。
+// lockDrag 是 CSS 状态(渲染层自己处理),主进程只管 OS 层属性。
+function _lyric_apply_state(w) {
+  if (!w || w.isDestroyed()) return;
+  try {
+    // alwaysOnTop 必须用 'floating' level(Win 上 alwaysOnTop=true 不够稳定)
+    const want = _lyric_state.alwaysOnTop;
+    w.setAlwaysOnTop(want, want ? "floating" : "normal");
+    // bounds 还原:x/y null = 主屏居中;非 null = 落盘位置
+    const b = _lyric_state.bounds;
+    if (Number.isFinite(b.x) && Number.isFinite(b.y)) {
+      w.setBounds({ x: b.x, y: b.y, width: b.w, height: b.h });
+    }
+    logInfo("lyricState", "applied", `alwaysOnTop=${want} bounds=${JSON.stringify(b)}`);
+  } catch (e) {
+    logWarn("lyricState", "apply failed", `err=${e.message}`);
+  }
 }
 
 function closeAllChildWindows() {
@@ -717,6 +804,55 @@ function openMusicWindow() {
 // 完全镜像 openMusicWindow 的端口轮询模式,只是 label 走 "lyric" + path 用 /music-vue/lyric.html。
 // 不复用 music 主窗是因为桌面歌词是 transparent + alwaysOnTop,主 music 子窗是普通有边框;
 // 双窗独立,关闭歌词不影响 music 播放。
+// P2.5+26(2026-10-03):toggleLyricAlwaysOnTop / toggleLyricLockDrag / lockLyricCurrentBounds / closeLyricWindow helpers。
+// 被托盘 submenu 与 IPC 共用(语义一致)。
+function _notifyLyricWindow(channel, payload) {
+  // 通过 webContents.send 把主进程 toggle 结果推到 lyric 渲染层,
+  // lyric store / LyricOnlyView 在 preload 暴露的 onLyricStateChanged 里订阅并更新 CSS class。
+  const w = childWindows.get("lyric");
+  if (w && !w.isDestroyed() && !w.webContents.isDestroyed()) {
+    try { w.webContents.send(channel, payload); } catch (_) {}
+  }
+}
+function _toggleLyricAlwaysOnTop() {
+  const w = childWindows.get("lyric");
+  const next = !_lyric_state.alwaysOnTop;
+  _lyric_state.alwaysOnTop = next;
+  if (w && !w.isDestroyed()) {
+    // 第二个参数 Win 上需要 level("floating"/"normal") 才能稳定切换。
+    w.setAlwaysOnTop(next, next ? "floating" : "normal");
+  }
+  _lyric_state_save(_lyric_state);
+  logInfo("lyricState", "toggled alwaysOnTop", `next=${next}`);
+  rebuildTrayMenu();
+  _notifyLyricWindow("shell:lyricStateChanged",
+    { alwaysOnTop: next, lockDrag: _lyric_state.lockDrag, bounds: _lyric_state.bounds });
+}
+function _toggleLyricLockDrag() {
+  const next = !_lyric_state.lockDrag;
+  _lyric_state.lockDrag = next;
+  _lyric_state_save(_lyric_state);
+  logInfo("lyricState", "toggled lockDrag", `next=${next}`);
+  rebuildTrayMenu();
+  _notifyLyricWindow("shell:lyricStateChanged",
+    { alwaysOnTop: _lyric_state.alwaysOnTop, lockDrag: next, bounds: _lyric_state.bounds });
+}
+function _lockLyricCurrentBounds() {
+  // 把当前 bounds 强制写盘(用户改位置后想立刻确认,不必等 250ms debounce)
+  const w = childWindows.get("lyric");
+  if (!w || w.isDestroyed()) return;
+  const b = w.getBounds();
+  _lyric_state.bounds = { x: b.x, y: b.y, w: b.width, h: b.height };
+  _lyric_state_save(_lyric_state);
+  logInfo("lyricState", "locked bounds", `bounds=${JSON.stringify(_lyric_state.bounds)}`);
+}
+function _closeLyricWindow() {
+  const w = childWindows.get("lyric");
+  if (!w || w.isDestroyed()) return;
+  // 子窗 close handler 仅 hide(_createChildWindow 已配),用户视角等同最小化
+  try { w.close(); } catch (_) {}
+}
+
 function openLyricWindow() {
   startMusic();
   const deadline = Date.now() + 3000;
@@ -778,7 +914,17 @@ function createTray() {
     // P2.5+23(2026-10-03):4 个子项命名统一「PrisirAI xxx」,emoji 前缀 4 项全加(日程/工作流原本就有,语伴/音乐补)。
     { label: "📞 语伴",   click: openCompanionWindow },
     { label: "🎵 音乐",   click: openMusicWindow },
-    { label: "🎤 桌面歌词", click: openLyricWindow },
+    // P2.5+26(2026-10-03):🎤 桌面歌词改成 submenu — 打开 + 2 个 checkbox + 锁定位置 + 关闭
+    { label: "🎤 桌面歌词", submenu: [
+      { label: "打开歌词窗口", click: openLyricWindow },
+      { label: "始终在上", type: "checkbox", checked: _lyric_state.alwaysOnTop,
+        click: _toggleLyricAlwaysOnTop },
+      { label: "拖动已锁定", type: "checkbox", checked: _lyric_state.lockDrag,
+        click: _toggleLyricLockDrag },
+      { label: "📌 锁定当前位置", click: _lockLyricCurrentBounds },
+      { type: "separator" },
+      { label: "🚪 关闭歌词窗口", click: _closeLyricWindow },
+    ]},
     { label: "📅 日程",   click: openCalendarWindow },
     { label: "🔀 工作流", click: openWorkflowWindow },
     { type: "separator" },
@@ -805,6 +951,65 @@ function createTray() {
   }
   tray.setContextMenu(Menu.buildFromTemplate(trayItems));
   tray.on("click", toggleWindow);
+  // P2.5+26(2026-10-03):暴露 rebuildTrayMenu,checkbox 状态变化后必调。
+  // 拆出 setContextMenu 行成函数,是因为 Electron Menu.checkbox checked 是构造期属性,
+  // toggle 后不重建菜单 → checkbox 仍显旧态。
+  rebuildTrayMenu = () => {
+    try {
+      const fresh = buildTrayItems();
+      tray.setContextMenu(Menu.buildFromTemplate(fresh));
+    } catch (e) {
+      logWarn("tray", "rebuild failed", `err=${e.message}`);
+    }
+  };
+}
+
+// P2.5+26(2026-10-03):rebuildTrayMenu 句柄(由 createTray 末尾赋值)。
+let rebuildTrayMenu = () => logWarn("tray", "rebuild not initialized", "");
+
+// 把 createTray 内部的 trayItems 拼装抽出来,rebuildTrayMenu 可复用。
+function buildTrayItems() {
+  const mainCtrlSubmenu = [
+    { label: "打开 PrisirAI", click: () => { if (win) { win.show(); loadWhenReady(); } else createWindow(); } },
+    { label: "隐藏 PrisirAI", click: () => { if (win) { win.hide(); } } },
+  ];
+  const multiWindowSubmenu = [
+    { label: "📞 语伴",   click: openCompanionWindow },
+    { label: "🎵 音乐",   click: openMusicWindow },
+    { label: "🎤 桌面歌词", submenu: [
+      { label: "打开歌词窗口", click: openLyricWindow },
+      { label: "始终在上", type: "checkbox", checked: _lyric_state.alwaysOnTop,
+        click: _toggleLyricAlwaysOnTop },
+      { label: "拖动已锁定", type: "checkbox", checked: _lyric_state.lockDrag,
+        click: _toggleLyricLockDrag },
+      { label: "📌 锁定当前位置", click: _lockLyricCurrentBounds },
+      { type: "separator" },
+      { label: "🚪 关闭歌词窗口", click: _closeLyricWindow },
+    ]},
+    { label: "📅 日程",   click: openCalendarWindow },
+    { label: "🔀 工作流", click: openWorkflowWindow },
+    { type: "separator" },
+    { label: "关闭所有子窗口", click: () => closeAllChildWindows() },
+  ];
+  const systemSubmenu = [
+    { label: "开机自启", type: "checkbox", checked: app.getLoginItemSettings().openAtLogin,
+      click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked }) },
+    { type: "separator" },
+    { label: "退出", click: () => { quitting = true; app.quit(); } },
+  ];
+  const items = [
+    { label: "主控",   submenu: mainCtrlSubmenu },
+    { label: "多窗口", submenu: multiWindowSubmenu },
+    { label: "系统",   submenu: systemSubmenu },
+  ];
+  if (devModeAvailable()) {
+    items.push({ type: "separator" });
+    items.push({ label: "开发者模式", submenu: [
+      { label: "打开开发者终端 (git-portable)", click: openDeveloperTerminal },
+      { label: "查看开发者说明", click: openDevReadme },
+    ]});
+  }
+  return items;
 }
 
 // ---------- IPC(白名单;渲染层只能问这些) ----------
@@ -829,6 +1034,55 @@ ipcMain.handle("shell:closeLyric", () => {
     if (w && !w.isDestroyed()) { w.close(); return { ok: true }; }
     return { ok: false, err: "no lyric window" };
   } catch (e) { logError("shell:closeLyric", "err", `e=${e.message}`); return { ok: false, err: e.message }; }
+});
+
+// P2.5+26(2026-10-03)歌词窗 alwaysOnTop / lockDrag / bounds IPC — 4 个新白名单。
+// shell:toggleLyricAlwaysOnTop → 切 _lyric_state.alwaysOnTop + w.setAlwaysOnTop + 重建托盘菜单 + 推 webContents
+// shell:toggleLyricLockDrag    → 切 _lyric_state.lockDrag + 推 webContents(CSS class 由渲染层自己处理)
+// shell:getLyricState          → 渲染层 bootstrap 拿初始态(避免重启后 lock 态对不上 UI)
+// shell:setLyricBounds         → 渲染层拖动结束主动落盘(用户主动 lock 位置时也走这里)
+ipcMain.handle("shell:toggleLyricAlwaysOnTop", () => {
+  try {
+    _toggleLyricAlwaysOnTop();
+    return { ok: true, alwaysOnTop: _lyric_state.alwaysOnTop };
+  } catch (e) {
+    logError("shell:toggleLyricAlwaysOnTop", "err", `e=${e.message}`);
+    return { ok: false, err: e.message };
+  }
+});
+ipcMain.handle("shell:toggleLyricLockDrag", () => {
+  try {
+    _toggleLyricLockDrag();
+    return { ok: true, lockDrag: _lyric_state.lockDrag };
+  } catch (e) {
+    logError("shell:toggleLyricLockDrag", "err", `e=${e.message}`);
+    return { ok: false, err: e.message };
+  }
+});
+ipcMain.handle("shell:getLyricState", () => {
+  // 返回当前态(渲染层 bootstrap 拉一次;之后 toggle 由 webContents.send 主动推)
+  return {
+    ok: true,
+    alwaysOnTop: _lyric_state.alwaysOnTop,
+    lockDrag: _lyric_state.lockDrag,
+    bounds: { ..._lyric_state.bounds },
+  };
+});
+ipcMain.handle("shell:setLyricBounds", (_e, b) => {
+  try {
+    if (!b || typeof b !== "object") return { ok: false, err: "bounds must be object" };
+    const x = Number(b.x), y = Number(b.y), w = Number(b.w), h = Number(b.h);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return { ok: false, err: "x/y must be finite" };
+    if (!Number.isFinite(w) || w < 480) return { ok: false, err: "w must be finite >=480" };
+    if (!Number.isFinite(h) || h < 240) return { ok: false, err: "h must be finite >=240" };
+    _lyric_state.bounds = { x, y, w, h };
+    _lyric_state_save(_lyric_state);
+    logInfo("lyricState", "bounds set via IPC", `bounds=${JSON.stringify(_lyric_state.bounds)}`);
+    return { ok: true, bounds: { ..._lyric_state.bounds } };
+  } catch (e) {
+    logError("shell:setLyricBounds", "err", `e=${e.message}`);
+    return { ok: false, err: e.message };
+  }
 });
 
 // v2.0 反馈卡:白名单 URL 走 shell.openExternal(系统浏览器)。

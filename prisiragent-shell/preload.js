@@ -20,8 +20,23 @@ contextBridge.exposeInMainWorld("oiShell", {
 // P2.5+25(2026-10-03)music 子窗 / 桌面歌词子窗 专用前缀 prisIragent。
 // 区分 oiShell(主 web 用)的策略 — 主 web 不暴露歌词窗开关,
 // 减少渲染层攻击面(openLyric/closeLyric 触发的是 BrowserWindow new/close)。
+// P2.5+26(2026-10-03):扩 alwaysOnTop/lockDrag/bounds 4 方法 + onLyricStateChanged 订阅
+// (托盘 toggle 后主进程主动 push,渲染层 bootstrap 也可主动 getLyricState 拉一次)。
 contextBridge.exposeInMainWorld("prisIragent", {
   // 桌面歌词独立窗
   openLyric: () => ipcRenderer.invoke("shell:openLyric"),
   closeLyric: () => ipcRenderer.invoke("shell:closeLyric"),
+  // P2.5+26 alwaysOnTop / lockDrag / bounds
+  toggleLyricAlwaysOnTop: () => ipcRenderer.invoke("shell:toggleLyricAlwaysOnTop"),
+  toggleLyricLockDrag: () => ipcRenderer.invoke("shell:toggleLyricLockDrag"),
+  getLyricState: () => ipcRenderer.invoke("shell:getLyricState"),
+  setLyricBounds: (b) => ipcRenderer.invoke("shell:setLyricBounds", b),
+  // 订阅主进程推过来的歌词窗状态变化(toggle 后自动 push,LyricOnlyView 拿来 apply CSS class)
+  // 返回 unsubscribe 函数,渲染层组件 unmount 时调用。
+  onLyricStateChanged: (cb) => {
+    if (typeof cb !== "function") return () => {};
+    const listener = (_e, payload) => { try { cb(payload); } catch (_) {} };
+    ipcRenderer.on("shell:lyricStateChanged", listener);
+    return () => ipcRenderer.removeListener("shell:lyricStateChanged", listener);
+  },
 });

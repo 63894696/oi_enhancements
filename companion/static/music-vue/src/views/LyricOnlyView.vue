@@ -12,11 +12,17 @@
 // 借鉴:
 //   - YesPlayMusic 行级高亮 + transform 居中
 //   - 旧 lyrics.html/css/js 的拖动条 + 透明 + 进度条设计
+//
+// P2.5+26(2026-10-03):bootstrap 后 IPC getLyricState 拉初始态,锁态加 .lyric-locked class
+// (lyric.css 改 #drag-bar { no-drag }) + 订阅 onLyricStateChanged 响应主进程 toggle 推。
 
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useLyricStore } from '@/stores/lyric'
 
 const lyric = useLyricStore()
+
+const lock = ref(false)             // 锁拖动?true = 不可拖
+let unsubscribeState: (() => void) | null = null
 
 const connTag = computed(() => {
   if (lyric.connected) return '🟢'
@@ -42,6 +48,29 @@ watch(() => lyric.progress, () => {
   lyric.onProgressChange()
 })
 
+onMounted(async () => {
+  const w = window as any
+  // 1) bootstrap 拉初始态(避免重启后 lock 态对不上 UI)
+  if (typeof w?.prisIragent?.getLyricState === 'function') {
+    try {
+      const s = await w.prisIragent.getLyricState()
+      if (s?.ok && typeof s.lockDrag === 'boolean') lock.value = s.lockDrag
+    } catch (_) {}
+  }
+  // 2) 订阅主进程 toggle 推过来的状态变化
+  if (typeof w?.prisIragent?.onLyricStateChanged === 'function') {
+    unsubscribeState = w.prisIragent.onLyricStateChanged((payload: any) => {
+      if (payload && typeof payload.lockDrag === 'boolean') {
+        lock.value = payload.lockDrag
+      }
+    })
+  }
+})
+
+onBeforeUnmount(() => {
+  if (unsubscribeState) { unsubscribeState(); unsubscribeState = null }
+})
+
 function onDblClick() {
   const w = window as any
   if (typeof w?.prisIragent?.closeLyric === 'function') {
@@ -52,8 +81,8 @@ function onDblClick() {
 </script>
 
 <template>
-  <div class="lyric-only-view" @dblclick="onDblClick">
-    <!-- 顶部 6px 拖动条 — Electron transparent 窗整窗可拖 -->
+  <div class="lyric-only-view" :class="{ 'lyric-locked': lock }" @dblclick="onDblClick">
+    <!-- 顶部 6px 拖动条 — Electron transparent 窗整窗可拖,lock 后 no-drag(lyric.css) -->
     <div id="drag-bar"></div>
 
     <!-- 主歌词区 -->

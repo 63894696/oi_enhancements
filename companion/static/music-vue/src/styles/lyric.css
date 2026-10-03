@@ -49,6 +49,20 @@ body {
   z-index: 10;
 }
 
+/* P2.5+26(2026-10-03):锁定拖动 — LyricOnlyView 根加 .lyric-locked 时,
+   #drag-bar 变 no-drag + 视觉降透明度(0.4 → hover 0.85 提示仍可见但不可拖)。
+   托盘子菜单 ☑「拖动已锁定」勾上即生效。 */
+.lyric-only-view.lyric-locked #drag-bar {
+  -webkit-app-region: no-drag;
+  cursor: not-allowed;
+  opacity: 0.4;
+  background: rgba(193, 77, 58, 0.18);    /* 国画红半透明小条提示锁态 */
+  transition: opacity 200ms ease;
+}
+.lyric-only-view.lyric-locked #drag-bar:hover {
+  opacity: 0.85;
+}
+
 /* 主歌词区 — 全屏居中 */
 #lyrics-stage {
   position: absolute;
