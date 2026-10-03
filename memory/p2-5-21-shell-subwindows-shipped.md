@@ -12,6 +12,7 @@ metadata:
 - `5496d97` fix(ext-bridge): task-runner respawn_total >5 hotfix(死循环兜底)
 - `b14985a` fix(ext-bridge): task-runner 一次启(不再 auto-respawn)
 - `b1f0704` fix(shell): startWeb 用 readCalendarPort() 而非未声明常量 (修 b14985a ship 漏)
+- `eb01210` fix(shell+web): 4 子窗子服务 ship 后小 bug 修齐 (语伴 10s / 日历大小写 / music toast / 顶栏去工作流 + wfmodal 清 hash)
 
 **触发的用户反馈**(2026-10-03):
 > 语伴/音乐/日程,这3样都没能正常启动,点了工作流的浏览器之后系统当前还无限跳node弹窗。扩展没有自己启动的选项,要用是要agent自己启动吗?
@@ -156,11 +157,31 @@ yaml default 18803,与兄弟端口读法一致)。加保护测试
 `TestMainJsSyntax`:断言代码(非注释)不含 `DEFAULT_CALENDAR_PORT`,
 防止再次漏掉声明常量就 ship。
 
+**`eb01210` ship 后 4 子问题**(用户实测反馈):
+
+1. **语伴无法启动**:`openCompanionWindow` `waitForPort(WEB_HOST, port, 3.0)`
+   超时 3s 太短,语伴后端初始化 ~6-8s 必 fallback 主 web。升到 **10s**。
+2. **日程无法启动**:`openCalendarWindow` 写错大小写 `/prisiragent/calendar`
+   (小写 p),实际 Python 路由大小写敏感 → 正确是 `/prisIragent/calendar`(大写 I)。
+3. **音乐点击播放无反应**:`els.playBtn.onclick` 空队列分支 `return` 静默,
+   改 `showMusicToast("队列为空,先搜索一首曲加入队列再播放")`。
+4. **扩展旁边的工作流按钮去掉 + 工作流弹窗回不去**:
+   - 删主 web 顶栏 `<button id="topbtnWorkflow">`(用户拍板只在托盘开)
+   - `closeWorkflow()` 加 `history.replaceState` 清 URL hash,
+     避免按浏览器返回/前进再次触发 hashchange 重开 modal
+
 **E2E 经验**:`node --check` + 关键函数存在性 ≠ 启动成功。
 Electron 启动有完整 ctx(electron API、require、preload),只过
 syntax 检查的 ship 可能暗藏运行时 ReferenceError。
 **修后**:`TestMainJsSyntax` 加代码(非注释)常量引用检查 +
 必须真跑一次 electron 验证 18802 LISTENING 才算 ship 完成。
+
+**第二轮 E2E 经验**(eb01210):ship 后必须真点 4 个子窗走通一遍才能定稿。
+光看「子窗创建成功」日志不够 — 大小写错 / 超时太短 / 按钮删没删都是
+用户体感问题,日志看不出来。需要:
+- HTTP 探活每个子服务的关键路由
+- 用 `curl` / `grep` 验 HTML 实际渲染(顶栏按钮 / route 200)
+- 加 6 测试覆盖:route 大小写 / waitForPort timeout / closeWorkflow hash / 顶栏无按钮 / music toast helper
 
 ---
 
