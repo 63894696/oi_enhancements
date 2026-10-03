@@ -54,6 +54,7 @@ from music.lyric_provider import LyricProvider  # noqa: E402
 from music.player import (  # noqa: E402
     AudioBackend, LocalLibrary, OnlineSearch, Player, Track,
 )
+from music.song_pool import SongPoolCatalog  # noqa: E402
 from music.port_registry import (  # noqa: E402
     is_music_alive, pick_free_port as _legacy_pick_free_port, read_music_port, write_music_port,
 )
@@ -89,6 +90,8 @@ class AppState:
         self.library: Optional[LocalLibrary] = None
         self.online: Optional[OnlineSearch] = None
         self.player: Optional[Player] = None
+        # P2.5+23(2026-10-03):真歌名池 — 用户填 CSV,启动时随机洗牌 60 首。
+        self.song_pool: Optional[SongPoolCatalog] = None
         self.cfg: Optional[AgentCfg] = None
         self.lyric: Optional[LyricProvider] = None
         self.ws_state_subs: List[asyncio.Queue] = []
@@ -203,6 +206,34 @@ async def api_library_search(req: web.Request) -> web.Response:
     limit = int(req.query.get("limit", "20"))
     hits = APP.library.search(q, limit=limit)
     return _ok(q=q, count=len(hits), tracks=[t.to_dict() for t in hits])
+
+
+# ============================================================
+# P2.5+23(2026-10-03):真歌名池 API
+# ============================================================
+async def api_songs(req: web.Request) -> web.Response:
+    """GET /api/songs[?tag=ACG神曲]
+    返当前可见歌名池(默认 60 首)+ tags 列表。
+    """
+    if not APP.song_pool:
+        return _err("song_pool not initialized")
+    tag = req.query.get("tag") or None
+    songs = APP.song_pool.list_visible(tag=tag)
+    return _ok(
+        count=len(songs),
+        total=len(APP.song_pool.all_songs),
+        tag=tag or "",
+        songs=[s.to_dict() for s in songs],
+        tags=APP.song_pool.list_tags(),
+    )
+
+
+async def api_songs_respin(req: web.Request) -> web.Response:
+    """POST /api/songs/respin — 重新洗牌 60 首可见。"""
+    if not APP.song_pool:
+        return _err("song_pool not initialized")
+    APP.song_pool.shuffle()
+    return _ok(count=len(APP.song_pool.visible_songs))
 
 
 async def api_stream(req: web.Request) -> web.StreamResponse:
@@ -625,10 +656,21 @@ async def on_startup(app: web.Application) -> None:
     # ikun 排除:api.ikunshare.com 在国内 DNS 不可达(Node ENOTFOUND 必崩进程)。
     APP.online = OnlineSearch(sources=["mock.js", "juhe.js"])
 
+    # P2.5+23(2026-10-03):song pool — 读用户填的 CSV,启动时随机洗 60 首。
+    # 失败静默 → 前端拿到 {ok:false,err:"..."} 不影响其他功能。
+    APP.song_pool = SongPoolCatalog()
+    try:
+        n = APP.song_pool.load()
+        log.info("[music_web] song_pool initialized: %d songs", n)
+    except Exception as e:  # noqa: BLE001
+        log.warning("[music_web] song_pool load failed: %s", e)
+        APP.song_pool = None
+
     # player
     APP.player = Player(
         APP.library,
         online=APP.online,
+        catalog=APP.song_pool,
         volume=APP.cfg.get("playback.volume", 80),
         playback_mode=APP.cfg.get("playback.mode", "sequential"),
     )
@@ -666,6 +708,9 @@ def build_app() -> web.Application:
     app.router.add_get("/api/queue", api_queue)
     app.router.add_get("/api/library", api_library)
     app.router.add_get("/api/library/search", api_library_search)
+    # P2.5+23(2026-10-03):真歌名池 API
+    app.router.add_get("/api/songs", api_songs)
+    app.router.add_post("/api/songs/respin", api_songs_respin)
     app.router.add_get("/api/stream/{track_id}", api_stream)
     app.router.add_post("/api/cmd", api_cmd)
     app.router.add_get("/api/agent/cfg/list", api_agent_cfg_list)

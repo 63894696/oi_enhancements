@@ -22,6 +22,7 @@ player.py — M3.29.1 自实现音乐播放器引擎
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import mimetypes
@@ -30,12 +31,22 @@ import re
 import time
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
 from urllib.parse import quote
+
+# P2.5+23(2026-10-03):download 拉远端字节流需要 aiohttp,放顶层避免函数内 inline import。
+# music_web 已有 aiohttp 依赖,顶层 import 不会引入新依赖。
+try:
+    import aiohttp as _aiohttp_top
+except Exception:  # noqa: BLE001 — 缺包时降级,_cmd_download 返错即可
+    _aiohttp_top = None
 
 log = logging.getLogger("player")
 
 AUDIO_EXTS = {".mp3", ".m4a", ".flac", ".opus", ".ogg", ".wav", ".aac"}
+
+if TYPE_CHECKING:
+    from music.song_pool import SongPoolCatalog  # noqa: F401
 
 
 @dataclass
@@ -331,9 +342,12 @@ class Player:
     """状态机 + cmd 路由 + ws 广播。"""
 
     def __init__(self, library: LocalLibrary, *, online: Optional["OnlineSearch"] = None,
+                 catalog: Optional["SongPoolCatalog"] = None,
                  volume: int = 80, playback_mode: str = "sequential"):
         self.library = library
         self.online = online
+        # P2.5+23(2026-10-03):song pool 注入,favorite/download cmd 拿 catalog 查 title/artist。
+        self.catalog = catalog
         self.playlist = PlaylistManager(library)
         self.state = PlayerState(volume=volume, playback_mode=playback_mode)
         self._subscribers: List[asyncio.Queue] = []
@@ -434,6 +448,12 @@ class Player:
                 # P2.5+22:队列空 fallback 用 — 库内随机 N 首,自动 play 第 1 首。
                 count = int(kw.get("count", 1))
                 return await self.play_random(count=count)
+            elif action == "favorite":
+                # P2.5+23(2026-10-03):收藏当前 track → LocalLibrary(source="song_pool_fav")。
+                return await self._cmd_favorite(kw.get("track_id"))
+            elif action == "download":
+                # P2.5+23(2026-10-03):下载当前 track → cache/<title>.mp3,LocalLibrary source="local"。
+                return await self._cmd_download(kw.get("track_id"))
             elif action == "progress":
                 # 前端回传真实 position
                 try:
@@ -495,7 +515,6 @@ class Player:
         url = r.get("url", "")
         src = r.get("source", "lx")
         # id 由 url 哈希定(同 url 同 id)
-        import hashlib
         tid = hashlib.sha1(url.encode("utf-8")).hexdigest()[:16]
         # 入库(若已存在则覆盖 path/url)
         t = Track(
@@ -520,6 +539,93 @@ class Player:
             return {"ok": False, "err": "library empty"}
         self.playlist.set_queue(ids)
         return await self._cmd_play(ids[0])
+
+    # ============================================================
+    # P2.5+23(2026-10-03):收藏 / 下载
+    # ============================================================
+    async def _cmd_favorite(self, track_id: Optional[str]) -> Dict[str, Any]:
+        """收藏当前 track → LocalLibrary 注入一个 source='song_pool_fav' 的虚拟 track。
+
+        同 track 可多次收藏(幂等:看是否已存在 source=song_pool_fav 且同 title/artist)。
+        Returns:
+                {"ok": bool, "fav_id"?: str, "title"?: str, "err"?: str}
+        """
+        if not track_id:
+            return {"ok": False, "err": "missing track_id"}
+        tr = self.library.get(track_id)
+        if not tr:
+            return {"ok": False, "err": f"track not found: {track_id}"}
+        # 幂等检查
+        for existing in self.library._tracks.values():
+            if (existing.source == "song_pool_fav"
+                    and existing.title == tr.title
+                    and existing.artist == tr.artist):
+                return {"ok": True, "fav_id": existing.id, "title": existing.title,
+                        "dedup": True}
+        fav_id = hashlib.sha1(f"fav::{tr.id}".encode("utf-8")).hexdigest()[:16]
+        fav = Track(
+            id=fav_id,
+            title=tr.title,
+            artist=tr.artist,
+            album=tr.album,
+            path=tr.path,
+            duration=tr.duration,
+            source="song_pool_fav",
+        )
+        self.library.add_track(fav)
+        return {"ok": True, "fav_id": fav_id, "title": fav.title}
+
+    async def _cmd_download(self, track_id: Optional[str]) -> Dict[str, Any]:
+        """下载当前 track 到 companion/music/cache/ → LocalLibrary 加 source='local' 入库。
+        remote(lx: 开头):aiohttp 拉字节 → 写文件
+        本地:直接 copy2
+        Returns:
+                {"ok": bool, "local_id"?: str, "path"?: str, "title"?: str, "err"?: str}
+        """
+        if not track_id:
+            return {"ok": False, "err": "missing track_id"}
+        tr = self.library.get(track_id)
+        if not tr:
+            return {"ok": False, "err": f"track not found: {track_id}"}
+        cache_dir = Path(__file__).resolve().parent / "cache"
+        try:
+            cache_dir.mkdir(exist_ok=True)
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "err": f"mkdir cache: {e}"}
+        # 文件名清洗
+        safe = re.sub(r'[\\/:*?"<>|\r\n\t]', "_", tr.title)[:60].strip() or "untitled"
+        dst = cache_dir / f"{safe}.mp3"
+        is_remote = isinstance(tr.source, str) and tr.source.startswith("lx:")
+        try:
+            if is_remote:
+                # aiohttp 拉上游字节流,落本地文件
+                if _aiohttp_top is None:
+                    return {"ok": False, "err": "aiohttp not available"}
+                async with _aiohttp_top.ClientSession() as sess:
+                    async with sess.get(tr.path,
+                                            timeout=_aiohttp_top.ClientTimeout(total=60)) as r:
+                        if r.status >= 400:
+                            return {"ok": False, "err": f"upstream {r.status}"}
+                        with open(dst, "wb") as f:
+                            async for chunk in r.content.iter_chunked(64 * 1024):
+                                if chunk:
+                                    f.write(chunk)
+            else:
+                src = Path(tr.path)
+                if not src.exists():
+                    return {"ok": False, "err": "source file missing"}
+                import shutil
+                shutil.copy2(src, dst)
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "err": f"download: {e}"}
+        # 入库为本地
+        local_id = hashlib.sha1(str(dst).encode("utf-8")).hexdigest()[:16]
+        self.library.add_track(Track(
+            id=local_id, title=tr.title, artist=tr.artist, album=tr.album,
+            path=str(dst), duration=tr.duration, source="local",
+        ))
+        return {"ok": True, "local_id": local_id, "path": str(dst),
+                "title": tr.title, "size": dst.stat().st_size}
 
     async def _cmd_next(self) -> Dict[str, Any]:
         nid = self.playlist.next_id(mode=self.state.playback_mode)
