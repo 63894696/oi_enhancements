@@ -202,11 +202,24 @@ function showMusicToast(msg) {
             // 没曲 — 播放队列第 1 首
             if (state.queue.length > 0) {
                 await playTrack(state.queue[0].id);
-            } else {
-                // P2.5+22(2026-10-03):队列空时给提示,不要静默 return 让用户以为卡了。
-                // 走轻量 toast,2s 自动消失,顶部提示搜索关键词再选曲。
-                showMusicToast("队列为空,先搜索一首曲加入队列再播放");
+                return;
             }
+            // P2.5+22(2026-10-03):队列空 → 自动 fallback 随机本地一首。
+            // 不依赖外部源,失败才弹 toast。
+            const r = await api("/api/cmd", {
+                method: "POST",
+                body: { action: "random", count: 1 },
+            });
+            if (r.ok && r.state && r.state.track) {
+                const t = r.state.track;
+                els.audio.src = `/api/stream/${encodeURIComponent(t.id)}`;
+                els.audio.volume = (r.state.volume || 80) / 100;
+                try { await els.audio.play(); } catch (e) { console.warn("audio.play", e); }
+                showMusicToast(`随机播放:${t.title || t.id}`);
+                return;
+            }
+            // 库也空 → 提示去搜
+            showMusicToast("队列为空,先搜索一首曲加入队列再播放");
             return;
         }
         if (els.audio.paused) {

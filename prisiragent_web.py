@@ -14942,21 +14942,22 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _handle_calendar_timeline(self, qs):
-        """GET /prisIragent/api/calendar/timeline?days=14 → TodayView JSON.
+        """GET /prisIragent/api/calendar/timeline?days=30 → TodayView JSON.
 
         TodayView 来自 prisIr_calendar.agent_ops.reader.get_today_view。
         user_profile 走 user_profile.load_travel_profile()(无画像则空 dict)。
+        P2.5+22(2026-10-03):默认 30 天(从 14 升),按用户拍板。
         """
         store = self._get_calendar_store()
         if store is None:
             self._json({"error": "calendar store unavailable"}, 503)
             return
         try:
-            days_str = (qs.get("days") or ["14"])[0]
-            days = int(days_str) if days_str.isdigit() else 14
+            days_str = (qs.get("days") or ["30"])[0]
+            days = int(days_str) if days_str.isdigit() else 30
             days = max(1, min(days, 60))  # 限 1..60 天
         except (ValueError, IndexError):
-            days = 14
+            days = 30
         try:
             import asyncio as _aio
             from datetime import datetime as _dt, timezone as _tz
@@ -14971,7 +14972,7 @@ class Handler(BaseHTTPRequestHandler):
                 days=days,
             ))
             payload = view.to_dict()
-            # 兼容 task #6:前端读 14 天,这里把 scope 报告出去。
+            # 兼容 task #6:前端读 30 天,这里把 scope 报告出去(P2.5+22 从 14 升)。
             payload["requested_days"] = days
             self._json(payload)
         except Exception as e:  # noqa: BLE001
@@ -15193,18 +15194,19 @@ class Handler(BaseHTTPRequestHandler):
     def _handle_calendar_scan(self, body: dict):
         """POST /prisIragent/api/calendar/scan → TravelBufferAgent.scan_and_protect。
 
-        body: {"days": 14}(可选)。返回 ScanReport.to_dict()。
+        body: {"days": 30}(可选)。返回 ScanReport.to_dict()。
+        P2.5+22(2026-10-03):默认 30 天(从 14 升),与 timeline 对齐。
         """
         store = self._get_calendar_store()
         if store is None:
             self._json({"error": "calendar store unavailable"}, 503)
             return
         try:
-            days_str = (body.get("days") if isinstance(body, dict) else None) or 14
-            days = int(days_str) if str(days_str).isdigit() else 14
+            days_str = (body.get("days") if isinstance(body, dict) else None) or 30
+            days = int(days_str) if str(days_str).isdigit() else 30
             days = max(1, min(days, 60))
         except (ValueError, TypeError):
-            days = 14
+            days = 30
         try:
             import asyncio as _aio
             from prisIr_calendar.agent_ops.travel_buffer import (  # noqa: PLC0415

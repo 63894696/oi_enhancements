@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>PrisirAI 日程 — 30 天时间线</title>
+<link rel="stylesheet" href="/prisIragent/calendar/timeline.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-name">PrisirAI 日程</span>
+    <span class="brand-sub">30 天时间线</span>
+  </div>
+  <div class="topbar-actions">
+    <button id="btn-refresh" class="topbtn" type="button">刷新</button>
+    <button id="btn-export" class="topbtn" type="button">导出 ICS</button>
+    <button id="btn-ai-history" class="topbtn" type="button" title="查看 AI 自动编排的事件/任务历史">🤖 AI 记录</button>
+    <button id="btn-ai-clear" class="topbtn topbtn-warn" type="button" title="一键清除 AI 主动编排的所有事件 + todo + 历史,并重置权限">🧹 清空 AI 编排</button>
+  </div>
+</header>
+
+<main id="main">
+  <div id="status-line" class="status-line">加载中…</div>
+  <div id="day-groups"></div>
+  <div id="empty-state" class="empty-state" hidden>
+    <p>这 30 天没有安排。</p>
+    <p class="hint">和 Prisir AI 对话时告诉它要去哪儿,事件会自动出现在这里。</p>
+  </div>
+  <details id="ai-history-panel" class="ai-history-panel" hidden>
+    <summary>AI 自动编排历史(点击展开)</summary>
+    <div id="ai-history-list"></div>
+  </details>
+</main>
+
+<footer class="foot">
+  <span class="foot-line">只读视图 · 事件由对话自动维护 · 点 [×] = 不喜欢</span>
+</footer>
+
+<script src="/prisIragent/calendar/timeline.js" defer></script>
+</body>
+</html>

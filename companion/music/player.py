@@ -136,20 +136,44 @@ class LocalLibrary:
                     break
         return hits
 
+    def add_track(self, t: Track) -> None:
+        """P2.5+22(2026-10-03):加入虚拟 track(来自 lx_runtime 多源 fallback)。
+
+        _tracks / _by_artist 都更新,后续 search() / get() 行为一致。
+        """
+        self._tracks[t.id] = t
+        if t.artist:
+            self._by_artist.setdefault(t.artist, []).append(t.id)
+
+    def random_track_ids(self, limit: int = 20) -> List[str]:
+        """P2.5+22:队列空 fallback 用,库内随机 N 首 id(纯本地,不依赖外源)。"""
+        import random
+        all_ids = list(self._tracks.keys())
+        if not all_ids:
+            return []
+        random.shuffle(all_ids)
+        return all_ids[:limit]
+
 
 class OnlineSearch:
-    """在线搜:复用 lx_runtime_client 走 lyswhut 主源。
+    """在线搜:复用 lx_runtime_client 走 lyswhut 主源(已集成的多源)。
 
     注意:LX source 只暴露 musicUrl(给 songmid 返直链),不暴露 search 端点。
     本类只支持「给定 songInfo → 拿 URL」,搜索由 agent 给关键词 → 拼 mock 数据 or
     走 LRCLib 拿歌名匹配(本期不强依赖)。
 
-    Phase 1 简化:OnlineSearch.get_url(track_info) 仅供已知 track 用;
-    Phase 2 可加 userVariable 协议搜(留口)。
+    P2.5+22(2026-10-03):多源 fallback。默认 mock.js 单源(可能返 googleapis 公共 mp3),
+    用户点播放空队列时:
+      1) get_url_multi 按 sources 顺序轮询 musicUrl
+      2) 任意源 ok → 用其 url 入库(source="lx:<source>")
+      3) 全失败 → 返 ok=False,前端给 toast
     """
 
+    DEFAULT_SOURCES = ["mock.js", "juhe.js"]
+
     def __init__(self, sources: Optional[List[str]] = None):
-        self._sources = sources or ["mock.js"]
+        # P2.5+22:默认多源(mock + juhe),ikun 排除(国内 DNS 不可达必崩进程)。
+        self._sources = sources or list(self.DEFAULT_SOURCES)
         self._client = None
 
     def _ensure(self):
@@ -163,7 +187,13 @@ class OnlineSearch:
         return self._client
 
     def get_url(self, source: str, song_info: Dict[str, Any]) -> Dict[str, Any]:
-        """返 {"ok": bool, "url"?: str, "err"?: str}"""
+        """返 {"ok": bool, "url"?: str, "source"?: str, "err"?: str}。
+
+        lx 框架两层回包形态:
+          - source js 直接 return url_string → rpc 返 {ok: True, result: url_string}
+          - 中间件返 {ok: True, data: {url: ...}} 或 {ok: True, data: url_string}
+        两种都兼容。
+        """
         cli = self._ensure()
         if not cli:
             return {"ok": False, "err": "lx_runtime client not available"}
@@ -172,9 +202,39 @@ class OnlineSearch:
                             info={"musicInfo": song_info, "type": "320k"})
             if not resp.get("ok"):
                 return {"ok": False, "err": resp.get("err", "lx_runtime returned not-ok")}
-            return {"ok": True, "url": resp.get("data", {}).get("url", "")}
+            url = ""
+            # 路径 1: result 是 url string(juhe/mock 直接 return string)
+            r = resp.get("result")
+            if isinstance(r, str) and r.startswith("http"):
+                url = r
+            # 路径 2: data 是 dict 含 url
+            elif isinstance(resp.get("data"), dict):
+                url = resp["data"].get("url", "") or ""
+            # 路径 3: data 本身就是 url string
+            elif isinstance(resp.get("data"), str) and resp["data"].startswith("http"):
+                url = resp["data"]
+            if not url:
+                return {"ok": False, "err": f"{source} returned empty url"}
+            return {"ok": True, "url": url, "source": source}
         except Exception as e:  # noqa: BLE001
             return {"ok": False, "err": f"{type(e).__name__}: {e}"}
+
+    def get_url_multi(self, song_info: Dict[str, Any]) -> Dict[str, Any]:
+        """P2.5+22:按 sources 顺序轮询 musicUrl,首个成功即返。
+
+        返回字段: ok / url / source / err
+        """
+        last_err = ""
+        for src in self._sources:
+            r = self.get_url(src, song_info)
+            if r.get("ok"):
+                return r
+            last_err = f"{src}={r.get('err', '?')}"
+            log.info("[online] %s fail: %s, try next", src, r.get("err"))
+        return {"ok": False, "err": f"all sources failed: {last_err}"}
+
+    def list_sources(self) -> List[str]:
+        return list(self._sources)
 
     def shutdown(self) -> None:
         if self._client:
@@ -270,9 +330,10 @@ class PlaylistManager:
 class Player:
     """状态机 + cmd 路由 + ws 广播。"""
 
-    def __init__(self, library: LocalLibrary, *, volume: int = 80,
-                 playback_mode: str = "sequential"):
+    def __init__(self, library: LocalLibrary, *, online: Optional["OnlineSearch"] = None,
+                 volume: int = 80, playback_mode: str = "sequential"):
         self.library = library
+        self.online = online
         self.playlist = PlaylistManager(library)
         self.state = PlayerState(volume=volume, playback_mode=playback_mode)
         self._subscribers: List[asyncio.Queue] = []
@@ -356,6 +417,23 @@ class Player:
                 query = kw.get("query", "")
                 ids = self.playlist.seed_from_search(query)
                 return {"ok": True, "action": action, "queued": len(ids), "ids": ids[:10]}
+            elif action == "play_url":
+                # P2.5+22:多源 fallback 入口。前端给 song_info → 后端走 lx 多源
+                # musicUrl 拿直链 → 入库(source="lx:<src>")→ 自动 play。
+                song_info = kw.get("song_info") or {}
+                title = kw.get("title", "")
+                artist = kw.get("artist", "")
+                r = await self.seed_from_url(song_info, title=title, artist=artist)
+                if not r.get("ok"):
+                    return {"ok": False, "err": r.get("err", "play_url failed")}
+                pl = await self._cmd_play(r["track_id"])
+                if pl.get("ok"):
+                    pl["source"] = r.get("source")
+                return pl
+            elif action == "random":
+                # P2.5+22:队列空 fallback 用 — 库内随机 N 首,自动 play 第 1 首。
+                count = int(kw.get("count", 1))
+                return await self.play_random(count=count)
             elif action == "progress":
                 # 前端回传真实 position
                 try:
@@ -395,6 +473,53 @@ class Player:
         self.state.updated_at = int(time.time() * 1000)
         await self._publish("music_state", self.state.to_dict())
         return {"ok": True, "action": "play", "state": self.state.to_dict()}
+
+    # ============================================================
+    # P2.5+22(2026-10-03):多源 fallback + 随机播放
+    # ============================================================
+    async def seed_from_url(self, song_info: Dict[str, Any],
+                            title: str = "", artist: str = "") -> Dict[str, Any]:
+        """走 online 多源(musicUrl)拿 mp3 直链 → 入 library(source="lx:<src>")。
+
+        Args:
+            song_info: 给 lx 的 musicInfo 字段(hash/songmid)。
+            title/artist: 入库的展示名(可选)。
+        Returns:
+            {"ok": bool, "track_id"?: str, "source"?: str, "url"?: str, "err"?: str}
+        """
+        if not self.online:
+            return {"ok": False, "err": "online client not configured"}
+        r = self.online.get_url_multi(song_info)
+        if not r.get("ok"):
+            return {"ok": False, "err": r.get("err", "no url")}
+        url = r.get("url", "")
+        src = r.get("source", "lx")
+        # id 由 url 哈希定(同 url 同 id)
+        import hashlib
+        tid = hashlib.sha1(url.encode("utf-8")).hexdigest()[:16]
+        # 入库(若已存在则覆盖 path/url)
+        t = Track(
+            id=tid,
+            title=title or song_info.get("title") or "未知曲目",
+            artist=artist or song_info.get("artist") or src,
+            album="",
+            path=url,            # source="lx" 时 path=url,stream 端识别后透传
+            duration=0.0,
+            source=f"lx:{src}",
+        )
+        self.library.add_track(t)
+        return {"ok": True, "track_id": tid, "source": src, "url": url}
+
+    async def play_random(self, count: int = 1) -> Dict[str, Any]:
+        """队列空 fallback 用:从本地库随机抽 N 首,自动 play 第 1 首。
+
+        不依赖外部源(纯本地),失败返 ok=False(库 0 首)。
+        """
+        ids = self.library.random_track_ids(limit=max(1, count))
+        if not ids:
+            return {"ok": False, "err": "library empty"}
+        self.playlist.set_queue(ids)
+        return await self._cmd_play(ids[0])
 
     async def _cmd_next(self) -> Dict[str, Any]:
         nid = self.playlist.next_id(mode=self.state.playback_mode)

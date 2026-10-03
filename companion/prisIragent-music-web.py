@@ -209,14 +209,21 @@ async def api_stream(req: web.Request) -> web.StreamResponse:
     """流代理:返回 mp3 字节。
 
     HTMLAudioElement 直接连这个 URL,无需 CORS(same-origin)。
+    P2.5+22(2026-10-03):track.source 以 "lx:" 开头 → path 视为远程 url,代理透传
+    (不做 Range 支持,浏览器 audio seek 不可用但能播)。
     """
     tid = req.match_info.get("track_id", "")
     if not APP.library:
         return _err("library not initialized")
     tr = APP.library.get(tid)
-    if not tr or not Path(tr.path).exists():
+    if not tr:
         return _err(f"track not found: {tid}")
+    is_remote = isinstance(tr.source, str) and tr.source.startswith("lx:")
+    if is_remote:
+        return await _stream_remote_url(req, tr.path)
     p = Path(tr.path)
+    if not p.exists():
+        return _err(f"track file missing: {tid}")
     size = p.stat().st_size
     # Range header 支持(浏览器 audio seek 用)
     range_hdr = req.headers.get("Range")
@@ -260,6 +267,37 @@ async def api_stream(req: web.Request) -> web.StreamResponse:
             remaining -= len(buf)
     await resp.write_eof()
     return resp
+
+
+async def _stream_remote_url(req: web.Request, url: str) -> web.StreamResponse:
+    """P2.5+22:lx 远端 url 透传到浏览器。Range 不支持,只做 streaming proxy。"""
+    import aiohttp as _aio
+    ctype = "audio/mpeg"
+    try:
+        async with _aio.ClientSession() as sess:
+            async with sess.get(url, timeout=aiohttp.ClientTimeout(total=60)) as upstream:
+                if upstream.status >= 400:
+                    return _err(f"upstream {upstream.status}")
+                # 尝试从 content-type 拿 ctype
+                ctype = upstream.headers.get("Content-Type", ctype)
+                resp = web.StreamResponse(
+                    status=200,
+                    headers={
+                        "Content-Type": ctype,
+                        "Cache-Control": "no-store",
+                        "Access-Control-Allow-Origin": "*",
+                    },
+                )
+                await resp.prepare(req)
+                async for chunk in upstream.content.iter_chunked(64 * 1024):
+                    if not chunk:
+                        break
+                    await resp.write(chunk)
+                await resp.write_eof()
+                return resp
+    except Exception as e:  # noqa: BLE001
+        log.warning("[stream_remote] %s fail: %s", url[:80], e)
+        return _err(f"remote stream failed: {type(e).__name__}: {e}")
 
 
 async def api_cmd(req: web.Request) -> web.Response:
@@ -583,11 +621,14 @@ async def on_startup(app: web.Application) -> None:
     log.info("[music_web] library scanned: %d tracks", len(tracks))
 
     # online (懒启动,首次 get_url 时初始化 jsdom)
-    APP.online = OnlineSearch()
+    # P2.5+22(2026-10-03):多源 mock+juhe 双源,musicUrl 失败按序轮询下一个。
+    # ikun 排除:api.ikunshare.com 在国内 DNS 不可达(Node ENOTFOUND 必崩进程)。
+    APP.online = OnlineSearch(sources=["mock.js", "juhe.js"])
 
     # player
     APP.player = Player(
         APP.library,
+        online=APP.online,
         volume=APP.cfg.get("playback.volume", 80),
         playback_mode=APP.cfg.get("playback.mode", "sequential"),
     )
