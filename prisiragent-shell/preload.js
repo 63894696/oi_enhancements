@@ -16,3 +16,12 @@ contextBridge.exposeInMainWorld("oiShell", {
   // 标记:在壳内运行(供 prisiragent_web 区分「壳内」vs「纯浏览器」)
   inShell: true,
 });
+
+// P2.5+25(2026-10-03)music 子窗 / 桌面歌词子窗 专用前缀 prisIragent。
+// 区分 oiShell(主 web 用)的策略 — 主 web 不暴露歌词窗开关,
+// 减少渲染层攻击面(openLyric/closeLyric 触发的是 BrowserWindow new/close)。
+contextBridge.exposeInMainWorld("prisIragent", {
+  // 桌面歌词独立窗
+  openLyric: () => ipcRenderer.invoke("shell:openLyric"),
+  closeLyric: () => ipcRenderer.invoke("shell:closeLyric"),
+});

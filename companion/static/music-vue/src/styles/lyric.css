@@ -1,0 +1,139 @@
+/* lyric.css — P2.5+25(2026-10-03)桌面歌词独立窗主题
+ *
+ * 借鉴旧 companion/static/music/lyrics.css 的设计 + Vue 3 CSS var 适配。
+ *
+ * 关键约束:
+ *   - body background: transparent !important → Electron BrowserWindow {transparent:true} 才透桌面
+ *   - 顶部 6px 拖动条 -webkit-app-region: drag → Electron transparent 窗整窗可拖
+ *   - 字号/颜色/不透明度全 CSS var,运行时 ws /ws/lyrics lyric_cfg 推送覆盖
+ *   - 进度条底部 1px,走 CSS var --progress(ws music_state.progress / duration)
+ */
+
+:root {
+  --lyrics-color: #f6f1e7;
+  --lyrics-font-size: 32px;
+  --lyrics-opacity: 0.85;
+  --lyrics-stroke: rgba(31, 27, 22, 0.55);
+  --lyrics-active-gradient: linear-gradient(90deg, transparent, #c14d3a, transparent);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
+  background: transparent !important;
+  font-family: "Noto Serif CJK SC", "Microsoft YaHei", serif;
+  color: var(--lyrics-color);
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+
+/* 顶部 6px 拖动条 — Electron transparent 窗可在此条按下拖动整窗 */
+#drag-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  background: transparent;
+  -webkit-app-region: drag;
+  cursor: move;
+  z-index: 10;
+}
+
+/* 主歌词区 — 全屏居中 */
+#lyrics-stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 16px 24px;
+  opacity: var(--lyrics-opacity);
+  -webkit-app-region: no-drag;  /* 歌词区不抢拖动 */
+  overflow: hidden;
+}
+
+#lyrics-stage .line {
+  opacity: 0.32;
+  font-size: var(--lyrics-font-size);
+  font-weight: 400;
+  line-height: 1.6;
+  padding: 4px 0;
+  color: var(--lyrics-color);
+  -webkit-text-stroke: 0.5px var(--lyrics-stroke);
+  transition: opacity 280ms, transform 280ms;
+  max-width: 90%;
+}
+
+#lyrics-stage .line.active {
+  opacity: 1;
+  font-weight: 700;
+  transform: scale(1.06);
+  background: var(--lyrics-active-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: 0;
+}
+
+#lyrics-stage .line.prev,
+#lyrics-stage .line.next {
+  opacity: 0.55;
+}
+
+#lyrics-stage .empty {
+  font-size: 18px;
+  font-style: italic;
+  opacity: 0.45;
+}
+
+/* 底部元数据条 — 默认隐藏,鼠标 hover 显示 */
+#meta {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 22px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  opacity: 0;
+  background: linear-gradient(0deg, rgba(31, 27, 22, 0.5), transparent);
+  color: #f6f1e7;
+  transition: opacity 280ms;
+  pointer-events: none;
+}
+
+body:hover #meta {
+  opacity: 0.85;
+}
+
+/* 进度条 — 底部 1px 横条 */
+#lyrics-stage::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  width: var(--progress, 0%);
+  background: linear-gradient(90deg, #c14d3a, #b08856);
+  transition: width 240ms linear;
+  pointer-events: none;
+}

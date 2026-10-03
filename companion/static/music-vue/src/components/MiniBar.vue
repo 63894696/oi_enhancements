@@ -36,6 +36,15 @@ async function onFav() {
                                `已取消收藏: ${r.title || player.currentTrack?.title}`)
   }
 }
+// P2.5+25(2026-10-03):桌面歌词独立窗入口 — 仅壳内 IPC 有效,dev 模式优雅 toast 降级。
+async function onOpenLyric() {
+  const w = window as any
+  if (typeof w?.prisIragent?.openLyric === 'function') {
+    await w.prisIragent.openLyric()
+  } else {
+    ui.pushToast('warn', '请从托盘「🎤 桌面歌词」打开(壳层 IPC 未就绪)')
+  }
+}
 function onVolume(e: Event) {
   const v = parseFloat((e.target as HTMLInputElement).value) / 100
   player.setVolume(v)
@@ -69,8 +78,9 @@ function onVolume(e: Event) {
       </div>
     </div>
 
-    <!-- 右:♥ 收藏 + 🔊 音量 -->
+    <!-- 右:🎤 桌面歌词 + ♥ 收藏 + 🔊 音量 -->
     <div class="right">
+      <button class="ctrl lyric" @click="onOpenLyric" title="桌面歌词独立窗">🎤</button>
       <button class="ctrl fav" :class="{ active: player.isFavorite }"
               @click="onFav" :disabled="!canFav" :title="player.isFavorite ? '已收藏' : '收藏'">
         {{ player.isFavorite ? '♥' : '♡' }}

@@ -368,6 +368,10 @@ function _createChildWindow(spec) {
     catch (e) { logWarn("childWindow", "reloadIgnoringCache fail", `err=${e.message}`); }
     return existing;
   }
+  // P2.5+25(2026-10-03):桌面歌词窗需要 transparent + frame:false + alwaysOnTop + skipTaskbar。
+  // 接受 5 个新 spec 字段(向后兼容,默认 false / true)。
+  // 注意:transparent=true 时 BrowserWindow 不能有 backgroundColor(否则 Windows 上透明失效)。
+  const isTransparent = spec.transparent === true;
   const w = new BrowserWindow({
     width: spec.width || 920,
     height: spec.height || 680,
@@ -375,9 +379,15 @@ function _createChildWindow(spec) {
     minHeight: spec.minHeight || 480,
     title: spec.title || "Prisir(湃睿思) AI",
     icon: path.join(__dirname, "icon.png"),
-    backgroundColor: "#f6f1e7",
+    backgroundColor: isTransparent ? undefined : "#f6f1e7",
     show: false,                    // ready-to-show 再亮相
     autoHideMenuBar: true,
+    // P2.5+25:桌面歌词窗专属属性,默认 false / true 保持现有 4 子窗行为不变
+    transparent: isTransparent,
+    frame: spec.frame !== false,    // 默认 true(有标题栏),歌词窗显式传 false
+    alwaysOnTop: spec.alwaysOnTop === true,
+    resizable: spec.resizable !== false,  // 默认 true
+    skipTaskbar: spec.skipTaskbar === true,  // 默认 false(歌词窗隐藏任务栏图标)
     webPreferences: _commonWebPreferences(),
   });
   // ready-to-show 触发再 show,避免白闪
@@ -647,6 +657,13 @@ const _CHILD_SPEC = {
   music:     { width: 880, height: 620, minWidth: 640, minHeight: 480, title: "PrisirAI 音乐" },
   calendar:  { width: 960, height: 720, minWidth: 720, minHeight: 540, title: "PrisirAI 日程" },
   workflow:  { width: 1000, height: 720, minWidth: 800, minHeight: 560, title: "PrisirAI 工作流" },
+  // P2.5+25(2026-10-03)桌面歌词独立窗 — transparent + frame:false + alwaysOnTop,
+  // 由 _createChildWindow 转 Electron BrowserWindow 选项;
+  // 720×360 默认够放 3 行大字号歌词 + 底部 meta,可缩放到 480×240。
+  lyric:     { width: 720, height: 360, minWidth: 480, minHeight: 240,
+               title: "PrisirAI 桌面歌词",
+               transparent: true, frame: false, alwaysOnTop: true,
+               resizable: true, skipTaskbar: true },
 };
 
 function openCompanionWindow() {
@@ -696,6 +713,37 @@ function openMusicWindow() {
   };
   tick();
 }
+// P2.5+25(2026-10-03)桌面歌词独立窗 — 复用 music 后端(ws /ws/lyrics + /music-vue/lyric.html 静态路由),
+// 完全镜像 openMusicWindow 的端口轮询模式,只是 label 走 "lyric" + path 用 /music-vue/lyric.html。
+// 不复用 music 主窗是因为桌面歌词是 transparent + alwaysOnTop,主 music 子窗是普通有边框;
+// 双窗独立,关闭歌词不影响 music 播放。
+function openLyricWindow() {
+  startMusic();
+  const deadline = Date.now() + 3000;
+  const tick = () => {
+    const port = require("./port_config").readMusicPort();
+    if (port > 0) {
+      waitForPort(WEB_HOST, port, 1.0).then((ok) => {
+        if (ok) {
+          openInShell(`http://${WEB_HOST}:${port}/music-vue/lyric.html`, "lyric");
+        } else if (Date.now() < deadline) {
+          setTimeout(tick, 300);
+        } else {
+          logWarn("openLyricWindow", "music web not ready in 3s", `port=${port}`);
+          openInShell(WEB_URL, "main");
+        }
+      });
+      return;
+    }
+    if (Date.now() < deadline) {
+      setTimeout(tick, 300);
+    } else {
+      logWarn("openLyricWindow", "music port 0 after 3s", `port=${port}`);
+      openInShell(WEB_URL, "main");
+    }
+  };
+  tick();
+}
 function openCalendarWindow() {
   // 日历 走 prisiragent_web.py 的 /prisIragent/calendar 路由。
   // P2.5+14 起日历独立端口(同进程双端口 listen),从 port_config 读。
@@ -730,6 +778,7 @@ function createTray() {
     // P2.5+23(2026-10-03):4 个子项命名统一「PrisirAI xxx」,emoji 前缀 4 项全加(日程/工作流原本就有,语伴/音乐补)。
     { label: "📞 语伴",   click: openCompanionWindow },
     { label: "🎵 音乐",   click: openMusicWindow },
+    { label: "🎤 桌面歌词", click: openLyricWindow },
     { label: "📅 日程",   click: openCalendarWindow },
     { label: "🔀 工作流", click: openWorkflowWindow },
     { type: "separator" },
@@ -766,6 +815,21 @@ ipcMain.handle("shell:info", () => ({
   version: app.getVersion(),
 }));
 ipcMain.handle("shell:toggle", () => toggleWindow());
+
+// P2.5+25(2026-10-03)桌面歌词独立窗 IPC — 白名单,渲染层只能问这两个。
+//  - shell:openLyric  → 唤起/复用歌词透明窗(music 子窗 MiniBar 🎤 按钮点击触发)
+//  - shell:closeLyric → 关闭歌词窗(歌词窗内双击触发,user gesture 后主动 close)
+ipcMain.handle("shell:openLyric", () => {
+  try { openLyricWindow(); return { ok: true }; }
+  catch (e) { logError("shell:openLyric", "err", `e=${e.message}`); return { ok: false, err: e.message }; }
+});
+ipcMain.handle("shell:closeLyric", () => {
+  try {
+    const w = childWindows.get("lyric");
+    if (w && !w.isDestroyed()) { w.close(); return { ok: true }; }
+    return { ok: false, err: "no lyric window" };
+  } catch (e) { logError("shell:closeLyric", "err", `e=${e.message}`); return { ok: false, err: e.message }; }
+});
 
 // v2.0 反馈卡:白名单 URL 走 shell.openExternal(系统浏览器)。
 // 只允许 https:// 且 babelspan.com 子域或主页。防止渲染层被 XSS 诱导打开恶意 URL。
