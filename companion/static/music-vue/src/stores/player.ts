@@ -1,6 +1,9 @@
-// stores/player.ts — P2.5+24(2026-10-03)
+// stores/player.ts — P2.5+24(2026-10-03) → P3.3(2026-10-03)加 listFavorites
 // Pinia setup store,UI 只读。PlayerService 单例是真相来源,store 只是订阅镜像。
 // 借鉴 SmallRuralDog/vue3-electron-music-player 的 setup store 写法。
+//
+// P3.3(2026-10-03):长按 ♡/♥ 弹 PopupMenu → 选「查看所有收藏」调 listFavorites()
+//   调 /api/favorites → 返 {count, favorites:[{fav_id,title,artist,duration}]}
 
 import { defineStore } from 'pinia'
 import { ref, computed, onScopeDispose } from 'vue'
@@ -202,6 +205,22 @@ export const usePlayerStore = defineStore('player', () => {
     return null
   }
 
+  // P3.3(2026-10-03):长按 ♡/♥ 菜单 — 「查看所有收藏」
+  // 调 /api/favorites GET → 返 {count, favorites:[{fav_id,title,artist,duration}]}
+  async function listFavorites(): Promise<{ count: number; list: { fav_id: string; title: string; artist: string; duration: number }[] }> {
+    const r = await api('/api/favorites')
+    if (r.ok) {
+      return { count: r.count || 0, list: r.favorites || [] }
+    }
+    return { count: 0, list: [] }
+  }
+
+  // P3.3(2026-10-03):长按 ♡/♥ 菜单 — 选单条收藏删除(目前不在 UI 暴露,留接口)
+  async function removeFavorite(fav_id: string) {
+    const r = await api(`/api/favorites/remove?fav_id=${encodeURIComponent(fav_id)}`, {})
+    return r
+  }
+
   async function playById(songId: string) {
     // 从 /api/songs 拉详情 → 调 PlayerService
     // P3.9(2026-10-03):后端 SongMeta 加 duration_sec 字段(真歌名池 v2 估算时长),
@@ -254,5 +273,7 @@ export const usePlayerStore = defineStore('player', () => {
     // actions
     bootstrap, refreshFavorite, toggleFavorite, refreshLyric,
     playById, toggle, playNext, playPrev, seek, setVolume,
+    // P3.3(2026-10-03):长按收藏菜单 action
+    listFavorites, removeFavorite,
   }
 })

@@ -656,6 +656,35 @@ class Player:
                 return {"ok": True, "favorited": True, "fav_id": existing.id}
         return {"ok": True, "favorited": False}
 
+    # ============================================================
+    # P3.3(2026-10-03):长按收藏菜单 — list_favorites / remove_favorite
+    # ============================================================
+    def list_favorites(self, limit: int = 50) -> List[Track]:
+        """P3.3(2026-10-03):返所有 source='song_pool_fav' 的收藏 track。
+
+        按 _tracks dict 插入顺序(Python 3.7+ 保持),新加入收藏在列表尾部。
+        Returns: List[Track] (最长 limit 条,默认 50 防 toast 太长)
+        """
+        if not self.library:
+            return []
+        favs = [t for t in self.library._tracks.values() if t.source == "song_pool_fav"]
+        return favs[: max(1, int(limit))]
+
+    def remove_favorite(self, fav_id: str) -> Dict[str, Any]:
+        """P3.3(2026-10-03):按 fav_id 删收藏。
+
+        Returns: {ok: bool, removed?: Track.to_dict(), err?: str}
+        """
+        if not fav_id:
+            return {"ok": False, "err": "missing fav_id"}
+        tr = self.library.get(fav_id) if self.library else None
+        if not tr:
+            return {"ok": False, "err": f"track not found: {fav_id}"}
+        if tr.source != "song_pool_fav":
+            return {"ok": False, "err": "not a favorite"}
+        self.library.remove_track(fav_id)
+        return {"ok": True, "removed": tr.to_dict()}
+
     async def _cmd_download(self, track_id: Optional[str]) -> Dict[str, Any]:
         """下载当前 track 到 companion/music/cache/ → LocalLibrary 加 source='local' 入库。
         remote(lx: 开头):aiohttp 拉字节 → 写文件

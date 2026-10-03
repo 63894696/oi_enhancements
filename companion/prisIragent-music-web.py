@@ -450,6 +450,35 @@ async def api_agent_intent(req: web.Request) -> web.Response:
     return _err(f"unknown intent action: {action}")
 
 
+# ============================================================
+# P3.3(2026-10-03):长按收藏菜单 — /api/favorites 系列
+# ============================================================
+async def api_favorites(req: web.Request) -> web.Response:
+    """P3.3(2026-10-03):列出所有 source='song_pool_fav' 收藏(供 Toast 列表)。"""
+    if not APP.player:
+        return _err("player not initialized")
+    favs = APP.player.list_favorites(limit=50)
+    return _ok(
+        count=len(favs),
+        favorites=[{
+            "fav_id": t.id,
+            "title": t.title,
+            "artist": t.artist,
+            "duration": t.duration,
+        } for t in favs],
+    )
+
+
+async def api_favorite_remove(req: web.Request) -> web.Response:
+    """P3.3(2026-10-03):按 fav_id 删收藏(走 POST + ?fav_id= query,前端 fetch 简洁)。"""
+    if not APP.player:
+        return _err("player not initialized")
+    fav_id = req.query.get("fav_id", "").strip()
+    if not fav_id:
+        return _err("missing fav_id")
+    return web.json_response(APP.player.remove_favorite(fav_id))
+
+
 async def api_lyric(req: web.Request) -> web.Response:
     if not APP.lyric:
         return _err("lyric provider not initialized")
@@ -772,6 +801,9 @@ def build_app() -> web.Application:
     app.router.add_get("/api/songs/preload", api_songs_preload)
     app.router.add_get("/api/stream/{track_id}", api_stream)
     app.router.add_post("/api/cmd", api_cmd)
+    # P3.3(2026-10-03):长按收藏菜单 — 2 个新路由
+    app.router.add_get("/api/favorites", api_favorites)
+    app.router.add_post("/api/favorites/remove", api_favorite_remove)
     app.router.add_get("/api/agent/cfg/list", api_agent_cfg_list)
     app.router.add_get("/api/agent/cfg/get", api_agent_cfg_get)
     app.router.add_post("/api/agent/cfg/set", api_agent_cfg_set)

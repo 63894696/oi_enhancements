@@ -1,5 +1,6 @@
-// stores/ui.ts — P2.5+24(2026-10-03)
+// stores/ui.ts — P2.5+24(2026-10-03) → P3.3(2026-10-03)加 pushListToast
 // UI 状态:侧栏模式(viewMode) + toast + 当前标签过滤。
+// P3.3(2026-10-03):pushListToast 支持多行 list 渲染(收藏列表 8s TTL)。
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api } from '@/services/api'
@@ -13,15 +14,39 @@ export interface ToastMsg {
   text: string
 }
 
+// P3.3(2026-10-03):List 类型 toast(多行列表,8s TTL)
+export interface ListToastMsg {
+  id: number
+  type: 'list'
+  title: string
+  items: { title: string; subtitle?: string }[]
+  ttlMs: number
+}
+
+export type AnyToastMsg = ToastMsg | ListToastMsg
+
 export const useUiStore = defineStore('ui', () => {
   const viewMode = ref<ViewMode>('playlist')
   const tagFilter = ref<string>('')  // 当前标签过滤(空 = 全部)
-  const toasts = ref<ToastMsg[]>([])
+  const toasts = ref<AnyToastMsg[]>([])
   let toastId = 0
 
   function pushToast(type: ToastMsg['type'], text: string, ttlMs = 2400) {
     const id = ++toastId
     toasts.value.push({ id, type, text })
+    window.setTimeout(() => {
+      toasts.value = toasts.value.filter((t) => t.id !== id)
+    }, ttlMs)
+  }
+
+  // P3.3(2026-10-03):多行 list toast(收藏列表专用,默认 8s)
+  function pushListToast(
+    title: string,
+    items: { title: string; subtitle?: string }[],
+    ttlMs = 8000,
+  ) {
+    const id = ++toastId
+    toasts.value.push({ id, type: 'list', title, items, ttlMs })
     window.setTimeout(() => {
       toasts.value = toasts.value.filter((t) => t.id !== id)
     }, ttlMs)
@@ -45,6 +70,6 @@ export const useUiStore = defineStore('ui', () => {
 
   return {
     viewMode, tagFilter, toasts,
-    pushToast, bootstrap, respinPool, setTag,
+    pushToast, pushListToast, bootstrap, respinPool, setTag,
   }
 })

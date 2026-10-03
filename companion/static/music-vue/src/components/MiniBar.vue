@@ -1,10 +1,15 @@
 <script setup lang="ts">
-// MiniBar.vue — P2.5+24(2026-10-03)
+// MiniBar.vue — P2.5+24(2026-10-03) → P3.3(2026-10-03)N7 长按收藏菜单
 // 底部 88px mini bar:封面 56 + 曲名艺人 + ⏮⏯⏭ + 三层进度 + ♥ 收藏 + 🔊 音量。
+// P3.3(2026-10-03):♥/♡ 按钮加 @contextmenu + touch 长按 600ms 触发 PopupMenu
+//   4 项菜单:复制曲名+艺人 / 立即播放 / 查看所有收藏 (N) / 取消收藏 (仅已收藏显示)
+//   复用 player.toggleFavorite() / playById() / listFavorites()
 import { computed } from 'vue'
 import { usePlayerStore } from '@/stores/player'
 import { useUiStore } from '@/stores/ui'
 import ProgressBar from './ProgressBar.vue'
+import PopupMenu, { type MenuItem } from './PopupMenu.vue'
+import { ref } from 'vue'
 
 const player = usePlayerStore()
 const ui = useUiStore()
@@ -49,6 +54,105 @@ function onVolume(e: Event) {
   const v = parseFloat((e.target as HTMLInputElement).value) / 100
   player.setVolume(v)
 }
+
+// ============================================================
+// P3.3(2026-10-03)N7 长按收藏菜单 — ♡/♥ 按钮右键/touch 长按弹 PopupMenu
+// ============================================================
+const popupX = ref(0)
+const popupY = ref(0)
+const popupVisible = ref(false)
+let longPressTimer: number | null = null
+let longPressTriggered = false
+
+const LONG_PRESS_MS = 600
+
+function itemsForTrack(): MenuItem[] {
+  return [
+    { key: 'copy', icon: '📋', label: '复制曲名 + 艺人' },
+    { key: 'play', icon: '▶', label: '立即播放' },
+    { key: 'list', icon: '📂', label: '查看所有收藏' },
+    // 「取消收藏」仅已收藏时显示
+    { key: 'unfav', icon: '❌', label: '取消收藏', danger: true,
+      hidden: !player.isFavorite },
+  ]
+}
+
+async function openMenu(x: number, y: number) {
+  popupX.value = x
+  popupY.value = y
+  popupVisible.value = true
+}
+
+function onFavContextMenu(e: MouseEvent) {
+  // 桌面右键 → 弹菜单;不阻止默认 = 浏览器会同时弹原生菜单 → 必须 prevent
+  e.preventDefault()
+  if (!canFav.value) return
+  void openMenu(e.clientX, e.clientY)
+}
+
+function onFavTouchStart(e: TouchEvent) {
+  if (!canFav.value) return
+  longPressTriggered = false
+  const touch = e.touches[0]
+  longPressTimer = window.setTimeout(() => {
+    longPressTriggered = true
+    if (touch) void openMenu(touch.clientX, touch.clientY)
+  }, LONG_PRESS_MS)
+}
+
+function onFavTouchEnd(_e: TouchEvent) {
+  if (longPressTimer != null) {
+    clearTimeout(longPressTimer)
+    longPressTimer = null
+  }
+  // 长按命中菜单 → 阻止后续 click 触发的 toggleFavorite
+  if (longPressTriggered) {
+    // 注:TouchEvent 没 preventDefault 这里已无意义,但加 marker 给 click 看
+    longPressTriggered = false
+  }
+}
+
+// click 处理:若刚长按 → 跳过 toggle
+function onFavClick() {
+  if (longPressTriggered) {
+    longPressTriggered = false
+    return
+  }
+  void onFav()
+}
+
+async function onSelectMenu(item: MenuItem) {
+  popupVisible.value = false
+  const tr = player.currentTrack
+  if (!tr) return
+  if (item.key === 'copy') {
+    const text = `${tr.title} - ${tr.artist}`
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text)
+        ui.pushToast('info', `已复制: ${text}`)
+      } else {
+        ui.pushToast('warn', '当前环境不支持剪贴板')
+      }
+    } catch (err) {
+      ui.pushToast('warn', `复制失败: ${(err as Error)?.message || err}`)
+    }
+  } else if (item.key === 'play') {
+    await player.playById(tr.id)
+  } else if (item.key === 'list') {
+    const r = await player.listFavorites()
+    if (r.list.length === 0) {
+      ui.pushToast('info', '暂无收藏')
+    } else {
+      ui.pushListToast('已收藏', r.list.map((f) => ({
+        title: f.title,
+        subtitle: f.artist,
+      })))
+    }
+  } else if (item.key === 'unfav') {
+    await onFav()
+  }
+}
 </script>
 
 <template>
@@ -81,8 +185,12 @@ function onVolume(e: Event) {
     <!-- 右:🎤 桌面歌词 + ♥ 收藏 + 🔊 音量 -->
     <div class="right">
       <button class="ctrl lyric" @click="onOpenLyric" title="桌面歌词独立窗">🎤</button>
+      <!-- P3.3(2026-10-03):♥/♡ 加 @contextmenu + touchstart/touchend 600ms 长按弹 PopupMenu -->
       <button class="ctrl fav" :class="{ active: player.isFavorite }"
-              @click="onFav" :disabled="!canFav" :title="player.isFavorite ? '已收藏' : '收藏'">
+              @click="onFavClick" @contextmenu="onFavContextMenu"
+              @touchstart="onFavTouchStart" @touchend="onFavTouchEnd"
+              :disabled="!canFav"
+              :title="player.isFavorite ? '已收藏(右键菜单)' : '收藏(右键菜单)'">
         {{ player.isFavorite ? '♥' : '♡' }}
       </button>
       <div class="vol">
@@ -91,6 +199,12 @@ function onVolume(e: Event) {
                @input="onVolume" orient="vertical" />
       </div>
     </div>
+
+    <!-- P3.3 长按收藏菜单 -->
+    <PopupMenu :x="popupX" :y="popupY" :visible="popupVisible"
+               :items="itemsForTrack()"
+               @select="onSelectMenu"
+               @close="popupVisible = false" />
   </div>
 </template>
 
