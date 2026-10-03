@@ -536,8 +536,11 @@ async def index(req: web.Request) -> web.Response:
     p = STATIC_DIR / "music" / "index.html"
     if not p.exists():
         return web.Response(text="music/index.html not found", status=404)
+    # P2.5+23 hotfix:ship 后用户实测右键开音乐子窗界面没变 → 浏览器缓存了旧版。
+    # 加 no-store 强制每次重拉,避免 ship 后用户看不到新前端。
     return web.Response(text=p.read_text(encoding="utf-8"),
-                        content_type="text/html")
+                        content_type="text/html",
+                        headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
 
 
 async def lyrics_page(req: web.Request) -> web.Response:
@@ -702,7 +705,19 @@ async def on_cleanup(app: web.Application) -> None:
 
 
 def build_app() -> web.Application:
-    app = web.Application()
+    # P2.5+23 hotfix:ship 后用户实测右键开音乐子窗界面没变 → 浏览器缓存了旧版
+    # index.html / app.js / app.css。给 /music-static/* 加 no-store 头强制每次重拉。
+    # 主页面已经在 index() handler 里加了 Cache-Control,但 <script src="/music-static/app.js">
+    # 走 add_static,默认不带 no-store。
+    @web.middleware
+    async def _no_cache_static_mw(req, handler):
+        resp = await handler(req)
+        if req.path.startswith("/music-static/") or req.path == "/music-static":
+            resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+            resp.headers["Pragma"] = "no-cache"
+        return resp
+
+    app = web.Application(middlewares=[_no_cache_static_mw])
     app.router.add_get("/api/health", api_health)
     app.router.add_get("/api/state", api_state)
     app.router.add_get("/api/queue", api_queue)
