@@ -111,6 +111,36 @@ export const useLyricStore = defineStore('lyric', () => {
     if (ans !== currentIdx.value) currentIdx.value = ans
   }
 
+  // ============================================================
+  // P3.1(2026-10-03)歌词窗进度条拖动跳转
+  // 后端 POST /api/cmd { action: 'seek', offset: <sec> } 已 ship (player.py:437)
+  // 歌词 store 不持 audio,只通过 cmd 走主 music 播放器 seek
+  // ws /ws/lyrics 推 music_progress 会自动同步 progress.value,UI 闭环
+  // ============================================================
+  let seekInFlight = false
+  async function seek(offsetSec: number) {
+    if (seekInFlight) return          // 拖动时高频节流,只放最新请求
+    if (duration.value <= 0) return   // 无曲不允许 seek
+    const target = Math.max(0, Math.min(offsetSec, duration.value))
+    seekInFlight = true
+    try {
+      // 乐观更新 — UI 立即跳转,不等 ws 回包
+      progress.value = target
+      const r = document.documentElement
+      r.style.setProperty('--progress', progressPct.value.toFixed(2) + '%')
+      await api('/api/cmd', { method: 'POST', body: { action: 'seek', offset: target } })
+    } catch (_) {
+      // seek 失败不报错(Puppeteer / dev mode 无 player.py)
+    } finally {
+      seekInFlight = false
+    }
+  }
+  async function seekPct(p: number) {
+    if (duration.value <= 0) return
+    const target = Math.max(0, Math.min(1, p)) * duration.value
+    await seek(target)
+  }
+
   // 监听 progress 变化主动重算(不依赖 ws 推送)
   function onProgressChange() {
     if (duration.value > 0 && progress.value > 0) {
@@ -176,5 +206,6 @@ export const useLyricStore = defineStore('lyric', () => {
     progressPct, currentText,
     // actions
     bootstrap, onProgressChange, computeCurrentIdxByTime,
+    seek, seekPct,         // P3.1 歌词进度条拖动跳转
   }
 })

@@ -31,6 +31,9 @@ contextBridge.exposeInMainWorld("prisIragent", {
   toggleLyricLockDrag: () => ipcRenderer.invoke("shell:toggleLyricLockDrag"),
   getLyricState: () => ipcRenderer.invoke("shell:getLyricState"),
   setLyricBounds: (b) => ipcRenderer.invoke("shell:setLyricBounds", b),
+  // P3.2 视觉调档 — 透明度滑杆 + 字号缩放
+  setLyricOpacity: (v) => ipcRenderer.invoke("shell:setLyricOpacity", v),
+  setLyricScale: (v) => ipcRenderer.invoke("shell:setLyricScale", v),
   // 订阅主进程推过来的歌词窗状态变化(toggle 后自动 push,LyricOnlyView 拿来 apply CSS class)
   // 返回 unsubscribe 函数,渲染层组件 unmount 时调用。
   onLyricStateChanged: (cb) => {

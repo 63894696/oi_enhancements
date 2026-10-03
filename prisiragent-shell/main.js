@@ -367,6 +367,9 @@ function _lyric_state_load() {
         w: Number.isFinite(obj.bounds?.w) && obj.bounds.w >= 480 ? obj.bounds.w : 720,
         h: Number.isFinite(obj.bounds?.h) && obj.bounds.h >= 240 ? obj.bounds.h : 360,
       },
+      // P3.2(2026-10-03)歌词窗视觉调档 — opacity 0.3-1.0 / scale 0.7-1.6
+      opacity: _clampNumber(obj.opacity, 0.3, 1.0, 0.85),
+      scale: _clampNumber(obj.scale, 0.7, 1.6, 1.0),
     };
     return out;
   } catch (e) {
@@ -380,8 +383,15 @@ function _lyric_state_load() {
       alwaysOnTop: true,
       lockDrag: false,
       bounds: { x: null, y: null, w: 720, h: 360 },
+      opacity: 0.85,
+      scale: 1.0,
     };
   }
+}
+function _clampNumber(v, lo, hi, dflt) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return dflt;
+  return Math.max(lo, Math.min(hi, n));
 }
 function _lyric_state_save(s) {
   try {
@@ -1066,6 +1076,8 @@ ipcMain.handle("shell:getLyricState", () => {
     alwaysOnTop: _lyric_state.alwaysOnTop,
     lockDrag: _lyric_state.lockDrag,
     bounds: { ..._lyric_state.bounds },
+    opacity: _lyric_state.opacity,
+    scale: _lyric_state.scale,
   };
 });
 ipcMain.handle("shell:setLyricBounds", (_e, b) => {
@@ -1081,6 +1093,39 @@ ipcMain.handle("shell:setLyricBounds", (_e, b) => {
     return { ok: true, bounds: { ..._lyric_state.bounds } };
   } catch (e) {
     logError("shell:setLyricBounds", "err", `e=${e.message}`);
+    return { ok: false, err: e.message };
+  }
+});
+// P3.2(2026-10-03)歌词窗视觉调档 — opacity 滑杆 + scale 字号缩放
+// shell:setLyricOpacity → 设 _lyric_state.opacity + 持久化 + 推 lyric 子窗
+// shell:setLyricScale   → 设 _lyric_state.scale + 持久化 + 推 lyric 子窗
+ipcMain.handle("shell:setLyricOpacity", (_e, value) => {
+  try {
+    const v = _clampNumber(value, 0.3, 1.0, _lyric_state.opacity);
+    _lyric_state.opacity = v;
+    _lyric_state_save(_lyric_state);
+    logInfo("lyricState", "set opacity", `value=${v}`);
+    _notifyLyricWindow("shell:lyricStateChanged",
+      { alwaysOnTop: _lyric_state.alwaysOnTop, lockDrag: _lyric_state.lockDrag,
+        bounds: _lyric_state.bounds, opacity: v, scale: _lyric_state.scale });
+    return { ok: true, opacity: v };
+  } catch (e) {
+    logError("shell:setLyricOpacity", "err", `e=${e.message}`);
+    return { ok: false, err: e.message };
+  }
+});
+ipcMain.handle("shell:setLyricScale", (_e, value) => {
+  try {
+    const v = _clampNumber(value, 0.7, 1.6, _lyric_state.scale);
+    _lyric_state.scale = v;
+    _lyric_state_save(_lyric_state);
+    logInfo("lyricState", "set scale", `value=${v}`);
+    _notifyLyricWindow("shell:lyricStateChanged",
+      { alwaysOnTop: _lyric_state.alwaysOnTop, lockDrag: _lyric_state.lockDrag,
+        bounds: _lyric_state.bounds, opacity: _lyric_state.opacity, scale: v });
+    return { ok: true, scale: v };
+  } catch (e) {
+    logError("shell:setLyricScale", "err", `e=${e.message}`);
     return { ok: false, err: e.message };
   }
 });

@@ -15,6 +15,10 @@
   --lyrics-opacity: 0.85;
   --lyrics-stroke: rgba(31, 27, 22, 0.55);
   --lyrics-active-gradient: linear-gradient(90deg, transparent, #c14d3a, transparent);
+  /* P3.2(2026-10-03)用户视觉调档 — 0.3-1.0 透明度 + 0.7-1.6 字号缩放
+     与 --lyrics-opacity(歌词行内可见度)区分,这是「整窗」级控制 */
+  --lyric-window-opacity: 0.85;
+  --lyric-window-scale: 1.0;
 }
 
 * {
@@ -34,6 +38,13 @@ body {
   user-select: none;
   -webkit-user-select: none;
   cursor: default;
+  /* P3.2(2026-10-03)整窗透明度 — 用户滑杆改 opacity 实时生效 */
+  opacity: var(--lyric-window-opacity, 0.85);
+  transition: opacity 180ms ease;
+  /* P3.2(2026-10-03)整窗字号缩放 — transform: scale 以中心为锚点放大缩小
+     与 lyric stage 内部 line.active scale(1.06) 协同,不影响内部元素位置 */
+  transform: scale(var(--lyric-window-scale, 1.0));
+  transform-origin: center center;
 }
 
 /* 顶部 6px 拖动条 — Electron transparent 窗可在此条按下拖动整窗 */
