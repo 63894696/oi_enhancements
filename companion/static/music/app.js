@@ -279,6 +279,42 @@ function escapeHtml(s) {
         wsState.onerror = () => wsState.close();
     }
 
+    // ============================================================
+    // LX 探测灯(P2.5+23 hotfix)
+    // 启动 + 5s 拉 /api/health → online.initialized 设 lxDot 颜色 + 文案
+    // ============================================================
+    let _lxHealthTimer = null;
+    function setLxStatus(state, label) {
+        // state: "probe"(灰) | "ok"(绿) | "warn"(黄,configured 但未 init) | "down"(红)
+        if (!els.lxDot || !els.lxText) return;
+        const dot = els.lxDot;
+        dot.classList.remove("lx-probe", "lx-ok", "lx-warn", "lx-down");
+        dot.classList.add(`lx-${state}`);
+        els.lxText.textContent = label;
+    }
+    async function probeLxHealth() {
+        try {
+            const r = await api("/api/health");
+            const online = (r && r.online) || {};
+            if (!online.configured) {
+                setLxStatus("down", "LX 未配置");
+                return;
+            }
+            if (online.initialized) {
+                setLxStatus("ok", `LX 已就绪 (${(online.sources || []).join(", ") || "?"})`);
+            } else {
+                setLxStatus("warn", "LX 待初始化(首次播放触发)");
+            }
+        } catch (e) {
+            setLxStatus("down", "LX 探活失败");
+        }
+    }
+    function startLxHealthProbe() {
+        probeLxHealth();
+        if (_lxHealthTimer) clearInterval(_lxHealthTimer);
+        _lxHealthTimer = setInterval(probeLxHealth, 5000);
+    }
+
     function onStateEvent(ev) {
         if (ev.type === "music_state" || ev.type === "music_progress") {
             state.playing = (ev.status === "playing");
@@ -467,6 +503,12 @@ function escapeHtml(s) {
 
     els.audio.addEventListener("ended", audioEnded);
     els.audio.addEventListener("loadedmetadata", audioProgress);
+    // P2.5+23 hotfix:audio src 加载失败时给用户可见反馈(以前静默)。
+    els.audio.addEventListener("error", () => {
+        const code = els.audio.error && els.audio.error.code;
+        showMusicToast(`音频加载失败(code=${code ?? "?"}): ${state.track ? state.track.title : "?"}`);
+        console.warn("[audio error]", els.audio.error, "src=", els.audio.src);
+    });
 
     // 折叠歌词
     els.lyricHead.onclick = () => {
@@ -481,6 +523,8 @@ function escapeHtml(s) {
     disableTrackActions();
     connectWsState();
     connectWsLyrics();
+    // P2.5+23 hotfix:LX 探测灯,启动立即拉一次 + 5s 定时拉,不再一直灰。
+    startLxHealthProbe();
     // 先拉歌单网格,再拉 state
     loadSongs().then(() => {
         api("/api/state").then((r) => {

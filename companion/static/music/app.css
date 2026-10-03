@@ -66,6 +66,13 @@ html, body {
   display: flex; align-items: center; gap: 6px;
 }
 .health .dot { font-size: 16px; }
+/* P2.5+23 hotfix:LX 探测灯 4 档(probe/ok/warn/down)
+ * 探测中 = 灰,已就绪 = 绿,待初始化(首次播放触发) = 黄,未配置 / 探活失败 = 红。
+ * emoji 染色见 search 体验:浏览器对 emoji 染色支持参差,兜底用 box-shadow 圈光晕。 */
+.health .dot.lx-probe { color: #888; }
+.health .dot.lx-ok    { color: #2e9b53; text-shadow: 0 0 6px rgba(46,155,83,0.4); }
+.health .dot.lx-warn  { color: #c69214; }
+.health .dot.lx-down  { color: #c0392b; }
 
 /* ============================================================
  * 主区 grid

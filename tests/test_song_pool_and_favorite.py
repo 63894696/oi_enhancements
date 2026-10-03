@@ -336,5 +336,72 @@ class TestApiSongsEndpoint(unittest.TestCase):
         self.assertNotEqual(ids1, ids3, "respin 后顺序应变化")
 
 
+# ============================================================
+# /api/health online 字段(P2.5+23 hotfix:2026-10-03)
+# ============================================================
+class TestApiHealthEndpoint(unittest.TestCase):
+    """/api/health 应返 online.configured / online.initialized / online.sources + seed_fallback。
+
+    前端 LX 探测灯用这 4 字段决定颜色 + 文案。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        # 复用 prisiragent-music-web 模块(跟 TestApiSongsEndpoint 一致)
+        HERE = Path(__file__).resolve().parent
+        ROOT = HERE.parent
+        COMPANION = ROOT / "companion"
+        for p in (str(ROOT), str(COMPANION)):
+            if p not in sys.path:
+                sys.path.insert(0, p)
+        # 用 on_startup 必须的最小 APP 子集(只 health 需要 APP.online + STATIC_DIR)
+        # 我们直接造 FakeOnline 注入到 APP,避免 on_startup 拉 jsdom + 扫本地库
+        import importlib
+        cls._mod = importlib.import_module("prisIragent-music-web")
+        APP = cls._mod.APP
+
+        class _FakeOnlineEmpty:
+            """OnlineSearch fake — 只为 health 端点存在,client 永不初始化。"""
+            _sources = ["mock.js", "juhe.js"]
+
+            def _ensure(self):  # noqa: D401
+                return None
+
+        APP.online = _FakeOnlineEmpty()
+        APP.library = None  # health 不依赖 library
+        APP.port = 2734
+
+    @classmethod
+    def tearDownClass(cls):
+        APP = cls._mod.APP
+        APP.online = None
+        APP.library = None
+
+    def _run_handler(self, handler):
+        from aiohttp.test_utils import make_mocked_request
+        req = make_mocked_request("GET", "/api/health")
+        resp = _run(handler(req))
+        import json as _json
+        return _json.loads(resp.body.decode("utf-8"))
+
+    def test_api_health_includes_online_field(self):
+        data = self._run_handler(self._mod.api_health)
+        self.assertTrue(data["ok"])
+        self.assertIn("online", data)
+        online = data["online"]
+        self.assertTrue(online["configured"])
+        # _FakeOnlineEmpty._ensure() 返 None → initialized=False
+        self.assertFalse(online["initialized"])
+        self.assertEqual(online["sources"], ["mock.js", "juhe.js"])
+
+    def test_api_health_includes_seed_fallback(self):
+        data = self._run_handler(self._mod.api_health)
+        self.assertIn("seed_fallback", data)
+        # seed.mp3 必须存在(已 ship)
+        seed = Path(__file__).resolve().parent.parent / "companion" / "static" / "music" / "seed.mp3"
+        self.assertTrue(seed.exists(), msg=f"seed.mp3 missing at {seed}")
+        self.assertTrue(data["seed_fallback"])
+
+
 if __name__ == "__main__":
     unittest.main()

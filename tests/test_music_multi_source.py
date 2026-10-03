@@ -136,6 +136,45 @@ class TestPlayerSeedFromUrl(unittest.TestCase):
         self.assertFalse(r.get("ok"))
         self.assertIn("not configured", r.get("err", ""))
 
+    # P2.5+23 hotfix(2026-10-03):googleapis 公网 mp3 sandbox/用户网络封,
+    # 自动 fallback 到本地 static/music/seed.mp3,track.source="local"。
+    def test_seed_from_url_googleapis_fallback_to_seed_mp3(self):
+        """mock.js 返 googleapis URL → 应改用本地 seed.mp3,track.source='local'。"""
+        from music.player import Player as _Player  # noqa: F401
+        lib = LocalLibrary(Path(os.environ.get("TEMP", "/tmp")))
+        googleapis_url = (
+            "https://commondatastorage.googleapis.com/codeskulptor-demos/"
+            "DDR_assets/Kangaroo_MusiQue_-_The_Neverwritten_Role_Playing_Game.mp3"
+        )
+        player = Player(library=lib, online=FakeOnline({
+            "mock.js": {"ok": True, "url": googleapis_url},
+        }))
+        r = _run(player.seed_from_url({"hash": "songA", "songname": "晴天"},
+                                      title="晴天", artist="周杰伦"))
+        self.assertTrue(r.get("ok"), msg=str(r))
+        # fallback 应明确
+        self.assertEqual(r.get("source"), "seed", msg=str(r))
+        self.assertEqual(r.get("fallback"), "seed.mp3")
+        # 入库 track 应是 local(走本地 stream)
+        tr = lib.get(r["track_id"])
+        self.assertIsNotNone(tr, msg="track not added to library")
+        self.assertEqual(tr.source, "local")
+        # path 应该是 seed.mp3 绝对路径
+        self.assertTrue(tr.path.endswith("seed.mp3"), msg=f"path={tr.path!r}")
+        self.assertTrue(Path(tr.path).exists(), msg=f"seed.mp3 missing at {tr.path}")
+
+    def test_seed_from_url_non_googleapis_stays_lx(self):
+        """非 googleapis URL 不应 fallback,继续走 lx: 透传路径。"""
+        lib = LocalLibrary(Path(os.environ.get("TEMP", "/tmp")))
+        player = Player(library=lib, online=FakeOnline({
+            "mock.js": {"ok": True, "url": "https://example.com/audio.mp3"},
+        }))
+        r = _run(player.seed_from_url({"hash": "songB"}, title="songB", artist="x"))
+        self.assertTrue(r.get("ok"))
+        self.assertEqual(r.get("source"), "mock.js")
+        tr = lib.get(r["track_id"])
+        self.assertEqual(tr.source, "lx:mock.js")
+
 
 class TestPlayerRandomFallback(unittest.TestCase):
     """队列空 → play_random 从库内随机选,自动 _cmd_play。"""

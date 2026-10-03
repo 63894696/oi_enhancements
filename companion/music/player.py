@@ -497,15 +497,27 @@ class Player:
     # ============================================================
     # P2.5+22(2026-10-03):多源 fallback + 随机播放
     # ============================================================
+    # P2.5+23 hotfix(2026-10-03):googleapis 公网 mp3 在 sandbox/用户网络封,
+    # 走 /api/stream 透传会失败 → audio src 加载不出。检测后改用本地 seed.mp3 兜底。
+    # 选用 hash(title+artist+songid) 而非 url 哈希,这样:
+    #   1) mock.js 不管返哪个 googleapis URL 都能落到同一 track_id(同歌同 id)
+    #   2) 跨 mock/juhe 源 fallback 后,用户看到的播放列表仍是「晴天 → 同一首」
+    _SEED_MP3 = Path(__file__).resolve().parent.parent / "static" / "music" / "seed.mp3"
+
     async def seed_from_url(self, song_info: Dict[str, Any],
                             title: str = "", artist: str = "") -> Dict[str, Any]:
-        """走 online 多源(musicUrl)拿 mp3 直链 → 入 library(source="lx:<src>")。
+        """走 online 多源(musicUrl)拿 mp3 直链 → 入 library。
 
         Args:
             song_info: 给 lx 的 musicInfo 字段(hash/songmid)。
             title/artist: 入库的展示名(可选)。
         Returns:
             {"ok": bool, "track_id"?: str, "source"?: str, "url"?: str, "err"?: str}
+
+        路径分流(2026-10-03 ship 后实测):
+          - url 含 googleapis.com → 走本地 seed.mp3(source="local"),前端 audio.src
+            走 api_stream 本地 stream,Range 也能用。
+          - 其他 → 走原 lx: 透传路径(music-web._stream_remote_url)。
         """
         if not self.online:
             return {"ok": False, "err": "online client not configured"}
@@ -514,13 +526,37 @@ class Player:
             return {"ok": False, "err": r.get("err", "no url")}
         url = r.get("url", "")
         src = r.get("source", "lx")
-        # id 由 url 哈希定(同 url 同 id)
-        tid = hashlib.sha1(url.encode("utf-8")).hexdigest()[:16]
+        actual_title = title or song_info.get("title") or song_info.get("songname") or "未知曲目"
+        actual_artist = artist or song_info.get("artist") or src
+        # id 由 title+artist+songid 哈希定(同歌同 id,跨 mock/juhe 源同 track_id)
+        id_seed = f"{actual_title}|{actual_artist}|{song_info.get('hash', song_info.get('songmid', ''))}"
+        tid = hashlib.sha1(id_seed.encode("utf-8")).hexdigest()[:16]
+
+        # 远端 URL 不可达 → 兜底本地 seed.mp3
+        is_googleapis = "googleapis.com" in url
+        if is_googleapis and self._SEED_MP3.exists():
+            t = Track(
+                id=tid,
+                title=actual_title,
+                artist=actual_artist,
+                album="",
+                path=str(self._SEED_MP3),   # 本地绝对路径,stream 端走本地文件
+                duration=0.0,
+                source="local",
+            )
+            self.library.add_track(t)
+            return {"ok": True, "track_id": tid, "source": "seed",
+                    "url": str(self._SEED_MP3), "fallback": "seed.mp3"}
+        if is_googleapis:
+            log.warning("[seed_from_url] googleapis detected but seed.mp3 missing: %s",
+                        self._SEED_MP3)
+            # 不兜底,继续走 lx 透传(让 _stream_remote_url 报具体错)
+
         # 入库(若已存在则覆盖 path/url)
         t = Track(
             id=tid,
-            title=title or song_info.get("title") or "未知曲目",
-            artist=artist or song_info.get("artist") or src,
+            title=actual_title,
+            artist=actual_artist,
             album="",
             path=url,            # source="lx" 时 path=url,stream 端识别后透传
             duration=0.0,

@@ -34,6 +34,7 @@ import argparse
 import asyncio
 import json
 import logging
+import mimetypes
 import os
 import sys
 import time
@@ -172,11 +173,36 @@ def _cfg_to_lyric_dict() -> Dict[str, Any]:
 # 路由
 # ============================================================
 async def api_health(req: web.Request) -> web.Response:
+    """健康探针 — 前端 LX 探测灯用。
+
+    P2.5+23 hotfix(2026-10-03):lx online client 状态返前端,前端不再一直灰灯。
+    字段:
+      - online.configured: bool,APP.online 是否初始化
+      - online.initialized: bool,LxRuntimeClient 实际实例化(jsdom shim 已跑)
+      - online.sources: list[str],实际注册的多源
+      - seed_fallback: bool,companion/static/music/seed.mp3 是否存在(googleapis 不可达兜底)
+    """
+    online = APP.online
+    online_info: Dict[str, Any] = {
+        "configured": bool(online),
+        "initialized": False,
+        "sources": list(online._sources) if online else [],
+    }
+    if online:
+        cli = online._ensure()
+        online_info["initialized"] = bool(cli)
+
+    # P2.5+23 hotfix:seed.mp3 本地兜底文件状态
+    seed_path = STATIC_DIR / "music" / "seed.mp3"
+    seed_fallback = seed_path.exists() and seed_path.stat().st_size > 0
+
     return _ok(
         service="prisiragent-music-web",
         version="0.1.0",
         port=APP.port,
         library=bool(APP.library and APP.library._tracks),
+        online=online_info,
+        seed_fallback=seed_fallback,
     )
 
 
