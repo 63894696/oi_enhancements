@@ -156,6 +156,24 @@ class LocalLibrary:
         if t.artist:
             self._by_artist.setdefault(t.artist, []).append(t.id)
 
+    def remove_track(self, track_id: str) -> bool:
+        """P2.5+23 hotfix(2026-10-03):取消收藏 / 删除虚拟 track。
+
+        Returns:
+            True if removed, False if not found.
+        同步清理 _by_artist(避免 search() 返回已删除 id)。
+        """
+        if track_id not in self._tracks:
+            return False
+        tr = self._tracks.pop(track_id)
+        if tr.artist and tr.artist in self._by_artist:
+            lst = self._by_artist[tr.artist]
+            if track_id in lst:
+                lst.remove(track_id)
+            if not lst:
+                self._by_artist.pop(tr.artist, None)
+        return True
+
     def random_track_ids(self, limit: int = 20) -> List[str]:
         """P2.5+22:队列空 fallback 用,库内随机 N 首 id(纯本地,不依赖外源)。"""
         import random
@@ -449,8 +467,12 @@ class Player:
                 count = int(kw.get("count", 1))
                 return await self.play_random(count=count)
             elif action == "favorite":
-                # P2.5+23(2026-10-03):收藏当前 track → LocalLibrary(source="song_pool_fav")。
+                # P2.5+23(2026-10-03):收藏 / 取消收藏 toggle。
+                # P2.5+23 hotfix(2026-10-03):已收藏再点 = 取消,前端按钮文案切。
                 return await self._cmd_favorite(kw.get("track_id"))
+            elif action == "is_favorite":
+                # P2.5+23 hotfix:前端查当前 track 收藏状态,决定 favoriteBtn 文案(♥ 收藏 / ♥ 已收藏)。
+                return self.is_favorite(kw.get("track_id"))
             elif action == "download":
                 # P2.5+23(2026-10-03):下载当前 track → cache/<title>.mp3,LocalLibrary source="local"。
                 return await self._cmd_download(kw.get("track_id"))
@@ -580,24 +602,29 @@ class Player:
     # P2.5+23(2026-10-03):收藏 / 下载
     # ============================================================
     async def _cmd_favorite(self, track_id: Optional[str]) -> Dict[str, Any]:
-        """收藏当前 track → LocalLibrary 注入一个 source='song_pool_fav' 的虚拟 track。
+        """P2.5+23(2026-10-03):收藏 / 取消收藏 toggle。
 
-        同 track 可多次收藏(幂等:看是否已存在 source=song_pool_fav 且同 title/artist)。
+        语义:已存在 source='song_pool_fav' 且同 title/artist → 删除返 unfavorited=True;
+              否则注入新收藏返 favorited=True。
+
+        同 track 收藏 idempotent,但 toggle 后再次点击 = 取消收藏(用户原话)。
+
         Returns:
-                {"ok": bool, "fav_id"?: str, "title"?: str, "err"?: str}
+                {"ok": bool, "favorited"?: bool, "fav_id"?: str, "title"?: str, "err"?: str}
         """
         if not track_id:
             return {"ok": False, "err": "missing track_id"}
         tr = self.library.get(track_id)
         if not tr:
             return {"ok": False, "err": f"track not found: {track_id}"}
-        # 幂等检查
+        # toggle:已收藏则删,未收藏则加
         for existing in self.library._tracks.values():
             if (existing.source == "song_pool_fav"
                     and existing.title == tr.title
                     and existing.artist == tr.artist):
-                return {"ok": True, "fav_id": existing.id, "title": existing.title,
-                        "dedup": True}
+                self.library.remove_track(existing.id)
+                return {"ok": True, "favorited": False, "fav_id": existing.id,
+                        "title": existing.title, "unfavorited": True}
         fav_id = hashlib.sha1(f"fav::{tr.id}".encode("utf-8")).hexdigest()[:16]
         fav = Track(
             id=fav_id,
@@ -609,7 +636,25 @@ class Player:
             source="song_pool_fav",
         )
         self.library.add_track(fav)
-        return {"ok": True, "fav_id": fav_id, "title": fav.title}
+        return {"ok": True, "favorited": True, "fav_id": fav_id, "title": fav.title}
+
+    def is_favorite(self, track_id: Optional[str]) -> Dict[str, Any]:
+        """P2.5+23 hotfix(2026-10-03):前端查当前 track 是否已收藏 → 决定 favoriteBtn 文案。
+
+        Returns:
+            {"ok": True, "favorited": bool, "fav_id"?: str}
+        """
+        if not track_id:
+            return {"ok": True, "favorited": False}
+        tr = self.library.get(track_id)
+        if not tr:
+            return {"ok": True, "favorited": False}
+        for existing in self.library._tracks.values():
+            if (existing.source == "song_pool_fav"
+                    and existing.title == tr.title
+                    and existing.artist == tr.artist):
+                return {"ok": True, "favorited": True, "fav_id": existing.id}
+        return {"ok": True, "favorited": False}
 
     async def _cmd_download(self, track_id: Optional[str]) -> Dict[str, Any]:
         """下载当前 track 到 companion/music/cache/ → LocalLibrary 加 source='local' 入库。

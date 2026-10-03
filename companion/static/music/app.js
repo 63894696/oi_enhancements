@@ -203,6 +203,8 @@ function escapeHtml(s) {
         try { await els.audio.play(); } catch (e) { console.warn("audio.play", e); }
         showMusicToast(`正在播放: ${song.title} — ${song.artist || "?"}`);
         enableTrackActions();
+        // P2.5+23 hotfix:刷新收藏按钮状态(新 track → 查 is_favorite 设文案)
+        refreshFavoriteState();
     }
 
     function enableTrackActions() {
@@ -317,14 +319,38 @@ function escapeHtml(s) {
 
     function onStateEvent(ev) {
         if (ev.type === "music_state" || ev.type === "music_progress") {
+            const prevTrackId = state.track && state.track.id;
             state.playing = (ev.status === "playing");
             state.track = ev.track || null;
             state.progress = ev.progress || 0;
             state.duration = ev.duration || 0;
             if (state.track) enableTrackActions();
             else disableTrackActions();
+            // P2.5+23 hotfix(2026-10-03):track 切换时同步 audio.src(原版只 onSongClick 时设一次)。
+            // prev/next/playlist 自动切换都靠这段 ws 广播,前端必须同步切 audio。
+            const newTrackId = state.track && state.track.id;
+            if (newTrackId && newTrackId !== prevTrackId) {
+                const newSrc = `/api/stream/${encodeURIComponent(newTrackId)}`;
+                if (els.audio.src !== newSrc) {
+                    els.audio.src = newSrc;
+                    // 不自动 play,等后端 state.status === "playing" 时再触发
+                    // (pause → next 后 state.status 是 "playing",onStateEvent 收到会调 play())
+                }
+            }
+            if (state.track && state.playing) {
+                // 后端说 playing → 触发 audio.play()(user gesture 之外的 play 是被允许的)
+                if (els.audio.paused) {
+                    els.audio.play().catch((e) => console.warn("[audio.play after ws]", e));
+                }
+            } else if (state.track && !state.playing) {
+                if (!els.audio.paused) els.audio.pause();
+            }
             renderNow();
             updatePlayBtn();
+            // P2.5+23 hotfix:track 变化时刷新收藏按钮文案(prev/next 也走 ws 推 track)
+            if (newTrackId !== prevTrackId) {
+                refreshFavoriteState();
+            }
         }
     }
 
@@ -365,11 +391,19 @@ function escapeHtml(s) {
     };
 
     els.prevBtn.onclick = async () => {
-        await api("/api/cmd", { method: "POST", body: { action: "prev" } });
+        const r = await api("/api/cmd", { method: "POST", body: { action: "prev" } });
+        if (!r.ok) {
+            // 后端没 prev track,前端给提示(避免用户以为按钮坏了)
+            showMusicToast(`上一首: ${r.err || "无"}`);
+        }
+        // 成功时 ws /api/cmd response 推 state → onStateEvent 切 audio.src
     };
 
     els.nextBtn.onclick = async () => {
-        await api("/api/cmd", { method: "POST", body: { action: "next" } });
+        const r = await api("/api/cmd", { method: "POST", body: { action: "next" } });
+        if (!r.ok) {
+            showMusicToast(`下一首: ${r.err || "无"}`);
+        }
     };
 
     els.progress.parentElement.onclick = (e) => {
@@ -403,7 +437,29 @@ function escapeHtml(s) {
 
     // ============================================================
     // favorite / download
+    // P2.5+23 hotfix(2026-10-03):favoriteBtn toggle(已收藏再点取消)+ 文案切换
     // ============================================================
+    function renderFavoriteBtn() {
+        if (!els.favoriteBtn) return;
+        // state._favorited 在 onSongClick 后由 refreshFavoriteState() 拉取,track 变化时更新
+        const isFav = !!state._favorited;
+        els.favoriteBtn.textContent = isFav ? "♥ 已收藏" : "♡ 收藏";
+        els.favoriteBtn.classList.toggle("fav-active", isFav);
+    }
+    async function refreshFavoriteState() {
+        if (!state.track) {
+            state._favorited = false;
+            renderFavoriteBtn();
+            return;
+        }
+        const r = await api("/api/cmd", {
+            method: "POST",
+            body: { action: "is_favorite", track_id: state.track.id },
+        });
+        state._favorited = !!(r && r.ok && r.favorited);
+        renderFavoriteBtn();
+    }
+
     els.favoriteBtn.onclick = async () => {
         if (!state.track) {
             showMusicToast("请先播放一首歌曲");
@@ -414,7 +470,14 @@ function escapeHtml(s) {
             body: { action: "favorite", track_id: state.track.id },
         });
         if (r.ok) {
-            showMusicToast(r.dedup ? `已在本地库: ${r.title}` : `已收藏: ${r.title}`);
+            // P2.5+23 hotfix:toggle 语义(r.favorited boolean),文案切换
+            state._favorited = !!r.favorited;
+            renderFavoriteBtn();
+            if (r.unfavorited || r.favorited === false) {
+                showMusicToast(`已取消收藏: ${r.title || state.track.title}`);
+            } else {
+                showMusicToast(`已收藏: ${r.title || state.track.title}`);
+            }
         } else {
             showMusicToast(`收藏失败: ${r.err || "?"}`);
         }

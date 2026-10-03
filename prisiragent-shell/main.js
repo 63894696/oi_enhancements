@@ -360,6 +360,12 @@ function _createChildWindow(spec) {
     logInfo("existing", "reuse child window", `label=${spec.label}`);
     existing.show();
     existing.focus();
+    // P2.5+23 hotfix(2026-10-03):子窗复用时强制 reloadIgnoringCache,
+    // 避免 BrowserWindow 首次加载的旧 app.js / app.css 缓存到磁盘,
+    // 后续 open 即使后端 ship 新前端,旧子窗仍渲旧版本。
+    // cost:1 次硬 reload,用户感不到(子窗 ready 后才 visible)。
+    try { existing.webContents.reloadIgnoringCache(); }
+    catch (e) { logWarn("childWindow", "reloadIgnoringCache fail", `err=${e.message}`); }
     return existing;
   }
   const w = new BrowserWindow({
@@ -636,10 +642,11 @@ function openInShell(url, label) {
   _createChildWindow({ label, url, ..._CHILD_SPEC[label] });
 }
 const _CHILD_SPEC = {
-  companion: { width: 920, height: 680, minWidth: 640, minHeight: 480, title: "PrisirAI · 语伴" },
-  music:     { width: 880, height: 620, minWidth: 640, minHeight: 480, title: "PrisirAI · 音乐" },
-  calendar:  { width: 960, height: 720, minWidth: 720, minHeight: 540, title: "PrisirAI · 📅 日程" },
-  workflow:  { width: 1000, height: 720, minWidth: 800, minHeight: 560, title: "PrisirAI · 🔀 工作流" },
+  // P2.5+23(2026-10-03)命名统一:PrisirAI + 空格 + 子服务名(无 emoji,emoji 仅在托盘菜单前缀)。
+  companion: { width: 920, height: 680, minWidth: 640, minHeight: 480, title: "PrisirAI 语伴" },
+  music:     { width: 880, height: 620, minWidth: 640, minHeight: 480, title: "PrisirAI 音乐" },
+  calendar:  { width: 960, height: 720, minWidth: 720, minHeight: 540, title: "PrisirAI 日程" },
+  workflow:  { width: 1000, height: 720, minWidth: 800, minHeight: 560, title: "PrisirAI 工作流" },
 };
 
 function openCompanionWindow() {
@@ -720,8 +727,9 @@ function createTray() {
   ];
   const multiWindowSubmenu = [
     // P2.5+16(2026-09-22):每个子项独立 BrowserWindow,不再复用主窗口。
-    { label: "语伴",      click: openCompanionWindow },
-    { label: "音乐",      click: openMusicWindow },
+    // P2.5+23(2026-10-03):4 个子项命名统一「PrisirAI xxx」,emoji 前缀 4 项全加(日程/工作流原本就有,语伴/音乐补)。
+    { label: "📞 语伴",   click: openCompanionWindow },
+    { label: "🎵 音乐",   click: openMusicWindow },
     { label: "📅 日程",   click: openCalendarWindow },
     { label: "🔀 工作流", click: openWorkflowWindow },
     { type: "separator" },

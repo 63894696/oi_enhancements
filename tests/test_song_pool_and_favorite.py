@@ -139,20 +139,36 @@ class TestCmdFavorite(unittest.TestCase):
         # path 沿用原 track(remote url)
         self.assertEqual(fav.path, "https://example.com/mp3/abc")
 
-    def test_favorite_idempotent(self):
+    def test_favorite_toggle_unfavorite_on_second_click(self):
+        """P2.5+23 hotfix(2026-10-03):已收藏再点 = 取消收藏。
+
+        用户原话:「再点击无法取消收藏这不是无限增加了吗,那么收藏上限是多少首歌?
+        最好的方式无疑就是已收藏的歌曲再点收藏就取消」。
+        """
         lib = LocalLibrary(music_root=None)
         lib.add_track(Track(
             id="trk_remote_2", title="一程山路", artist="毛不易",
             album="", path="https://example.com/mp3/xyz", source="lx:mock.js",
         ))
         p = Player(lib, online=None, catalog=None)
+        # 第一次:收藏
         r1 = _run(p._cmd_favorite("trk_remote_2"))
         self.assertTrue(r1["ok"])
-        # 第二次收藏应幂等 → dedup=True 且返回同一个 fav_id
+        self.assertTrue(r1.get("favorited"))
+        fav_id = r1["fav_id"]
+        self.assertIsNotNone(lib.get(fav_id))
+        # 第二次:toggle → 取消收藏(删除 song_pool_fav)
         r2 = _run(p._cmd_favorite("trk_remote_2"))
         self.assertTrue(r2["ok"])
-        self.assertEqual(r1["fav_id"], r2["fav_id"])
-        self.assertTrue(r2.get("dedup"))
+        self.assertFalse(r2.get("favorited"))
+        self.assertTrue(r2.get("unfavorited"))
+        # 虚拟 track 应已删除
+        self.assertIsNone(lib.get(fav_id), msg="fav track should be removed")
+        # 第三次:再收藏(证明 toggle 是双向的)
+        r3 = _run(p._cmd_favorite("trk_remote_2"))
+        self.assertTrue(r3["ok"])
+        self.assertTrue(r3.get("favorited"))
+        self.assertEqual(r3["fav_id"], fav_id, msg="fav_id should be stable")
 
     def test_favorite_missing_track_returns_err(self):
         lib = LocalLibrary(music_root=None)
@@ -160,6 +176,42 @@ class TestCmdFavorite(unittest.TestCase):
         r = _run(p._cmd_favorite("nonexistent"))
         self.assertFalse(r["ok"])
         self.assertIn("not found", r["err"])
+
+    def test_is_favorite_returns_true_after_favorite(self):
+        """P2.5+23 hotfix:is_favorite 端点返 favorited bool,前端 favoriteBtn 文案切换用。"""
+        lib = LocalLibrary(music_root=None)
+        lib.add_track(Track(
+            id="trkA", title="花海", artist="周杰伦",
+            album="", path="x", source="lx:mock.js",
+        ))
+        p = Player(lib, online=None, catalog=None)
+        # 未收藏
+        r0 = p.is_favorite("trkA")
+        self.assertTrue(r0["ok"])
+        self.assertFalse(r0["favorited"])
+        # 收藏
+        _run(p._cmd_favorite("trkA"))
+        r1 = p.is_favorite("trkA")
+        self.assertTrue(r1["ok"])
+        self.assertTrue(r1["favorited"])
+        # 取消收藏
+        _run(p._cmd_favorite("trkA"))
+        r2 = p.is_favorite("trkA")
+        self.assertTrue(r2["ok"])
+        self.assertFalse(r2["favorited"])
+
+    def test_local_library_remove_track_cleans_by_artist(self):
+        """P2.5+23 hotfix:remove_track 应同步清理 _by_artist,避免 search() 返回已删除 id。"""
+        lib = LocalLibrary(music_root=None)
+        tr = Track(id="x", title="t", artist="齐秦", album="", path="p", source="local")
+        lib.add_track(tr)
+        self.assertIn("x", lib._by_artist.get("齐秦", []))
+        ok = lib.remove_track("x")
+        self.assertTrue(ok)
+        self.assertNotIn("x", lib._tracks)
+        self.assertNotIn("齐秦", lib._by_artist, msg="empty by_artist entry should be cleaned")
+        # 二次移除返 False
+        self.assertFalse(lib.remove_track("x"))
 
 
 class TestCmdDownload(unittest.TestCase):
