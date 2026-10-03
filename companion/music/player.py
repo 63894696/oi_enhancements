@@ -714,6 +714,89 @@ class Player:
             return {"ok": False, "err": "no next track"}
         return await self._cmd_play(nid)
 
+    # ============================================================
+    # P2.5+24(2026-10-03):预取下一首 URL — 借鉴 LX usePreloadNextMusic。
+    # 前端 audio 结束前 ~10s 调,后端提前解析下一首 url,
+    # 前端切歌时直接拿缓存 url,避免切歌卡顿。
+    # ============================================================
+    async def preload_next_url(self, current_track_id: str) -> Dict[str, Any]:
+        """P2.5+24(2026-10-03):预取下一首 URL。
+
+        Args:
+            current_track_id: 当前播的 track_id(仅用于日志调试,实际走 playlist 下一首)
+        Returns:
+            {"ok": bool, "track_id"?: str, "title"?: str,
+             "url"?: str, "source"?: str,
+             "stream_url"?: str, "err"?: str}
+        """
+        # 走 state 决定下一首 id(current_track_id 仅日志)
+        nid = self.playlist.next_id(mode=self.state.playback_mode)
+        if not nid:
+            return {"ok": False, "err": "no next track in queue"}
+        tr = self.library.get(nid)
+        if not tr:
+            return {"ok": False, "err": f"track not found: {nid}"}
+        # 已下载本地文件 → 直接返本地 stream URL,不需解析 url
+        if tr.source == "local" and Path(tr.path).exists():
+            return {
+                "ok": True,
+                "track_id": nid,
+                "title": tr.title,
+                "artist": tr.artist,
+                "url": None,
+                "source": "local",
+                "stream_url": f"/api/stream/{quote(nid, safe='')}",
+            }
+        # 远端(lx: 前缀):需要解析 url
+        if isinstance(tr.source, str) and tr.source.startswith("lx:"):
+            if not self.online:
+                return {"ok": False, "err": "online client not configured"}
+            song_info = {
+                "hash": nid,
+                "songmid": nid,
+                "songname": tr.title,
+                "singer": tr.artist,
+            }
+            r = self.online.get_url_multi(song_info)
+            if not r.get("ok"):
+                return {"ok": False, "err": r.get("err", "no url from any source")}
+            url = r["url"]
+            # googleapis 不可达 → 兜底本地 seed.mp3(同 seed_from_url 逻辑)
+            is_googleapis = "googleapis.com" in url
+            if is_googleapis and self._SEED_MP3.exists():
+                # 入库切换到本地 source(seed.mp3)
+                tr.path = str(self._SEED_MP3)
+                tr.source = "local"
+                return {
+                    "ok": True,
+                    "track_id": nid,
+                    "title": tr.title,
+                    "artist": tr.artist,
+                    "url": None,
+                    "source": "seed",
+                    "stream_url": f"/api/stream/{quote(nid, safe='')}",
+                    "fallback": "seed.mp3",
+                }
+            return {
+                "ok": True,
+                "track_id": nid,
+                "title": tr.title,
+                "artist": tr.artist,
+                "url": url,
+                "source": r["source"],
+                "stream_url": f"/api/stream/{quote(nid, safe='')}",
+            }
+        # 其它 source(比如 song_pool_fav 也可能 path=url):直接返
+        return {
+            "ok": True,
+            "track_id": nid,
+            "title": tr.title,
+            "artist": tr.artist,
+            "url": tr.path if tr.path.startswith("http") else None,
+            "source": tr.source,
+            "stream_url": f"/api/stream/{quote(nid, safe='')}",
+        }
+
     async def _cmd_prev(self) -> Dict[str, Any]:
         pid = self.playlist.prev_id()
         if not pid:

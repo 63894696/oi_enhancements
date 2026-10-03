@@ -1,0 +1,112 @@
+/* main.css — P2.5+24(2026-10-03)PrisirAI 音乐子窗全局样式
+ * 借鉴 Vue-mmPlayer / YesPlayMusic / LX 三家配色:
+ *   - 国画主题色板(沿用 P2.5+23 国画)
+ *   - 三层进度条 bg + buffered + active
+ *   - 大封面磨砂玻璃背景(YesPlayMusic)
+ */
+
+:root {
+  /* 国画主题色板 */
+  --gh-paper: #f6f1e7;
+  --gh-paper-dark: #2a2520;
+  --gh-red: #c14d3a;
+  --gh-red-soft: #d97d61;
+  --gh-gold: #b08856;
+  --gh-ink: #1a1614;
+  --gh-ink-soft: #3a3530;
+  --gh-jade: #5a8c6a;
+  --gh-gray: #6e6964;
+  --gh-gray-light: #d8d3cc;
+
+  /* 状态色(LX 探测灯 4 档 + MusicFree 6 态) */
+  --status-idle: #6e6964;
+  --status-loading: #b08856;
+  --status-buffering: #d4a04a;
+  --status-playing: #5a8c6a;
+  --status-paused: #6e6964;
+  --status-error: #c14d3a;
+
+  /* 字体 */
+  --font-song: "Songti SC", "SimSun", "Source Han Serif", serif;
+  --font-mono: "JetBrains Mono", "Consolas", monospace;
+
+  /* 布局尺寸 */
+  --minibar-height: 88px;
+  --sidebar-width: 56px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #app {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: var(--gh-paper);
+  color: var(--gh-ink);
+  font-family: var(--font-song);
+  font-size: 14px;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: inherit;
+}
+
+button:hover {
+  opacity: 0.85;
+}
+
+button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* 主布局 */
+.music-app {
+  display: grid;
+  grid-template-rows: 1fr var(--minibar-height);
+  grid-template-columns: var(--sidebar-width) 1fr;
+  grid-template-areas:
+    "sidebar main"
+    "sidebar minibar";
+  height: 100vh;
+  width: 100vw;
+}
+
+.music-sidebar {
+  grid-area: sidebar;
+  background: var(--gh-paper-dark);
+  color: var(--gh-paper);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 0;
+  gap: 20px;
+}
+
+.music-main {
+  grid-area: main;
+  overflow-y: auto;
+  padding: 16px 24px;
+  background: var(--gh-paper);
+}
+
+.music-minibar {
+  grid-area: minibar;
+  border-top: 1px solid var(--gh-gray-light);
+  background: var(--gh-paper-dark);
+  color: var(--gh-paper);
+}

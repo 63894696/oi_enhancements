@@ -262,6 +262,18 @@ async def api_songs_respin(req: web.Request) -> web.Response:
     return _ok(count=len(APP.song_pool.visible_songs))
 
 
+async def api_songs_preload(req: web.Request) -> web.Response:
+    """P2.5+24(2026-10-03):预取下一首 URL — 借鉴 LX usePreloadNextMusic。
+
+    前端 audio 结束前 ~10s 调,后端提前解析 url 缓存,前端切歌时不卡顿。
+    """
+    if not APP.player:
+        return _err("player not initialized")
+    current_id = req.query.get("current_track_id", "")
+    r = await APP.player.preload_next_url(current_id)
+    return web.json_response(r)
+
+
 async def api_stream(req: web.Request) -> web.StreamResponse:
     """流代理:返回 mp3 字节。
 
@@ -559,9 +571,13 @@ STATIC_DIR = _COMPANION_DIR / "static"
 
 
 async def index(req: web.Request) -> web.Response:
-    p = STATIC_DIR / "music" / "index.html"
+    # P2.5+24(2026-10-03):优先 serve vite build 产物(Vue 3 + Pinia 新前端),
+    # 不存在则 fallback 老版 static/music/index.html(vanilla JS / old UI)。
+    p = STATIC_DIR / "music-vue" / "dist" / "index.html"
     if not p.exists():
-        return web.Response(text="music/index.html not found", status=404)
+        p = STATIC_DIR / "music" / "index.html"
+        if not p.exists():
+            return web.Response(text="music/index.html not found", status=404)
     # P2.5+23 hotfix:ship 后用户实测右键开音乐子窗界面没变 → 浏览器缓存了旧版。
     # 加 no-store 强制每次重拉,避免 ship 后用户看不到新前端。
     return web.Response(text=p.read_text(encoding="utf-8"),
@@ -752,6 +768,8 @@ def build_app() -> web.Application:
     # P2.5+23(2026-10-03):真歌名池 API
     app.router.add_get("/api/songs", api_songs)
     app.router.add_post("/api/songs/respin", api_songs_respin)
+    # P2.5+24(2026-10-03):预取下一首 URL
+    app.router.add_get("/api/songs/preload", api_songs_preload)
     app.router.add_get("/api/stream/{track_id}", api_stream)
     app.router.add_post("/api/cmd", api_cmd)
     app.router.add_get("/api/agent/cfg/list", api_agent_cfg_list)
@@ -765,6 +783,10 @@ def build_app() -> web.Application:
     app.router.add_get("/", index)
     app.router.add_static("/static/", path=str(STATIC_DIR), show_index=False)
     app.router.add_static("/music-static/", path=str(STATIC_DIR / "music"), show_index=False)
+    # P2.5+24(2026-10-03):vite build 产物指向 music-vue/dist(若存在)
+    _music_vue_dist = STATIC_DIR / "music-vue" / "dist"
+    if _music_vue_dist.exists():
+        app.router.add_static("/music-vue/", path=str(_music_vue_dist), show_index=False)
     app.on_startup.append(on_startup)
     app.on_cleanup.append(on_cleanup)
     return app
