@@ -12,6 +12,7 @@ import { defineStore } from 'pinia'
 import { ref, computed, onScopeDispose } from 'vue'
 import { playerService as svc } from '@/services/player'
 import { api, wsConnect } from '@/services/api'
+import { useUiStore } from '@/stores/ui'
 import type { IMusicItem, PlayerStatus, PlayMode, ILyricLineMsg, ILyricLineEvt } from '@/types/music'
 
 export const usePlayerStore = defineStore('player', () => {
@@ -246,6 +247,9 @@ export const usePlayerStore = defineStore('player', () => {
     // P3.9(2026-10-03):后端 SongMeta 加 duration_sec 字段(真歌名池 v2 估算时长),
     //   优先用 duration_sec 兜底(v2 mock.js googleapis mp3 时长不稳),
     //   旧字段 song.duration 仍兼容(v1 没改)。
+    // 2026-10-04 bug fix:播放完后等一帧 /api/state,读 is_seed_fallback 字段,
+    //   如果 true → 弹「⚠️ 兜底:此歌本地无 mp3,实际播 seed.mp3」toast,
+    //   用户清楚知道没真接通源(沿用 P3.10b 0 上传红线,不调外网)。
     const r = await api(`/api/songs`)
     if (!r.ok) return null
     const song = (r.songs as any[]).find((s) => s.id === songId)
@@ -258,6 +262,17 @@ export const usePlayerStore = defineStore('player', () => {
       duration: song.duration_sec ?? song.duration ?? 0,
       source: 'lx',
     })
+    // 2026-10-04:兜底检测 — 等后端 state 确认 track.source=seed 才弹 toast
+    setTimeout(async () => {
+      try {
+        const st = await api('/api/state')
+        if (st?.is_seed_fallback) {
+          // Pinia store 内部 → 直接 useUiStore
+          const ui = useUiStore()
+          ui.pushToast('warn', `⚠️ 兜底播放:「${song.title} - ${song.artist}」本地无 mp3,实际播 seed.mp3 占位。请往 ~/Music 放同名 mp3 或换个真实库歌曲。`)
+        }
+      } catch (_) { /* 静默 */ }
+    }, 600)
     return song
   }
 

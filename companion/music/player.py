@@ -198,10 +198,15 @@ class OnlineSearch:
       3) 全失败 → 返 ok=False,前端给 toast
     """
 
-    DEFAULT_SOURCES = ["mock.js", "juhe.js"]
+    # 2026-10-04 bug fix:用户实测报告 — 从开发到现在没真正接通过任何在线源。
+    # mock.js 永远返 googleapis URL(国内 DNS 不可达)+ juhe.js 用第三方公共服务
+    # api.music.lerd.dpdns.org(不稳定),全部掉 seed.mp3 兜底导致所有歌共享 White Christmas。
+    # 修复:默认 local-only,完全跳过外网请求(沿用 P3.10b 0 上传红线)。
+    # 若用户明确想试外网,可显式传 sources=["mock.js", "juhe.js"] 启用。
+    DEFAULT_SOURCES = ["local.js"]
 
     def __init__(self, sources: Optional[List[str]] = None):
-        # P2.5+22:默认多源(mock + juhe),ikun 排除(国内 DNS 不可达必崩进程)。
+        # 2026-10-04:默认 local-only(0 外网请求,0 上传)
         self._sources = sources or list(self.DEFAULT_SOURCES)
         self._client = None
 
@@ -536,56 +541,123 @@ class Player:
         Returns:
             {"ok": bool, "track_id"?: str, "source"?: str, "url"?: str, "err"?: str}
 
-        路径分流(2026-10-03 ship 后实测):
-          - url 含 googleapis.com → 走本地 seed.mp3(source="local"),前端 audio.src
-            走 api_stream 本地 stream,Range 也能用。
-          - 其他 → 走原 lx: 透传路径(music-web._stream_remote_url)。
+        路径分流(2026-10-04 bug fix:用户实测所有歌都掉同一首 White Christmas seed.mp3):
+          1) 优先:本地 library 扫描到的 mp3(LocalLibrary.scan 已包含 ~/Music 真 mp3)
+             按 title/artist 模糊匹配 → 命中 → 直接入库(source="local",path=真 mp3 路径)
+          2) 兜底:local.js 源(本期 local_only,不调外网 lx 多源)
+             或 googleapis URL → seed.mp3(source="seed")
+          3) 不通外网:之前 mock.js/juhe.js 永远掉 googleapis 或 lerd.dpdns.org(国内不可达)
+
+        Returns.source 取值:
+          - "local" = 命中 LocalLibrary 真 mp3
+          - "seed" = fallback 到 seed.mp3(用户应该看到这条 toast 知道是兜底)
+          - "lx:<src>" = 远端 URL 可达时才会有(本期 local-only 走不到)
         """
-        if not self.online:
-            return {"ok": False, "err": "online client not configured"}
-        r = self.online.get_url_multi(song_info)
-        if not r.get("ok"):
-            return {"ok": False, "err": r.get("err", "no url")}
-        url = r.get("url", "")
-        src = r.get("source", "lx")
         actual_title = title or song_info.get("title") or song_info.get("songname") or "未知曲目"
-        actual_artist = artist or song_info.get("artist") or src
-        # id 由 title+artist+songid 哈希定(同歌同 id,跨 mock/juhe 源同 track_id)
+        actual_artist = artist or song_info.get("artist") or ""
         id_seed = f"{actual_title}|{actual_artist}|{song_info.get('hash', song_info.get('songmid', ''))}"
         tid = hashlib.sha1(id_seed.encode("utf-8")).hexdigest()[:16]
 
-        # 远端 URL 不可达 → 兜底本地 seed.mp3
-        is_googleapis = "googleapis.com" in url
-        if is_googleapis and self._SEED_MP3.exists():
+        # 2026-10-04 bug fix:顺序很关键 — 必须先查本地真 mp3,再尝试 LX 在线源,
+        #   最后才兜底 seed.mp3。之前实现漏了"先查本地"步骤,导致所有歌掉 seed。
+        #   P3.10b 红线:0 上传/外传。当前 LX DEFAULT_SOURCES=['local.js'],
+        #   local.js 返 local:// 占位,不调任何外网,所以这一段等于"试探但不真发请求"。
+
+        # 1) 优先:本地 library 模糊匹配 title/artist → 命中真 mp3
+        local_hit = self._find_local_match(actual_title, actual_artist)
+        if local_hit:
             t = Track(
-                id=tid,
-                title=actual_title,
-                artist=actual_artist,
-                album="",
-                path=str(self._SEED_MP3),   # 本地绝对路径,stream 端走本地文件
-                duration=0.0,
-                source="local",
+                id=tid, title=actual_title, artist=actual_artist,
+                album="", path=local_hit, duration=0.0, source="local",
             )
             self.library.add_track(t)
+            return {"ok": True, "track_id": tid, "source": "local",
+                    "url": local_hit, "matched_local": True}
+
+        # 2) 次优:LX 在线源(lx 多源 get_url_multi)。local.js 返 local:// → 不命中真 mp3;
+        #   真 LX 源(若 user 后续接 juhe/csv 私源)返 http(s) URL → 入库 lx:<src>。
+        if self.online:
+            try:
+                r = self.online.get_url_multi(song_info)
+                if r.get("ok") and r.get("url"):
+                    url = r["url"]
+                    src_name = r.get("source", "lx")
+                    if url.startswith("local://"):
+                        # local.js 显式走"无可用 URL"语义,不命中真 mp3 走兜底
+                        pass
+                    elif url.startswith("http://") or url.startswith("https://"):
+                        # 远端 URL → 入库 lx:<src>。浏览器 fetch 受跨源限制可能失败,
+                        # 但 Python aiohttp 透传 + LX 源 DNS 通了就能播。
+                        t = Track(
+                            id=tid, title=actual_title, artist=actual_artist,
+                            album="", path=url, duration=0.0,
+                            source=f"lx:{src_name}",
+                        )
+                        self.library.add_track(t)
+                        return {"ok": True, "track_id": tid,
+                                "source": f"lx:{src_name}", "url": url}
+            except Exception as e:  # noqa: BLE001
+                log.warning("[seed_from_url] online probe failed: %s", e)
+
+        # 3) 兜底:seed.mp3。Track.source 必须 = "seed"(不是 "local"),前端 store 才能
+        #   读 is_seed_fallback 弹「⚠️ 兜底」toast,让用户清楚知道没真接通源。
+        if self._SEED_MP3.exists():
+            t = Track(
+                id=tid, title=actual_title, artist=actual_artist,
+                album="", path=str(self._SEED_MP3), duration=0.0, source="seed",
+            )
+            self.library.add_track(t)
+            log.info("[seed_from_url] fallback to seed.mp3 for: %s - %s",
+                     actual_title, actual_artist)
             return {"ok": True, "track_id": tid, "source": "seed",
                     "url": str(self._SEED_MP3), "fallback": "seed.mp3"}
-        if is_googleapis:
-            log.warning("[seed_from_url] googleapis detected but seed.mp3 missing: %s",
-                        self._SEED_MP3)
-            # 不兜底,继续走 lx 透传(让 _stream_remote_url 报具体错)
 
-        # 入库(若已存在则覆盖 path/url)
-        t = Track(
-            id=tid,
-            title=actual_title,
-            artist=actual_artist,
-            album="",
-            path=url,            # source="lx" 时 path=url,stream 端识别后透传
-            duration=0.0,
-            source=f"lx:{src}",
-        )
-        self.library.add_track(t)
-        return {"ok": True, "track_id": tid, "source": src, "url": url}
+        # 4) 完全没有 → 返错(不假装成功)
+        return {"ok": False, "err": "no local mp3 match and no seed.mp3 fallback"}
+
+    def _find_local_match(self, title: str, artist: str) -> Optional[str]:
+        """P0 bug fix(2026-10-04):在 LocalLibrary 已扫到的本地 mp3 里找匹配 title/artist。
+
+        匹配规则:
+          1) 同 artist + 同 title(精确,不区分大小写)
+          2) 同 title(忽略 artist)
+          3) title 含/被含(模糊)
+          4) path 里含 title / artist
+
+        命中返绝对路径,无命中返 None。
+        """
+        if not title:
+            return None
+        t_low = title.lower().strip()
+        a_low = (artist or "").lower().strip()
+        candidates: list[tuple[int, str]] = []
+        for tr in self.library._tracks.values():
+            if tr.source != "local" or not tr.path or tr.path.endswith("seed.mp3"):
+                # seed.mp3 跳过(已在兜底处理),且非 local source 的跳过
+                continue
+            p = Path(tr.path)
+            if not p.exists():
+                continue
+            tr_title = (tr.title or "").lower().strip()
+            tr_artist = (tr.artist or "").lower().strip()
+            p_low = str(p).lower()
+            # 1) 同 artist + 同 title
+            if a_low and tr_artist == a_low and tr_title == t_low:
+                return str(p)
+            # 2) 同 title(忽略 artist)
+            if tr_title == t_low and t_low:
+                candidates.append((1, str(p)))
+            # 3) title 含/被含
+            elif t_low and tr_title and (t_low in tr_title or tr_title in t_low):
+                candidates.append((2, str(p)))
+            # 4) path 含 title
+            elif t_low and t_low in p_low:
+                candidates.append((3, str(p)))
+        # 取最低 score(1 > 2 > 3),同分取首条
+        if candidates:
+            candidates.sort(key=lambda x: x[0])
+            return candidates[0][1]
+        return None
 
     async def play_random(self, count: int = 1) -> Dict[str, Any]:
         """队列空 fallback 用:从本地库随机抽 N 首,自动 play 第 1 首。

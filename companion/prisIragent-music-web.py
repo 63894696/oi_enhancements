@@ -211,7 +211,12 @@ async def api_health(req: web.Request) -> web.Response:
 async def api_state(req: web.Request) -> web.Response:
     if not APP.player:
         return _err("player not initialized")
-    return _ok(state=APP.player.snapshot())
+    snap = APP.player.snapshot()
+    # 2026-10-04 bug fix:加 is_seed_fallback 字段,前端 store 据此显示「⚠️ 兜底」toast
+    # (track.path 指向 seed.mp3 = 通用 30 秒静音文件 = 用户点歌实际听到的并非所点歌)
+    track = snap.get("track") or {}
+    is_seed = track.get("source") == "seed"
+    return _ok(state=snap, is_seed_fallback=is_seed)
 
 
 async def api_queue(req: web.Request) -> web.Response:
@@ -338,6 +343,9 @@ async def api_stream(req: web.Request) -> web.StreamResponse:
     HTMLAudioElement 直接连这个 URL,无需 CORS(same-origin)。
     P2.5+22(2026-10-03):track.source 以 "lx:" 开头 → path 视为远程 url,代理透传
     (不做 Range 支持,浏览器 audio seek 不可用但能播)。
+    2026-10-04 bug fix:source="seed" 的 track path 指向 seed.mp3 兜底文件(30 秒静音)—
+    加 X-Prisir-Source=seed header,前端 store 据此显示「⚠️ 兜底播放」toast,
+    让用户清楚知道自己点的歌其实没真 mp3,听到的是 seed.mp3 通用兜底。
     """
     tid = req.match_info.get("track_id", "")
     if not APP.library:
@@ -351,6 +359,8 @@ async def api_stream(req: web.Request) -> web.StreamResponse:
     p = Path(tr.path)
     if not p.exists():
         return _err(f"track file missing: {tid}")
+    # 2026-10-04:兜底标记 header
+    is_seed = (tr.source == "seed")
     size = p.stat().st_size
     # Range header 支持(浏览器 audio seek 用)
     range_hdr = req.headers.get("Range")
@@ -373,6 +383,9 @@ async def api_stream(req: web.Request) -> web.StreamResponse:
         "Accept-Ranges": "bytes",
         "Cache-Control": "no-store",
     }
+    if is_seed:
+        # 2026-10-04:前端 store 读 X-Prisir-Source header → 弹「⚠️ 兜底」toast
+        headers["X-Prisir-Source"] = "seed"
     if range_hdr:
         headers["Content-Range"] = f"bytes {start}-{end}/{size}"
         status = 206
@@ -790,10 +803,11 @@ async def on_startup(app: web.Application) -> None:
     )
     log.info("[music_web] library scanned: %d tracks", len(tracks))
 
-    # online (懒启动,首次 get_url 时初始化 jsdom)
-    # P2.5+22(2026-10-03):多源 mock+juhe 双源,musicUrl 失败按序轮询下一个。
-    # ikun 排除:api.ikunshare.com 在国内 DNS 不可达(Node ENOTFOUND 必崩进程)。
-    APP.online = OnlineSearch(sources=["mock.js", "juhe.js"])
+    # 2026-10-04 bug fix:用户实测报告 — mock.js 返 googleapis URL(国内 DNS 不可达)+
+    #   juhe.js 用 lerd.dpdns.org 第三方公共服务(不稳),从开发至今所有歌都掉同一首
+    #   seed.mp3(White Christmas)兜底。改默认 local-only(OnlineSearch DEFAULT_SOURCES =
+    #   ["local.js"]),seed_from_url 优先查 LocalLibrary 真 mp3。
+    APP.online = OnlineSearch()
 
     # P2.5+23(2026-10-03):song pool — 读用户填的 CSV,启动时随机洗 60 首。
     # 失败静默 → 前端拿到 {ok:false,err:"..."} 不影响其他功能。
