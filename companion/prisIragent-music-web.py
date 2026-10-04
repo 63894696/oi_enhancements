@@ -56,6 +56,8 @@ from music.player import (  # noqa: E402
     AudioBackend, LocalLibrary, OnlineSearch, Player, Track,
 )
 from music.song_pool import SongPoolCatalog  # noqa: E402
+# N9(2026-10-04)AI 歌单推荐:从 SongPoolCatalog 聚合 favorites/play_history + 冷启动均匀
+from music.recommender import recommend_from_catalog  # noqa: E402
 from music.port_registry import (  # noqa: E402
     is_music_alive, pick_free_port as _legacy_pick_free_port, read_music_port, write_music_port,
 )
@@ -267,6 +269,55 @@ async def api_songs_respin(req: web.Request) -> web.Response:
         return _err("song_pool not initialized")
     APP.song_pool.shuffle()
     return _ok(count=len(APP.song_pool.visible_songs))
+
+
+# ============================================================
+# N9(2026-10-04)AI 歌单推荐
+# ============================================================
+async def api_recommend(req: web.Request) -> web.Response:
+    """GET /api/recommend?k=20&seed=None
+
+    N9:从 SongPoolCatalog 聚合 favorites/play_history,复用 recommend_poc 启发式打分,
+    冷启动(无收藏 + 无 30 天内播放)→ 14 tag 均匀分布 + random.shuffle。
+
+    Returns:
+        {
+          "ok": True,
+          "count": int,           # 实际返的推荐数(可能 < k)
+          "k": int,               # 请求的 k
+          "seed": int|None,
+          "is_cold_start": bool,
+          "items": [
+            {"id": "sp001", "title": "...", "artist": "...", "tag": "...",
+             "score": 0.83, "reason": "你收藏过 5 首流行"},
+            ...
+          ]
+        }
+    """
+    if not APP.song_pool:
+        return _err("song_pool not initialized")
+    try:
+        k = max(1, min(50, int(req.query.get("k", "20"))))
+    except (ValueError, TypeError):
+        k = 20
+    seed_raw = (req.query.get("seed") or "").strip()
+    seed: int | None = None
+    if seed_raw:
+        try:
+            seed = int(seed_raw)
+        except (ValueError, TypeError):
+            seed = None
+
+    items = recommend_from_catalog(APP.song_pool, k=k, seed=seed)
+    is_cold = (len(items) > 0
+               and items[0].get("reason", "").startswith("冷启动"))
+    return _ok(
+        count=len(items),
+        k=k,
+        seed=seed,
+        is_cold_start=is_cold,
+        items=items,
+    )
 
 
 async def api_songs_preload(req: web.Request) -> web.Response:
@@ -811,6 +862,8 @@ def build_app() -> web.Application:
     # P2.5+23(2026-10-03):真歌名池 API
     app.router.add_get("/api/songs", api_songs)
     app.router.add_post("/api/songs/respin", api_songs_respin)
+    # N9(2026-10-04):AI 歌单推荐
+    app.router.add_get("/api/recommend", api_recommend)
     # P2.5+24(2026-10-03):预取下一首 URL
     app.router.add_get("/api/songs/preload", api_songs_preload)
     app.router.add_get("/api/stream/{track_id}", api_stream)

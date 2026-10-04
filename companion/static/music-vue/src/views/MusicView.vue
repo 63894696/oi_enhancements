@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // MusicView.vue — P2.5+24(2026-10-03) → P3.5(2026-10-04)EQ 抽屉 → P3.6(2026-10-04)下载完成 toast + 歌单行右键
-//                  → P3.8(2026-10-04)MusicView 主区右侧 16 段 spectrum bar。
-// 主视图:顶栏(真歌名池 60 + 标签过滤 + 换一批) + 主区(大封面 + 歌词 + 队列 + 频谱)。
+//                  → P3.8(2026-10-04)MusicView 主区右侧 16 段 spectrum bar → N9(2026-10-04)AI 推荐区。
+// 主视图:顶栏 + AI 推荐区 + tags + 歌单列表 + 大封面 + 歌词 + 队列 + 频谱。
 // 顶栏借鉴 Vue-mmPlayer 的「顶栏 tabs」+ YesPlayMusic 的「歌单网格」,
 // 但用户拍板「只留播放列表」= 歌单用列表渲染而非网格卡片。
 //
@@ -9,6 +9,8 @@
 //   顶层挂载,把 ws 推过来的 download_done 转成系统通知。
 // P3.8:useSpectrum() 顶层挂载,16 段频谱随播放实时跳;主区右下 <SpectrumBars>;
 //   registerSpectrumAudio(player.getAudioElement()) 暴露给 composable 判定 pause。
+// N9:loadRecommendations() onMounted 自动拉 1 次 + 🔄 刷新按钮;推荐区嵌在 .tags 上方;
+//   <RecommendPanel @play="onPlayRecommend" @refresh="onRefreshRecommend" />。
 import { onMounted, ref, computed, watch } from 'vue'
 import { api } from '@/services/api'
 import { useUiStore } from '@/stores/ui'
@@ -20,6 +22,7 @@ import Toast from '@/components/Toast.vue'
 import EQPanel from '@/components/EQPanel.vue'
 import PopupMenu from '@/components/PopupMenu.vue'
 import SpectrumBars from '@/components/SpectrumBars.vue'
+import RecommendPanel from '@/components/RecommendPanel.vue'
 import { useDownloadToast } from '@/composables/useDownloadToast'
 import { useSpectrum, registerSpectrumAudio } from '@/composables/useSpectrum'
 import type { MenuItem } from '@/components/PopupMenu.vue'
@@ -34,6 +37,41 @@ useDownloadToast()
 // 仅在主 music 子窗(MusicView)挂载;LyricOnlyView / EqWindowView 拿不到 PlayerService.audio,
 // 不显示频谱(独立 BrowserWindow 不持有 audio,WS 广播频谱违背「零 IPC」红线)。
 const spectrum = useSpectrum()
+
+// N9(2026-10-04):AI 歌单推荐 — 复用 recommend_poc 启发式打分 + 冷启动 14 tag 均匀。
+// 纯本地 / 0 上传(沿用 P3.10b 红线);fetch /api/recommend?k=20[&seed=N] → 推荐列表。
+const recommendItems = ref<Array<{ id: string; title: string; artist: string; tag: string; score: number; reason: string }>>([])
+const recommendLoading = ref(false)
+let _recSeedOffset = 0
+
+async function loadRecommendations(seed?: number) {
+  recommendLoading.value = true
+  try {
+    const qs = seed != null ? `?k=20&seed=${seed}` : '?k=20'
+    const r = await api(`/api/recommend${qs}`)
+    if (r && r.ok && Array.isArray(r.items)) {
+      recommendItems.value = r.items
+    } else {
+      recommendItems.value = []
+    }
+  } catch (_) {
+    recommendItems.value = []
+  } finally {
+    recommendLoading.value = false
+  }
+}
+
+async function onPlayRecommend(item: { id: string; title: string; artist: string }) {
+  // 复用 P3.7 onPlaySong:player.playById 触发后台播放 + 推 toast
+  await player.playById(item.id)
+  ui.pushToast('info', `正在播放: ${item.title} - ${item.artist}`)
+}
+
+function onRefreshRecommend() {
+  // seed 递增 → 后端 random.Random(seed) 给出新洗牌
+  _recSeedOffset += 1
+  void loadRecommendations(_recSeedOffset)
+}
 
 interface Song {
   id: string
@@ -171,6 +209,8 @@ onMounted(() => {
     if (a) registerSpectrumAudio(a)
   } catch (_) { /* 防御:player.getAudioElement 不存在时静默 */ }
   void loadSongs()
+  // N9(2026-10-04):自动拉 1 次推荐(沿用 P3.10b 0 上传红线,纯本地启发式)
+  void loadRecommendations()
 })
 
 const headerText = computed(() => {
@@ -223,6 +263,11 @@ const headerText = computed(() => {
         </button>
       </div>
     </div>
+
+    <!-- N9(2026-10-04):AI 推荐区 — 顶栏下方独立区;.tags 上方;
+         启发式打分 + 14 tag 均匀冷启动 + seed 增量换一批 -->
+    <RecommendPanel :items="recommendItems" :loading="recommendLoading"
+                    @play="onPlayRecommend" @refresh="onRefreshRecommend" />
 
     <!-- 标签过滤 chips — P3.7:多选 active class 走 ui.tagFilters.includes(t) -->
     <div class="tags">
