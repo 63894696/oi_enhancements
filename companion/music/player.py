@@ -524,12 +524,10 @@ class Player:
     # ============================================================
     # P2.5+22(2026-10-03):多源 fallback + 随机播放
     # ============================================================
-    # P2.5+23 hotfix(2026-10-03):googleapis 公网 mp3 在 sandbox/用户网络封,
-    # 走 /api/stream 透传会失败 → audio src 加载不出。检测后改用本地 seed.mp3 兜底。
-    # 选用 hash(title+artist+songid) 而非 url 哈希,这样:
-    #   1) mock.js 不管返哪个 googleapis URL 都能落到同一 track_id(同歌同 id)
-    #   2) 跨 mock/juhe 源 fallback 后,用户看到的播放列表仍是「晴天 → 同一首」
-    _SEED_MP3 = Path(__file__).resolve().parent.parent / "static" / "music" / "seed.mp3"
+    # P2.5+28 A 阶段(2026-10-04):彻底删 seed.mp3 兜底。
+    #   之前 _SEED_MP3 静态变量 + seed_from_url 第 3 段兜底 + preload_next_url googleapis→seed.mp3 分支
+    #   全删。原因:用户原话「30 秒静音需要彻底去掉,不能播放就说明原因是什么」。
+    #   后续若要再启用兜底(基本不会),需重新引入 P2.5+27 的逻辑,但 0 上传红线优先。
 
     async def seed_from_url(self, song_info: Dict[str, Any],
                             title: str = "", artist: str = "") -> Dict[str, Any]:
@@ -539,19 +537,19 @@ class Player:
             song_info: 给 lx 的 musicInfo 字段(hash/songmid)。
             title/artist: 入库的展示名(可选)。
         Returns:
-            {"ok": bool, "track_id"?: str, "source"?: str, "url"?: str, "err"?: str}
+            {"ok": bool, "track_id"?: str, "source"?: str, "url"?: str, "err"?: str,
+             "title"?: str, "artist"?: str}
 
-        路径分流(2026-10-04 bug fix:用户实测所有歌都掉同一首 White Christmas seed.mp3):
+        路径分流(P2.5+28 A 阶段 2026-10-04):
           1) 优先:本地 library 扫描到的 mp3(LocalLibrary.scan 已包含 ~/Music 真 mp3)
              按 title/artist 模糊匹配 → 命中 → 直接入库(source="local",path=真 mp3 路径)
-          2) 兜底:local.js 源(本期 local_only,不调外网 lx 多源)
-             或 googleapis URL → seed.mp3(source="seed")
-          3) 不通外网:之前 mock.js/juhe.js 永远掉 googleapis 或 lerd.dpdns.org(国内不可达)
+          2) 次优:LX 在线源(lx 多源 get_url_multi)。local.js 返 local:// → 不命中真 mp3;
+             真 LX 源返 http(s) URL → 入库 lx:<src>(C 阶段才会启用外网源)
+          3) 失败:不兜底,直接返 err + 清晰原因
 
         Returns.source 取值:
           - "local" = 命中 LocalLibrary 真 mp3
-          - "seed" = fallback 到 seed.mp3(用户应该看到这条 toast 知道是兜底)
-          - "lx:<src>" = 远端 URL 可达时才会有(本期 local-only 走不到)
+          - "lx:<src>" = 远端 URL 可达时才会有(C 阶段才走得到)
         """
         actual_title = title or song_info.get("title") or song_info.get("songname") or "未知曲目"
         actual_artist = artist or song_info.get("artist") or ""
@@ -599,21 +597,19 @@ class Player:
             except Exception as e:  # noqa: BLE001
                 log.warning("[seed_from_url] online probe failed: %s", e)
 
-        # 3) 兜底:seed.mp3。Track.source 必须 = "seed"(不是 "local"),前端 store 才能
-        #   读 is_seed_fallback 弹「⚠️ 兜底」toast,让用户清楚知道没真接通源。
-        if self._SEED_MP3.exists():
-            t = Track(
-                id=tid, title=actual_title, artist=actual_artist,
-                album="", path=str(self._SEED_MP3), duration=0.0, source="seed",
-            )
-            self.library.add_track(t)
-            log.info("[seed_from_url] fallback to seed.mp3 for: %s - %s",
-                     actual_title, actual_artist)
-            return {"ok": True, "track_id": tid, "source": "seed",
-                    "url": str(self._SEED_MP3), "fallback": "seed.mp3"}
-
-        # 4) 完全没有 → 返错(不假装成功)
-        return {"ok": False, "err": "no local mp3 match and no seed.mp3 fallback"}
+        # 3) 没有本地命中 + 没有可用 LX URL → 返清晰错(沿用 P3.10b 0 上传红线)。
+        #   P2.5+28 A 阶段:不再 seed.mp3 兜底,直接告诉用户真实原因。
+        log.warning("[seed_from_url] no source for: %s - %s (local=%s, online_tried=%s)",
+                    actual_title, actual_artist, bool(local_hit),
+                    bool(self.online))
+        return {
+            "ok": False,
+            "err": (f"无法播放「{actual_title} - {actual_artist}」:"
+                    f"本地 ~/Music 无匹配 mp3,在线源不可达"
+                    f"(沿用 P3.10b 0 上传红线,未接外网 LX API;C 阶段接新源后可播)"),
+            "title": actual_title,
+            "artist": actual_artist,
+        }
 
     def _find_local_match(self, title: str, artist: str) -> Optional[str]:
         """P0 bug fix(2026-10-04):在 LocalLibrary 已扫到的本地 mp3 里找匹配 title/artist。
@@ -883,21 +879,17 @@ class Player:
             if not r.get("ok"):
                 return {"ok": False, "err": r.get("err", "no url from any source")}
             url = r["url"]
-            # googleapis 不可达 → 兜底本地 seed.mp3(同 seed_from_url 逻辑)
+            # P2.5+28 A 阶段(2026-10-04):googleapis 不可达不再兜底 seed.mp3,直接返错。
+            # 用户原话「30 秒静音需要彻底去掉,不能播放就说明原因是什么」。
             is_googleapis = "googleapis.com" in url
-            if is_googleapis and self._SEED_MP3.exists():
-                # 入库切换到本地 source(seed.mp3)
-                tr.path = str(self._SEED_MP3)
-                tr.source = "local"
+            if is_googleapis:
                 return {
-                    "ok": True,
+                    "ok": False,
                     "track_id": nid,
                     "title": tr.title,
                     "artist": tr.artist,
-                    "url": None,
-                    "source": "seed",
-                    "stream_url": f"/api/stream/{quote(nid, safe='')}",
-                    "fallback": "seed.mp3",
+                    "err": (f"upstream {url.split('/')[2]} 不可达"
+                            f"(googleapis 国内 DNS 通常不通),C 阶段接新源后可播"),
                 }
             return {
                 "ok": True,

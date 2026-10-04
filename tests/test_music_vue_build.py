@@ -76,7 +76,10 @@ class TestPreloadNextUrl(unittest.TestCase):
         self.assertIn("/api/stream/", r["stream_url"])
 
     def test_preload_returns_seed_when_googleapis(self):
-        """P2.5+23 hotfix:googleapis 不可达 → 走 seed.mp3 兜底。"""
+        """P2.5+28 A 阶段(2026-10-04):googleapis 不可达不再兜底 seed.mp3,直接返失败。
+
+        用户原话「30 秒静音需要彻底去掉,不能播放就说明原因是什么」。
+        """
 
         class FakeOnlineGapis:
             _sources = ["mock.js"]
@@ -86,19 +89,12 @@ class TestPreloadNextUrl(unittest.TestCase):
                         "source": "mock.js"}
 
         p = self._make_player(online=FakeOnlineGapis(), src="lx:mock.js")
-        # 如果 seed.mp3 存在,应切到 seed(source=seed)
-        # 不存在则继续走 lx 路径(可能 fall through)
         r = _run(p.preload_next_url(""))
-        self.assertTrue(r["ok"])
-        # 当 seed.mp3 真存在 → source=seed
-        # 当不存在 → 仍返 url=googleapis
-        if r.get("source") == "seed":
-            self.assertIsNone(r["url"])
-            self.assertEqual(r["fallback"], "seed.mp3")
-            # track.source 已被改回 local
-            tid = r["track_id"]
-            tr = p.library.get(tid)
-            self.assertEqual(tr.source, "local")
+        # A 阶段后:googleapis 不可达 → 返 ok=False + err,不再兜底 seed.mp3
+        self.assertFalse(r["ok"],
+            msg=f"googleapis 应返失败;got {r!r}")
+        self.assertIn("googleapis", r.get("err", ""))
+        self.assertIn("不可达", r.get("err", ""))
 
     def test_preload_empty_queue_fails(self):
         class FakeOnline:

@@ -7,6 +7,7 @@ test_music_multi_source.py — P2.5+22(2026-10-03)music 多源 fallback 单元�
   - Player.play_random 队列空时从库随机 + 自动播
   - cmd "random" / "play_url" 路由存在
   - get_url_multi 按 sources 顺序轮询
+  - P2.5+28 A 阶段(2026-10-04):seed.mp3 兜底已彻底删除 — 失败必须返清晰 err
 """
 from __future__ import annotations
 
@@ -93,11 +94,10 @@ class TestOnlineSearchMulti(unittest.TestCase):
 class TestPlayerSeedFromUrl(unittest.TestCase):
     """Player.seed_from_url 走 FakeOnline → 入库 source='lx:<src>'。
 
-    2026-10-04 修复后顺序:
+    P2.5+28 A 阶段(2026-10-04)顺序:
       1) _find_local_match 本地命中真 mp3 → source='local'
       2) 调 online.get_url_multi → http(s) URL 入库 source='lx:<src>'
-      3) local:// 占位 / online None / 全失败 → seed.mp3 兜底 source='seed'
-    老测试需要根据新逻辑调整预期值。
+      3) 没有任何可用源 → 返 ok=False + 清晰 err(不再 seed.mp3 兜底)
     """
 
     def test_seed_from_url_first_source_succeeds(self):
@@ -129,37 +129,40 @@ class TestPlayerSeedFromUrl(unittest.TestCase):
         self.assertEqual(r.get("source"), "lx:juhe.js")
 
     def test_seed_from_url_all_sources_fail(self):
-        """所有 LX 源失败 + 本地空 + seed.mp3 存在 → 兜底 seed.mp3,source='seed'。"""
+        """所有 LX 源失败 + 本地空 → P2.5+28 A 阶段:返 ok=False + 清晰 err(不再 seed.mp3 兜底)。"""
         lib = LocalLibrary(Path(os.environ.get("TEMP", "/tmp")))
         player = Player(library=lib, online=FakeOnline({
             "mock.js": {"ok": False, "err": "a"},
             "juhe.js": {"ok": False, "err": "b"},
         }))
-        r = _run(player.seed_from_url({"hash": "demo3"}, title="demo3"))
-        self.assertTrue(r.get("ok"))
-        self.assertEqual(r.get("source"), "seed",
-            msg=f"全源失败应兜底 seed.mp3;got {r!r}")
+        r = _run(player.seed_from_url({"hash": "demo3"}, title="demo3", artist="art3"))
+        # A 阶段后:必须返失败 + 清晰原因(包含 title/artist + 「无可用音源」语义)
+        self.assertFalse(r.get("ok"),
+            msg=f"全源失败必须返 ok=False;got {r!r}")
+        self.assertIn("demo3", r.get("err", ""),
+            msg=f"err 应含歌名 demo3;got {r!r}")
+        self.assertIn("art3", r.get("err", ""),
+            msg=f"err 应含歌手 art3;got {r!r}")
+        # 不能 fallback 到 seed.mp3 — track 不能进 library
+        tr = lib.get(r.get("track_id") or "nonexistent")
+        self.assertIsNone(tr, "失败时不能入库 track")
 
     def test_seed_from_url_no_online_client(self):
-        """无 online client + 本地空 → 兜底 seed.mp3(不再是 'not configured' 错误)。"""
+        """无 online client + 本地空 → P2.5+28 A 阶段:返 ok=False + 清晰 err。"""
         lib = LocalLibrary(Path(os.environ.get("TEMP", "/tmp")))
         player = Player(library=lib, online=None)
-        r = _run(player.seed_from_url({"hash": "x"}, title="x"))
-        # 修复后:无 online + 本地空 + seed.mp3 存在 → 兜底成功,不再是失败
-        self.assertTrue(r.get("ok"), msg=f"seed.mp3 兜底路径应成功;got {r!r}")
-        self.assertEqual(r.get("source"), "seed")
+        r = _run(player.seed_from_url({"hash": "x"}, title="孤勇者", artist="陈奕迅"))
+        # A 阶段后:无 online client + 本地空 → 必须返失败(不再是 seed.mp3 兜底)
+        self.assertFalse(r.get("ok"),
+            msg=f"无 online 必须返 ok=False;got {r!r}")
+        self.assertIn("孤勇者", r.get("err", ""))
+        self.assertIn("陈奕迅", r.get("err", ""))
 
-    # P2.5+23 hotfix(2026-10-03):googleapis 公网 mp3 sandbox/用户网络封,
-    # 自动 fallback 到本地 static/music/seed.mp3。
-    # 2026-10-04 bug fix:Track.source 必须区分"真本地 mp3" vs "seed.mp3 兜底"。
-    #   - 真本地 mp3(source="local"):song_pool 之前已扫到 / ~/Music 命中真文件
-    #   - seed.mp3 兜底(source="seed"):外部源失败时占位,前端 toast 警告
-    # 2026-10-04 修复后:seed_from_url 不再单独检测 googleapis URL 改 seed.mp3,
-    #   而是由 api_stream 在 lx: 前缀的 googleapis URL 上做兜底(_cmd_next 那条路径)。
-    #   seed_from_url 这里只确认"googleapis URL 也能成功入库 lx:mock.js"。
-    def test_seed_from_url_googleapis_fallback_to_seed_mp3(self):
-        """googleapis URL 入库 lx:mock.js(stream 阶段才做兜底检测)。"""
-        from music.player import Player as _Player  # noqa: F401
+    # P2.5+23 hotfix(2026-10-03):googleapis 公网 mp3 sandbox/用户网络封,原自动 fallback seed.mp3。
+    # P2.5+28 A 阶段(2026-10-04):seed_from_url 不再特殊处理 googleapis,统一入库 lx:mock.js。
+    #   googleapis 不可达在 preload_next_url 阶段返错(测试在 TestPreloadNextUrlNoSeedFallback)。
+    def test_seed_from_url_googleapis_url_accepted_as_lx(self):
+        """googleapis URL 入库 lx:mock.js — 不再做特殊兜底(seed_from_url 不区分域名)。"""
         lib = LocalLibrary(Path(os.environ.get("TEMP", "/tmp")))
         googleapis_url = (
             "https://commondatastorage.googleapis.com/codeskulptor-demos/"
@@ -171,7 +174,7 @@ class TestPlayerSeedFromUrl(unittest.TestCase):
         r = _run(player.seed_from_url({"hash": "songA", "songname": "晴天"},
                                       title="晴天", artist="周杰伦"))
         self.assertTrue(r.get("ok"), msg=str(r))
-        # 修复后:googleapis URL 也算"在线源成功",入库 lx:mock.js(stream 时才兜底)
+        # googleapis URL 也算「在线源成功」,入库 lx:mock.js
         self.assertEqual(r.get("source"), "lx:mock.js", msg=str(r))
         tr = lib.get(r["track_id"])
         self.assertIsNotNone(tr, msg="track not added to library")
@@ -189,6 +192,28 @@ class TestPlayerSeedFromUrl(unittest.TestCase):
         self.assertEqual(r.get("source"), "lx:mock.js")
         tr = lib.get(r["track_id"])
         self.assertEqual(tr.source, "lx:mock.js")
+
+    # P2.5+28 A 阶段新增:local.js 返 local:// 占位 + 本地空 → 必须返清晰 err
+    def test_seed_from_url_no_match_returns_clear_error(self):
+        """local:// 占位 + 本地空 → P2.5+28:返 ok=False + 清晰 err,不再兜底 seed.mp3。"""
+        import tempfile
+        from unittest.mock import MagicMock
+        with tempfile.TemporaryDirectory() as td:
+            lib = LocalLibrary(Path(td))  # 空库
+            online = MagicMock()
+            online.get_url_multi = MagicMock(return_value={
+                "ok": True, "url": "local://prisir/abc/320k", "source": "local",
+            })
+            player = Player(library=lib, online=online)
+            r = _run(player.seed_from_url({"hash": "x"}, title="孤勇者",
+                                          artist="陈奕迅"))
+            # A 阶段后:local:// 占位 = 无可用源 → 必须返 ok=False
+            self.assertFalse(r.get("ok"), msg=f"local:// 应返失败;got {r!r}")
+            self.assertIn("孤勇者", r.get("err", ""))
+            self.assertIn("陈奕迅", r.get("err", ""))
+            # 关键:不能入库 track(避免"假装在播")
+            tr = lib.get(r.get("track_id") or "nonexistent")
+            self.assertIsNone(tr)
 
 
 class TestPlayerRandomFallback(unittest.TestCase):
@@ -238,16 +263,16 @@ class TestCmdActions(unittest.TestCase):
         self.assertIsNotNone(r.get("state", {}).get("track"))
 
     def test_cmd_play_url_all_fail_returns_err(self):
-        """所有 LX 失败 + 本地空 → 兜底 seed.mp3(不是返回 err)。"""
+        """所有 LX 失败 + 本地空 → P2.5+28 A 阶段:play_url 返 ok=False + 清晰 err(不再 seed.mp3 兜底)。"""
         lib = LocalLibrary(Path(os.environ.get("TEMP", "/tmp")))
         player = Player(library=lib, online=FakeOnline({
             "mock.js": {"ok": False, "err": "x"},
             "juhe.js": {"ok": False, "err": "y"},
         }))
-        r = _run(player.cmd("play_url", song_info={"hash": "demo"}, title="demo"))
-        # 修复后:全源失败 → seed.mp3 兜底成功,不再 'all sources failed'
-        self.assertTrue(r.get("ok"), msg=f"seed.mp3 兜底应成功;got {r!r}")
-        self.assertEqual(r.get("source"), "seed")
+        r = _run(player.cmd("play_url", song_info={"hash": "demo"}, title="demo", artist="ad"))
+        # A 阶段后:play_url 不再兜底,必须返 ok=False
+        self.assertFalse(r.get("ok"), msg=f"play_url 应返失败;got {r!r}")
+        self.assertIn("err", r)
 
 
 class TestStreamSourcePrefix(unittest.TestCase):
@@ -340,8 +365,8 @@ class TestSeedFromUrlLocalMatch(unittest.TestCase):
             self.assertEqual(tr.source, "local")
             self.assertTrue(tr.path.endswith("Test.mp3"))
 
-    def test_seed_from_url_falls_back_to_seed_when_no_match(self):
-        """本地空 + online 返 local:// 占位 → 走 seed.mp3 兜底,source='seed'。"""
+    def test_seed_from_url_local_placeholder_no_fallback(self):
+        """本地空 + online 返 local:// 占位 → P2.5+28 A 阶段:返 ok=False,不再兜底 seed.mp3。"""
         import tempfile
         from unittest.mock import MagicMock
         with tempfile.TemporaryDirectory() as td:
@@ -354,11 +379,46 @@ class TestSeedFromUrlLocalMatch(unittest.TestCase):
             player = Player(library=lib, online=online)
             r = _run(player.seed_from_url({"hash": "x"}, title="孤勇者",
                                           artist="陈奕迅"))
-            self.assertTrue(r.get("ok"), msg=str(r))
-            self.assertEqual(r.get("source"), "seed", msg=str(r))
-            tr = lib.get(r["track_id"])
-            # 2026-10-04 bug fix:Track.source 必须是 "seed",前端才能识别兜底
-            self.assertEqual(tr.source, "seed")
+            # A 阶段后:local:// 占位不再触发 seed.mp3 兜底
+            self.assertFalse(r.get("ok"), msg=f"local:// 应返失败;got {r!r}")
+            self.assertIn("孤勇者", r.get("err", ""))
+            self.assertIn("陈奕迅", r.get("err", ""))
+            # 不能入库 track
+            self.assertIsNone(lib.get(r.get("track_id") or "nonexistent"))
+
+
+class TestPreloadNextUrlNoSeedFallback(unittest.TestCase):
+    """P2.5+28 A 阶段(2026-10-04):preload_next_url 删 googleapis→seed.mp3 兜底。
+
+    之前 googleapis URL 不可达 → 切到 seed.mp3 → 用户听到 30 秒静音。
+    A 阶段后:直接返 ok=False + 清晰 err(沿用 P3.10b 0 上传红线)。
+    """
+
+    def test_preload_next_url_googleapis_does_not_fallback_to_seed(self):
+        """预取 googleapis URL → P2.5+28:返 ok=False + err 含 upstream 不可达,不再兜底 seed.mp3。"""
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            lib = LocalLibrary(Path(td))
+            lib.scan()
+            googleapis_url = (
+                "https://commondatastorage.googleapis.com/codeskulptor-demos/"
+                "DDR_assets/Kangaroo_MusiQue_-_The_Neverwritten_Role_Playing_Game.mp3"
+            )
+            player = Player(library=lib, online=FakeOnline({
+                "mock.js": {"ok": True, "url": googleapis_url},
+            }))
+            # 手动入库一个 lx: 源的 googleapis track
+            t = Track(id="pre1", title="孤勇者", artist="陈奕迅", album="",
+                      path=googleapis_url, duration=0.0, source="lx:mock.js")
+            lib.add_track(t)
+            player.playlist.set_queue(["pre1"])
+            player.playlist.cursor = 0
+            player.state.playback_mode = "sequential"
+            r = _run(player.preload_next_url("pre1"))
+            # A 阶段后:googleapis 不可达 → 返失败 + err,不再兜底 seed.mp3
+            self.assertFalse(r.get("ok"), msg=f"googleapis 应返失败;got {r!r}")
+            self.assertIn("googleapis", r.get("err", ""))
+            self.assertIn("不可达", r.get("err", ""))
 
 
 class TestLocalJsSourceExists(unittest.TestCase):
@@ -394,10 +454,16 @@ class TestLocalJsSourceExists(unittest.TestCase):
             msg=f"DEFAULT_SOURCES 应为 ['local.js'];got {OnlineSearch.DEFAULT_SOURCES!r}")
 
 
-class TestApiStateSeedFallback(unittest.TestCase):
-    """P2.5+27(2026-10-04):api_state 返回 is_seed_fallback 字段。
+# P2.5+28 A 阶段(2026-10-04):删除 TestApiStateSeedFallback 整组(is_seed_fallback 字段已删)
+# 新增 TestApiStatePlayableField(playable + last_err 新字段)+ TestApiStreamNoSeedHeader
+# (X-Prisir-Source header 已删)。整组迁移在文件下方。
 
-    前端 store 据此显示「⚠️ 兜底」toast,让用户清楚知道没真接通源。
+
+class TestApiStatePlayableField(unittest.TestCase):
+    """P2.5+28 A 阶段(2026-10-04):api_state 字段语义改。
+
+    is_seed_fallback 字段删,改 playable(bool) + last_err(str)。
+    前端 store 据 playable===false 弹「❌ 此歌暂无法播放:last_err」toast。
     """
 
     def setUp(self):
@@ -426,58 +492,79 @@ class TestApiStateSeedFallback(unittest.TestCase):
         APP.song_pool = None
         APP.online = None
 
-    def test_api_state_includes_is_seed_fallback_field(self):
-        """api_state 必须返回 is_seed_fallback: bool 字段。"""
+    def test_api_state_includes_playable_field(self):
+        """api_state 必须返回 playable: bool 字段(无 track → playable=True)。"""
         from aiohttp.test_utils import make_mocked_request
         resp = _run(self._mod.api_state(make_mocked_request("GET", "/")))
         import json as _json
         data = _json.loads(resp.body.decode("utf-8"))
-        self.assertIn("is_seed_fallback", data,
-            "api_state 必须返回 is_seed_fallback 字段")
-        # 默认 idle → 无 track → is_seed_fallback = False
-        self.assertFalse(data["is_seed_fallback"])
+        self.assertIn("playable", data,
+            "api_state 必须返回 playable 字段(P2.5+28 A)")
+        # 默认 idle → 无 track → playable=True
+        self.assertTrue(data["playable"])
+        self.assertEqual(data.get("last_err"), "")
 
-    def test_api_state_is_seed_fallback_true_after_seed_track(self):
-        """手动加一个 source='seed' 的 track,api_state 应返 is_seed_fallback=True。"""
-        from music.player import Track
+    def test_api_state_last_err_empty_when_playable(self):
+        """playable=True 时 last_err 必为空字符串。"""
         from aiohttp.test_utils import make_mocked_request
-        seed_path = ROOT / "companion" / "static" / "music" / "seed.mp3"
-        if not seed_path.exists():
-            self.skipTest("seed.mp3 missing")
+        # 加一个 source="local" 的 track
         APP = self._mod.APP
-        t = Track(id="seedtest", title="x", artist="y", album="",
-                  path=str(seed_path), duration=0.0, source="seed")
+        from music.player import Track
+        t = Track(id="local1", title="x", artist="y", album="",
+                  path="C:/fake/test.mp3", duration=0.0, source="local")
         APP.library.add_track(t)
         APP.player.state.track = t
-        APP.player.state.status = "playing"
         resp = _run(self._mod.api_state(make_mocked_request("GET", "/")))
         import json as _json
         data = _json.loads(resp.body.decode("utf-8"))
-        self.assertTrue(data["is_seed_fallback"],
-            msg=f"source=seed track 应让 is_seed_fallback=True;got {data}")
+        self.assertTrue(data["playable"],
+            msg=f"local source 应可播;got {data}")
+        self.assertEqual(data.get("last_err"), "")
+
+    def test_api_state_last_err_filled_when_unplayable(self):
+        """不可播 track(unknown source)→ playable=False + last_err 非空。"""
+        from aiohttp.test_utils import make_mocked_request
+        APP = self._mod.APP
+        from music.player import Track
+        # 模拟「unavailable」类的不可播 track(虽然代码不产这个值,API 设计要兼容)
+        t = Track(id="bad1", title="坏歌", artist="bad", album="",
+                  path="C:/fake/missing.mp3", duration=0.0, source="unavailable")
+        APP.library.add_track(t)
+        APP.player.state.track = t
+        resp = _run(self._mod.api_state(make_mocked_request("GET", "/")))
+        import json as _json
+        data = _json.loads(resp.body.decode("utf-8"))
+        self.assertFalse(data["playable"],
+            msg=f"unavailable source 应不可播;got {data}")
+        self.assertIn("无可用音源", data.get("last_err", ""))
 
 
-class TestApiStreamSeedHeader(unittest.TestCase):
-    """P2.5+27(2026-10-04):api_stream 在 source=seed 时设 X-Prisir-Source header。
+class TestApiStreamNoSeedHeader(unittest.TestCase):
+    """P2.5+28 A 阶段(2026-10-04):api_stream 不再设 X-Prisir-Source header。
 
-    浏览器侧 fetch 看到此 header 也能识别兜底(双保险)。
+    兜底机制彻底删除(代码不再引用 seed.mp3),这个 header 也删。
     """
 
-    def test_api_stream_sets_x_prisir_source_seed_header_in_source(self):
-        """源码扫描:api_stream 必须设 headers['X-Prisir-Source']='seed'。"""
+    def test_api_stream_does_not_set_x_prisir_source_seed_header(self):
+        """源码扫描:api_stream 函数体内不应再赋 headers['X-Prisir-Source']='seed'。
+
+        P2.5+28 A 阶段后:兜底机制彻底删除,api_stream 不再设 X-Prisir-Source。
+        注释里提到「X-Prisir-Source」(说明历史删除)允许,但实际赋值不允许。
+        """
         path = ROOT / "companion" / "prisIragent-music-web.py"
         src = path.read_text(encoding="utf-8")
-        self.assertIn('"X-Prisir-Source"', src,
-            "api_stream 必须有 X-Prisir-Source header")
-        self.assertIn('"seed"', src,
-            "api_stream 必须有 seed 值")
-        # is_seed 判断 + X-Prisir-Source 设置必须同在 api_stream 内
-        idx_is_seed = src.find("is_seed")
-        idx_x_header = src.find('"X-Prisir-Source"')
-        self.assertGreater(idx_is_seed, 0,
-            "必须先判 is_seed 再写 header")
-        self.assertGreater(idx_x_header, idx_is_seed,
-            "X-Prisir-Source header 应在 is_seed 判定之后写入")
+        # 关键检查:不允许实际代码赋 X-Prisir-Source header
+        # 形式 1: headers["X-Prisir-Source"] = ...
+        # 形式 2: headers['X-Prisir-Source'] = ...
+        import re
+        pat = re.compile(r'headers\s*[\[\(]?["\']X-Prisir-Source["\']\s*[\]\)]?\s*=')
+        matches = pat.findall(src)
+        self.assertEqual(len(matches), 0,
+            msg=f"api_stream 函数体不应再赋 X-Prisir-Source header;got {matches!r}\n"
+                f"P2.5+28 A 阶段后兜底机制彻底删除。")
+        # is_seed 变量判定也应从代码中删除
+        self.assertNotIn("is_seed = ", src,
+            "is_seed 判定必须从 api_stream 删除(P2.5+28 A)")
 
 
 if __name__ == "__main__":

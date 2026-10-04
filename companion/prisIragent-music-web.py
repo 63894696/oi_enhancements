@@ -212,11 +212,24 @@ async def api_state(req: web.Request) -> web.Response:
     if not APP.player:
         return _err("player not initialized")
     snap = APP.player.snapshot()
-    # 2026-10-04 bug fix:加 is_seed_fallback 字段,前端 store 据此显示「⚠️ 兜底」toast
-    # (track.path 指向 seed.mp3 = 通用 30 秒静音文件 = 用户点歌实际听到的并非所点歌)
+    # P2.5+28 A 阶段(2026-10-04):删 is_seed_fallback 字段,改 playable + last_err。
+    #   用户原话:「30 秒静音需要彻底去掉,不能播放就说明原因是什么」。
+    #   playable: 当前 track 是否能播(source ∈ {"local","lx:<src>"} 即 True)
+    #   last_err: 不能播时填原因(供前端 toast 显示)
     track = snap.get("track") or {}
-    is_seed = track.get("source") == "seed"
-    return _ok(state=snap, is_seed_fallback=is_seed)
+    src = (track.get("source") or "").strip()
+    # 无 track = 无所谓可播;idle/已停视为可播(用户没点歌,不算不可播)
+    playable: bool = True
+    last_err: str = ""
+    if track:
+        playable = src in ("local",) or src.startswith("lx:")
+        if not playable:
+            last_err = (
+                f"当前曲目 source={src!r} 无可用音源;"
+                f"本地 ~/Music 无匹配 mp3,在线源不可达"
+                f"(沿用 P3.10b 0 上传红线)"
+            )
+    return _ok(state=snap, playable=playable, last_err=last_err)
 
 
 async def api_queue(req: web.Request) -> web.Response:
@@ -359,8 +372,6 @@ async def api_stream(req: web.Request) -> web.StreamResponse:
     p = Path(tr.path)
     if not p.exists():
         return _err(f"track file missing: {tid}")
-    # 2026-10-04:兜底标记 header
-    is_seed = (tr.source == "seed")
     size = p.stat().st_size
     # Range header 支持(浏览器 audio seek 用)
     range_hdr = req.headers.get("Range")
@@ -383,9 +394,8 @@ async def api_stream(req: web.Request) -> web.StreamResponse:
         "Accept-Ranges": "bytes",
         "Cache-Control": "no-store",
     }
-    if is_seed:
-        # 2026-10-04:前端 store 读 X-Prisir-Source header → 弹「⚠️ 兜底」toast
-        headers["X-Prisir-Source"] = "seed"
+    # P2.5+28 A 阶段(2026-10-04):删 X-Prisir-Source=seed header。
+    #   seed.mp3 兜底彻底删除,本接口不再输出「兜底」标记 header。
     if range_hdr:
         headers["Content-Range"] = f"bytes {start}-{end}/{size}"
         status = 206

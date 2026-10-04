@@ -256,10 +256,9 @@ const headerText = computed(() => {
               :title="player.onlineReady ? 'LX 在线源 OK' : 'LX 在线源未就绪'">
           LX:{{ player.onlineReady ? 'OK' : 'OFF' }}
         </span>
-        <span class="probe seed" :class="{ ok: player.seedFallback }"
-              title="seed.mp3 兜底">
-          SEED:{{ player.seedFallback ? '✓' : '✗' }}
-        </span>
+        <!-- P2.5+28 A 阶段(2026-10-04):SEED 绿点删除。
+             seed.mp3 兜底已彻底移除,代码不再引用。
+             用户原话:「30 秒静音需要彻底去掉,不能播放就说明原因是什么」。 -->
         <button class="btn-eq" @click="ui.toggleEqPanel()"
                 :title="ui.showEqPanel ? '关闭 EQ' : '打开 EQ(10 段均衡器)'">
           🎚 EQ
