@@ -198,11 +198,12 @@ class OnlineSearch:
       3) 全失败 → 返 ok=False,前端给 toast
     """
 
-    # 2026-10-04 bug fix:用户实测报告 — 从开发到现在没真正接通过任何在线源。
-    # mock.js 永远返 googleapis URL(国内 DNS 不可达)+ juhe.js 用第三方公共服务
-    # api.music.lerd.dpdns.org(不稳定),全部掉 seed.mp3 兜底导致所有歌共享 White Christmas。
-    # 修复:默认 local-only,完全跳过外网请求(沿用 P3.10b 0 上传红线)。
-    # 若用户明确想试外网,可显式传 sources=["mock.js", "juhe.js"] 启用。
+    # P2.5+28 C 阶段调研(2026-10-05):9 源候选列表。
+    # 实际跑起来发现:shim 实现"call-all-handlers,first non-null wins",local.js 会屏蔽所有
+    # 其他源;加上 shim 的 crypto.aesEncrypt/rsaEncrypt 是 throw(kw/kg/tx/wy/mg 全要 AES),
+    # 用户拍的「9 源全启」实际上一首歌都解不出 URL — 仍是 local:// 占位。
+    # 真正能走的路线需要修 shim 按 source 名派单(已 revert,等用户拍板)。
+    # 当前保守默认仅启 local.js — 0 外网请求;真 mp3 命中 → 播;不命中 → 弹清晰 err。
     DEFAULT_SOURCES = ["local.js"]
 
     def __init__(self, sources: Optional[List[str]] = None):

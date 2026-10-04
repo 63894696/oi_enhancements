@@ -448,10 +448,16 @@ class TestLocalJsSourceExists(unittest.TestCase):
             "local.js 必须遵循 LX EVENT_NAMES 协议")
 
     def test_default_sources_is_local_only(self):
-        """OnlineSearch.DEFAULT_SOURCES 必须 = ['local.js'],不暴露 googleapis。"""
+        """P2.5+28 C 阶段调研(2026-10-05):实测后 DEFAULT_SOURCES 仅含 local.js。
+
+        原本拍板「9 源全启」,实测 shim call-all dispatch 让 local.js 屏蔽所有源 +
+        kw/kg/tx/wy/mg 需要 AES crypto(shim 未实现),用户拍的列表无一能解出 URL。
+        已 revert DEFAULT_SOURCES 到 ["local.js"](0 外网);后续若修 shim 再扩源。
+        """
         from music.player import OnlineSearch
-        self.assertEqual(OnlineSearch.DEFAULT_SOURCES, ["local.js"],
-            msg=f"DEFAULT_SOURCES 应为 ['local.js'];got {OnlineSearch.DEFAULT_SOURCES!r}")
+        sources = OnlineSearch.DEFAULT_SOURCES
+        self.assertEqual(sources, ["local.js"],
+            msg=f"DEFAULT_SOURCES 应仅含 local.js;got {sources!r}")
 
 
 # P2.5+28 A 阶段(2026-10-04):删除 TestApiStateSeedFallback 整组(is_seed_fallback 字段已删)
