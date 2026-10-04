@@ -200,11 +200,16 @@ class OnlineSearch:
 
     # P2.5+28 C 阶段调研(2026-10-05):9 源候选列表。
     # 实际跑起来发现:shim 实现"call-all-handlers,first non-null wins",local.js 会屏蔽所有
-    # 其他源;加上 shim 的 crypto.aesEncrypt/rsaEncrypt 是 throw(kw/kg/tx/wy/mg 全要 AES),
-    # 用户拍的「9 源全启」实际上一首歌都解不出 URL — 仍是 local:// 占位。
-    # 真正能走的路线需要修 shim 按 source 名派单(已 revert,等用户拍板)。
-    # 当前保守默认仅启 local.js — 0 外网请求;真 mp3 命中 → 播;不命中 → 弹清晰 err。
-    DEFAULT_SOURCES = ["local.js"]
+    # P2.5+28 Y 阶段(2026-10-05):实测发现 lyswhut lx_main.js 的 5 源(kw/kg/tx/wy/mg)
+    # 在 LX dispatcher + evt={action,source,info,musicInfo,type} 协议下能正确调通 QQ/网易/
+    # 酷我/酷狗/咪咕 API,但所有 5 源都被 CDN 返 101404 fnameHitCache_404 区域屏蔽,
+    # 拿不到真实歌曲 URL(只能拿 30 秒 preview)。真正能 deliver mp3 的是 huibq.js(89 行可审计,
+    # 走 lxmusicapi.onrender.com 公共 3rd-party API + share-v3 token,返真 mp3 CDN URL)。
+    # DEFAULT_SOURCES 是 LX sub-source 名(给 dispatcher 派单用,不是文件名):
+    #   - 'local' → local.js(本地 mp3 占位 fallback)
+    #   - 'tx'/'kw'/'wy'/'kg'/'mg' → huibq.js 内的 5 子源
+    # LxRuntimeClient 启动时按需把 huibq.js 装进 Node 子进程。
+    DEFAULT_SOURCES = ["local", "tx", "kw", "wy", "kg", "mg"]
 
     def __init__(self, sources: Optional[List[str]] = None):
         # 2026-10-04:默认 local-only(0 外网请求,0 上传)
@@ -256,6 +261,12 @@ class OnlineSearch:
 
     def get_url_multi(self, song_info: Dict[str, Any]) -> Dict[str, Any]:
         """P2.5+22:按 sources 顺序轮询 musicUrl,首个成功即返。
+
+        P2.5+28 Y 阶段(2026-10-05):sources 是 LX sub-source 名(local/tx/kw/wy/kg/mg),
+        不是源文件名。LxRuntimeClient.LX_SOURCES 才装源文件(huibq.js)。
+        轮询时按 sub-source 名派给 dispatcher,handler 再按 sub-source 名命中正确 API。
+        local 没 tx/wy... 等 sub-source → 永远返 local:// 占位。
+        huibq.js 注册了 tx/kw/wy/kg/mg → 这 5 个 sub-source 都能命中。
 
         返回字段: ok / url / source / err
         """

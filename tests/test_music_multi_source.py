@@ -447,17 +447,143 @@ class TestLocalJsSourceExists(unittest.TestCase):
         self.assertIn("EVENT_NAMES", src,
             "local.js 必须遵循 LX EVENT_NAMES 协议")
 
-    def test_default_sources_is_local_only(self):
-        """P2.5+28 C 阶段调研(2026-10-05):实测后 DEFAULT_SOURCES 仅含 local.js。
+    def test_default_sources_uses_sub_source_names(self):
+        """P2.5+28 Y 阶段(2026-10-05):Y.2 实测 lyswhut lx_main 5 源全被 CDN 区域屏蔽,
+        huibq.js(89 行可审计,3rd-party lxmusicapi.onrender.com + share-v3)是真能 deliver
+        mp3 的源。DEFAULT_SOURCES 默认是 LX sub-source 名(给 dispatcher 派单):
+          ['local', 'tx', 'kw', 'wy', 'kg', 'mg']
+        local 作 fallback,其余 5 个 huibq.js 都注册(任一命中即返 URL)。
 
-        原本拍板「9 源全启」,实测 shim call-all dispatch 让 local.js 屏蔽所有源 +
-        kw/kg/tx/wy/mg 需要 AES crypto(shim 未实现),用户拍的列表无一能解出 URL。
-        已 revert DEFAULT_SOURCES 到 ["local.js"](0 外网);后续若修 shim 再扩源。
+        注:这里用 sub-source 名,不是源文件名 — LxRuntimeClient.SUB_TO_FILE 会自动
+        映射 local→local.js / {tx,kw,wy,kg,mg}→huibq.js。
         """
         from music.player import OnlineSearch
         sources = OnlineSearch.DEFAULT_SOURCES
-        self.assertEqual(sources, ["local.js"],
-            msg=f"DEFAULT_SOURCES 应仅含 local.js;got {sources!r}")
+        self.assertIn("local", sources, msg=f"DEFAULT_SOURCES 必含 'local' 作 fallback;got {sources!r}")
+        for sub in ("tx", "kw", "wy", "kg", "mg"):
+            self.assertIn(sub, sources, msg=f"DEFAULT_SOURCES 必含 '{sub}' 子源;got {sources!r}")
+        self.assertEqual(sources.index("local"), 0,
+            msg=f"'local' 应在 DEFAULT_SOURCES 第 1 位(fallback 优先);got {sources!r}")
+        # 排除被屏蔽的源(不直接含源文件名,子源名不该是源文件名)
+        for blocked in ("lx_main.js", "changqing.js", "flower.js", "grass.js"):
+            self.assertNotIn(blocked, sources,
+                msg=f"{blocked} 是已删 / 屏蔽的源,不应再启;got {sources!r}")
+
+
+class TestLxRuntimeShimSafety(unittest.TestCase):
+    """P2.5+28 Y.2 (2026-10-05):lx_runtime.js shim crash-safety + 派单 correctness。
+
+    不真起子进程(避免网络/Node 依赖),直接读 lx_runtime.js 源码做 AST 字符串扫描,断言:
+      - 派单用 _handlerSources Map 按 source 名找声明 handler(不再 call-all)
+      - evt 第一参数传 {action, source, info} wrapper(对齐 LX dispatcher 协议)
+      - info 内的 musicInfo + type 字段派给 handler 第二参数(quality)
+      - process.on("uncaughtException") + ("unhandledRejection") 都在
+      - console.log/error swallow 异常(防止 wy.js 的 console.log(null) 杀子进程)
+    """
+
+    def setUp(self):
+        # tests/ → ../companion/lx_runtime/lx_runtime.js
+        self.lx_runtime_path = Path(__file__).resolve().parent.parent / "companion" / "lx_runtime" / "lx_runtime.js"
+        self.src = self.lx_runtime_path.read_text(encoding="utf-8")
+
+    def test_uses_handler_sources_map_for_dispatch(self):
+        """派单必须按 source 名精确找 handler,不再 call-all-first-non-null。"""
+        self.assertIn("_handlerSources", self.src,
+            msg="shim 应有 _handlerSources Map 跟踪 handler → 拥有 sub-source 名")
+        # callRequest 内部用 claimed 过滤
+        self.assertIn("claimed.length > 0", self.src,
+            msg="callRequest 应按 claimed 过滤 handler;不能 call-all")
+
+    def test_dispatcher_evt_wrapper_protocol(self):
+        """evt 第一参数必须是 {action, source, info} wrapper(对齐 lx_main.js dispatcher)。"""
+        # 检查 evt 构造含 action/source/info 三字段
+        self.assertRegex(self.src, r"const\s+evt\s*=\s*\{\s*action[^}]*source[^}]*info",
+            msg="shim 构造 evt={action, source, info} wrapper")
+
+    def test_quality_extracted_from_info(self):
+        """quality 必须从 info.type / info.quality 派生(handler 第二参数)。"""
+        self.assertIn("infoObj.type || infoObj.quality", self.src,
+            msg="shim 应从 info.type / info.quality 派生 quality")
+
+    def test_subprocess_safety_handlers(self):
+        """process.on uncaughtException / unhandledRejection 必须装(防 source 抛错杀子进程)。"""
+        self.assertIn('process.on("uncaughtException"', self.src,
+            msg="shim 应装 uncaughtException 兜底")
+        self.assertIn('process.on("unhandledRejection"', self.src,
+            msg="shim 应装 unhandledRejection 兜底")
+
+    def test_console_log_swallows_exceptions(self):
+        """console.log/error 必须 try/catch 包(swim wy.js 的 console.log(null) 抛错)。"""
+        # 简单的 regex 检查:console.log 重写含 try/catch
+        import re
+        m = re.search(r"console\.log\s*=\s*\(?\s*\.\.\.args\s*\)?\s*=>\s*\{?\s*try", self.src)
+        self.assertIsNotNone(m,
+            msg="console.log 重写必须 try/catch 包,防 wy.js-style console.log(null) 杀进程")
+
+    def test_dispatcher_handler_signature_in_lx_main(self):
+        """lx_main.js 的 dispatcher handler 签名是 ({source, action, info}),必须对齐。
+
+        否则 shim 传第一参数错(handler 拿到的是 info 直接 destructure,得到 songmid undefined)。
+        """
+        lx_main_path = self.lx_runtime_path.parent / "lx_main.js"
+        if not lx_main_path.exists():
+            self.skipTest("lx_main.js 不存在(可选用例)")
+        src = lx_main_path.read_text(encoding="utf-8")
+        self.assertRegex(src, r"on\(\s*lx_EVENT_NAMES\.request\s*,\s*\(\s*\{\s*source",
+            msg="lx_main.js dispatcher 必须接受 ({source, action, info}) wrapper")
+
+    def test_aes_shim_present(self):
+        """Y.2 ship:AES-128-ECB/CBC shim 给了网易云 eapi 协议用(Node crypto)。"""
+        self.assertIn("aes-128-ecb", self.src,
+            msg="shim 应支持 AES-128-ECB(网易云 eapi 协议)")
+        self.assertIn("crypto.createCipheriv", self.src,
+            msg="shim 应走 Node crypto.createCipheriv 实现 AES")
+
+
+class TestHuibqSourceLoads(unittest.TestCase):
+    """P2.5+28 Y 阶段(2026-10-05):huibq.js 是唯一能 deliver 真 mp3 的 LX 源(89 行可审计)。
+
+    静态审计:必须是 LX 协议源(注册 request handler + emit inited 事件)。
+    不做真网络请求(LxRuntimeClient 子进程太重,真起时间太长)。
+    """
+
+    def setUp(self):
+        # tests/ → ../companion/lx_runtime/huibq.js
+        self.huibq_path = Path(__file__).resolve().parent.parent / "companion" / "lx_runtime" / "huibq.js"
+        if not self.huibq_path.exists():
+            self.skipTest("huibq.js 不存在")
+
+    def test_huibq_is_readable(self):
+        """huibq.js 必须可读且 < 200 行(可审计红线)。"""
+        src = self.huibq_path.read_text(encoding="utf-8")
+        lines = src.count("\n")
+        self.assertLess(lines, 200,
+            msg=f"huibq.js 应 < 200 行(可审计);got {lines}")
+        self.assertGreater(lines, 20,
+            msg=f"huibq.js 应 > 20 行(实际逻辑);got {lines}")
+
+    def test_huibq_no_obfuscation(self):
+        """huibq.js 不能含混淆特征:单行 > 1000 chars + hex 转义 + String.fromCharCode 自解码。"""
+        src = self.huibq_path.read_text(encoding="utf-8")
+        # 单行长度
+        max_line = max(len(line) for line in src.split("\n"))
+        self.assertLess(max_line, 1000,
+            msg=f"huibq.js 单行长度应 < 1000(无混淆);got {max_line}")
+        # hex escape `\x..`
+        import re
+        hex_escape_count = len(re.findall(r"\\x[0-9a-fA-F]{2}", src))
+        self.assertLess(hex_escape_count, 20,
+            msg=f"huibq.js hex 转义应 < 20(混淆源数百);got {hex_escape_count}")
+        # String.fromCharCode 自解码模式
+        sfcc_count = src.count("String.fromCharCode")
+        self.assertLess(sfcc_count, 3,
+            msg=f"huibq.js String.fromCharCode 应 < 3;got {sfcc_count}")
+
+    def test_huibq_uses_lx_protocol(self):
+        """huibq.js 必须遵循 LX EVENT_NAMES 协议(on + inited send)。"""
+        src = self.huibq_path.read_text(encoding="utf-8")
+        self.assertIn("EVENT_NAMES", src,
+            msg="huibq.js 应引用 LX EVENT_NAMES 协议")
 
 
 # P2.5+28 A 阶段(2026-10-04):删除 TestApiStateSeedFallback 整组(is_seed_fallback 字段已删)

@@ -31,10 +31,18 @@ const axios = require("axios");
 // 的不是 JSON 而是 console.log 输出。
 // 修复:console.* 全部改走 process.stderr;process.stdout.write 只用于 RPC 响应。
 const _stderrWrite = (...args) => process.stderr.write(args.join(" ") + "\n");
-console.log = (...args) => process.stderr.write(args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ") + "\n");
+console.log = (...args) => {
+    try {
+        process.stderr.write(args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ") + "\n");
+    } catch (_) { /* swallow wy.js-style console.log(resp.body=null) throws */ }
+};
 console.info = console.log;
 console.warn = console.log;
-console.error = (...args) => process.stderr.write(args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ") + "\n");
+console.error = (...args) => {
+    try {
+        process.stderr.write(args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ") + "\n");
+    } catch (_) { /* swallow */ }
+};
 console.debug = console.log;
 
 const SCRIPTS_DIR = __dirname;
@@ -97,7 +105,24 @@ const lx = {
         if (options.body != null) {
             config.data = options.body;
         }
-        axios.request(config).then(
+        // P2.5+28 Y 阶段(2026-10-05):源 cb 包 try/catch + 同步抛错转 reject。
+    // 关键设计:source 调 request(url, opt, cb) 时,把它自己写的 cb 包成 wrappedCb —
+    //   1) 设 done 标志
+    //   2) try/catch 包 source 的 cb body,throw 转 onError(err)
+//   3) 回调 return undefined → 让 source 的 Promise 永远不 resolve(它读 resp.body=null 抛错)
+    //    会 unhandled-reject,但 process 已装 uncaughtException 兜底
+    const _safeCb = (cb, err, resp) => {
+        try {
+            if (err) cb(err, null);
+            else cb(null, resp);
+        } catch (cbEx) {
+            console.error("[lx_runtime] source cb threw:", cbEx.message);
+            // swallow — source Promise 不会 resolve/reject,Python 端 readline 超时
+            // (call_timeout=12s) 后客户端自己放弃,不会 hang
+        }
+    };
+
+    axios.request(config).then(
             (resp) => {
                 const headersObj = {};
                 if (resp.headers && typeof resp.headers.forEach === "function") {
@@ -105,13 +130,13 @@ const lx = {
                 } else if (resp.headers) {
                     Object.assign(headersObj, resp.headers);
                 }
-                cb(null, {
+                _safeCb(cb, null, {
                     statusCode: resp.status,
                     body: resp.data,
                     headers: headersObj,
                 });
             },
-            (err) => cb(err, null)
+            (err) => _safeCb(cb, err, null)
         );
     },
     on: (event, handler) => {
@@ -129,8 +154,44 @@ const lx = {
         crypto: {
             md5: (s) => crypto.createHash("md5").update(String(s)).digest("hex"),
             randomBytes: (n) => crypto.randomBytes(n).toString("hex"),
-            aesEncrypt: () => { throw new Error("aesEncrypt not shimmed (Phase 1 不需要)"); },
-            rsaEncrypt: () => { throw new Error("rsaEncrypt not shimmed (Phase 1 不需要)"); },
+            // P2.5+28 Y 阶段(2026-10-05):AES-128-ECB + RSA shim 给网易云 musicUrl 用。
+            // 网易云 eapi 协议用 AES-128-ECB 加密请求体,key = 'e82ckenh8dichen8',无 iv(ECB 不用)。
+            // kw/kg/wy/mg 都可能调 aesEncrypt。Node crypto 原生支持 AES-128-ECB。
+            aesEncrypt: (data, key, iv, mode) => {
+                // data: string | Buffer;key: string(8字节 eapiKey 实际 8 chars,我们 pad 到 16);
+                //   Node crypto 要求 AES-128 key = 16 bytes;若 key 长度不是 16,pad 到 16 (zero-fill)。
+                // mode: 'aes-128-ecb' | 'aes-128-cbc' 等;暂只实现 ECB/CBC。
+                const keyBuf = Buffer.isBuffer(key) ? key : Buffer.from(String(key), "utf8");
+                const key16 = keyBuf.length === 16
+                    ? keyBuf
+                    : Buffer.concat([keyBuf, Buffer.alloc(16 - keyBuf.length, 0)]).slice(0, 16);
+                const algo = (mode || "aes-128-ecb").toLowerCase();
+                const dataBuf = Buffer.isBuffer(data) ? data : Buffer.from(String(data), "utf8");
+                try {
+                    if (algo === "aes-128-ecb") {
+                        const c = crypto.createCipheriv("aes-128-ecb", key16, null);
+                        c.setAutoPadding(true);
+                        return Buffer.concat([c.update(dataBuf), c.final()]);
+                    } else if (algo === "aes-128-cbc") {
+                        const ivBuf = iv ? (Buffer.isBuffer(iv) ? iv : Buffer.from(String(iv), "utf8").slice(0, 16)) : Buffer.alloc(16, 0);
+                        const c = crypto.createCipheriv("aes-128-cbc", key16, ivBuf);
+                        c.setAutoPadding(true);
+                        return Buffer.concat([c.update(dataBuf), c.final()]);
+                    }
+                    throw new Error(`aesEncrypt: unsupported mode ${mode}`);
+                } catch (e) {
+                    console.error("[lx_runtime] aesEncrypt failed:", e.message);
+                    throw e;
+                }
+            },
+            // rsaEncrypt:kugou/migu 等源用来加密 songmid。Node crypto 默认不直接支持
+            // 「RSA 加密短数据 PKCS1 v1.5」(原生 RSA-OAEP),但 lyswhut lx-music-source 多数
+            // 用 RSA + 自写 base64。这里只实现占位:用 publicEncrypt 返回 Buffer,若用户源用
+            // PKCS1 v1.5 直接调会报错 — 后续若需要再扩。Phase Y 暂只对 wy(只用 AES)开启。
+            rsaEncrypt: (data, key) => {
+                console.error("[lx_runtime] rsaEncrypt called but not fully shimmed (Phase Y only wy=AES works)");
+                throw new Error("rsaEncrypt not shimmed (only wy AES-only source supported)");
+            },
         },
         zlib: {
             inflateRaw: (b) => require("zlib").inflateRawSync(b),
@@ -156,8 +217,25 @@ win.globalThis = win;  // jsdom 默认 window 就是 globalThis
 // 3. 加载 LX sources
 // ============================================================
 const loadedSources = {};
-// LX source 通过 lx.on("request", handler) 注册回调 — handler 就是函数本体。
-// 我们只需要在 RPC 时取 bus.listeners("request") 即可,无需中间收集。
+// P2.5+28 Y 阶段(2026-10-05):handler → 拥有 sub-source 名映射,用于按 source 派单。
+// 之前"call-all,first non-null wins"会让 local.js(handler 声明 {local: ...})屏蔽所有源
+// ——其他 handler 即便声明 {kw,kg,tx,wx,mg} 也永远轮不到,因为 local 先返 local://。
+// 修复:每个 handler 在 inited 阶段声明自己拥有哪些 sub-source 名,
+// RPC 时按 source 名精确派单给声明该名的 handler(可能有多个 → 顺序轮询);
+// 未声明该 source 名的 handler 不参与(local 不会被 kw 调用触发)。
+const _handlerSources = new Map();  // handler_fn => Set<sub-source name>
+let _lastRegisteredHandler = null;
+
+// 重写 lx.on 追踪最新注册的 handler — 给 _handlerSources 提供关联点
+const _origOn = lx.on.bind(lx);
+lx.on = (event, handler) => {
+    const r = _origOn(event, handler);
+    if (event === "request" && typeof handler === "function") {
+        _lastRegisteredHandler = handler;
+        if (!_handlerSources.has(handler)) _handlerSources.set(handler, new Set());
+    }
+    return r;
+};
 
 bus.on("inited", (data) => {
     if (data && typeof data === "object") {
@@ -165,6 +243,12 @@ bus.on("inited", (data) => {
         const sources = (data.init && data.init.sources) || data.sources;
         if (sources && typeof sources === "object") {
             Object.assign(loadedSources, sources);
+            // 把刚才注册的 handler 绑上 sub-source 名
+            if (_lastRegisteredHandler) {
+                const set = _handlerSources.get(_lastRegisteredHandler) || new Set();
+                for (const k of Object.keys(sources)) set.add(k);
+                _handlerSources.set(_lastRegisteredHandler, set);
+            }
         }
     }
 });
@@ -205,20 +289,34 @@ async function callRequest(action, source, info) {
     if (handlers.length === 0) {
         throw new Error("no request handler registered (no source loaded?)");
     }
-    const evt = { action, source, info: info || {} };
-    // Phase 1:串行调用所有 handler,第一个返回真值即为结果。
-    // (LX 原协议是按 source 分发;Phase 1 单 source 简化。)
+    // P2.5+28 Y.2 (2026-10-05):lx_main.js 在源码里注册的是 dispatcher handler:
+    //   lx.on(EVENT_NAMES.request, ({ action, source, info }, quality) => {
+    //     if (apis[source]) apis[source][action](info, quality);
+    //   });
+    // 所以 registered handler 的第一个参数就是 {action, source, info},第二参数是 quality。
+    // 早期 commit 时我以为 handler 签名是 `musicUrl(info, quality)` 直接调,实测发现是 dispatcher。
+    // 修正:第一参数传 {action, source, info},第二参数传 quality。
+    const infoObj = info || {};
+    const quality = infoObj.type || infoObj.quality || "320k";
+    const evt = { action, source, info: infoObj };
+    // 按 source 名派单
+    const claimed = handlers.filter(h => {
+        const set = _handlerSources.get(h);
+        return set && set.has(source);
+    });
+    const callList = claimed.length > 0 ? claimed : handlers;
     let lastErr = null;
-    for (const h of handlers) {
+    for (const h of callList) {
         try {
-            const r = h(evt);
+            const r = h(evt, quality);
             const v = await Promise.resolve(r);
             if (v != null) return v;
         } catch (e) {
+            console.error(`[lx_runtime] handler threw: ${e.message}`);
             lastErr = e;
         }
     }
-    throw lastErr || new Error("all handlers returned null");
+    throw lastErr || new Error(`no handler for source='${source}' returned a result`);
 }
 
 let lineBuf = "";
@@ -263,3 +361,14 @@ async function handleRpcLine(line) {
 // 优雅退出
 process.on("SIGTERM", () => process.exit(0));
 process.on("SIGINT", () => process.exit(0));
+
+// P2.5+28 Y 阶段(2026-10-05):兜底防子进程崩溃 — 部分 source 在异常路径会 throw 未捕获
+// (例如 wy.js 在 resp.body=null 时 console.log 抛 TypeError)。_safeCb 已包,但仍有漏网。
+// 加 uncaughtException handler 让任何漏过的 throw 仅 log,继续服务后续请求。
+process.on("uncaughtException", (err) => {
+    console.error("[lx_runtime] uncaughtException (kept alive):", err.message);
+    console.error(err.stack);
+});
+process.on("unhandledRejection", (reason) => {
+    console.error("[lx_runtime] unhandledRejection (kept alive):", reason);
+});

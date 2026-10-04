@@ -29,13 +29,28 @@ class LxRuntimeClient:
     多线程用 _lock 串行化 stdin/stdout。
     """
 
+    # P2.5+28 Y 阶段(2026-10-05):LX sub-source 名 → 源文件名映射。
+    # 'local' 子源只能由 local.js 提供;'tx/kw/wy/kg/mg' 由 huibq.js 提供(它是唯一能 deliver
+    # 真 mp3 的源,lyswhut lx_main.js 的 5 源全被 CDN 区域屏蔽)。mock 兼容老测试。
+    SUB_TO_FILE = {
+        "local": "local.js",
+        "tx": "huibq.js",
+        "kw": "huibq.js",
+        "wy": "huibq.js",
+        "kg": "huibq.js",
+        "mg": "huibq.js",
+        "mock": "mock.js",
+    }
+
     def __init__(
         self,
         sources: Optional[List[str]] = None,
         startup_timeout: float = 8.0,
         call_timeout: float = 12.0,
     ) -> None:
+        # sources 接受 sub-source 名(新约定)或源文件名(老兼容)。统一 dedupe 出源文件清单。
         self._sources = sources or ["mock.js"]
+        self._source_files = self._resolve_source_files(self._sources)
         self._call_timeout = call_timeout
         self._lock = threading.Lock()
         self._next_id = 0
@@ -44,9 +59,21 @@ class LxRuntimeClient:
         self._proc: Optional[subprocess.Popen] = None
         self._start()
 
+    @classmethod
+    def _resolve_source_files(cls, sources: List[str]) -> List[str]:
+        """把 LX sub-source 名(新) 或 源文件名(老兼容) 转成实际加载的源文件清单,去重保序。"""
+        seen: set = set()
+        out: List[str] = []
+        for s in sources:
+            file = cls.SUB_TO_FILE.get(s, s)  # 不在 SUB_TO_FILE 里就当作源文件名(老兼容)
+            if file not in seen:
+                seen.add(file)
+                out.append(file)
+        return out
+
     def _start(self) -> None:
         env = os.environ.copy()
-        env["LX_SOURCES"] = ",".join(self._sources)
+        env["LX_SOURCES"] = ",".join(self._source_files)
         # 在 Windows 上,subprocess 默认不带 CREATE_NO_WINDOW;避免弹黑窗
         creationflags = 0
         if sys.platform == "win32":
