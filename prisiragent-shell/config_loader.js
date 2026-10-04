@@ -31,6 +31,11 @@ const DEFAULTS = {
   "forum.url": "https://bbs.babelspan.com/forum.html",
   "forum.board": "browser/shell",
   "forum.hint": "prisirai",
+  // P3.10a(2026-10-04)toast 默认
+  "toast.level": "all",
+  "toast.max_queue": 3,
+  "toast.throttle_ms": 5000,
+  "toast.default_timeout_ms": 4000,
 };
 
 function yamlCandidates() {
@@ -111,6 +116,11 @@ module.exports = {
   forumBoard: () => get("forum.board"),
   forumHint: () => get("forum.hint"),
   forumFullUrl: () => `${get("forum.url")}#board=${get("forum.board")}&hint=${get("forum.hint")}`,
+  // P3.10a(2026-10-04)toast 快捷 getter
+  toastLevel: () => get("toast.level"),
+  toastMaxQueue: () => get("toast.max_queue"),
+  toastThrottleMs: () => get("toast.throttle_ms"),
+  toastDefaultTimeoutMs: () => get("toast.default_timeout_ms"),
   // 测试用
   _yamlCandidates: yamlCandidates,
   _loadFlat: loadFlat,

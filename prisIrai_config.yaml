@@ -40,3 +40,14 @@ forum:
   url: "https://bbs.babelspan.com/forum.html"
   board: "browser/shell"
   hint: "prisirai"      # 反馈入口的 hint 参数
+
+# ---------- 桌面弹卡 toast(P3.10a, 2026-10-04)----------
+# Win10+ Action Center / macOS Notification Center / Linux libnotify;
+# 走 Electron Notification,零 npm 依赖。
+# 用户偏好(通知偏好)走托盘「⚙ 设置 → 通知偏好」radio,落 userData/toast-state.json
+# (此 yaml 段仅给启动默认,用户偏好以 toast-state.json 为准)。
+toast:
+  level: "all"           # 启动默认通知级别(all=全部 / errors=仅错误 / off=关闭)
+  max_queue: 3           # FIFO 队列上限(超长 shift 队首)
+  throttle_ms: 5000      # L1 info 同 title 节流(5s 内只一次)
+  default_timeout_ms: 4000  # 富交互窗辅轨默认 duration(本期不做辅轨,字段留作后续)

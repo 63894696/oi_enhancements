@@ -1,51 +1,136 @@
-- [HackerNews Algolia 集成 PrisirAI](hn-prisir.md) — 2026-09-26 ship,免 key,hn_search provider 始终注册;56/56 绿(含真探活);Reddit 改换决定
-- [Exa MCP 集成 PrisirAI](exa-prisir.md) — 2026-09-26 ship,env 触发 exa_search provider + 4 capability;L0 只读;52/52 绿
-- [PrisirAI 间接接入审计](audit-direct-vs-indirect.md) — 2026-09-26 ship,4 处子进程桥(agent-reach/Easel 6/Easel 9/port_registry)全是设计意图,无需直接化;7 项真上游已直接整合
-- [GitHub agent 能力层项目调研](agent-tool-survey.md) — 2026-09-26,8 大类 50+ 项目 4 档决策:Playwright MCP P2 推迟 / 其它多不接(重叠 Easel/付费/产品边界)
-- [Playwright MCP 集成 PrisirAI](playwright-mcp-prisir.md) — 2026-09-26 ship,stdio JSON-RPC 子进程桥(7 工具),threading.Lock 非可重入坑修复,60/60 绿
-- [agent-browser 集成 PrisirAI](agent-browser-prisir.md) — 2026-09-26 ship,vercel-labs/agent-browser Rust CLI 子进程桥,@eN refs 稳定 ~93% token 削减,click/fill=L1 余 L0;64/64 verify 绿
-- [screenshot-mcp 集成 PrisirAI](screenshot-prisir.md) — 2026-09-26 ship,joeblack-lha/screenshot-mcp 桌面截图(Win PowerShell / macOS screencapture / Linux grim-scrot),补完浏览器外场景;6 capability 全 L0;35/35 + 68/68 verify 绿
-
-## M3.66 classification-head 路径(活跃)
-- [M3.66 立项 classification-head 替换路径 2026-09-23](prisIr-companion-m366-classification-head.md) — 8 scenario 用 AgentJev 风格 classification head 替换 15 LoRA;证据:parse_fail 0%/延迟 100x/Brier 5-10x;L1 调研 + L2 aliyun T4 训 demo + L3 8 scenario + L4 双通道 fallback
-
-## M3.64 5 scenario critical 专项 + Obsidian 复活(活跃,本地完成)
-- [M3.64 5 scenario critical 专项 + M3.66 L3 + Obsidian 验证 2026-09-23](prisIr-companion-m364-5scenarios-critical.md) — **本地完成 A/B1/B2**:Obsidian fcontent_root 死路径→真 vault 修复 + index 重建(10→15 entries) + ai_done 实测;4 个 baseline + 4 个 v3_critical.py + 8 个 v3 jsonl(280-480 条/场景,critical 23-39%);**B3/C 阻塞**:aliyun 192.220.14.165:49108 /workspace 被回收 / 无 nvidia,等用户重启 T4 后训 4 个 v3_conf + 8 个 AgentJev head- [PrisirAI Skills 工作台 Phase 6 主面板 ship](prisIr-skills-workbench-phase-6.md) — 2026-09-28 commit a7830eb;integration.py + 3 HTTP 端点 + polling + 弹卡;puppeteer 实测图
-- [PrisirAI Skills 工作台 Phase 7 紧凑化 + 默认全开 ship](prisIr-skills-workbench-phase-7.md) — 2026-09-28;12882→7993c(-38%);去 emoji + name 截断 24 + tags 上限 4;主面板/companion 默认全开
-- [PrisirAI Skills 工作台 文档 ship](prisIr-skills-workbench-docs.md) — 2026-09-28;config.md 11 开关 × 2 入口 + 4 档风险门 + fail-open 6 点 + token 经济性表;shipped.md 8 阶段 12 commit + 148 测试
-- [PrisirAI Skills 工作台 Phase 8 tier 分层字段 ship](prisIr-skills-workbench-phase-8.md) — 2026-09-28 commit 04ce490;69 skill 标 hot=3/warm=56/cold=10/archive=0;不动能力只分层;capability `_tier` override 启发式;未来留口子按 tier 分层注入
-- [OpenMontage 调研 + 借鉴决策](prisIr-openmontage-recon.md) — 2026-09-28;C(借鉴不嵌入)+ 免费资源;5 设计模式(checkpoint/scoring/pre-compose/post-render/budget);5 phase ship 路径估 1-2 周;单集 60 秒稳定后能力 vs 现状对比
-- [Phase 9 OM-P1 + MA-P1 双线 ship](prisIr-phase-9-om-p1-and-ma-p1.md) — 2026-09-28 commit 8653940;video_checkpoint + agent_handoff + workflow 集成 + 14/14 测绿;最小 agent 团队示例(Triage→Creative→Art)链式 handoff;累计测试 170
-- [Phase 10 OM-P2 Provider 7 维度评分 ship](prisIr-phase-10-om-p2-scoring.md) — 2026-09-28 commit 721184d;video_provider_scoring.py + 16 provider + pick_best + video_creator.pick_provider_for_creator hook;用户「spawn on-demand 架构」决策(provider 不绑单一,跟最小 agent 团队一致);13/13 测绿;累计测试 183
-- [Phase 11 OM-P3 Pre-compose 预算校验 ship](prisIr-phase-11-om-p3-pre-compose.md) — 2026-09-28;用户「免费优先,单集 ≤ $0.10」拍板;video_budget.py + check_budget + suggest_replacements + run_workflow pre_compose hook;14/14 测绿;累计测试 197
-- [Phase 11-H 国内 CNY provider + ¥100/集预算 ship](prisIr-phase-11h-cny-budget-update.md) — 2026-09-28;用户「国内短剧成本很高」拍板;6 国内 provider + 全转 USD(CNY×0.139)+ 预算改 $14;真实国内 11 步编排 $0.54 < $14;suggest_replacements bug 修复;14/14 原 + 8/8 H 测试全绿;累计测试 211
-- [Phase 12 OM-P4 免费资源真集成 ship](prisIr-phase-12-om-p4-free-resources.md) — 2026-09-28 commit;用户「渐进 ship + 证据」决策;edge_tts_client + pixabay_client + archive_org_client + free_resource_fetcher;edge-tts 真生成 24KB 中文 mp3 / archive.org 真搜 3 hits / Pixabay 真探测 400;13/13 测绿(含 4 次真调用);累计测试 224
-- [Phase 12b OM-P4 Pixabay 修复 ship](prisIr-phase-12b-om-p4-pixabay-fix.md) — 2026-09-28;用户配 PIXABAY_API_KEY 后实测发现:Pixabay **无音频 API**(/api/audio/ 403,我之前 search_music 瞎编);删 search_music + 加 search_images + probe_key 升级(rate_limit 100/60s);free_bgm 改走 archive.org audio;pixabay_music scoring availability=0 自动落到 fma_music;18/18 测绿(6 项真调);累计测试 229
-- [Pixabay API 实际覆盖范围](pixabay-no-audio-api.md) — reference:网页有 Music/Photos/Videos 多分类,但公开 REST API 只 images+videos;Music **只能手动下**(API 不开放);100/60s 速率;per_page 最小 3;BGM 真集成走 archive.org audio
-- [M3.66 dropdown category 分组](prisIr-m366-dropdown-category.md) — 2026-09-28 ship;用户「同款 dropdown 清晰区分」决策;`companion_llm_providers.py` 加 `category` 字段(5 类:llm/tts/image/music/video)+ 22 个新 spec;LLM 写 keys.db,专业模型写 `~/.prisIrai/media_keys.json/_prisir_key` 子键(防污染顶层 siliconflow 等);原子写;累计 dropdown 平台 15→37
-
-## ECC/claude-swarm 借鉴 P2-Rules + P2-Hooks + P1-Instincts(2026-10-01/02 ship)
-- [P2-Rules ship](prisIr-p2-rules-shipped.md) — AGENTS.md frontmatter 解析 + build_messages 注入(完全 ECC 对齐);`prisir_work/rules.py` + 17 测试
-- [P2-Hooks ship](prisIr-p2-hooks-shipped.md) — 4 hook(secrets_check/data_egress/mtime_check/noop_user_prompt)+ 3 档 profile(off→standard→strict,默认 off);22 测试
-- [P1-Instincts ship](prisIr-p1-instincts-shipped.md) — JSONL 存储 + threshold 0.5 + reinforce ±0.05/0.1;`memory/instincts.py` + 17 测试;累计 56 测试全绿
-
-## jcode 借鉴 P3-HookRisk + P4-Compaction + P5-SwarmTLDR(2026-10-02 ship)
-- [P3-HookRisk ship](prisIr-p3-hookrisk-shipped.md) — 借鉴 jcode-command-risk,4 档分级 Safe/Low/Confirm/Catastrophic + 8 Catastrophic 模式(rm -rf / find -delete / shred / truncate / dd of= / `&gt;file` / mkfs / chmod -R 000);`~/.claude/hooks/command_risk.py` + 13 测试;profile 三档(off→standard→strict,默认 off)
-- [P4-Compaction ship](prisIr-p4-compaction-shipped.md) — 借鉴 jcode-compaction-core,200K token budget + 80%/95% 双阈值 + IMAGE_TOKEN_COST=1600 平摊 + 中文 4 段 SUMMARY_PROMPT;`memory/compaction.py` + 14 测试;Step 7 退一步只做 95% hard 压缩(无同步 llm_call);build_messages 钩子在 return msgs 之前
-- [P5-SwarmTLDR ship](prisIr-p5-swarmtldr-shipped.md) — 借鉴 jcode-swarm-core,SWARM_TLDR_REQUIRED_OVER_CHARS=240 + MAX_SWARM_TLDR_CHARS=200 + SWARM_COMPLETION_REPORT_MARKER + MAX=4000;`dev_dispatch.py` +5 函数 + `prisIragent_dev_consumer.py` line 329-344 完成报告校验(只 log.warning 不阻断)+ 27 测试;累计 110 测试全绿
-- [P3j T23 web_search 借 SearXNG 加 87 个无 key 引擎 ship](p3jt23-web-search-multi-engine.md) — 2026-10-02 commit d0db8c1;`prisIr_work/search_engines/` 12 子文件(general/academic/code/wikipedia/news/maps/images/media/specialty)+ _Stats 类 + stats()/reset_stats() API + BanDict 5s→24h 阶梯;provider 总数 9→96;research.py 立即得到学术/维基/代码/视频媒体全覆盖;99 测试全绿(89 parametrize + 5 mock + 5 integration + 4 ban + 9 sanity);3 坑(register_all 内部 import 避循环+pack.object 子模块避 pytest mock 失活+wikipedia 改 _json_get 直 patch)
-- [P3j T24 ext lazy-spawn fallback fix ship](p3jt24-ext-lazy-spawn-fix.md) — 2026-10-03 commit b386c88;`_ext_rpc_call` 加 lazy-spawn 段(单点修 1 函数 / 9 caller 自动);用户问「免费的 Postgres」类问题 100% 失败 bug 修复;5 测试全绿(missing/entry-not-found/spawn-exception/alive-no-double/dead-respawn);3 坑(NTFS case-folding 别名+别 test module 级 MagicMock 污染强制重建+Windows pipe select 改同步 on_write callback)
-- [P2.5+21 Electron 壳子窗 4 bug + task-runner 死循环 hotfix ship](p2-5-21-shell-subwindows-shipped.md) — 2026-10-03 commit 3c1d29d + 5496d97;语伴/音乐/日程子窗 helper(startCompanion/startMusic/waitForPort)+ startWeb 加 --calendar-port + hashchange+__wfModalOpen 幂等触发 wfmodal + setWindowOpenHandler _decideSameOriginOpen 5s debounce 防同源递归;test_electron_subwindows.py 14 测试全绿,真函数体 regex 抽 node 子进程跑;hotfix: task-runner `_ext_spawn` 每次 reset crash_count=0 死循环 → `_ext_respawn_total>5` 强制 STOP;完整修法派 chip task_f48e99a4
-- [P2.5+21 ship 后 E2E 漏修](p2-5-21-shell-subwindows-shipped.md#2026-10-03-ship-后实际-e2e-发现) — 2026-10-03 commit b1f0704 + b14985a;`DEFAULT_CALENDAR_PORT` 未声明常量 → ReferenceError → 18802 不监听 → 改 `readCalendarPort()` 函数调 + TestMainJsSyntax 加代码(非注释)常量引用保护;task-runner 启动 1 次成功不弹窗验证;14 测试全绿;**经验**:node --check + 函数存在性 ≠ 启动成功,ship 后必须真跑 electron 验端口
-- [P2.5+21 ship 后 4 子窗体感问题](p2-5-21-shell-subwindows-shipped.md#eb01210-ship-后-4-子问题) — 2026-10-03 commit eb01210;语伴 waitForPort 3s→10s / 日历大小写修 `/prisIragent` / music 空队列 toast / 删顶栏工作流按钮 + closeWorkflow history.replaceState;6 新测试覆盖;20/20 绿;**经验**:ship 后必须 HTTP 探活 + grep HTML 验实际渲染,日志看不出大小写/超时/按钮删没删
-- [P2.5+22 music 多源 fallback + 日程 30 天 ship](p2-5-22-music-multi-source-and-calendar-30d.md) — 2026-10-03 commit 7e0ac58;LxRuntimeClient sources=["mock.js","juhe.js"] 双源(musicUrl 顺序轮询,首 ok 返) + Player.seed_from_url/play_random + api_stream lx: 前缀 _stream_remote_url aiohttp 透传 + playBtn 空队列 toast;日程 14→30(8 处) + 「Prisir 日历」→「PrisirAI 日程」 + onAiClear confirm 删 obsolete 括号;test_music_multi_source.py 12 测试全绿;**bug**:lx 框架回包 {ok,result:url_string} ≠ {data:{url}},get_url 兼容 3 形态;ikun.js DNS ENOTFOUND 崩 Node 进程必排除;**经验**:user「请从这些集成源获取,不要另外」= 资源已有不外接
-- [P2.5+23 music 真歌名池 + 新前端布局 ship](p2-5-23-music-pool-and-ui.md) — 2026-10-03 commit 9761fab;SongPoolCatalog CSV 解析(388→381 unique 6 标签)+ 启动随机洗 60 + tag 过滤;Player._cmd_favorite(幂等 fav_id=sha1[:16])+ _cmd_download(写 cache/<safe_title>.mp3,Win 非法字符清洗);删 search/queue UI 加 song-grid 左+中 2/3 + footer control-bar 右下 + 歌词栏目下方 favorite+download;audio.ended → fetchRandomNext 自动衔接;coverGradient hash 渐变占位免 iTunes 429;test_song_pool_and_favorite.py 22 测试全绿 + P2.5+22 12 测试组合 34/34;**坑**:make_mocked_request path 必须带 `?` 前缀否则 req.query 取不到 + TestClient 跨文件 event loop 污染 P2.5+22 测试要绕;**经验**:user 填 CSV 是「真歌名池」最佳方案,真去接歌单 API 不如让用户自己维护
-- [P2.5+23 hotfix music 静态资源 no-store](p2-5-23-hotfix-music-static-cache.md) — 2026-10-03 commit b9211ef;ship 后用户实测右键开音乐子窗界面没变;根因 aiohttp `add_static` 不发送 Cache-Control,Electron BrowserWindow 用启发式缓存了 ship 前 index.html/app.js;修法 index() handler + `_no_cache_static_mw` middleware 拦截 /music-static/* 加 `Cache-Control: no-store, no-cache, must-revalidate` + `Pragma: no-cache`;34 测试全绿 + curl -I 验头到位;**经验**:前端 ship 后必须 `curl -I` 验 Cache-Control 头,Python 测试 + E2E 都过不代表用户能看到新 UI;aiohttp add_static 无 headers 参数,用 middleware 是最稳修法
-- [P2.5+23 hotfix 点歌播不出 + LX 探测灯 + mimetypes](p2-5-23-hotfix-playback-and-lx-health.md) — 2026-10-03;用户实测 3 ship 后 bug:LX 探测灯一直灰(connectWsState 不碰 lxDot,api_health 无 online 字段)+ 点歌播不出(mock.js 永远返 googleapis 公网 mp3,sandbox/国内封,无 onerror 静默)+ /api/stream/<id> 500 NameError mimetypes 顶层漏 import;修法 seed.mp3 兜底 + seed_from_url 检测 googleapis 走本地 + api_health 加 online/seed_fallback + app.js startLxHealthProbe 5s 轮询 + app.css lx-{probe,ok,warn,down} 4 色 + audio.onerror toast 反馈 + 顶层 import mimetypes;38 测试全绿 + HEAD /api/stream/<id> 200 audio/mpeg 119827 bytes;**经验**:mock 来源不可达必有本地兜底;api_health 一定要返前端需要的状态字段,别让前端猜;Python 测试全过 ≠ 真 E2E 过,完整跑所有路由(含 HEAD / 4xx)才能发现 mimetypes 漏 import
-- [P3.4 music 歌词窗单/双行 toggle ship](p3-4-music-lyric-lines-toggle-shipped.md) — 2026-10-04 ship;☝ 单行 / ☟ 双行(落雪/Spotify 流派,active + 下一行预览)+ 托盘 radio group:lyricLines(互斥单选对)+ 复用 #settings-panel 末尾 seg-btn 双按钮 + 落盘 _lyric_state.lines(默认 1)+ 33/33 单测 + 189/189 全栈 + vue-tsc 0 error + E2E puppeteer CSS 切换 .line.next display:none↔block 验证绿;**复用** _lyric_state IO(P3.2 opacity/scale 同构)+ rebuildTrayMenu(P2.5+26 checkbox 经验)+ #settings-panel hover 露 + setting-row 样式;**关键模式**=根 :class 双绑 + 后代选择器,1 ref 控多个后代不污染 v-for DOM
-- [P2.5+24 music Vue 3 + Pinia 重写 ship](p2-5-24-music-vue-shipped.md) — 2026-10-03 commit TBD;P2.5+23 hotfix 1+2 后用户实测仍有 UX 痛点(点歌脱节 / 上下首无反应),要求借鉴 10+ 开源桌面音乐客户端(lyswhut/lx-music-desktop ★ 53.8k + MusicFree + YesPlayMusic + Vue-mmPlayer)成熟模块重做最简界面;**用户拍板(4 项)**= 借鉴全部+桌面歌词独立窗 / 改造栈=引入 Vue 3+Pinia / 保留现有真歌单池=只留播放列表 / 完整借鉴+一次 ship;新增 companion/static/music-vue/ Vite 6 + Vue 3.5.13 + Pinia 2.3.0 + TS 5.6 strict 工程(20 文件 ~2200 行)+ PlayerService 单例 + 6 态状态机(MusicFree)+ token 校验丢 stale play()(Vue-mmPlayer)+ AbortError 标准规避(Chrome 50+)+ preload 下一首 URL(LX usePreloadNextMusic,10s 阈值)+ onstalled 主动 load()(Vue-mmPlayer)+ onerror → setTimeout(3000) → playNext(Vue-mmPlayer)+ 三层进度条(Vue-mmPlayer)+ 二分查找 lyric index(YesPlayMusic);后端改 Player.preload_next_url() + /api/songs/preload 路由 + static_dir 优先 music-vue/dist(旧 static/music/ 作 fallback);22/22 新测试 + 40/40 旧测试全绿无回归 + vite build 89.30KB JS / gzip 34.27KB + 11.34KB CSS + Puppeteer MCP E2E 7 核心 UI 元素全 render(60 真歌名池 songs loaded);**坑**:Node 'events' TS 类型声明问题 → 自写极简 Emitter ~30 行(emitter.ts:on/off/emit/removeAllListeners);Vite alias `@/*` 必须在 vite.config.ts 显式 resolve.alias + tsconfig paths 双配;api 函数签名 + .get/.post 多形式(TS 2558 type argument);**经验**:借鉴成熟开源的核心里程碑(token/AbortError/preload/状态机枚举)1 次 ship 即可消除 vanilla JS 多年 UX 痛点,不必手堆轮子;E2E Puppeteer 验「7 核心元素 + 60 song rows」是判定 Vue 工程真挂载的最小金标准
-- [P2.5+25 music 桌面歌词独立窗 ship](p2-5-25-music-lyric-vue-shipped.md) — 2026-10-03;P2.5+24 ship 后用户拍板「桌面歌词独立窗」(P2.5+24 plan 4 项决策最后一项);**3 项拍板**:前端=新写 Vue LyricOnlyView(不复用旧 HTML) / 触发=托盘+MiniBar 两个都给 / 关闭=双击歌词窗;**实现=lyric.html 入口 + src/lyric.ts entry + LyricOnlyView.vue + 独立 Pinia store(stores/lyric.ts,不依赖 player store,bootstrap 二分查找兜底)+ styles/lyric.css(透明主题 + 国画色渐变 active) + vite.config.ts rollupOptions.input 多入口(main+lyric 自动拆 chunk);Electron 壳 _createChildWindow 扩展 5 字段(transparent/frame/alwaysOnTop/resizable/skipTaskbar 向后兼容)+ _CHILD_SPEC.lyric(720×360 transparent:true frame:false alwaysOnTop:true skipTaskbar:true)+ openLyricWindow() helper 镜像 openMusicWindow 端口轮询 + 托盘 🎤 桌面歌词 + IPC shell:openLyric/closeLyric 白名单 + preload.js 暴露 prisIragent.openLyric/closeLyric 新前缀(主 web 用 oiShell 不动)+ MiniBar ♡ 收藏左侧 🎤 按钮(dev 模式优雅 toast 降级);**vite build** main 19.60KB + lyric 4.02KB + 共享 vue 70.10KB;**测试** 20/20 新测试绿 + 101/102 全栈 0 引入回归(1 个 pre-existing 旧静态测试是 c5889 P2.5+24 ship 前失败);**Puppeteer E2E** /music-vue/lyric.html 200 + DOM #drag-bar/#lyrics-stage/#meta/#conn-tag 全部命中 + body background rgba(0,0,0,0) transparent !important 验证 Electron 透明窗;**复用** wsConnect('/ws/lyrics') + ILyricLineMsg + ILyricLineEvt + 旧 lyrics.css --lyrics-color/font-size/opacity CSS var + openMusicWindow 端口轮询模式 + Player 二分查找算法;**0 后端改动** /music-vue/lyric.html 由 vite dist 静态路由自动 serve
-- [P2.5+26 music 桌面歌词窗 alwaysOnTop/lockDrag 状态 ship](p2-5-26-music-lyric-window-state-shipped.md) — 2026-10-03;P2.5+25 ship 后用户提 3 项可关(alwaysOnTop 遮挡+拖动误触+重启状态不保持);**2 项拍板**:菜单位置=托盘子 menu 更多×子项 / 状态存储=userData JSON;**实现**=_lyric_state_path/load/save(坏 JSON renameSync .corrupt-<ts>)+ module 级 let _lyric_state = _lyric_state_load() + _lyric_apply_state(w)(setAlwaysOnTop level='floating'|'normal' + setBounds)+ _createChildWindow lyric-only 分支(ready-to-show + 3.5s fallback + move/resize 250ms debounce 落盘)+ 4 helpers(_toggleLyricAlwaysOnTop/LockDrag/LockCurrentBounds/Close)+ _notifyLyricWindow webContents.send('shell:lyricStateChanged') 主进程→渲染层主动 push + 托盘「🎤 桌面歌词」改 submenu 5 项(打开+2 checkbox+📌锁定位置+🚪关闭)+ 抽出 buildTrayItems 函数 + rebuildTrayMenu 重建(checkbox 是构造期属性);**4 新 IPC** shell:toggleLyricAlwaysOnTop/toggleLyricLockDrag/getLyricState/setLyricBounds(后 2 校验 w>=480 h>=240);**preload** 4 invoke + onLyricStateChanged(cb) 返 unsubscribe;**LyricOnlyView** onMounted getLyricState bootstrap 拉初始态 + 订阅 onLyricStateChanged + lock.value ref + 根 :class="{ 'lyric-locked': lock }" + onBeforeUnmount 清理;**lyric.css** .lyric-locked #drag-bar { no-drag + not-allowed + opacity 0.4 + 国画红半透明小条 } + :hover 0.85 提示;**vite build** vue-tsc 0 error + lyric.js 4.02→4.46KB + lyric.css 1.99→2.20KB;**测试** 31/31 新测试绿 + 132/133 全栈 0 引入回归;**Puppeteer E2E** 4 DOM 命中 + lyricLockedClass false + body rgba(0,0,0,0) + conn-tag 🟢 + onMounted dev/Puppeteer 无 IPC 静默 no-op;**经验** Electron Menu checkbox checked 是构造期属性,toggle 后必 rebuildTrayMenu 重建菜单否则 UI 永远显旧态
-- [P3.1+P3.2 music 歌词窗进度条拖动 + 视觉调档 ship](p3-1-2-lyric-progress-and-visual-tuning-shipped.md) — 2026-10-03;P2.5+26 ship 后用户拍板 11 项主流播放器优化 Phase 1 全接 4 项(N6 进度条拖动 0.5h + N11 透明度/缩放 2h + N7 长按收藏 2h + N4 单双行 toggle 2h),P3.1+P3.2 合并 1 commit(都改 LyricOnlyView 同视图);**P3.1** lyric store 加 seek/seekPct action 走 /api/cmd {action:'seek', offset:秒} + seekInFlight 节流 + 乐观 progress.value 更新 + clamp [0,duration] + 新独立组件 LyricProgressBar.vue(props current/duration + emit seek 不绑 player store 借鉴 Vue-mmPlayer 三层 + dragging 模式 mousedown 即时视觉 / mouseup 才发)+ LyricOnlyView 集成 #progress-zone fixed bottom:22px(元数据之上)+ test_music_lyric_p31.py 19 测试 3 类;**P3.2** _lyric_state 加 opacity:0.85 + scale:1.0 字段 + _clampNumber helper(Math.max(lo, Math.min(hi, Number.isFinite(n) ? n : dflt)))兜底 NaN/Inf/字符串+ 2 新 IPC shell:setLyricOpacity [0.3,1.0] / setLyricScale [0.7,1.6] 都 save + webContents.send push + shell:getLyricState 返回值加 2 字段 + preload 暴露 + LyricOnlyView opacity/scale ref + #settings-panel(顶部居中 hover 露 1.0 默认 0.25 半透明)+ 2 setting-row 滑杆(×100 百分比显示)+ lyric.css :root --lyric-window-opacity/scale + body opacity + transform scale(center origin)+ transition 180ms + test_music_lyric_p32.py 36 测试 6 类;**vite build** vue-tsc 0 error + lyric.js 4.46→7.53KB(lyric.css 1.99→4.28KB 含 P2.5+26 lock + P3.2 视觉)+ **测试** P2.5+26 31 + P3.1 19 + P3.2 36 = 86/86 全绿 + 全栈 lyric + favorite+download 测试 132/132 0 引入回归;**权衡**:P3.2 不做尺寸锁定(与 P2.5+26 bounds 双轨冲突)+ 不做 click-through(P2.5+28 待办);**复用** ProgressBar.vue 三层 + dragging 模式 + props/emit pattern + openLyric 端口轮询模式 + ws /ws/lyrics 通道
-- [P3.9 music song_pool v2 接入 ship](p3-9-music-song-pool-v2-shipped.md) — 2026-10-03;P2.5+23 ship 后用户提「更多类型标签 + 999 首」诉求;subagent 已 ship 841 行 14 标签 song_pool_v2.csv(sp001..sp841 显式 id + duration_sec 估算时长);**2 项拍板**=备份 v1 + 删 v2(只留 song_pool.csv + song_pool_v1.csv)/ duration_sec 显示用(前端做 fallback 不依赖 audio.duration)/;**实现**=mv song_pool_template.csv → song_pool_v1.csv(388 行 6 标签 v1 备份)+ cp song_pool_v2.csv → song_pool.csv(主)+ SongMeta 加 duration_sec + is_favorite + download_count + play_count + last_played_iso 5 字段 + _parse_csv_rows 加 utf-8-sig(容 v1 BOM + v2 无 BOM)+ schema 探测(header[0]=='id' → v2)+ v2 分支 9 列解析 + v1 分支 3 列兼容(_safe_id 派生)+ _safe_int helper 容错空/字符串/"269.0" 浮点+ 默认路径 _POOL_DEFAULT 改 song_pool.csv + dedup 改按 id 去重(sp138 subagent bug 防御性 warn 日志)+ 前端 player.ts playById + bootstrap 队列 duration_sec ?? duration ?? 0 fallback;**测试**=test_song_pool_and_favorite.py 改写(≥380 → ≥820 unique + tags_present v2-specific + 删 Immortals 改测 qingtian_exists sp001)+ 加 test_id_is_v2_explicit + test_v2_csv_format_loaded(sp001=晴天必 dur=269)+ 27/27 全绿 + 全栈 lyric+song 113/113 0 引入回归;**vite build** main 19.60→19.63KB(+30 字节 三元运算);**坑**=subagent v2 CSV sp138 重复 × 2 首歌(一千个伤心的理由 + 一路上有你 一路被丢弃 一路待用户手动补)+ v1 BOM 必须 utf-8-sig + 后端字段名 duration_sec 与前端原读 song.duration 字段名差异用 ?? fallback 解决;**复用** SongMeta dataclass asdict() 自动展开新字段 → /api/songs 响应自动增字段(API 向后兼容)
-- [P3.3 music ♡/♥ 长按弹 4 项 PopupMenu ship](p3-3-music-favorite-menu-shipped.md) — 2026-10-03 commit 982c327;P3.1+P3.2 ship + P3.9 ship 后下一项 11 项优化之 N7;**用户拍板**=精简 4 项菜单(📋 复制曲名+艺人 / ▶ 立即播放 / 📂 查看所有收藏 / ❌ 取消收藏 仅已收藏显示)+ 收藏列表 UI=Toast 列表(pushListToast 8s TTL)+ 触发=长按 600ms touchstart/touchend + 右键 contextmenu;**实现**=后端 Player.list_favorites(limit=50)+ remove_favorite(校验 source 防误删 lx/local)+ 2 个新 handler api_favorites/api_favorite_remove + 2 router;前端 ui.ts pushListToast + ListToastMsg interface + Toast.vue 加 list 类型分支 + 新 components/PopupMenu.vue(110 行 通用 popup 借鉴 YesPlayMusic Popup + 落雪 LY 右键菜单:position fixed + viewport clamp + click-outside + ESC + @mousedown.stop 防内 click 冒泡)+ MiniBar ♡/♥ 按钮加 @contextmenu + @touchstart/@touchend 600ms + onFavClick 防长按触发 click + onSelectMenu 4 分发(navigator.clipboard.writeText + toast 失败兜底);**vite build** main 19.63→23.21KB(+3.6KB PopupMenu + 长按 + Toast list + 4 menu)+ vue-tsc 0 error;**坑**=clipboard API 在 Electron secure context 默认 OK 但要 try/catch fallback + longPressTriggered flag 防 click vs long-press 双触发 + TouchEvent touchend 不能 preventDefault(已结束);**测试** test_music_favorite_menu.py 43 测试 10 类覆盖(Player 单元 7 / API 路由 5 / PopupMenu 10 / MiniBar 12 / Toast 2 / ui 3 / player store 3 / routes 2)+ 全栈 music 212/212 0 引入回归
+# Memory Index
+- [Prisir 论坛生产部署](forum-prod-deployment.md) — bbs.babelspan.com + WG:18813,密钥/拓扑/开机自启
+- [PrisirAI diagram-design 整合](prisIr-diagram-design-integration.md) — 40 种图 skill,推荐 A+B ship
+- [Prisir 仓库大写 I 改名](prisIr-rename-uniform-naming.md) — 4 文件 + 7 test 统一化;NTFS/Git 大小写坑
+- [prisIr_graph wikilink 图谱](prisIr-graph-shipped.md) — 2026-09-23/24 ship A/B.v2/C/D,7 个 MCP 工具
+- [SecBrowser 隐藏翻译菜单](secbrowser-hide-translate-menu.md) — 下一轮编译时隐藏灰色 translate 菜单
+- [MV3 E2E 消息通道坑](mv3-e2e-message-channel.md) — reload 扩展断开 sendMessage,测前必刷新
+- [MV3 CDP isolated-world eval](mv3-cdp-isolated-world-eval.md) — content script 用 isolated world contextId
+- [MV3 扩展 ID 用 manifest key 钉死](mv3-ext-id-pinning.md) — 默认 ID 换 profile 就漂移;E2E 8/8 假阳性
+- [探查派单真边界](exploration-dispatch-boundary.md) — explorer 多模型独立探查+合流适合派
+- [搜索设计 Perplexity/Tabbit](search-design-perplexity-tabbit-recon.md) — Comet/Tabbit CDP 实测
+- [OIagent 串行链状态](oiagent-serial-chain-status.md) — P0/I-1..I-4/CW-2 全交付,#45+NTP/trLog
+- [灵犀输入法三法布局](lingxi-ime-three-methods-layout.md) — 拼音/五笔/语音,右 Ctrl/Shift/Alt 激活
+- [oiagent 派单盯速度](oiagent-dev-team-oversight.md) — 派单后盯进度,速度不正常主动接手
+- [oiagent 协作链路消费端](oiagent-collab-chain-consumer.md) — task_queue 常驻 consumer,cc-switch 15721 仅 health
+- [oiagent 团队防重错记忆](oiagent-dev-team-memory.md) — 宪法契约注入+OIMemory dev_lessons 纠错回流
+- [宪法合规检测器](constitution-compliance-harness.md) — 硬伤固化为确定性判分 + dev-consumer 闸门
+- [oiagent 团队协作架构 v2](oiagent-team-workflow-v2.md) — 改代码派 tasks-code,文本派 tasks
+- [prisirwork 地基整合设计](prisirwork-foundation-design.md) — 能力门面(借 openwork)+ 双入口
+- [微信文章抓取 UA](wechat-article-fetch-ua-bypass.md) — mp.weixin.qq.com 用 MicroMessenger UA
+- [SecBrowser CDP Runtime.evaluate](secbrowser-cdp-runtime-evaluate-await-promise.md) — 双层 result + Promise.resolve 吞值,ev_async helper 固定写法
+- [tasks-code 双闸门路径偏移](task-code-claim-gate-path-offset.md) — ROOT 在父目录,verify_files_touched 加 fallback
+- [dev_dispatch 声明行首锚定](dev-dispatch-decl-line-anchor.md) — parse_declared_files 改 ^ + MULTILINE 后稳
+- [chat_race pick userModel](chat-race-pick-usermodel-pinning.md) — N>=2 时漏选 userModel → 404,必占候选 0 位
+- [prisIr-browser vs custom-hover-translate](prisIr-browser-vs-custom-hover-translate.md) — M3 Chromium 源码 vs MV3 扩展实部署
+- [文件搜索工具链](file-search-toolchain.md) — findex + es.exe + AnyTXT + Glob/Grep 三层互补
+- [AnyTXT HTTP API](anytxt-http-api.md) — 127.0.0.1:9920 JSON-RPC,7 方法
+- [AnyTXT 9920 已解](anytxt-9920-invalid-request.md) — 要 Accept:application/json 头 + 完整服务名 + params.input
+- [aliyun AK NotFound 排查](aliyun-ak-invalid-notfound.md) — 先排进程环境缓存,再判 AK 失效
+- [aliyun 无实例仍扣费](aliyun-orphan-billing.md) — 孤儿盘/EIP/快照/镜像清单 + 释放后扫描
+- [prisir_findex 引擎](prisir-findex-engine.md) — Rust cdylib 全盘文件名索引,不依赖 Everything
+- [prisir_fcontent 内容搜索](prisir-fcontent-engine.md) — Python+FTS5 逐目录授权,OCR 留待拍板
+- [Prisir M3 编译批次施工单](prisir-m3-compile-workorder.md) — docs/prisir-m3-compile-workorder 等用户拍板
+- [探囊网页截图存档](prisir-screenshot-search.md) — 扩展 captureVisibleTab + OCR 搜索回看
+- [PrisirAI 命名与打包](prisIrai-naming-and-packaging.md) — PrisirAI(界面)/PyInstaller/Win 先行
+- [PrisirAI 权限闸 v1.0](prisIrAI-perm-gate-v1.md) — run_shell/write_file/delete_file 阻塞弹卡,107 coworker
+- [PrisirAI 权限闸弹卡 UI](prisIrAI-perm-card-ui-v1.md) — 风险级配色 + 倒计时 + 拒绝按钮
+- [PrisirAI NSIS 装包 v1 坑](prisIrAI-nsis-v1-pitfalls.md) — V8 snapshot/default_app.asar 排除即静默 rc=1
+- [PrisirAI-Setup 双侧验证](prisirai-setup-host-vm001-verified.md) — 装包不是 bug,VM001 系统残破假象
+- [oiagent-shell 装包路径坑](oiagent-shell-pkg-path-resolve.md) — main.js __dirname 装含/未决态不同
+- [PrisirAI 窗口火苗图标](prisIrAI-window-icon-flame.md) — prisir-flame 替换 prisir-logo,需重打 PyInstaller
+- [Prisir 浏览器 P1 下载锚点](prisIr-browser-download-p1-anchor-files.md) — chromium 153 download 模块真实布局
+- [Prisir 浏览器 P1 已 commit](prisIr-browser-p1-committed.md) — desktop 默认并行下载,需强实例
+- [Prisir P1 工具链阻塞](prisIr-browser-p1-toolchain-blocker.md) — vswhere 找不到 VS,需装 VS 2026+WinSDK 26100
+- [PrisirAI 开发者模式装包废弃](prisIrai-devmode-anchor.md) — 2026-08-25 移除,Setup-2.3.0.exe 360.75MB
+- [M3 8-09 已知良好镜像](prisIr-m3-image-known-good.md) — m-j6cgwhn89zx36bc1tp8j WinSDK26100+VS17.14+chromium153
+- [Prisir 浏览器 P1 实例释放](prisIr-browser-p1-instance-stopped.md) — DeleteInstance + 快照保留,¥16/月
+- [chrome.storage await 二分性](chrome-storage-await-no-callback.md) — get(keys) 无 cb 返 Promise / 有 cb 走 callback-only
+- [consumer 僵尸锁 + 内核 checksum 漂移](consumer-zombie-lock-kernel-checksum-drift.md) — P3j T1 卡 pending 挖出两道坑
+- [用户不动文件 + 单窗口](user-no-manual-file-edit-solo-window.md) — 文件异常变动直接从系统因素找原因
+- [prisIr-browser 下载改造 P0 拍板](prisIr-browser-download-p1-p2-decision.md) — 带 aria2c / 顶级设置页 / 切片级 P3
+- [PrisirAI 反馈落论坛](forum-prisir-feedback-anchor.md) — shell 板块改名 PrisirAI 对话,#board=browser/shell
+- [Electron spawn stdio 跨平台](electron-spawn-stdio-streams.md) — Windows spawn 不接受 WriteStream,改 'pipe'
+- [MuMu Player 12 启动 + adb](mumu-launch-and-adb.md) — mumu-cli control --vmindex 0 launch,adb 16384
+- [Capacitor Android E2E ship](capacitor-android-e2e-shipped.md) — 2026-08-24 真 ship MuMu,APK 3.75MB
+- [Capacitor 安卓脚手架](capacitor-android-scaffold-blocked-on-sdk.md) — 缺 SDK,走 Android Studio 快路径
+- [PrisirAI Android v1 E2E](prisIr-android-v1-e2e-obsidian.md) — Obsidian 笔记入口,cleartext 坑 + WebView fetch
+- [P3j T9 封板转自研 OS](p3j-t9-closed-pivot-self-os.md) — 2026-08-24 转真自研 OS(Linux/AOSP ARM+x86)
+- [VM001 反向 PowerShell 通道](vm001-reverse-ps-channel.md) — 18814/控制 18815+多 IP 重连 agent
+- [PrisirAI 预设优先级](prisir-preset-priority-mechanism.md) — 18 类分类器+方案库索引+路由注入
+- [PrisirAI 自动画像沉淀](prisir-user-profile-distillation.md) — 对话后提炼偏好存 JSON,后台线程否则 409
+- [PrisirAI 对外品牌 湃睿思](prisir-brand-pairuisi.md) — 对外「Prisir(湃睿思) AI」,APP_NAME/exe 不动
+- [PrisirAI 自学习闭环+estop](prisir-self-learning-and-estop.md) — v2.3.0 方案库自学习+estop+纠偏+主题聚类
+- [Hermes FTS5 侦察](prisir-memory-fts5-recon.md) — OIMemory 不换 FTS5,只做 Obsidian vault 授权引导
+- [VM001 备忘自我拼装](prisIr-vm001-memo-selfbuild-test.md) — schtasks+WPF MessageBox 简版,无桌面挂起
+- [安卓×Win 联动设计](prisir-android-win-link-design.md) — 移动指挥/PC 重活,主链局域网直连 + SMP
+- [值守审核台一键启动](prisir-steward-console-autostart.md) — start_console.ps1 拉起 18826+18860
+- [PrisirAI 旅行助手 Phase 1+2](prisIr-travel-assistant-shipped.md) — 2026-09-19 ship,日历入口=托盘右键
+- [Tauri 壳端口钉死回归](tav-shell-port-pinning-regression.md) — WEB_PORT 常量写死卡「正在唤醒」
+- [M3.35 项目切换 + 会话分组](M3.35-project-switcher.md) — 顶栏 📂 + projmodal + workdir 列
+- [M3.35 项目切换 3 bug](M3.35-bugs-backslash-attr-and-loadsessions.md) — loadSessions 误清+反斜杠吞
+- [M3.36 扩展 Phase 1 ship](prisIr-ext-phase1-shipped.md) — 后端 Node 子进程 + JSON-RPC + SDK
+- [扩展路线评估 docs](prisIr-extension-roadmap-2026-09-20.md) — Node vs Rust+Tauri 路线对比 + 5 阶段
+- [扩展 UI 形态 B 草图](prisIr-extension-ui-mock-2026-09-20.md) — 5 状态 + CSS + i18n,用户已选轻菜单型
+- [M3.36 扩展 Phase 2.3 商店](prisIr-ext-phase2-store-shipped.md) — 本地 _store/index.json + 1h 缓存
+- [M3.36 扩展 Phase 2.4 安装 UI](prisIr-ext-phase2-install-ui-shipped.md) — 详情页 settings JSON 编辑器
+- [Phase B-1 task-runner](phase-b1-task-runner-shipped.md) — SDK invokeExt + Python 转发层 + 死循环防护
+- [P2.5+6 商店/默认/介绍微调](prisIr-p256-ext-defaults-and-store-filter.md) — 3 扩展 auto_enable + hide_installed
+- [P2.5+7 卸 4 个 disabled 扩展](prisIr-p257-clean-disabled-exts.md) — http-request/keystroke-emit 等真卸
+- [P2.5+8 日历+todo+番茄钟 AI 主动编排](priSIR-p258-schedule-extractor-shipped.md) — 触发关键词白名单 + 双件
+- [P2.5+12 Tauri 3 blockers ship](prisIragent-tauri-3-blockers-shipped.md) — calendar.rs + single-instance
+- [NTFS 大小写折叠 + git add 静默失败](ntfs-case-folding-git-add-fail.md) — 用索引精确 case 调 git add
+- [TaskList ≠ commit (M3.35 反例)](tasklist-vs-git-truth-m3-35.md) — TaskList 是会话 ephemeral,git log 才是真理
+- [M3.35 重做真 ship](M3.35-redo-shipped.md) — 2026-09-20 projects.json + projmodal + 49/49 测试绿
+- [P2.5+9-A diff 左右分栏](p2-5-9-a-diff-split-shipped.md) — 2026-09-20 commit 5338f72 doc-panel 左右栏
+- [P2.5+9-C CancellationToken 接入](p2-5-9-c-cancel-token-shipped.md) — 2026-09-20 commit f6e762e 17/17 绿
+- [P2.5+B-0 ext RPC bridge](p2-5-b-0-ext-rpc-bridge-shipped.md) — Python↔Node 子进程桥 + 52/52
+- [P2.5+B-2 工作流编排 UI](p2-5-b-2-workflow-ui-shipped.md) — 2026-09-21 commit d5e3136 DAG + 92/92
+- [P2.5+B-3 任务队列升级](phase-b3-task-queue-shipped.md) — 2026-09-21 commit d22067b + 72/72
+- [P2.5+B-3 hotfix](p2-5-b-3-hotfix-shipped.md) — 2026-09-21 commit 9afcfd5 双击编辑+清空按钮
+- [P2.5+B-4 AI agent 派单](p2-5-b-4-agent-dispatch-shipped.md) — 2026-09-21 commit cd56e90 cli run_task + 9/9
+- [P2.5+B-4.B run_task({task_name}) 模糊匹配](p2-5-b-4-b-run-by-name-shipped.md) — 2026-09-21 commit 0585ffd
+- [P2.5+B-4.D AI 写 workflow 文件](p2-5-b-4-d-workflow-files-shipped.md) — 2026-09-21 commit e5399a0 14/14
+- [P2.5+B-4.E 跨机器 bundle 共享](p2-5-b-4-e-workflow-bundle-shipped.md) — 2026-09-21 commit 8930438 17/17
+- [P2.5+B-4.F marketplace 远端镜像](p2-5-b-4-f-marketplace-shipped.md) — 2026-09-21 commit 607eee3 20/20
+- [P2.5+B-4.F.A market.retract 作者自删](p2-5-b-4-fa-marketplace-retract-shipped.md) — 2026-09-21 commit ce9131d
+- [P2.5+B-4.F.B marketplace 运营撤下](p2-5-b-4-fb-marketplace-takedown-shipped.md) — 2026-09-22 commit 2b68fd1
+- [P2.5+13 Electron 壳托盘 3 项](p2513-shell-tray-companion-music-calendar.md) — 2026-09-22 commit bfa11b6 39/39
+- [P2.5+14 独立日历端口](p2514-calendar-independent-port-shipped.md) — 2026-09-22 commit 94fd7cd 18803 双 listen
+- [P2.5+15 三端 config.yaml 化](p2-5-15-config-yaml-shipped.md) — 2026-09-22 commit a2817f7 11 字段
+- [P2.5+16+17 子窗口 + tray 子菜单](p2-5-16-p2-5-17-subwindows-and-tray-shipped.md) — 2026-09-22 commit 8e7d3d6
+- [P2.5+18 装包 UI 验收](p2-5-18-installer-ui-audit.md) — 装包静态扫 10/10 + 解锁 P2.5+19
+- [P2.5+19 Tauri 4 子窗统一化](p2-5-19-tauri-subwindows-shipped.md) — 2026-09-22 commit 6e321a9 subwin.rs
+- [prisirmp 独立公众号历史 recall](prisirmp-wechat-recall.md) — 2026-09-24 Phase 0;SQLite FTS5 + wcdb-key-tool
+- [hypit DSL 100 变体借鉴备忘](hypit-dsl-batch-design.md) — SVML 词级锚定 + composition 不变 slot 替换
+- [PrisirAI × Easel 整合 ship](prisir-easel-bridge.md) — Easel 子进程桥接 4 模块;15/15 测试绿
+- [P2.5+20 Tauri dev 端到端真跑](p2-5-20-tauri-dev-e2e-shipped.md) — cargo build release 14.4MB + mock sentinel
+- [PrisirAI 多平台发布模块 P3j T10 ship](prisir-publisher-module.md) — 公众号+小红书+B站 8 步 ship;16+11+17 tests
+- [PrisirAI 视频能力扩展+YouTube P3j T12+T13 ship](prisir-video-extensions.md) — 3 creator + youtube publisher;21 verify 绿
+- [PrisirAI 视频创作模块 P3j T11 ship](prisir-video-creation.md) — 6 creator + Web UI Tab + 弹确认卡;23+16 tests
+- [PrisirAI Agent 代执行视频能力 P3j T14 ship](prisIr-agent-natural-video.md) — 12 capability 自然语言意图路由;44/44 测绿
+- [PrisirAI 主对话接视频能力 P3j T16 全 ship](prisir-agent-main-chat-hook.md) — T16-A/B/C/D ship(EXEC 扫描 + intent_summary 注入 + 风险确认卡);111/111 + 26/26
+- [PrisirAI Agent 视频 follow-ups P3j T15 ship](prisIr-agent-video-followups.md) — T15-A/B/C/D;87/87 测绿 + 22/22 verify
+- [PrisirAI 多媒体 Key 配置+视频 Tab 横幅+主对话接 zh/link P3j T17+T18+T19 ship](prisIr-media-keys.md) — 30 测试 + 33/33 verify
+- [PrisirAI × Agent-Reach 14 平台集成 P3j T20 ship](prisIr-agent-reach.md) — 14 平台全覆盖 + 扩展 Tab;10+6 测试
+- [jina-ai/reader 整合 PrisirAI T20-I ship](jina-reader-prisir.md) — 复现 r.jina.ai+s.jina.ai;11 测试
+- [PrisirAI × kurtmckee/feedparser 整合 P3j T21-A ship](feedparser-prisir.md) — feedparser 库 + URL 启发式 picker
+- [PrisirAI × yt-dlp 通用 fetcher P3j T21-B ship](ytdlp-prisir.md) — 200+ 网站 metadata + picker 第三顺位
+- [PrisirAI × gh CLI 直接整合 P3j T21-C ship](gh-prisir.md) — gh_bridge + gh_api + gh_search;23 测试
+- [PrisirAI × Agent-Reach 上游工具决策 P3j T21-D ship](agent-reach-upstream-decisions.md) — 14 项 ship/推迟/不做 3 档
+- [handraw-style 整入 PrisirAI Phase A+B+C+D ship](handraw-style-extension-phase-a.md) — 扩展非独立功能;278+36+121 JSON 数据 + 4 capability L0;29 测试累计
+- [free-for-dev 整入 PrisirAI Phase A+B+C ship](free-for-dev-extension-phase-a.md) — ripienaar/free-for-dev 57 cat / 1324 svc;AGENTS.md 合规只读;55 测试累计
+- [agency-agents 整入 PrisirAI Phase A ship](agency-agents-extension-phase-a.md) — 264 roles / 18 divisions 三件套 JSON + 5/5 测绿;MIT 只读
+- [PrisirAI Skills 工作台 Phase 1+1.5+1.6+1.7 ship](prisIr-skills-workbench-phase-1.md) — schema/registry/loader/executor + build_messages 双模式;NTFS case-folding pycache 坑
+- [PrisirAI Skills 工作台 Phase 2+3+3.5+4+5 ship](prisIr-skills-workbench-phase-2.md) — tool_use 协议层 + run_loop + 两阶段 replan 闸门 + EXEC 兼容 + 前端 skill_plan_request;commit f78a64d/58e8902/01e9cce/639585e/9f87c0f
+- [PrisirAI × colibri 装机即对话 Phase A+B+C+D ship](colibri-phase-a-shipped.md) — 子进程+adapter+端口预留 + 三选一引导卡 UI + OLMoE-1B-7B 下载 + 跨平台 binary 路径解析;33 verify + 65 unit = 98 全绿
+- [Sprint 1 — public-apis + public-apis-cn 全 ship](sprint1-public-apis-shipped.md) — 2 扩展 + 6 测试套件 + 67 测绿;commit 0fa9501 + 9a970c5;capability 4→12
+- [Sprint 2 — n0shake/Public-APIs + awesome-selfhosted A+B+C ship](sprint2-n0shake-shipped.md) — 56/95 cat + 481/1260 svc;commit dbdec95;63 测试绿
+- [Sprint 3 — sindresorhus/awesome hub Phase A ship](sprint3-awesome-hub-shipped.md) — 27 cat/677 topics;仅 Phase A 数据抽取;commit c53389b;7/7 测绿
+- [UI2 — 顶部 5 项 UI 调整 + case-insensitive compat shim](ui2-shipped.md) — 2026-10-02 commit e0667ff + 18f5c89;prisir_case_compat.py 4 对别名桥接
+- [扩展 inventory 注入 system prompt](ext-inventory-injected.md) — 2026-10-02 commit 153e7c9;32 项 × 3 列注入 _shell_system_prompt;LLM 引用「pomodoro 该不该开」类问题
+- [扩展 modal + system 文案改写为用户可读](ext-modal-text-rewrite.md) — 2026-10-02 commit d087817;_EXT_DESCRIPTIONS 24 + _RESOURCE_TITLES 9 + _EXT_USE_CASES 32 项,剥 Phase A/B/C/D / EXEC 标记 / DAG / node:sqlite / ProBalance 等 jargon
+- [扩展 inventory 行为规则 + [需管理员]](ext-inventory-rules.md) — 2026-10-02 commit 65135d2;注 1 管理员权限重启提示 + 注 2 资源检索本地缓存优先(不导 GitHub);4 扩展标 [需管理员](scheduled-task/process-scan/system-watchdog/keystroke-emit)
+- [P2.5+23 music hotfix 播放+上下首+收藏 toggle](p2-5-23-hotfix-playback-prev-favorite.md) — 2026-10-03 commit 08baf0e;LX 探测灯 ship 仍灰(reloadIgnoringCache)+ 上下首无响应(onStateEvent 同步 audio.src)+ 收藏无限增长(toggle + is_favorite + 按钮文案切换);40/40 测试绿
+- [P3.10b 音乐识别浮泡取消 — 用户隐私顾虑](p3-10-bubble-cancelled-privacy.md) — 2026-10-04 即便 SongRec 无 Key,getUserMedia 录音+音频指纹外传 Shazam 服务器被 reject;用户原话「干脆这个识别音乐功能不做了」+「不做音乐识别功能,不调用麦克风」;用户隐私阈值:0 上传/外传,不只是无 Key;下次类似功能默认拒绝,除非纯本地匹配
+- [P3.10a desktop toast 弹卡 ship](p3-10-toast-shipped.md) — 2026-10-04;Win10+ Action Center / macOS Notification Center / Linux libnotify(零 npm 依赖)+ userData/toast-state.json 持久化 + 托盘「⚙ 设置」→「🔔 通知偏好」3 radio(全部/仅错误/关闭)+ 节流(5s L1 info)+ FIFO 队列(max 3)+ 3 IPC shell:show-toast/get-toast-level/set-toast-level + preload 暴露 oiShell.showToast + config.yaml toast 段;33/33 单测 + 236/236 回归绿(1.57s);P3.10b bubble 取消后单 commit ship;Python 侧 notify_user LLM 工具后续 P3.10c

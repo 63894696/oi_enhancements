@@ -966,6 +966,17 @@ function createTray() {
     { type: "separator" },
     { label: "关闭所有子窗口", click: () => closeAllChildWindows() },
   ];
+  // P3.10a(2026-10-04)「⚙ 设置」子菜单 — 通知偏好 radio(与 buildTrayItems 双胞胎同步)
+  const settingsSubmenu = [
+    { label: "🔔 通知偏好", submenu: [
+      { label: "全部", type: "radio", checked: _toastState.level === "all",
+        group: "toastLevel", click: () => _setToastLevel("all") },
+      { label: "仅错误", type: "radio", checked: _toastState.level === "errors",
+        group: "toastLevel", click: () => _setToastLevel("errors") },
+      { label: "关闭", type: "radio", checked: _toastState.level === "off",
+        group: "toastLevel", click: () => _setToastLevel("off") },
+    ]},
+  ];
   const systemSubmenu = [
     { label: "开机自启", type: "checkbox", checked: app.getLoginItemSettings().openAtLogin,
       click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked }) },
@@ -975,6 +986,7 @@ function createTray() {
   const trayItems = [
     { label: "主控",   submenu: mainCtrlSubmenu },
     { label: "多窗口", submenu: multiWindowSubmenu },
+    { label: "⚙ 设置", submenu: settingsSubmenu },
     { label: "系统",   submenu: systemSubmenu },
   ];
   // 开发者模式(若安装)独立顶层菜单项,不进任何 submenu。
@@ -1033,6 +1045,17 @@ function buildTrayItems() {
     { type: "separator" },
     { label: "关闭所有子窗口", click: () => closeAllChildWindows() },
   ];
+  // P3.10a(2026-10-04)「⚙ 设置」子菜单 — 通知偏好 radio
+  const settingsSubmenu = [
+    { label: "🔔 通知偏好", submenu: [
+      { label: "全部", type: "radio", checked: _toastState.level === "all",
+        group: "toastLevel", click: () => _setToastLevel("all") },
+      { label: "仅错误", type: "radio", checked: _toastState.level === "errors",
+        group: "toastLevel", click: () => _setToastLevel("errors") },
+      { label: "关闭", type: "radio", checked: _toastState.level === "off",
+        group: "toastLevel", click: () => _setToastLevel("off") },
+    ]},
+  ];
   const systemSubmenu = [
     { label: "开机自启", type: "checkbox", checked: app.getLoginItemSettings().openAtLogin,
       click: (item) => app.setLoginItemSettings({ openAtLogin: item.checked }) },
@@ -1042,6 +1065,7 @@ function buildTrayItems() {
   const items = [
     { label: "主控",   submenu: mainCtrlSubmenu },
     { label: "多窗口", submenu: multiWindowSubmenu },
+    { label: "⚙ 设置", submenu: settingsSubmenu },
     { label: "系统",   submenu: systemSubmenu },
   ];
   if (devModeAvailable()) {
@@ -1203,6 +1227,102 @@ ipcMain.handle("shell:openExternal", (_e, url) => {
     logError("shell:openExternal", "err", `e=${e.message}`);
     return { ok: false, error: e.message };
   }
+});
+
+// ---------- P3.10a(2026-10-04)桌面弹卡 toast(主轨 Electron Notification) ----------
+// 设计:零 npm 依赖,Win10+ Action Center / macOS Notification Center / Linux libnotify。
+// 节流:L1 info 同 title 5s 内只一次;L2 error 立即。
+// 队列:FIFO,最大 3 并发(超长 shift 掉队首,确保最新消息总能弹)。
+// 用户偏好:toastLevel ∈ {all, errors, off} — 走 tray「⚙ 设置」「通知偏好」radio 切换。
+// 富交互窗(辅轨 Frameless BrowserWindow)本期不做,留待后续 ship。
+function showToast({ title, body, icon, level = "info", actions, onAction } = {}) {
+  try {
+    // 用户偏好过滤
+    if (_toastState.level === "off") return { skipped: true, reason: "off" };
+    if (_toastState.level === "errors" && level !== "error") return { skipped: true, reason: "errors-only" };
+
+    const safeTitle = String(title || "PrisirAI").slice(0, 120);
+    const safeBody = String(body || "").slice(0, 240);
+
+    // L1 info 节流:同 (level, title) 5s 内只一次
+    if (level === "info") {
+      const key = `${level}:${safeTitle}`;
+      const now = Date.now();
+      if (_toastLastShown[key] && now - _toastLastShown[key] < _toastState.throttle_ms) {
+        return { skipped: true, reason: "throttled" };
+      }
+      _toastLastShown[key] = now;
+    }
+    // 队列长度截断
+    const maxQ = _toastState.max_queue || 3;
+    if (_toastQueue.length >= maxQ) _toastQueue.shift();
+    _toastQueue.push({ title: safeTitle, body: safeBody, ts: Date.now() });
+
+    const n = new Notification({
+      title: safeTitle,
+      body: safeBody,
+      icon: icon || path.join(__dirname, "icon.png"),
+      silent: level === "info",
+      urgency: level === "error" ? "critical" : "normal",
+      timeoutType: "default",
+    });
+    if (Array.isArray(actions)) n.actions = actions;
+    n.on("action", (_e, idx) => { try { onAction?.(idx); } catch (_) {} });
+    n.on("click", () => { try { onAction?.(-1); } catch (_) {} });
+    n.show();
+    logInfo("toast", "shown", `level=${level} title=${safeTitle.slice(0, 40)}`);
+    return { ok: true, level, title: safeTitle };
+  } catch (e) {
+    logError("toast", "err", `e=${e.message}`);
+    return { ok: false, err: e.message };
+  }
+}
+
+// P3.10a:toast 状态持久化 — userData/toast-state.json
+function _toast_state_path() {
+  return path.join(app.getPath("userData"), "toast-state.json");
+}
+function _toast_state_load() {
+  try {
+    const p = _toast_state_path();
+    if (!fs.existsSync(p)) return { level: "all", max_queue: 3, throttle_ms: 5000 };
+    const obj = JSON.parse(fs.readFileSync(p, "utf8"));
+    const lvl = ["all", "errors", "off"].includes(obj.level) ? obj.level : "all";
+    const mq = Math.max(1, Math.min(10, Number(obj.max_queue) || 3));
+    const th = Math.max(500, Math.min(60000, Number(obj.throttle_ms) || 5000));
+    return { level: lvl, max_queue: mq, throttle_ms: th };
+  } catch (_) {
+    return { level: "all", max_queue: 3, throttle_ms: 5000 };
+  }
+}
+function _toast_state_save(s) {
+  try {
+    fs.writeFileSync(_toast_state_path(), JSON.stringify(s, null, 2), "utf-8");
+  } catch (e) {
+    logWarn("toast", "state save failed", `err=${e.message}`);
+  }
+}
+let _toastState = _toast_state_load();
+let _toastQueue = [];
+let _toastLastShown = {};
+
+// P3.10a:托盘「通知偏好」radio 切换 helper
+function _setToastLevel(value) {
+  const v = ["all", "errors", "off"].includes(value) ? value : "all";
+  if (v === _toastState.level) return;
+  _toastState.level = v;
+  _toast_state_save(_toastState);
+  logInfo("toast", "level changed", `level=${v}`);
+  // P2.5+26 经验:radio 状态变化后必 rebuildTrayMenu,否则菜单 radio 永远显旧态
+  if (typeof rebuildTrayMenu === "function") rebuildTrayMenu();
+}
+
+// P3.10a:IPC handler — 渲染层 / Python ws 透传都走这里
+ipcMain.handle("shell:show-toast", (_e, payload) => showToast(payload || {}));
+ipcMain.handle("shell:get-toast-level", () => ({ ok: true, level: _toastState.level }));
+ipcMain.handle("shell:set-toast-level", (_e, value) => {
+  _setToastLevel(value);
+  return { ok: true, level: _toastState.level };
 });
 
 // ---------- #50 品牌化应用通知(契约 2026-08-21 §C,壳侧) ----------

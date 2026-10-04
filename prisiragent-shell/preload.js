@@ -13,6 +13,11 @@ contextBridge.exposeInMainWorld("oiShell", {
   // v2.0 反馈卡:让 prisiragent_web 在壳内用 IPC 打开系统浏览器(替代 window.open)
   // 红线:只允许 https:// 与 babelspan.com;其他 URL 拒绝,防被任意站点诱导打开。
   openExternal: (url) => ipcRenderer.invoke("shell:openExternal", url),
+  // P3.10a(2026-10-04)桌面弹卡 toast — 主进程节流 + 队列 + 通知偏好过滤
+  showToast: (payload) => ipcRenderer.invoke("shell:show-toast", payload),
+  // 通知偏好 — all / errors / off
+  getToastLevel: () => ipcRenderer.invoke("shell:get-toast-level"),
+  setToastLevel: (v) => ipcRenderer.invoke("shell:set-toast-level", v),
   // 标记:在壳内运行(供 prisiragent_web 区分「壳内」vs「纯浏览器」)
   inShell: true,
 });
