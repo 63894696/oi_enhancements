@@ -48,16 +48,19 @@ function barHeight(v: number): string {
 </template>
 
 <style scoped>
+/* N9.1(2026-10-04):频谱改透明 + 高度收紧(80px)+ 去边框/背景,
+   嵌在 LyricPanel 下方,与歌词同宽。opacity 0.85 让频谱不抢戏。
+   hz-tip 隐去(用户拍板「简洁」),不显示数字标签。 */
 .spectrum {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  height: 200px;
-  padding: 4px 2px 18px 2px;
+  height: 80px;
+  padding: 4px 4px 2px 4px;
   gap: 2px;
-  background: linear-gradient(180deg, rgba(250, 247, 241, 0.4), rgba(176, 136, 86, 0.05));
-  border: 1px solid var(--gh-gold, #b08856);
-  border-radius: 6px;
+  background: transparent;
+  border: none;
+  opacity: 0.85;
   -webkit-app-region: no-drag;
   user-select: none;
 }
@@ -71,16 +74,6 @@ function barHeight(v: number): string {
   position: relative;
   cursor: default;
 }
-.bar:hover { opacity: 0.85; }
-.hz-tip {
-  position: absolute;
-  bottom: -16px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 9px;
-  color: var(--gh-gray, #8a847a);
-  font-family: var(--font-mono, monospace);
-  white-space: nowrap;
-  pointer-events: none;
-}
+.bar:hover { opacity: 1; }
+.hz-tip { display: none; }
 </style>

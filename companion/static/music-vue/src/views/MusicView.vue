@@ -52,10 +52,13 @@ async function loadRecommendations(seed?: number) {
     if (r && r.ok && Array.isArray(r.items)) {
       recommendItems.value = r.items
     } else {
-      recommendItems.value = []
+      // N9.1(2026-10-04):后端返 ok=false 时保留旧列表,不让用户看到「暂无推荐」闪烁。
+      // 真正空态只出现在首次 mount 且无数据时(此时 recommendItems 仍是初始 [])。
+      console.warn('[recommend] backend returned non-ok:', r)
     }
-  } catch (_) {
-    recommendItems.value = []
+  } catch (e) {
+    // N9.1:网络异常/后端挂掉时保留旧值,避免空态;首次 mount(无旧值)才会显示空态。
+    console.warn('[recommend] fetch failed, keep existing items:', e)
   } finally {
     recommendLoading.value = false
   }
@@ -297,13 +300,16 @@ const headerText = computed(() => {
     </div>
 
     <!-- 大封面 + 歌词 + 队列 + 频谱(viewMode 切换) -->
-    <!-- P3.8(2026-10-04):.bottom grid 加第 3 列 160px 挂 <SpectrumBars>;
-         仅 viewMode !== 'queue' 时显示(队列模式占满不显示频谱) -->
+    <!-- N9.1(2026-10-04):频谱从 .bottom 第 3 列移到 LyricPanel 下方独立行,
+         宽度跟歌词区一致(从封面右沿到右边距),高透明度,跟歌词视觉对齐。
+         .bottom 现在只有 2 列:Cover + LyricPanel;频谱 .spectrum-row 嵌 LyricPanel 下,
+         margin-left: 256px(240 Cover + 16 gap)占满歌词宽度。 -->
     <div class="bottom">
       <Cover v-show="ui.viewMode === 'lyric' || ui.viewMode === 'playlist'" />
-      <LyricPanel v-show="ui.viewMode === 'lyric' || ui.viewMode === 'playlist'" />
-      <SpectrumBars v-show="ui.viewMode === 'lyric' || ui.viewMode === 'playlist'"
-                    :data="spectrum" />
+      <div class="lyric-stack" v-show="ui.viewMode === 'lyric' || ui.viewMode === 'playlist'">
+        <LyricPanel />
+        <SpectrumBars :data="spectrum" />
+      </div>
       <QueueList v-show="ui.viewMode === 'queue'" />
     </div>
 
@@ -481,10 +487,18 @@ const headerText = computed(() => {
 }
 .bottom {
   display: grid;
-  /* P3.8(2026-10-04):第 3 列 160px 挂 <SpectrumBars>(仅 viewMode 非 queue 时显示) */
-  grid-template-columns: 240px 1fr 160px;
+  /* N9.1(2026-10-04):频谱移到 LyricPanel 下方独立行,不再占第 3 列。
+     .bottom 现在只 2 列:Cover + lyric-stack(LyricPanel + 频谱)。 */
+  grid-template-columns: 240px 1fr;
   gap: 16px;
   margin-top: 4px;
+}
+/* N9.1:lyric-stack = LyricPanel + 频谱,频谱宽度跟歌词一致 */
+.lyric-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
 }
 .eq-drawer {
   position: fixed;

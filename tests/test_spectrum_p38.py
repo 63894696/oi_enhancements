@@ -236,26 +236,32 @@ class TestMusicViewSpectrumIntegration(unittest.TestCase):
         self.assertIn(':data="spectrum"', c)
 
     def test_musicview_spectrum_only_in_non_queue_mode(self):
-        """viewMode === 'queue' 时不显示频谱(队列模式占满)。"""
+        """N9.1(2026-10-04):viewMode === 'queue' 时不显示频谱 + 歌词。
+        N9.1 后 v-show 移到 .lyric-stack 父容器,SpectrumBars 自身无需 v-show。"""
         c = _read(MV)
-        # 找 template 里 <SpectrumBars 后跟 v-show= 的位置(comment 里也含 <SpectrumBars>,需跳过注释)
-        # 用正则找 SpectrumBars 后 v-show 控制
         import re
-        # 找 <SpectrumBars ... v-show="ui.viewMode === 'lyric' ...
-        m = re.search(r'<SpectrumBars[^>]*v-show="ui\.viewMode', c)
-        self.assertIsNotNone(m, "SpectrumBars 缺少 viewMode 控制 v-show")
-        # 检查包含 queue 排除(只 lyric/playlist)
+        # N9.1 后:.lyric-stack 父容器有 v-show='lyric'/'playlist'
+        m = re.search(r'<div\s+class="lyric-stack"[^>]*v-show="ui\.viewMode', c)
+        self.assertIsNotNone(m, ".lyric-stack 缺少 viewMode 控制 v-show")
         idx = m.start()
         snippet = c[idx: idx + 250]
         self.assertIn("'lyric'", snippet)
         self.assertIn("'playlist'", snippet)
+        # SpectrumBars 自身仍渲染,只是父容器控制显隐
+        self.assertIn("<SpectrumBars", c)
 
-    def test_musicview_bottom_grid_3_columns(self):
-        """.bottom grid 改 240px 1fr 160px(3 列)。"""
+    def test_musicview_bottom_grid_2_columns(self):
+        """N9.1(2026-10-04):.bottom grid 改 240px 1fr(2 列),频谱移到 lyric-stack
+        内部与 LyricPanel 同列(不再占第 3 列 160px)。"""
         c = _read(MV)
         idx = c.find(".bottom {")
         snippet = c[idx: idx + 200]
-        self.assertIn("240px 1fr 160px", snippet)
+        # 2 列布局:240px(Cover) + 1fr(lyric-stack 容器)
+        self.assertIn("240px 1fr", snippet)
+        self.assertNotIn("240px 1fr 160px", snippet)
+        # .lyric-stack 是 flex column 容器,装 LyricPanel + SpectrumBars
+        self.assertIn(".lyric-stack", c)
+        self.assertIn("flex-direction: column", c.replace("\n", " "))
 
     def test_musicview_registers_audio_in_on_mounted(self):
         """onMounted 调 registerSpectrumAudio(player.getAudioElement())。"""
