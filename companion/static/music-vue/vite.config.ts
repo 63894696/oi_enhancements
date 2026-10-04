@@ -28,6 +28,8 @@ export default defineConfig({
         // P2.5+25:多入口 — main 走 index.html;桌面歌词独立窗走 lyric.html
         main: fileURLToPath(new URL('./index.html', import.meta.url)),
         lyric: fileURLToPath(new URL('./lyric.html', import.meta.url)),
+        // P3.5(2026-10-04):桌面 EQ 独立窗走 eq.html(hash 路由 #/eq-window)
+        eq: fileURLToPath(new URL('./eq.html', import.meta.url)),
       },
     },
   },

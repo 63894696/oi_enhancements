@@ -20,6 +20,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useLyricStore } from '@/stores/lyric'
 import LyricProgressBar from '@/components/LyricProgressBar.vue'
 import LyricLinesToggle from '@/components/LyricLinesToggle.vue'
+import EqInline from '@/components/EqInline.vue'
 
 const lyric = useLyricStore()
 
@@ -179,6 +180,8 @@ function onScaleChange(e: Event) {
       </div>
       <!-- P3.4(2026-10-03)单/双行 toggle — 默认单行紧凑,切双行显示下一句预览 -->
       <LyricLinesToggle :value="lines" />
+      <!-- P3.5(2026-10-04)歌词窗 EQ 紧凑入口 — 10 段 mini slider + preset + 主开关 -->
+      <EqInline />
     </div>
   </div>
 </template>

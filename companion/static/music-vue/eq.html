@@ -1,0 +1,20 @@
+<!doctype html>
+<!--
+  eq.html — P3.5(2026-10-04)桌面 EQ 独立窗 Vite 入口。
+  Electron BrowserWindow {transparent:true, frame:false, alwaysOnTop:false, width:360, height:420} 加载此页。
+  hash 路由:window.location.hash 含 #/eq-window → 渲染 EqWindowView
+  行为:
+    - 顶部拖动条 + 10 段 vertical slider + preset select + 主开关 + 重置
+    - 关闭按钮 → window.close()(独立 BrowserWindow 不需 IPC,本身可关)
+-->
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PrisirAI 桌面 EQ</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/eq.ts"></script>
+  </body>
+</html>

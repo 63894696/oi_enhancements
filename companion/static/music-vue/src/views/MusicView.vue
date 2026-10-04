@@ -11,6 +11,7 @@ import Cover from '@/components/Cover.vue'
 import LyricPanel from '@/components/LyricPanel.vue'
 import QueueList from '@/components/QueueList.vue'
 import Toast from '@/components/Toast.vue'
+import EQPanel from '@/components/EQPanel.vue'
 
 const ui = useUiStore()
 const player = usePlayerStore()
@@ -91,6 +92,10 @@ const headerText = computed(() => {
               title="seed.mp3 兜底">
           SEED:{{ player.seedFallback ? '✓' : '✗' }}
         </span>
+        <button class="btn-eq" @click="ui.toggleEqPanel()"
+                :title="ui.showEqPanel ? '关闭 EQ' : '打开 EQ(10 段均衡器)'">
+          🎚 EQ
+        </button>
       </div>
     </div>
 
@@ -125,6 +130,11 @@ const headerText = computed(() => {
       <Cover v-show="ui.viewMode === 'lyric' || ui.viewMode === 'playlist'" />
       <LyricPanel v-show="ui.viewMode === 'lyric' || ui.viewMode === 'playlist'" />
       <QueueList v-show="ui.viewMode === 'queue'" />
+    </div>
+
+    <!-- P3.5 EQ 抽屉(从底部滑入,360×280,主窗可见范围最广) -->
+    <div v-show="ui.showEqPanel" class="eq-drawer">
+      <EQPanel />
     </div>
   </div>
 </template>
@@ -186,6 +196,17 @@ const headerText = computed(() => {
 .probe.ok { background: var(--gh-jade); color: var(--gh-paper); }
 .probe.off { background: var(--gh-gray); color: var(--gh-paper); }
 .probe.seed.ok { background: var(--gh-gold); color: var(--gh-paper); }
+.btn-eq {
+  padding: 4px 10px;
+  font-size: 12px;
+  border: 1px solid var(--gh-red);
+  border-radius: 4px;
+  background: var(--gh-paper);
+  color: var(--gh-red);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-eq:hover { background: var(--gh-red); color: var(--gh-paper); }
 .tags {
   display: flex;
   flex-wrap: wrap;
@@ -258,5 +279,19 @@ const headerText = computed(() => {
   grid-template-columns: 240px 1fr;
   gap: 16px;
   margin-top: 4px;
+}
+.eq-drawer {
+  position: fixed;
+  right: 12px;
+  bottom: 70px;
+  width: 360px;
+  max-height: 320px;
+  padding: 12px;
+  background: var(--gh-paper);
+  border: 1px solid var(--gh-gold);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(45, 42, 38, 0.18);
+  z-index: 50;
+  overflow: auto;
 }
 </style>

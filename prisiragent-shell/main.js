@@ -405,6 +405,64 @@ function _lyric_state_save(s) {
   }
 }
 let _lyric_state = _lyric_state_load();   // 模块加载即初始化(boot 一次)
+// P3.5(2026-10-04)桌面 EQ 独立窗 BrowserWindow 句柄 — 同 lyric 模式(不走 childWindows Map)。
+// 独立窗不参与 _closeAllChildWindows / 主窗 hide 时 close,玩家可与 music 子窗共存。
+let _eqWin = null;
+
+// P3.5(2026-10-04)music 10 段 EQ 均衡器状态持久化 — userData/eq-state.json。
+// 存 enabled(bool) + preset(enum: flat/vocal/bass/treble/rock/electronic/custom)
+//   + gains(10 个 dB,每段 -12..+12)。
+// 镜像 _lyric_state pattern(P2.5+26 ship):同模块前 348-407 行。
+// 音频处理本身在 renderer(Web Audio API BiquadFilterNode × 10 + masterGain),
+//   主进程只持久化 + IPC + 广播给所有 BrowserWindow。
+const EQ_PRESETS = {
+  flat:       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  vocal:      [0, -2, 0, 1, 2, 3, 2, 0, 0, 0],
+  bass:       [4, 5, 3, 1, 0, 0, 0, 0, 0, 0],
+  treble:     [0, 0, 0, 0, 0, 0, 1, 3, 4, 3],
+  rock:       [3, 2, 1, -1, -3, 1, 2, 3, 4, 3],
+  electronic: [3, 2, 0, -2, -1, 1, 0, 1, 3, 4],
+};
+function _eq_state_path() {
+  return path.join(app.getPath("userData"), "eq-state.json");
+}
+function _eq_state_load() {
+  // 容错静默:任何坏返默认 + 备份原文件(与 _lyric_state_load 同模式)
+  const p = _eq_state_path();
+  try {
+    const raw = fs.readFileSync(p, "utf-8");
+    const obj = JSON.parse(raw);
+    const preset = Object.prototype.hasOwnProperty.call(EQ_PRESETS, obj.preset) ? obj.preset : "flat";
+    const gains = Array.isArray(obj.gains) && obj.gains.length === 10
+      ? obj.gains.map((g) => _clampNumber(g, -12, 12, 0))
+      : [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    return {
+      enabled: obj.enabled === true,
+      preset,
+      gains,
+    };
+  } catch (e) {
+    if (fs.existsSync(p)) {
+      try { fs.renameSync(p, `${p}.corrupt-${Date.now()}`); } catch (_) {}
+      logWarn("eqState", "corrupt, backed up", `path=${p} err=${e.message}`);
+    } else {
+      logInfo("eqState", "first run, using defaults", `path=${p}`);
+    }
+    return {
+      enabled: false,        // P3.5 用户拍板默认关闭,首装用户不被默认声音打扰
+      preset: "flat",
+      gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    };
+  }
+}
+function _eq_state_save(s) {
+  try {
+    fs.writeFileSync(_eq_state_path(), JSON.stringify(s, null, 2), "utf-8");
+  } catch (e) {
+    logWarn("eqState", "save failed", `err=${e.message}`);
+  }
+}
+let _eq_state = _eq_state_load();   // 模块加载即初始化(boot 一次)
 
 function _commonWebPreferences() {
   return {
@@ -882,6 +940,84 @@ function _closeLyricWindow() {
   try { w.close(); } catch (_) {}
 }
 
+// P3.5(2026-10-04)music 10 段 EQ 广播 — 推 EQ 状态变化到所有 BrowserWindow。
+// MusicView 主窗 / LyricOnlyView 歌词窗 / 独立 EQ 窗都共享同一 _eq_state,
+// 任一处改 → 主进程广播 → 其余两处 mirror 同步。
+// 与 _notifyLyricWindow(单 lyric 窗)不同:本 loop 全部 BrowserWindow,
+//   含主 web / 主窗 + 子窗。
+function _notifyEqWindows(channel, payload) {
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (w && !w.isDestroyed() && !w.webContents.isDestroyed()) {
+      try { w.webContents.send(channel, payload); } catch (_) {}
+    }
+  }
+}
+// P3.5 单段 gain 调整 helper(idx 0..9, dB -12..+12,容错 clamp)。
+// 任何 gain 改动 → preset 改 "custom"(落雪范式:用户改任意段即脱离预置)。
+function _setEqGain(idx, dB) {
+  const i = Number(idx);
+  if (!Number.isInteger(i) || i < 0 || i > 9) return { ok: false, err: "invalid idx" };
+  const v = _clampNumber(dB, -12, 12, _eq_state.gains[i]);
+  if (v === _eq_state.gains[i] && _eq_state.preset !== "custom") {
+    // 值没变但 preset 已是 custom,不广播(避免无变化噪声)
+    return { ok: true, gains: _eq_state.gains.slice(), preset: _eq_state.preset };
+  }
+  _eq_state.gains[i] = v;
+  _eq_state.preset = "custom";
+  _eq_state_save(_eq_state);
+  logInfo("eqState", "set gain", `idx=${i} dB=${v}`);
+  _notifyEqWindows("shell:eqStateChanged", {
+    enabled: _eq_state.enabled,
+    preset: _eq_state.preset,
+    gains: _eq_state.gains.slice(),
+  });
+  return { ok: true, gains: _eq_state.gains.slice(), preset: _eq_state.preset };
+}
+// P3.5 预置应用 helper。未知 preset 拒绝(白名单 EQ_PRESETS.keys())。
+function _setEqPreset(name) {
+  if (!Object.prototype.hasOwnProperty.call(EQ_PRESETS, name)) {
+    return { ok: false, err: `unknown preset: ${name}` };
+  }
+  _eq_state.preset = name;
+  _eq_state.gains = EQ_PRESETS[name].slice();
+  _eq_state_save(_eq_state);
+  logInfo("eqState", "set preset", `preset=${name}`);
+  _notifyEqWindows("shell:eqStateChanged", {
+    enabled: _eq_state.enabled,
+    preset: _eq_state.preset,
+    gains: _eq_state.gains.slice(),
+  });
+  return { ok: true, preset: _eq_state.preset, gains: _eq_state.gains.slice() };
+}
+// P3.5 主开关 helper。enabled=false 时 masterGain=1 直通(每段 gain=0),
+//   enabled=true 时 masterGain=0.5 防削顶(在 renderer EqEngine.apply 决定)。
+function _setEqEnabled(b) {
+  const v = b === true;
+  if (v === _eq_state.enabled) return { ok: true, enabled: v };
+  _eq_state.enabled = v;
+  _eq_state_save(_eq_state);
+  logInfo("eqState", "set enabled", `enabled=${v}`);
+  _notifyEqWindows("shell:eqStateChanged", {
+    enabled: _eq_state.enabled,
+    preset: _eq_state.preset,
+    gains: _eq_state.gains.slice(),
+  });
+  return { ok: true, enabled: v };
+}
+// P3.5 重置 helper = 应用 flat 预置 + 主开关保持不变(用户可单独切主开关)
+function _resetEq() {
+  _eq_state.preset = "flat";
+  _eq_state.gains = EQ_PRESETS.flat.slice();
+  _eq_state_save(_eq_state);
+  logInfo("eqState", "reset to flat");
+  _notifyEqWindows("shell:eqStateChanged", {
+    enabled: _eq_state.enabled,
+    preset: _eq_state.preset,
+    gains: _eq_state.gains.slice(),
+  });
+  return { ok: true, preset: _eq_state.preset, gains: _eq_state.gains.slice() };
+}
+
 function openLyricWindow() {
   startMusic();
   const deadline = Date.now() + 3000;
@@ -908,6 +1044,53 @@ function openLyricWindow() {
     }
   };
   tick();
+}
+// P3.5(2026-10-04)桌面 EQ 独立窗 — 镜像 openLyricWindow 模式,但不走 lyric child spec。
+// 走主 web 的 music-vue/eq.html 入口(vite build 多入口之一,P3.5 新增);
+// 装进独立 BrowserWindow(360×420,frame:false,transparent,skipTaskbar),
+// 通过 _eqWin 单例保持映射(下次开时复用已建窗)。
+function openEqWindow() {
+  // 与歌词独立窗共享 startMusic 探活(music 后端不跑起来 eq 路由不可用)
+  startMusic();
+  const deadline = Date.now() + 3000;
+  const tick = () => {
+    // 若窗已建好,直接复用
+    if (_eqWin && !_eqWin.isDestroyed()) { _eqWin.show(); _eqWin.focus(); return; }
+    const port = require("./port_config").readMusicPort();
+    if (port > 0) {
+      waitForPort(WEB_HOST, port, 1.0).then((ok) => {
+        if (!ok) {
+          if (Date.now() < deadline) { setTimeout(tick, 300); return; }
+          logWarn("openEqWindow", "music web not ready in 3s", `port=${port}`);
+          return;
+        }
+        const url = `http://${WEB_HOST}:${port}/music-vue/eq.html`;
+        _eqWin = new BrowserWindow({
+          width: 360, height: 420,
+          minWidth: 320, minHeight: 360,
+          frame: false, transparent: true,
+          alwaysOnTop: false,
+          skipTaskbar: true,
+          resizable: true,
+          backgroundColor: "#00000000",
+          title: "PrisirAI 桌面 EQ",
+          webPreferences: _commonWebPreferences(),
+        });
+        _eqWin.on("closed", () => { _eqWin = null; });
+        _eqWin.loadURL(url).catch((e) => logWarn("openEqWindow", "loadURL failed", `err=${e.message}`));
+      });
+      return;
+    }
+    if (Date.now() < deadline) {
+      setTimeout(tick, 300);
+    } else {
+      logWarn("openEqWindow", "music port 0 after 3s", `port=${port}`);
+    }
+  };
+  tick();
+}
+function _closeEqWindow() {
+  if (_eqWin && !_eqWin.isDestroyed()) { try { _eqWin.close(); } catch (_) {} }
 }
 function openCalendarWindow() {
   // 日历 走 prisiragent_web.py 的 /prisIragent/calendar 路由。
@@ -963,6 +1146,15 @@ function createTray() {
     ]},
     { label: "📅 日程",   click: openCalendarWindow },
     { label: "🔀 工作流", click: openWorkflowWindow },
+    // P3.5(2026-10-04)桌面 EQ 独立窗 — 360×420 透明,3 项 submenu (开/启/关闭)
+    // 双胞胎模板双改(createTray + buildTrayItems),与歌词窗 submenu 同款。
+    { label: "🎚 桌面 EQ", submenu: [
+      { label: "打开 EQ 窗口", click: openEqWindow },
+      { label: "EQ 开启", type: "checkbox", checked: _eq_state.enabled,
+        click: (item) => _setEqEnabled(item.checked) },
+      { type: "separator" },
+      { label: "🚪 关闭 EQ 窗口", click: _closeEqWindow },
+    ]},
     { type: "separator" },
     { label: "关闭所有子窗口", click: () => closeAllChildWindows() },
   ];
@@ -1042,6 +1234,15 @@ function buildTrayItems() {
     ]},
     { label: "📅 日程",   click: openCalendarWindow },
     { label: "🔀 工作流", click: openWorkflowWindow },
+    // P3.5(2026-10-04)桌面 EQ 独立窗 — 360×420 透明,3 项 submenu (开/启/关闭)
+    // 双胞胎模板双改(createTray + buildTrayItems),与歌词窗 submenu 同款。
+    { label: "🎚 桌面 EQ", submenu: [
+      { label: "打开 EQ 窗口", click: openEqWindow },
+      { label: "EQ 开启", type: "checkbox", checked: _eq_state.enabled,
+        click: (item) => _setEqEnabled(item.checked) },
+      { type: "separator" },
+      { label: "🚪 关闭 EQ 窗口", click: _closeEqWindow },
+    ]},
     { type: "separator" },
     { label: "关闭所有子窗口", click: () => closeAllChildWindows() },
   ];
@@ -1208,6 +1409,42 @@ ipcMain.handle("shell:setLyricLines", (_e, value) => {
     logError("shell:setLyricLines", "err", `e=${e.message}`);
     return { ok: false, err: e.message };
   }
+});
+
+// P3.5(2026-10-04)music 10 段 EQ 均衡器 IPC — 6 个白名单。
+//  - shell:get-eq-state    → 渲染层 bootstrap 拉初始态(避免重启后 EQ 态对不上 UI)
+//  - shell:set-eq-gain     → 单段 gain 调整(0..9 idx, dB -12..+12 clamp)
+//  - shell:set-eq-preset   → 应用预置(白名单 EQ_PRESETS)
+//  - shell:set-eq-enabled  → 主开关
+//  - shell:reset-eq        → 重置为 flat(主开关保留)
+//  - shell:openEqWindow     → 托盘点击「🎚 桌面 EQ」走此处
+// 任何 helper 调用都广播 shell:eqStateChanged 给所有 BrowserWindow(MusicView / LyricOnlyView / 独立 EQ 窗),
+//   触发对方 store.attachBroadcast() 回调,UI mirror 同步。
+ipcMain.handle("shell:get-eq-state", () => ({
+  ok: true,
+  enabled: _eq_state.enabled,
+  preset: _eq_state.preset,
+  gains: _eq_state.gains.slice(),
+}));
+ipcMain.handle("shell:set-eq-gain", (_e, idx, dB) => {
+  try { return _setEqGain(idx, dB); }
+  catch (e) { logError("shell:set-eq-gain", "err", `e=${e.message}`); return { ok: false, err: e.message }; }
+});
+ipcMain.handle("shell:set-eq-preset", (_e, name) => {
+  try { return _setEqPreset(name); }
+  catch (e) { logError("shell:set-eq-preset", "err", `e=${e.message}`); return { ok: false, err: e.message }; }
+});
+ipcMain.handle("shell:set-eq-enabled", (_e, b) => {
+  try { return _setEqEnabled(b); }
+  catch (e) { logError("shell:set-eq-enabled", "err", `e=${e.message}`); return { ok: false, err: e.message }; }
+});
+ipcMain.handle("shell:reset-eq", () => {
+  try { return _resetEq(); }
+  catch (e) { logError("shell:reset-eq", "err", `e=${e.message}`); return { ok: false, err: e.message }; }
+});
+ipcMain.handle("shell:openEqWindow", () => {
+  try { openEqWindow(); return { ok: true }; }
+  catch (e) { logError("shell:openEqWindow", "err", `e=${e.message}`); return { ok: false, err: e.message }; }
 });
 
 // v2.0 反馈卡:白名单 URL 走 shell.openExternal(系统浏览器)。

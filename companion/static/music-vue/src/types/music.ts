@@ -65,3 +65,10 @@ export interface ILyricLineEvt {
   opacity?: number
   ts: number
 }
+
+// P3.5(2026-10-04)music 10 段 EQ 状态 — 镜像主进程 _eq_state 结构
+export interface IEqState {
+  enabled: boolean        // 主开关(true=10 段 active / false=每段 gain=0 直通)
+  preset: string         // 'flat' | 'vocal' | 'bass' | 'treble' | 'rock' | 'electronic' | 'custom'
+  gains: number[]        // 长度 10,每段 dB,范围 -12..+12,默认 0
+}

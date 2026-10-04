@@ -1,6 +1,7 @@
 // stores/ui.ts — P2.5+24(2026-10-03) → P3.3(2026-10-03)加 pushListToast
 // UI 状态:侧栏模式(viewMode) + toast + 当前标签过滤。
 // P3.3(2026-10-03):pushListToast 支持多行 list 渲染(收藏列表 8s TTL)。
+// P3.5(2026-10-04):showEqPanel + toggleEqPanel(MusicView 主窗 EQ 抽屉)。
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api } from '@/services/api'
@@ -29,6 +30,9 @@ export const useUiStore = defineStore('ui', () => {
   const viewMode = ref<ViewMode>('playlist')
   const tagFilter = ref<string>('')  // 当前标签过滤(空 = 全部)
   const toasts = ref<AnyToastMsg[]>([])
+  // P3.5(2026-10-04):EQ 抽屉显示状态(独立 EQ 窗与 LyricOnlyView 各自持久化,
+  // MusicView 抽屉只是会话级 toggle)
+  const showEqPanel = ref(false)
   let toastId = 0
 
   function pushToast(type: ToastMsg['type'], text: string, ttlMs = 2400) {
@@ -68,8 +72,13 @@ export const useUiStore = defineStore('ui', () => {
     tagFilter.value = tag
   }
 
+  // P3.5(2026-10-04):EQ 抽屉 toggle
+  function toggleEqPanel() {
+    showEqPanel.value = !showEqPanel.value
+  }
+
   return {
-    viewMode, tagFilter, toasts,
-    pushToast, pushListToast, bootstrap, respinPool, setTag,
+    viewMode, tagFilter, toasts, showEqPanel,
+    pushToast, pushListToast, bootstrap, respinPool, setTag, toggleEqPanel,
   }
 })

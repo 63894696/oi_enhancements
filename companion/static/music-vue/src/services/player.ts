@@ -73,6 +73,9 @@ export class PlayerService extends Emitter {
   getDuration(): number { return this.duration }
   getVolume(): number { return this.volume }
   getBuffered(): number { return this.buffered }
+  // P3.5(2026-10-04)暴露 audio 元素给 EqEngine.bind 用 — 同一 audio 只能被 createMediaElementSource
+  //   链一次,EqEngine 内部 bound 守护避免 InvalidStateError。
+  getAudioElement(): HTMLAudioElement { return this.audio }
 
   private setStatus(s: PlayerStatus) {
     if (this.status === s) return
@@ -132,6 +135,12 @@ export class PlayerService extends Emitter {
   // ============================================================
   private async onCanPlay() {
     if (this.currentToken === null) return
+    // P3.5(2026-10-04)首次 canplay 时触发 EqEngine.bind,EqEngine 内部 bound flag 幂等。
+    // dynamic import 是为避免循环 import(EqEngine 单例不依赖 Player,但 store 之间可能)。
+    import('@/services/eq').then(({ eqEngine }) => {
+      eqEngine.bind(this.audio)
+      eqEngine.resume()
+    }).catch((e) => console.warn('[PlayerService] eq bind failed:', e))
     this.setStatus('buffering')
     try {
       await this.audio.play()
