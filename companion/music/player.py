@@ -198,8 +198,10 @@ class OnlineSearch:
       3) 全失败 → 返 ok=False,前端给 toast
     """
 
-    # P2.5+28 C 阶段调研(2026-10-05):9 源候选列表。
-    # 实际跑起来发现:shim 实现"call-all-handlers,first non-null wins",local.js 会屏蔽所有
+    # P2.5+28 Y+1 阶段(2026-10-05):双源 fallback ship。
+    # huibq.js(走 lxmusicapi.onrender.com 公共 3rd-party API)首次成功后重复请求
+    # 被 `code: 1禁止批量下载` 限流。gdstudio.js(走 music-api.gdstudio.xyz 公共反向代理
+    # API,只支持 netease)声明 `wy` 子源 → huibq wy 失败抛错时自动接盘。
     # P2.5+28 Y 阶段(2026-10-05):实测发现 lyswhut lx_main.js 的 5 源(kw/kg/tx/wy/mg)
     # 在 LX dispatcher + evt={action,source,info,musicInfo,type} 协议下能正确调通 QQ/网易/
     # 酷我/酷狗/咪咕 API,但所有 5 源都被 CDN 返 101404 fnameHitCache_404 区域屏蔽,
@@ -208,8 +210,9 @@ class OnlineSearch:
     # DEFAULT_SOURCES 是 LX sub-source 名(给 dispatcher 派单用,不是文件名):
     #   - 'local' → local.js(本地 mp3 占位 fallback)
     #   - 'tx'/'kw'/'wy'/'kg'/'mg' → huibq.js 内的 5 子源
-    # LxRuntimeClient 启动时按需把 huibq.js 装进 Node 子进程。
-    DEFAULT_SOURCES = ["local", "tx", "kw", "wy", "kg", "mg"]
+    #   - 'wy_gdstudio' → gdstudio.js 内的 wy 子源(huibq wy 失败时接盘)
+    # LxRuntimeClient 启动时按需把 huibq.js + gdstudio.js 装进 Node 子进程。
+    DEFAULT_SOURCES = ["local", "tx", "kw", "wy", "wy_gdstudio", "kg", "mg"]
 
     def __init__(self, sources: Optional[List[str]] = None):
         # 2026-10-04:默认 local-only(0 外网请求,0 上传)

@@ -586,6 +586,97 @@ class TestHuibqSourceLoads(unittest.TestCase):
             msg="huibq.js 应引用 LX EVENT_NAMES 协议")
 
 
+class TestGdstudioSourceLoads(unittest.TestCase):
+    """P2.5+28 Y+1 阶段(2026-10-05):gdstudio.js 是 huibq 限流时的兜底 LX 源。
+
+    走 music-api.gdstudio.xyz 公共反向代理 API,只支持 netease(wy)子源。
+    静态审计:必须是 LX 协议源 + 声明 wy 子源 + 不混淆。
+    """
+
+    def setUp(self):
+        self.gdstudio_path = Path(__file__).resolve().parent.parent / "companion" / "lx_runtime" / "gdstudio.js"
+        if not self.gdstudio_path.exists():
+            self.skipTest("gdstudio.js 不存在")
+
+    def test_gdstudio_is_readable(self):
+        """gdstudio.js 必须可读且 < 150 行(可审计红线)。"""
+        src = self.gdstudio_path.read_text(encoding="utf-8")
+        lines = src.count("\n")
+        self.assertLess(lines, 150,
+            msg=f"gdstudio.js 应 < 150 行(可审计);got {lines}")
+        self.assertGreater(lines, 30,
+            msg=f"gdstudio.js 应 > 30 行(实际逻辑);got {lines}")
+
+    def test_gdstudio_uses_lx_protocol(self):
+        """gdstudio.js 必须遵循 LX EVENT_NAMES 协议(on + inited send)。"""
+        src = self.gdstudio_path.read_text(encoding="utf-8")
+        self.assertIn("EVENT_NAMES", src,
+            msg="gdstudio.js 应引用 LX EVENT_NAMES 协议")
+        self.assertIn("on(EVENT_NAMES.request", src,
+            msg="gdstudio.js 应注册 request handler")
+        self.assertIn("send(EVENT_NAMES.inited", src,
+            msg="gdstudio.js 应 emit inited 事件")
+
+    def test_gdstudio_declares_wy_source(self):
+        """gdstudio.js 必须声明 `wy`(netease)子源,作为 huibq 限流时的接盘者。"""
+        src = self.gdstudio_path.read_text(encoding="utf-8")
+        # musicSources 对象里必含 wy 键
+        self.assertRegex(src, r"musicSources\s*=\s*\{[^}]*wy\s*:",
+            msg="gdstudio.js musicSources 对象必含 wy 子源")
+
+    def test_gdstudio_calls_gdstudio_api(self):
+        """gdstudio.js 必须走 music-api.gdstudio.xyz 公共 API(不打其他平台)。"""
+        src = self.gdstudio_path.read_text(encoding="utf-8")
+        self.assertIn("music-api.gdstudio.xyz", src,
+            msg="gdstudio.js 应走 music-api.gdstudio.xyz 公共 API")
+
+    def test_gdstudio_uses_lx_request_shim(self):
+        """gdstudio.js 必须走 globalThis.lx.request(受 shim 保护),不直接 fetch。"""
+        src = self.gdstudio_path.read_text(encoding="utf-8")
+        # 必须用 lx.request(走 shim 的 axios-callback wrapper)
+        self.assertIn("request(", src,
+            msg="gdstudio.js 应调用 request(走 lx shim 的 HTTP wrapper)")
+        # 不应该直接 require fetch/axios/undici
+        import re
+        direct_fetch = re.search(r"\brequire\s*\(\s*['\"]node-fetch", src)
+        self.assertIsNone(direct_fetch,
+            msg="gdstudio.js 不应直接 require node-fetch;应走 lx.request shim")
+        direct_axios = re.search(r"\brequire\s*\(\s*['\"]axios", src)
+        self.assertIsNone(direct_axios,
+            msg="gdstudio.js 不应直接 require axios;应走 lx.request shim")
+
+
+class TestSubToFileGdstudio(unittest.TestCase):
+    """P2.5+28 Y+1 阶段(2026-10-05):SUB_TO_FILE 必含 wy_gdstudio 映射。"""
+
+    def test_sub_to_file_includes_gdstudio(self):
+        """SUB_TO_FILE 必须含 'wy_gdstudio' → 'gdstudio.js' 映射。"""
+        from lx_runtime_client import LxRuntimeClient
+        self.assertIn("wy_gdstudio", LxRuntimeClient.SUB_TO_FILE,
+            msg=f"SUB_TO_FILE 必须含 wy_gdstudio 映射;got {list(LxRuntimeClient.SUB_TO_FILE.keys())!r}")
+        self.assertEqual(LxRuntimeClient.SUB_TO_FILE["wy_gdstudio"], "gdstudio.js",
+            msg=f"wy_gdstudio 应映射到 gdstudio.js;got {LxRuntimeClient.SUB_TO_FILE['wy_gdstudio']!r}")
+
+    def test_default_sources_includes_wy_gdstudio_fallback(self):
+        """DEFAULT_SOURCES 必含 'wy_gdstudio',在 'wy' 之后(huibq 主路 + gdstudio 兜底)。"""
+        from music.player import OnlineSearch
+        sources = OnlineSearch.DEFAULT_SOURCES
+        self.assertIn("wy_gdstudio", sources,
+            msg=f"DEFAULT_SOURCES 必含 'wy_gdstudio'(huibq 限流兜底);got {sources!r}")
+        # wy_gdstudio 应在 wy 之后(顺序兜底)
+        self.assertGreater(sources.index("wy_gdstudio"), sources.index("wy"),
+            msg=f"wy_gdstudio 应在 wy 之后(huibq 先试,失败再 fallback);got {sources!r}")
+
+    def test_resolve_source_files_dedupes(self):
+        """_resolve_source_files 自动去重:['wy', 'wy_gdstudio'] → ['huibq.js', 'gdstudio.js']。"""
+        from lx_runtime_client import LxRuntimeClient
+        resolved = LxRuntimeClient._resolve_source_files(
+            ["local", "tx", "kw", "wy", "wy_gdstudio", "kg", "mg"])
+        # 期望 3 个源文件:local.js + huibq.js(5 子源合并)+ gdstudio.js
+        self.assertEqual(resolved, ["local.js", "huibq.js", "gdstudio.js"],
+            msg=f"应去重为 3 个源文件;got {resolved!r}")
+
+
 # P2.5+28 A 阶段(2026-10-04):删除 TestApiStateSeedFallback 整组(is_seed_fallback 字段已删)
 # 新增 TestApiStatePlayableField(playable + last_err 新字段)+ TestApiStreamNoSeedHeader
 # (X-Prisir-Source header 已删)。整组迁移在文件下方。
