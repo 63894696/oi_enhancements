@@ -238,19 +238,26 @@ async def api_library_search(req: web.Request) -> web.Response:
 # P2.5+23(2026-10-03):真歌名池 API
 # ============================================================
 async def api_songs(req: web.Request) -> web.Response:
-    """GET /api/songs[?tag=ACG神曲]
-    返当前可见歌名池(默认 60 首)+ tags 列表。
+    """GET /api/songs[?tag=流行&tag=摇滚][&q=周杰伦]
+    P3.7(2026-10-04):多 tag OR 合并 + title/artist 模糊搜索。
+    返当前可见歌名池(默认 60 首)+ tags 列表(全 14 tag)。
     """
     if not APP.song_pool:
         return _err("song_pool not initialized")
-    tag = req.query.get("tag") or None
-    songs = APP.song_pool.list_visible(tag=tag)
+    # 多 tag:getall('tag') 收 ?tag=a&tag=b;同时兼容旧 ?tag=xxx 单值(已在 List 内)
+    raw_tags = req.query.getall("tag", [])
+    sel_tags = [t for t in (x.strip() for x in raw_tags) if t]
+    q = (req.query.get("q") or "").strip()
+    songs = APP.song_pool.list_visible(tags=sel_tags, q=q)
     return _ok(
         count=len(songs),
         total=len(APP.song_pool.all_songs),
-        tag=tag or "",
-        songs=[s.to_dict() for s in songs],
+        # P3.7:已选 tag 数组 + 搜索词回显(便于前端调试)
+        sel_tags=sel_tags,
+        q=q,
+        # P3.7:全 14 tag 列表(MusicView 仍按 `tags` 字段读 — 保持 P2.5+24 兼容)
         tags=APP.song_pool.list_tags(),
+        songs=[s.to_dict() for s in songs],
     )
 
 

@@ -6,7 +6,7 @@
 //
 // P3.6:歌单行右键弹 PopupMenu(复制 / 播放 / 收藏 / ⬇ 下载 / 取消);useDownloadToast()
 //   顶层挂载,把 ws 推过来的 download_done 转成系统通知。
-import { onMounted, ref, computed } from 'vue'
+import { onMounted, ref, computed, watch } from 'vue'
 import { api } from '@/services/api'
 import { useUiStore } from '@/stores/ui'
 import { usePlayerStore } from '@/stores/player'
@@ -46,8 +46,12 @@ const ctxSong = ref<Song | null>(null)
 async function loadSongs() {
   loading.value = true
   try {
-    const tag = ui.tagFilter ? `?tag=${encodeURIComponent(ui.tagFilter)}` : ''
-    const r = await api(`/api/songs${tag}`)
+    // P3.7(2026-10-04):多 tag OR 合并 + search 实时(q=)
+    const params: string[] = []
+    for (const t of ui.tagFilters) params.push(`tag=${encodeURIComponent(t)}`)
+    if (ui.searchQuery) params.push(`q=${encodeURIComponent(ui.searchQuery)}`)
+    const qs = params.length ? `?${params.join('&')}` : ''
+    const r = await api(`/api/songs${qs}`)
     if (r.ok) {
       songs.value = r.songs || []
       tags.value = r.tags || []
@@ -64,14 +68,32 @@ async function onRespin() {
   ui.pushToast('info', '已换一批')
 }
 
+// P3.7(2026-10-04):chip 多选 toggle — 沿用 P2.5+24 toggle 范式
+// (再点同 chip 取消),只不过换成多值数组。改完调 loadSongs 重请求。
 async function onTagClick(tag: string) {
-  await ui.setTag(tag === ui.tagFilter ? '' : tag)
+  ui.toggleTag(tag)
   await loadSongs()
 }
+
+// P3.7:search 输入 → setSearch(200ms debounce)→ 监听到 searchQuery 变 → 重请求。
+function onSearchInput(e: Event) {
+  ui.setSearch((e.target as HTMLInputElement).value)
+}
+
+// P3.7:搜索词变了(200ms 后)→ 重请求;chip 变了直接重请求
+watch(() => [ui.searchQuery, ui.tagFilters.length, ui.tagFilters.slice().sort().join(',')], () => {
+  void loadSongs()
+})
 
 async function onPlaySong(s: Song) {
   await player.playById(s.id)
   ui.pushToast('info', `正在播放: ${s.title} - ${s.artist}`)
+}
+
+// P3.7(2026-10-04):顶栏「× 清空」一键还原 — 同时清 chip + search。
+function onClearAll() {
+  ui.clearAllFilters()
+  void loadSongs()
 }
 
 // P3.6:歌单行右键 → 弹 PopupMenu(沿用 P3.3 ♡/♥ 长按范式)
@@ -144,17 +166,30 @@ const headerText = computed(() => {
   <div class="music-view">
     <Toast />
 
-    <!-- 顶栏:标题 + 标签过滤 + 换一批 + LX 探测灯 + seed 兜底 -->
+    <!-- 顶栏:标题 + 标签过滤 + 换一批 + LX 探测灯 + seed 兜底 + 搜索框 + 清空按钮 -->
+    <!-- P3.7(2026-10-04):.left flex-wrap 折行,7+ 元素自动换行;
+         顶栏 .left 加搜索框 + 多 chip 显示 + 「× 清空」一键还原 -->
     <div class="topbar">
       <div class="left">
         <span class="header">{{ headerText }}</span>
-        <button class="btn-respin" @click="onRespin" :disabled="loading" v-if="!ui.tagFilter">
+        <button class="btn-respin" @click="onRespin" :disabled="loading"
+                v-if="ui.tagFilters.length === 0">
           🔄 换一批
         </button>
-        <span v-if="ui.tagFilter" class="tag-active">
-          #{{ ui.tagFilter }}
-          <button class="x" @click="onTagClick(ui.tagFilter)" title="清除">×</button>
+        <!-- P3.7:多 chip 显示(已选 tag 数组),每个 chip 自己带 × 取消 -->
+        <span v-for="t in ui.tagFilters" :key="t" class="tag-active">
+          #{{ t }}
+          <button class="x" @click="onTagClick(t)" :title="`取消 ${t}`">×</button>
         </span>
+        <!-- P3.7:搜索框 — 200ms debounce 后触发请求 -->
+        <input type="search" class="search-input"
+               :value="ui.searchInput" @input="onSearchInput"
+               placeholder="搜歌名/歌手" />
+        <!-- P3.7:chip+search 任一非空时显示「× 清空」一键还原 -->
+        <button class="btn-clear"
+                v-if="ui.tagFilters.length > 0 || ui.searchInput"
+                @click="onClearAll"
+                title="清除所有过滤">× 清空</button>
       </div>
       <div class="probe-row">
         <span class="probe" :class="{ ok: player.onlineReady, off: !player.onlineReady }"
@@ -172,10 +207,10 @@ const headerText = computed(() => {
       </div>
     </div>
 
-    <!-- 标签过滤 chips -->
+    <!-- 标签过滤 chips — P3.7:多选 active class 走 ui.tagFilters.includes(t) -->
     <div class="tags">
       <button v-for="t in tags" :key="t"
-              class="tag" :class="{ active: t === ui.tagFilter }"
+              class="tag" :class="{ active: ui.tagFilters.includes(t) }"
               @click="onTagClick(t)">
         {{ t }}
       </button>
@@ -230,7 +265,32 @@ const headerText = computed(() => {
   justify-content: space-between;
   align-items: center;
 }
-.left { display: flex; align-items: center; gap: 12px; }
+.left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+/* P3.7(2026-10-04):顶栏搜索框 — 紧凑 160px,占位符「搜歌名/歌手」(落雪同款) */
+.search-input {
+  width: 160px;
+  padding: 3px 8px;
+  font-size: 12px;
+  border: 1px solid var(--gh-gray-light);
+  border-radius: 4px;
+  background: var(--gh-paper);
+  color: var(--gh-ink);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.search-input:focus { border-color: var(--gh-gold); }
+.search-input::placeholder { color: var(--gh-gray); font-size: 11px; }
+/* P3.7:「× 清空」一键还原按钮 — chip+search 任一非空时显 */
+.btn-clear {
+  padding: 3px 10px;
+  font-size: 11px;
+  border: 1px solid var(--gh-gray);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--gh-gray);
+  cursor: pointer;
+}
+.btn-clear:hover { background: var(--gh-gray); color: var(--gh-paper); }
 .header {
   font-size: 14px;
   font-weight: 600;

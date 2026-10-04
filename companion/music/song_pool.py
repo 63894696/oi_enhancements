@@ -183,10 +183,34 @@ class SongPoolCatalog:
     # -------------------------------------------------------
     # 查询 API(给 web 路由用)
     # -------------------------------------------------------
-    def list_visible(self, tag: Optional[str] = None) -> List[SongMeta]:
-        if tag:
-            return [s for s in self.visible_songs if s.tag == tag]
-        return list(self.visible_songs)
+    def list_visible(
+        self,
+        tags: Optional[List[str]] = None,
+        q: Optional[str] = None,
+        tag: Optional[str] = None,  # 旧单值参数(向后兼容 P2.5+24 + P3.6)
+    ) -> List[SongMeta]:
+        """P3.7(2026-10-04):支持多 tag OR 合并 + title/artist 模糊搜索。
+
+        - tags: 多 tag,任一命中即返(OR 语义;网易云桌面同款)
+        - q: title/artist case-insensitive 简单包含
+        - tag: 旧单值参数(向后兼容,内部归并到 tags)
+        """
+        # 合并 tags + tag 旧单值(向后兼容)
+        eff_tags: List[str] = list(tags) if tags else []
+        if tag and tag not in eff_tags:
+            eff_tags.append(tag)
+        qn = (q or "").strip().lower()
+
+        out: List[SongMeta] = []
+        for s in self.visible_songs:
+            if eff_tags and s.tag not in eff_tags:
+                continue
+            if qn:
+                hay = f"{s.title} {s.artist}".lower()
+                if qn not in hay:
+                    continue
+            out.append(s)
+        return out
 
     def list_tags(self) -> List[str]:
         """返所有出现过的标签(按出现顺序,空标签排最后)。"""
