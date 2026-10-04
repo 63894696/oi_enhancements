@@ -370,6 +370,9 @@ function _lyric_state_load() {
       // P3.2(2026-10-03)歌词窗视觉调档 — opacity 0.3-1.0 / scale 0.7-1.6
       opacity: _clampNumber(obj.opacity, 0.3, 1.0, 0.85),
       scale: _clampNumber(obj.scale, 0.7, 1.6, 1.0),
+      // P3.4(2026-10-03)歌词窗单/双行 — 1(单行紧凑,默认) / 2(active + 下一行预览)
+      // 枚举非布尔,落雪范式;只认 1/2,其他值兜底 1。
+      lines: (Number(obj.lines) === 2) ? 2 : 1,
     };
     return out;
   } catch (e) {
@@ -385,6 +388,7 @@ function _lyric_state_load() {
       bounds: { x: null, y: null, w: 720, h: 360 },
       opacity: 0.85,
       scale: 1.0,
+      lines: 1,
     };
   }
 }
@@ -856,6 +860,21 @@ function _lockLyricCurrentBounds() {
   _lyric_state_save(_lyric_state);
   logInfo("lyricState", "locked bounds", `bounds=${JSON.stringify(_lyric_state.bounds)}`);
 }
+// P3.4(2026-10-03)歌词窗单/双行 toggle — 1 单行紧凑 / 2 双行(active + 下一行预览)
+// 枚举非布尔(落雪范式),只认 1/2,其他值兜底 1。被托盘 radio + IPC 共用。
+function _setLyricLines(value) {
+  const v = (Number(value) === 2) ? 2 : 1;
+  if (v === _lyric_state.lines) return;
+  _lyric_state.lines = v;
+  _lyric_state_save(_lyric_state);
+  logInfo("lyricState", "set lines", `lines=${v}`);
+  // P2.5+26 经验:radio 状态变化后必 rebuildTrayMenu,否则菜单 radio 永远显旧态
+  rebuildTrayMenu();
+  _notifyLyricWindow("shell:lyricStateChanged",
+    { alwaysOnTop: _lyric_state.alwaysOnTop, lockDrag: _lyric_state.lockDrag,
+      bounds: _lyric_state.bounds, opacity: _lyric_state.opacity,
+      scale: _lyric_state.scale, lines: v });
+}
 function _closeLyricWindow() {
   const w = childWindows.get("lyric");
   if (!w || w.isDestroyed()) return;
@@ -925,12 +944,19 @@ function createTray() {
     { label: "📞 语伴",   click: openCompanionWindow },
     { label: "🎵 音乐",   click: openMusicWindow },
     // P2.5+26(2026-10-03):🎤 桌面歌词改成 submenu — 打开 + 2 个 checkbox + 锁定位置 + 关闭
+    // P3.4(2026-10-03):加 ☝ 单行 / ☟ 双行 2 个 radio(group 必填,否则不互斥)
     { label: "🎤 桌面歌词", submenu: [
       { label: "打开歌词窗口", click: openLyricWindow },
       { label: "始终在上", type: "checkbox", checked: _lyric_state.alwaysOnTop,
         click: _toggleLyricAlwaysOnTop },
       { label: "拖动已锁定", type: "checkbox", checked: _lyric_state.lockDrag,
         click: _toggleLyricLockDrag },
+      { type: "separator" },
+      { label: "☝ 单行", type: "radio", checked: _lyric_state.lines === 1,
+        group: "lyricLines", click: () => _setLyricLines(1) },
+      { label: "☟ 双行", type: "radio", checked: _lyric_state.lines === 2,
+        group: "lyricLines", click: () => _setLyricLines(2) },
+      { type: "separator" },
       { label: "📌 锁定当前位置", click: _lockLyricCurrentBounds },
       { type: "separator" },
       { label: "🚪 关闭歌词窗口", click: _closeLyricWindow },
@@ -992,6 +1018,12 @@ function buildTrayItems() {
         click: _toggleLyricAlwaysOnTop },
       { label: "拖动已锁定", type: "checkbox", checked: _lyric_state.lockDrag,
         click: _toggleLyricLockDrag },
+      { type: "separator" },
+      { label: "☝ 单行", type: "radio", checked: _lyric_state.lines === 1,
+        group: "lyricLines", click: () => _setLyricLines(1) },
+      { label: "☟ 双行", type: "radio", checked: _lyric_state.lines === 2,
+        group: "lyricLines", click: () => _setLyricLines(2) },
+      { type: "separator" },
       { label: "📌 锁定当前位置", click: _lockLyricCurrentBounds },
       { type: "separator" },
       { label: "🚪 关闭歌词窗口", click: _closeLyricWindow },
@@ -1078,6 +1110,8 @@ ipcMain.handle("shell:getLyricState", () => {
     bounds: { ..._lyric_state.bounds },
     opacity: _lyric_state.opacity,
     scale: _lyric_state.scale,
+    // P3.4(2026-10-03)歌词窗单/双行 — 1 单行 / 2 双行
+    lines: _lyric_state.lines,
   };
 });
 ipcMain.handle("shell:setLyricBounds", (_e, b) => {
@@ -1126,6 +1160,28 @@ ipcMain.handle("shell:setLyricScale", (_e, value) => {
     return { ok: true, scale: v };
   } catch (e) {
     logError("shell:setLyricScale", "err", `e=${e.message}`);
+    return { ok: false, err: e.message };
+  }
+});
+
+// P3.4(2026-10-03)歌词窗单/双行 toggle — 1 单行紧凑 / 2 双行(active + 下一行预览)
+// shell:setLyricLines → 设 _lyric_state.lines + 持久化 + 推 lyric 子窗 + rebuildTrayMenu
+ipcMain.handle("shell:setLyricLines", (_e, value) => {
+  try {
+    const v = (Number(value) === 2) ? 2 : 1;
+    if (v === _lyric_state.lines) return { ok: true, lines: _lyric_state.lines };
+    _lyric_state.lines = v;
+    _lyric_state_save(_lyric_state);
+    logInfo("lyricState", "set lines", `lines=${v}`);
+    _notifyLyricWindow("shell:lyricStateChanged",
+      { alwaysOnTop: _lyric_state.alwaysOnTop, lockDrag: _lyric_state.lockDrag,
+        bounds: _lyric_state.bounds, opacity: _lyric_state.opacity,
+        scale: _lyric_state.scale, lines: v });
+    // P2.5+26 经验:radio 状态变化后必 rebuildTrayMenu,否则菜单 radio 永远显旧态
+    if (typeof rebuildTrayMenu === "function") rebuildTrayMenu();
+    return { ok: true, lines: v };
+  } catch (e) {
+    logError("shell:setLyricLines", "err", `e=${e.message}`);
     return { ok: false, err: e.message };
   }
 });

@@ -19,6 +19,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useLyricStore } from '@/stores/lyric'
 import LyricProgressBar from '@/components/LyricProgressBar.vue'
+import LyricLinesToggle from '@/components/LyricLinesToggle.vue'
 
 const lyric = useLyricStore()
 
@@ -26,6 +27,8 @@ const lock = ref(false)             // 锁拖动?true = 不可拖
 // P3.2(2026-10-03)视觉调档 — 透明度 0.3-1.0 + 字号缩放 0.7-1.6
 const opacity = ref(0.85)
 const scale = ref(1.0)
+// P3.4(2026-10-03)歌词窗单/双行 toggle — 1 单行紧凑 / 2 双行(active + 下一行预览)
+const lines = ref<1 | 2>(1)
 let unsubscribeState: (() => void) | null = null
 
 const connTag = computed(() => {
@@ -62,6 +65,9 @@ onMounted(async () => {
         if (typeof s.lockDrag === 'boolean') lock.value = s.lockDrag
         if (typeof s.opacity === 'number') opacity.value = s.opacity
         if (typeof s.scale === 'number') scale.value = s.scale
+        // P3.4 拉单/双行初值(默认 1 容错)
+        if (s.lines === 2) lines.value = 2
+        else if (s.lines === 1) lines.value = 1
       }
     } catch (_) {}
   }
@@ -72,6 +78,9 @@ onMounted(async () => {
       if (typeof payload.lockDrag === 'boolean') lock.value = payload.lockDrag
       if (typeof payload.opacity === 'number') opacity.value = payload.opacity
       if (typeof payload.scale === 'number') scale.value = payload.scale
+      // P3.4 推单/双行变化(主进程 toggle 或 IPC setLyricLines 都会推)
+      if (payload.lines === 2) lines.value = 2
+      else if (payload.lines === 1) lines.value = 1
     })
   }
 })
@@ -113,7 +122,11 @@ function onScaleChange(e: Event) {
 </script>
 
 <template>
-  <div class="lyric-only-view" :class="{ 'lyric-locked': lock }" @dblclick="onDblClick">
+  <div class="lyric-only-view"
+       :class="{ 'lyric-locked': lock,
+                 'lyric-lines-1': lines === 1,
+                 'lyric-lines-2': lines === 2 }"
+       @dblclick="onDblClick">
     <!-- 顶部 6px 拖动条 — Electron transparent 窗整窗可拖,lock 后 no-drag(lyric.css) -->
     <div id="drag-bar"></div>
 
@@ -164,6 +177,8 @@ function onScaleChange(e: Event) {
         <input type="range" min="70" max="160" :value="Math.round(scale * 100)"
                @input="onScaleChange" />
       </div>
+      <!-- P3.4(2026-10-03)单/双行 toggle — 默认单行紧凑,切双行显示下一句预览 -->
+      <LyricLinesToggle :value="lines" />
     </div>
   </div>
 </template>

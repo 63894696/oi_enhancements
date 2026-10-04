@@ -121,6 +121,24 @@ body {
   opacity: 0.55;
 }
 
+/* P3.4(2026-10-03)歌词窗单/双行 — 单行(默认):.line.next 不渲染;
+   双行:.line.next 复用 0.55 opacity 作下一句预览(落雪/Spotify 流派)。
+   .line.next 由 LyricOnlyView 的 :class="'lyric-lines-1'/'lyric-lines-2'" 切换。 */
+.lyric-only-view.lyric-lines-1 #lyrics-stage .line.next {
+  display: none;
+}
+.lyric-only-view.lyric-lines-2 #lyrics-stage .line.next {
+  display: block;
+  opacity: 0.55;
+  font-weight: 400;
+  /* 取消 active 的 scale + 国画红渐变,保持「下一行」小字低调 */
+  background: none;
+  color: var(--lyrics-color);
+  -webkit-text-fill-color: var(--lyrics-color);
+  -webkit-text-stroke: 0.5px var(--lyrics-stroke);
+  transform: scale(1.0);
+}
+
 #lyrics-stage .empty {
   font-size: 18px;
   font-style: italic;
