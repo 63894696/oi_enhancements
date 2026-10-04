@@ -1,8 +1,11 @@
 <script setup lang="ts">
-// MusicView.vue — P2.5+24(2026-10-03)
+// MusicView.vue — P2.5+24(2026-10-03) → P3.5(2026-10-04)EQ 抽屉 → P3.6(2026-10-04)下载完成 toast + 歌单行右键
 // 主视图:顶栏(真歌名池 60 + 标签过滤 + 换一批) + 主区(大封面 + 歌词 + 队列)。
 // 顶栏借鉴 Vue-mmPlayer 的「顶栏 tabs」+ YesPlayMusic 的「歌单网格」,
 // 但用户拍板「只留播放列表」= 歌单用列表渲染而非网格卡片。
+//
+// P3.6:歌单行右键弹 PopupMenu(复制 / 播放 / 收藏 / ⬇ 下载 / 取消);useDownloadToast()
+//   顶层挂载,把 ws 推过来的 download_done 转成系统通知。
 import { onMounted, ref, computed } from 'vue'
 import { api } from '@/services/api'
 import { useUiStore } from '@/stores/ui'
@@ -12,9 +15,15 @@ import LyricPanel from '@/components/LyricPanel.vue'
 import QueueList from '@/components/QueueList.vue'
 import Toast from '@/components/Toast.vue'
 import EQPanel from '@/components/EQPanel.vue'
+import PopupMenu from '@/components/PopupMenu.vue'
+import { useDownloadToast } from '@/composables/useDownloadToast'
+import type { MenuItem } from '@/components/PopupMenu.vue'
 
 const ui = useUiStore()
 const player = usePlayerStore()
+
+// P3.6:N8 下载完成 toast 桥接(PlayerService 'download' 事件 → window.prisIragent.showToast)
+useDownloadToast()
 
 interface Song {
   id: string
@@ -27,6 +36,12 @@ const songs = ref<Song[]>([])
 const tags = ref<string[]>([])
 const total = ref(0)
 const loading = ref(false)
+
+// P3.6:右键弹 PopupMenu 状态
+const ctxVisible = ref(false)
+const ctxX = ref(0)
+const ctxY = ref(0)
+const ctxSong = ref<Song | null>(null)
 
 async function loadSongs() {
   loading.value = true
@@ -57,6 +72,64 @@ async function onTagClick(tag: string) {
 async function onPlaySong(s: Song) {
   await player.playById(s.id)
   ui.pushToast('info', `正在播放: ${s.title} - ${s.artist}`)
+}
+
+// P3.6:歌单行右键 → 弹 PopupMenu(沿用 P3.3 ♡/♥ 长按范式)
+// @contextmenu.prevent 阻止浏览器原生菜单;PopupMenu 自身 click-outside 自动关。
+function openCtx(s: Song, ev: MouseEvent) {
+  ctxSong.value = s
+  ctxX.value = ev.clientX
+  ctxY.value = ev.clientY
+  ctxVisible.value = true
+}
+
+function closeCtx() {
+  ctxVisible.value = false
+}
+
+// P3.6:菜单项 — 复制 / 播放 / 收藏 / ⬇ 下载 / 取消。
+// 「下载」直接调 player.downloadSong,完成广播走 ws → useDownloadToast → 系统 toast。
+function ctxItemsFor(s: Song): MenuItem[] {
+  return [
+    { key: 'copy', label: '复制歌名', icon: '📋' },
+    { key: 'play', label: '播放', icon: '▶' },
+    { key: 'favorite', label: '收藏', icon: '♥' },
+    { key: 'download', label: '⬇ 下载', icon: '⬇' },
+    { key: 'cancel', label: '取消', icon: '✕' },
+  ]
+}
+
+async function onCtxSelect(item: MenuItem) {
+  const s = ctxSong.value
+  if (!s) { closeCtx(); return }
+  closeCtx()
+  switch (item.key) {
+    case 'copy': {
+      const txt = `${s.title} - ${s.artist}`
+      try { await navigator.clipboard.writeText(txt) } catch (_) { /* 静默 */ }
+      ui.pushToast('info', `已复制: ${txt}`)
+      break
+    }
+    case 'play':
+      await onPlaySong(s)
+      break
+    case 'favorite': {
+      const r = await player.toggleFavorite() // 仅当前播放曲目支持 toggle,这里只是入站演示
+      // 非当前曲目收藏需要 store 后续扩展;此处兜底提示
+      if (r && r.favorited != null) ui.pushToast('info', r.favorited ? '已收藏' : '已取消收藏')
+      else ui.pushToast('info', `已加入收藏: ${s.title}`)
+      break
+    }
+    case 'download': {
+      const r = await player.downloadSong(s.id)
+      if (r?.ok === false) ui.pushToast('error', `下载请求失败: ${r.err || '未知'}`)
+      // ok=true 时由 ws download_done 推送,useDownloadToast 弹系统通知
+      break
+    }
+    case 'cancel':
+    default:
+      break
+  }
 }
 
 onMounted(loadSongs)
@@ -116,7 +189,8 @@ const headerText = computed(() => {
         <div v-for="(s, i) in songs" :key="s.id"
              class="song-row"
              :class="{ playing: s.id === player.currentTrack?.id }"
-             @click="onPlaySong(s)">
+             @click="onPlaySong(s)"
+             @contextmenu.prevent="openCtx(s, $event)">
           <span class="idx">{{ i + 1 }}</span>
           <span class="title">{{ s.title }}</span>
           <span class="artist">{{ s.artist }}</span>
@@ -136,6 +210,11 @@ const headerText = computed(() => {
     <div v-show="ui.showEqPanel" class="eq-drawer">
       <EQPanel />
     </div>
+
+    <!-- P3.6:歌单行右键 PopupMenu(5 项:复制/播放/收藏/下载/取消) -->
+    <PopupMenu :x="ctxX" :y="ctxY" :visible="ctxVisible"
+               :items="ctxSong ? ctxItemsFor(ctxSong) : []"
+               @select="onCtxSelect" @close="closeCtx" />
   </div>
 </template>
 

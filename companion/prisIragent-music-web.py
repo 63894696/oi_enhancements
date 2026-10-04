@@ -378,7 +378,14 @@ async def api_cmd(req: web.Request) -> web.Response:
         body = {}
     action = body.get("action", "")
     kw = {k: v for k, v in body.items() if k != "action"}
-    return web.json_response(await APP.player.cmd(action, **kw))
+    cmd_res = await APP.player.cmd(action, **kw)
+    # P3.6(2026-10-04):下载完成广播透传到 ws_state 客户端
+    # player._publish 走 player._subscribers(内部队列),与 web 层 ws_state_subs 是两套;
+    # renderer 是 web 层 ws 客户端,需 web 层显式 _publish_state 才会收到 download_done。
+    if action == "download" and isinstance(cmd_res, dict):
+        payload = {"track_id": kw.get("track_id"), **cmd_res}
+        await _publish_state("download_done", payload)
+    return web.json_response(cmd_res)
 
 
 async def api_agent_cfg_list(req: web.Request) -> web.Response:

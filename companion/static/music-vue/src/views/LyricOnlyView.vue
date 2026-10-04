@@ -18,11 +18,19 @@
 
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useLyricStore } from '@/stores/lyric'
+import { usePlayerStore } from '@/stores/player'
 import LyricProgressBar from '@/components/LyricProgressBar.vue'
 import LyricLinesToggle from '@/components/LyricLinesToggle.vue'
 import EqInline from '@/components/EqInline.vue'
+import { useDownloadToast } from '@/composables/useDownloadToast'
 
 const lyric = useLyricStore()
+const player = usePlayerStore()
+
+// P3.6(2026-10-04):歌词窗顶部 settings-panel 加「下载当前歌曲」入口,
+//   并挂 useDownloadToast 顶层订阅 ws download_done → 系统通知。
+//   与 MusicView / 独立 EQ 窗共用同一 PlayerService 单例,事件不重复弹。
+useDownloadToast()
 
 const lock = ref(false)             // 锁拖动?true = 不可拖
 // P3.2(2026-10-03)视觉调档 — 透明度 0.3-1.0 + 字号缩放 0.7-1.6
@@ -120,6 +128,25 @@ function onScaleChange(e: Event) {
     void w.prisIragent.setLyricScale(v)
   }
 }
+
+// P3.6(2026-10-04):歌词窗顶部 settings-panel 的「下载当前歌曲」入口。
+// 仅当 lyric.track.id 存在时启用;走 player.downloadSong → ws download_done → 系统通知。
+async function onDownloadCurrent() {
+  const tid = lyric.track?.id
+  if (!tid) return
+  const r = await player.downloadSong(tid)
+  // ok=true 时由 ws 推 → useDownloadToast → 系统通知;失败用 ui 兜底提示
+  if (r && r.ok === false) {
+    const w = window as any
+    if (typeof w?.prisIragent?.showToast === 'function') {
+      void w.prisIragent.showToast({
+        title: 'PrisirAI · 下载请求失败',
+        body: r.err || '未知错误',
+        level: 'error',
+      })
+    }
+  }
+}
 </script>
 
 <template>
@@ -182,6 +209,16 @@ function onScaleChange(e: Event) {
       <LyricLinesToggle :value="lines" />
       <!-- P3.5(2026-10-04)歌词窗 EQ 紧凑入口 — 10 段 mini slider + preset + 主开关 -->
       <EqInline />
+      <!-- P3.6(2026-10-04)下载当前歌曲入口 — 歌词窗 settings-panel 末尾,
+           点击 → player.downloadSong → ws download_done → useDownloadToast 弹系统通知 -->
+      <div class="setting-row">
+        <button class="btn-download"
+                :disabled="!lyric.track?.id"
+                :title="lyric.track?.id ? `下载 ${lyric.track.title}` : '无曲目可下载'"
+                @click="onDownloadCurrent">
+          ⬇ 下载当前歌曲
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -246,5 +283,26 @@ function onScaleChange(e: Event) {
   width: 70px;
   accent-color: #c14d3a;
   cursor: pointer;
+}
+/* P3.6(2026-10-04)歌词窗下载当前歌曲按钮 — 与 input 同高,紧凑红边 */
+.btn-download {
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  padding: 3px 8px;
+  border: 1px solid #c14d3a;
+  border-radius: 4px;
+  background: transparent;
+  color: #c14d3a;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  user-select: none;
+}
+.btn-download:hover:not(:disabled) {
+  background: #c14d3a;
+  color: #faf7f1;
+}
+.btn-download:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 </style>

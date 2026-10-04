@@ -696,11 +696,16 @@ class Player:
             return {"ok": False, "err": "missing track_id"}
         tr = self.library.get(track_id)
         if not tr:
+            # P3.6(2026-10-04):下载完成广播 — 失败也 publish,renderer 弹 error toast
+            await self._publish("download_done", {"track_id": track_id, "ok": False,
+                                                  "err": f"track not found: {track_id}"})
             return {"ok": False, "err": f"track not found: {track_id}"}
         cache_dir = Path(__file__).resolve().parent / "cache"
         try:
             cache_dir.mkdir(exist_ok=True)
         except Exception as e:  # noqa: BLE001
+            await self._publish("download_done", {"track_id": track_id, "title": tr.title,
+                                                  "ok": False, "err": f"mkdir cache: {e}"})
             return {"ok": False, "err": f"mkdir cache: {e}"}
         # 文件名清洗
         safe = re.sub(r'[\\/:*?"<>|\r\n\t]', "_", tr.title)[:60].strip() or "untitled"
@@ -710,11 +715,17 @@ class Player:
             if is_remote:
                 # aiohttp 拉上游字节流,落本地文件
                 if _aiohttp_top is None:
+                    await self._publish("download_done", {"track_id": track_id, "title": tr.title,
+                                                          "ok": False, "err": "aiohttp not available"})
                     return {"ok": False, "err": "aiohttp not available"}
                 async with _aiohttp_top.ClientSession() as sess:
                     async with sess.get(tr.path,
                                             timeout=_aiohttp_top.ClientTimeout(total=60)) as r:
                         if r.status >= 400:
+                            await self._publish("download_done", {"track_id": track_id,
+                                                                  "title": tr.title,
+                                                                  "ok": False,
+                                                                  "err": f"upstream {r.status}"})
                             return {"ok": False, "err": f"upstream {r.status}"}
                         with open(dst, "wb") as f:
                             async for chunk in r.content.iter_chunked(64 * 1024):
@@ -723,10 +734,14 @@ class Player:
             else:
                 src = Path(tr.path)
                 if not src.exists():
+                    await self._publish("download_done", {"track_id": track_id, "title": tr.title,
+                                                          "ok": False, "err": "source file missing"})
                     return {"ok": False, "err": "source file missing"}
                 import shutil
                 shutil.copy2(src, dst)
         except Exception as e:  # noqa: BLE001
+            await self._publish("download_done", {"track_id": track_id, "title": tr.title,
+                                                  "ok": False, "err": f"download: {e}"})
             return {"ok": False, "err": f"download: {e}"}
         # 入库为本地
         local_id = hashlib.sha1(str(dst).encode("utf-8")).hexdigest()[:16]
@@ -734,8 +749,14 @@ class Player:
             id=local_id, title=tr.title, artist=tr.artist, album=tr.album,
             path=str(dst), duration=tr.duration, source="local",
         ))
+        size = dst.stat().st_size
+        # P3.6(2026-10-04):下载成功广播 → renderer 弹 info toast
+        await self._publish("download_done", {"track_id": track_id, "title": tr.title,
+                                              "artist": tr.artist, "ok": True,
+                                              "local_id": local_id, "path": str(dst),
+                                              "size": size})
         return {"ok": True, "local_id": local_id, "path": str(dst),
-                "title": tr.title, "size": dst.stat().st_size}
+                "title": tr.title, "size": size}
 
     async def _cmd_next(self) -> Dict[str, Any]:
         nid = self.playlist.next_id(mode=self.state.playback_mode)
