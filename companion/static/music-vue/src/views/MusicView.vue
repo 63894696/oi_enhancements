@@ -1,11 +1,14 @@
 <script setup lang="ts">
 // MusicView.vue — P2.5+24(2026-10-03) → P3.5(2026-10-04)EQ 抽屉 → P3.6(2026-10-04)下载完成 toast + 歌单行右键
-// 主视图:顶栏(真歌名池 60 + 标签过滤 + 换一批) + 主区(大封面 + 歌词 + 队列)。
+//                  → P3.8(2026-10-04)MusicView 主区右侧 16 段 spectrum bar。
+// 主视图:顶栏(真歌名池 60 + 标签过滤 + 换一批) + 主区(大封面 + 歌词 + 队列 + 频谱)。
 // 顶栏借鉴 Vue-mmPlayer 的「顶栏 tabs」+ YesPlayMusic 的「歌单网格」,
 // 但用户拍板「只留播放列表」= 歌单用列表渲染而非网格卡片。
 //
 // P3.6:歌单行右键弹 PopupMenu(复制 / 播放 / 收藏 / ⬇ 下载 / 取消);useDownloadToast()
 //   顶层挂载,把 ws 推过来的 download_done 转成系统通知。
+// P3.8:useSpectrum() 顶层挂载,16 段频谱随播放实时跳;主区右下 <SpectrumBars>;
+//   registerSpectrumAudio(player.getAudioElement()) 暴露给 composable 判定 pause。
 import { onMounted, ref, computed, watch } from 'vue'
 import { api } from '@/services/api'
 import { useUiStore } from '@/stores/ui'
@@ -16,7 +19,9 @@ import QueueList from '@/components/QueueList.vue'
 import Toast from '@/components/Toast.vue'
 import EQPanel from '@/components/EQPanel.vue'
 import PopupMenu from '@/components/PopupMenu.vue'
+import SpectrumBars from '@/components/SpectrumBars.vue'
 import { useDownloadToast } from '@/composables/useDownloadToast'
+import { useSpectrum, registerSpectrumAudio } from '@/composables/useSpectrum'
 import type { MenuItem } from '@/components/PopupMenu.vue'
 
 const ui = useUiStore()
@@ -24,6 +29,11 @@ const player = usePlayerStore()
 
 // P3.6:N8 下载完成 toast 桥接(PlayerService 'download' 事件 → window.prisIragent.showToast)
 useDownloadToast()
+
+// P3.8(2026-10-04):16 段实时频谱 — requestAnimationFrame 60fps 拉 AnalyserNode FFT 数据。
+// 仅在主 music 子窗(MusicView)挂载;LyricOnlyView / EqWindowView 拿不到 PlayerService.audio,
+// 不显示频谱(独立 BrowserWindow 不持有 audio,WS 广播频谱违背「零 IPC」红线)。
+const spectrum = useSpectrum()
 
 interface Song {
   id: string
@@ -154,7 +164,14 @@ async function onCtxSelect(item: MenuItem) {
   }
 }
 
-onMounted(loadSongs)
+onMounted(() => {
+  // P3.8:把 player audio 暴露给 useSpectrum,pause 时强制 0 输出
+  try {
+    const a = player.getAudioElement?.()
+    if (a) registerSpectrumAudio(a)
+  } catch (_) { /* 防御:player.getAudioElement 不存在时静默 */ }
+  void loadSongs()
+})
 
 const headerText = computed(() => {
   if (!songs.value.length) return '真歌名池(空)'
@@ -234,10 +251,14 @@ const headerText = computed(() => {
       </div>
     </div>
 
-    <!-- 大封面 + 歌词 + 队列(viewMode 切换) -->
+    <!-- 大封面 + 歌词 + 队列 + 频谱(viewMode 切换) -->
+    <!-- P3.8(2026-10-04):.bottom grid 加第 3 列 160px 挂 <SpectrumBars>;
+         仅 viewMode !== 'queue' 时显示(队列模式占满不显示频谱) -->
     <div class="bottom">
       <Cover v-show="ui.viewMode === 'lyric' || ui.viewMode === 'playlist'" />
       <LyricPanel v-show="ui.viewMode === 'lyric' || ui.viewMode === 'playlist'" />
+      <SpectrumBars v-show="ui.viewMode === 'lyric' || ui.viewMode === 'playlist'"
+                    :data="spectrum" />
       <QueueList v-show="ui.viewMode === 'queue'" />
     </div>
 
@@ -415,7 +436,8 @@ const headerText = computed(() => {
 }
 .bottom {
   display: grid;
-  grid-template-columns: 240px 1fr;
+  /* P3.8(2026-10-04):第 3 列 160px 挂 <SpectrumBars>(仅 viewMode 非 queue 时显示) */
+  grid-template-columns: 240px 1fr 160px;
   gap: 16px;
   margin-top: 4px;
 }
