@@ -8,7 +8,7 @@
 // YAML 子集:key: value / 嵌套缩进 2 空格 / # 注释。零外部依赖(不用 js-yaml)。
 //
 // 字段:
-//   ports.web / companion / music / calendar
+//   ports.web / companion / calendar              // 2026-10-05:music 已归档
 //   brand.url / max_per_run / interval_sec / seen_cap
 //   forum.url / board / hint
 
@@ -22,7 +22,7 @@ const { app } = require("electron");
 const DEFAULTS = {
   "ports.web": 18802,
   "ports.companion": 18850,
-  "ports.music": 0,
+  // 2026-10-05:ports.music 字段已归档(P3.0 music 模块脱离)。
   "ports.calendar": 18803,
   "brand.url": "https://www.babelspan.com/updates.json",
   "brand.max_per_run": 3,
@@ -106,7 +106,7 @@ module.exports = {
   // 快捷 getter
   webPortDefault: () => get("ports.web"),
   companionPortDefault: () => get("ports.companion"),
-  musicPortDefault: () => get("ports.music"),
+  // 2026-10-05:musicPortDefault 已归档。
   calendarPortDefault: () => get("ports.calendar"),
   brandUrl: () => get("brand.url"),
   brandMaxPerRun: () => get("brand.max_per_run"),

@@ -1,6 +1,8 @@
 [phase2_e2e_sentinel] subprocess stdout sample:
   [prisIragent_web] Listening on http://127.0.0.1:18881
   [prisIragent_web] PRISIR_WEB_READY port=18881
+  [prisIragent_web] Listening on http://127.0.0.1:18803 (calendar-only)
+  [prisIragent_web] PRISIR_CALENDAR_READY port=18803
 
 [parse_ready_token] line='[prisIragent_web] PRISIR_WEB_READY port=18881' → port=18881
 [http_health] GET /prisIragent/api/info → 200 OK (body keys: ['active_platform', 'current_model', 'lan_enabled', 'lan_ip', 'platforms', 'port', 'strategy', 'workdir'])

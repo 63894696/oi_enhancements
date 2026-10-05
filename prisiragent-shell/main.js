@@ -116,9 +116,12 @@ function prisirTokenPresent() {
 // ---------- prisiragent_web 子进程看护 ----------
 let webProc = null;
 let webReady = false;
-// P2.5+21(2026-10-03):语伴 / 音乐 子进程(仅在用户托盘点击时按需 spawn,
-// 不自启是因为 Tauri 壳模式才能接管这两路。Electron 壳里补全是为了 dev 体验)。
+// P2.5+21(2026-10-03):语伴子进程(仅在用户托盘点击时按需 spawn,
+// 不自启是因为 Tauri 壳模式才能接管。Electron 壳里补全是为了 dev 体验)。
+// 2026-10-05:music 子进程已归档,musicProc 字段对应历史 toolchains,
+//   保留 musicProc = null 占位防止老注释/lint 误报。
 let companionProc = null;
+// eslint-disable-next-line no-unused-vars
 let musicProc = null;
 // 同源 window.open 去重:同一 URL 5s 内只 allow 一次,阻死循环。
 const _recentlyOpenedUrls = new Map();
@@ -199,29 +202,9 @@ function startCompanion() {
 }
 
 function startMusic() {
-  if (musicProc) return;
-  const port = require("./port_config").readMusicPort();
-  webUp(WEB_HOST, port, (up) => {
-    if (up) { logInfo("startMusic", "port already up, reusing", `port=${port}`); return; }
-    const script = path.join(REPO_ROOT, "companion", "prisIragent-music-web.py");
-    const args = [script, "--port", String(port)];
-    logInfo("startMusic", "spawning", `cmd=python args=${JSON.stringify(args)}`);
-    try {
-      musicProc = spawn(PYTHON, args, {
-        cwd: REPO_ROOT, stdio: ["ignore", "pipe", "pipe"], windowsHide: true,
-      });
-    } catch (e) {
-      logError("startMusic", "spawn failed", `err=${e.message}`);
-      musicProc = null; return;
-    }
-    _pipeProcToLog(musicProc, "music");
-    musicProc.on("spawn", () => logInfo("musicProc", "spawned", `pid=${musicProc.pid}`));
-    musicProc.on("exit", (code, signal) => {
-      logWarn("musicProc", "exited", `code=${code} signal=${signal} pid=${musicProc && musicProc.pid}`);
-      musicProc = null;
-    });
-    musicProc.on("error", (err) => logError("musicProc", "error event", `err=${err.message}`));
-  });
+  // 2026-10-05:music 模块已归档(music web 后端被 git rm,archive 在 D:/PrisirAImusicarchive)。
+  // 保留函数骨架是为了不破坏任何残留调用 — 全部 no-op,只落一条 warn 日志便于诊断。
+  logInfo("startMusic", "disabled", "music module archived 2026-10-05");
 }
 
 function startWeb() {
@@ -345,124 +328,16 @@ let quitting = false;
 //      子窗口尺寸比主窗口小(语伴 920×680 / 音乐 880×620 / 日历 960×720 / 工作流 1000×720)。
 const childWindows = new Map();   // label → BrowserWindow
 
-// P2.5+26(2026-10-03):桌面歌词窗状态持久化 — userData/lyric-window-state.json。
-// 存 alwaysOnTop + lockDrag + bounds(x/y/w/h)。重启壳自动还原。
-// 仿 brand-notify-seen.json 模式(同模块前 976 行)。
-// 默认值与 P2.5+25 ship 行为一致(alwaysOnTop=true, lockDrag=false, 居中 720×360)。
-function _lyric_state_path() {
-  return path.join(app.getPath("userData"), "lyric-window-state.json");
-}
-function _lyric_state_load() {
-  // 容错静默:任何坏返默认 + 备份原文件(用户手动编辑失败可查)
-  const p = _lyric_state_path();
-  try {
-    const raw = fs.readFileSync(p, "utf-8");
-    const obj = JSON.parse(raw);
-    const out = {
-      alwaysOnTop: obj.alwaysOnTop !== false,  // 默认 true
-      lockDrag: obj.lockDrag === true,
-      bounds: {
-        x: Number.isFinite(obj.bounds?.x) ? obj.bounds.x : null,
-        y: Number.isFinite(obj.bounds?.y) ? obj.bounds.y : null,
-        w: Number.isFinite(obj.bounds?.w) && obj.bounds.w >= 480 ? obj.bounds.w : 720,
-        h: Number.isFinite(obj.bounds?.h) && obj.bounds.h >= 240 ? obj.bounds.h : 360,
-      },
-      // P3.2(2026-10-03)歌词窗视觉调档 — opacity 0.3-1.0 / scale 0.7-1.6
-      opacity: _clampNumber(obj.opacity, 0.3, 1.0, 0.85),
-      scale: _clampNumber(obj.scale, 0.7, 1.6, 1.0),
-      // P3.4(2026-10-03)歌词窗单/双行 — 1(单行紧凑,默认) / 2(active + 下一行预览)
-      // 枚举非布尔,落雪范式;只认 1/2,其他值兜底 1。
-      lines: (Number(obj.lines) === 2) ? 2 : 1,
-    };
-    return out;
-  } catch (e) {
-    if (fs.existsSync(p)) {
-      try { fs.renameSync(p, `${p}.corrupt-${Date.now()}`); } catch (_) {}
-      logWarn("lyricState", "corrupt, backed up", `path=${p} err=${e.message}`);
-    } else {
-      logInfo("lyricState", "first run, using defaults", `path=${p}`);
-    }
-    return {
-      alwaysOnTop: true,
-      lockDrag: false,
-      bounds: { x: null, y: null, w: 720, h: 360 },
-      opacity: 0.85,
-      scale: 1.0,
-      lines: 1,
-    };
-  }
-}
+// 2026-10-05:lyric / EQ state 持久化模块整体归档(music 模块已 rm)。
+//   _lyric_state_path / _lyric_state_load / _lyric_state_save / _lyric_state
+//   _eq_state_path / _eq_state_load / _eq_state_save / _eq_state / EQ_PRESETS / _eqWin
+//   整段删除 — lyrics/eq 模块已归档,不再读/写 userData 状态。
+// _clampNumber 仍然保留,其他模块(通知偏好等)用。
 function _clampNumber(v, lo, hi, dflt) {
   const n = Number(v);
   if (!Number.isFinite(n)) return dflt;
   return Math.max(lo, Math.min(hi, n));
 }
-function _lyric_state_save(s) {
-  try {
-    fs.writeFileSync(_lyric_state_path(), JSON.stringify(s, null, 2), "utf-8");
-  } catch (e) {
-    logWarn("lyricState", "save failed", `err=${e.message}`);
-  }
-}
-let _lyric_state = _lyric_state_load();   // 模块加载即初始化(boot 一次)
-// P3.5(2026-10-04)桌面 EQ 独立窗 BrowserWindow 句柄 — 同 lyric 模式(不走 childWindows Map)。
-// 独立窗不参与 _closeAllChildWindows / 主窗 hide 时 close,玩家可与 music 子窗共存。
-let _eqWin = null;
-
-// P3.5(2026-10-04)music 10 段 EQ 均衡器状态持久化 — userData/eq-state.json。
-// 存 enabled(bool) + preset(enum: flat/vocal/bass/treble/rock/electronic/custom)
-//   + gains(10 个 dB,每段 -12..+12)。
-// 镜像 _lyric_state pattern(P2.5+26 ship):同模块前 348-407 行。
-// 音频处理本身在 renderer(Web Audio API BiquadFilterNode × 10 + masterGain),
-//   主进程只持久化 + IPC + 广播给所有 BrowserWindow。
-const EQ_PRESETS = {
-  flat:       [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  vocal:      [0, -2, 0, 1, 2, 3, 2, 0, 0, 0],
-  bass:       [4, 5, 3, 1, 0, 0, 0, 0, 0, 0],
-  treble:     [0, 0, 0, 0, 0, 0, 1, 3, 4, 3],
-  rock:       [3, 2, 1, -1, -3, 1, 2, 3, 4, 3],
-  electronic: [3, 2, 0, -2, -1, 1, 0, 1, 3, 4],
-};
-function _eq_state_path() {
-  return path.join(app.getPath("userData"), "eq-state.json");
-}
-function _eq_state_load() {
-  // 容错静默:任何坏返默认 + 备份原文件(与 _lyric_state_load 同模式)
-  const p = _eq_state_path();
-  try {
-    const raw = fs.readFileSync(p, "utf-8");
-    const obj = JSON.parse(raw);
-    const preset = Object.prototype.hasOwnProperty.call(EQ_PRESETS, obj.preset) ? obj.preset : "flat";
-    const gains = Array.isArray(obj.gains) && obj.gains.length === 10
-      ? obj.gains.map((g) => _clampNumber(g, -12, 12, 0))
-      : [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-    return {
-      enabled: obj.enabled === true,
-      preset,
-      gains,
-    };
-  } catch (e) {
-    if (fs.existsSync(p)) {
-      try { fs.renameSync(p, `${p}.corrupt-${Date.now()}`); } catch (_) {}
-      logWarn("eqState", "corrupt, backed up", `path=${p} err=${e.message}`);
-    } else {
-      logInfo("eqState", "first run, using defaults", `path=${p}`);
-    }
-    return {
-      enabled: false,        // P3.5 用户拍板默认关闭,首装用户不被默认声音打扰
-      preset: "flat",
-      gains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    };
-  }
-}
-function _eq_state_save(s) {
-  try {
-    fs.writeFileSync(_eq_state_path(), JSON.stringify(s, null, 2), "utf-8");
-  } catch (e) {
-    logWarn("eqState", "save failed", `err=${e.message}`);
-  }
-}
-let _eq_state = _eq_state_load();   // 模块加载即初始化(boot 一次)
 
 function _commonWebPreferences() {
   return {
@@ -548,48 +423,12 @@ function _createChildWindow(spec) {
   logInfo("childWindow", "create", `label=${spec.label} url=${spec.url}`);
   w.loadURL(spec.url);
   childWindows.set(spec.label, w);
-  // P2.5+26(2026-10-03):桌面歌词窗状态注入(只对 label=lyric)。
-  // ready-to-show 之后再调 bounds(否则 Win 上 setBounds 在隐藏态无效)。
-  if (spec.label === "lyric") {
-    w.once("ready-to-show", () => _lyric_apply_state(w));
-    // 兜底:ready-to-show 没触发(罕见)3.5s 后强制 apply(此时 w.show 已触发)
-    setTimeout(() => { if (w && !w.isDestroyed()) _lyric_apply_state(w); }, 3500);
-    // 移动 / 缩放 持久化(bounds)— 250ms debounce(高频 move 事件不疯狂落盘)
-    let _bvTimer = null;
-    const _bvPersist = () => {
-      if (_bvTimer) clearTimeout(_bvTimer);
-      _bvTimer = setTimeout(() => {
-        if (w && !w.isDestroyed()) {
-          const b = w.getBounds();
-          _lyric_state.bounds = { x: b.x, y: b.y, w: b.width, h: b.height };
-          _lyric_state_save(_lyric_state);
-        }
-      }, 250);
-    };
-    w.on("move", _bvPersist);
-    w.on("resize", _bvPersist);
-  }
+  // 2026-10-05:lyric 子窗整体归档,_createChildWindow 不再注入 lyric 状态。
+  //   spec.label === "lyric" 分支整段移除 — 词典已不再含 lyric。
   return w;
 }
 
-// P2.5+26(2026-10-03):把 _lyric_state 落到 BrowserWindow 上(alwaysOnTop + bounds)。
-// lockDrag 是 CSS 状态(渲染层自己处理),主进程只管 OS 层属性。
-function _lyric_apply_state(w) {
-  if (!w || w.isDestroyed()) return;
-  try {
-    // alwaysOnTop 必须用 'floating' level(Win 上 alwaysOnTop=true 不够稳定)
-    const want = _lyric_state.alwaysOnTop;
-    w.setAlwaysOnTop(want, want ? "floating" : "normal");
-    // bounds 还原:x/y null = 主屏居中;非 null = 落盘位置
-    const b = _lyric_state.bounds;
-    if (Number.isFinite(b.x) && Number.isFinite(b.y)) {
-      w.setBounds({ x: b.x, y: b.y, width: b.w, height: b.h });
-    }
-    logInfo("lyricState", "applied", `alwaysOnTop=${want} bounds=${JSON.stringify(b)}`);
-  } catch (e) {
-    logWarn("lyricState", "apply failed", `err=${e.message}`);
-  }
-}
+// 2026-10-05:_lyric_apply_state 整段删除(lyric 子窗已归档)。
 
 function closeAllChildWindows() {
   for (const w of childWindows.values()) {
@@ -812,17 +651,10 @@ function openInShell(url, label) {
 }
 const _CHILD_SPEC = {
   // P2.5+23(2026-10-03)命名统一:PrisirAI + 空格 + 子服务名(无 emoji,emoji 仅在托盘菜单前缀)。
+  // 2026-10-05:music / lyric / eq 模块已归档,对应子窗 spec 删除。
   companion: { width: 920, height: 680, minWidth: 640, minHeight: 480, title: "PrisirAI 语伴" },
-  music:     { width: 880, height: 620, minWidth: 640, minHeight: 480, title: "PrisirAI 音乐" },
   calendar:  { width: 960, height: 720, minWidth: 720, minHeight: 540, title: "PrisirAI 日程" },
   workflow:  { width: 1000, height: 720, minWidth: 800, minHeight: 560, title: "PrisirAI 工作流" },
-  // P2.5+25(2026-10-03)桌面歌词独立窗 — transparent + frame:false + alwaysOnTop,
-  // 由 _createChildWindow 转 Electron BrowserWindow 选项;
-  // 720×360 默认够放 3 行大字号歌词 + 底部 meta,可缩放到 480×240。
-  lyric:     { width: 720, height: 360, minWidth: 480, minHeight: 240,
-               title: "PrisirAI 桌面歌词",
-               transparent: true, frame: false, alwaysOnTop: true,
-               resizable: true, skipTaskbar: true },
 };
 
 function openCompanionWindow() {
@@ -840,258 +672,15 @@ function openCompanionWindow() {
     openInShell(`http://${WEB_HOST}:${port}/`, "companion");
   });
 }
-function openMusicWindow() {
-  // P2.5+21(2026-10-03):Electron 壳自己 spawn music 后端(端口动态分配)。
-  // music web 起来后 `--port 0` 时会写 HKCU / _prisir_registry/music_port.json,
-  // port_config.js 的 readMusicPort() 读动态端口;我们 spawn 时不预知,先起来
-  // 等 3s 后读端口再弹子窗。
-  startMusic();
-  const deadline = Date.now() + 3000;
-  const tick = () => {
-    const port = require("./port_config").readMusicPort();
-    if (port > 0) {
-      // 端口有值后再探活 1 次,确保 music web 真 ready
-      waitForPort(WEB_HOST, port, 1.0).then((ok) => {
-        if (ok) {
-          openInShell(`http://${WEB_HOST}:${port}/`, "music");
-        } else if (Date.now() < deadline) {
-          setTimeout(tick, 300);
-        } else {
-          logWarn("openMusicWindow", "music web not ready in 3s", `port=${port}`);
-          openInShell(WEB_URL, "main");
-        }
-      });
-      return;
-    }
-    if (Date.now() < deadline) {
-      setTimeout(tick, 300);
-    } else {
-      logWarn("openMusicWindow", "music port 0 after 3s", `port=${port}`);
-      openInShell(WEB_URL, "main");
-    }
-  };
-  tick();
-}
-// P2.5+25(2026-10-03)桌面歌词独立窗 — 复用 music 后端(ws /ws/lyrics + /music-vue/lyric.html 静态路由),
-// 完全镜像 openMusicWindow 的端口轮询模式,只是 label 走 "lyric" + path 用 /music-vue/lyric.html。
-// 不复用 music 主窗是因为桌面歌词是 transparent + alwaysOnTop,主 music 子窗是普通有边框;
-// 双窗独立,关闭歌词不影响 music 播放。
-// P2.5+26(2026-10-03):toggleLyricAlwaysOnTop / toggleLyricLockDrag / lockLyricCurrentBounds / closeLyricWindow helpers。
-// 被托盘 submenu 与 IPC 共用(语义一致)。
-function _notifyLyricWindow(channel, payload) {
-  // 通过 webContents.send 把主进程 toggle 结果推到 lyric 渲染层,
-  // lyric store / LyricOnlyView 在 preload 暴露的 onLyricStateChanged 里订阅并更新 CSS class。
-  const w = childWindows.get("lyric");
-  if (w && !w.isDestroyed() && !w.webContents.isDestroyed()) {
-    try { w.webContents.send(channel, payload); } catch (_) {}
-  }
-}
-function _toggleLyricAlwaysOnTop() {
-  const w = childWindows.get("lyric");
-  const next = !_lyric_state.alwaysOnTop;
-  _lyric_state.alwaysOnTop = next;
-  if (w && !w.isDestroyed()) {
-    // 第二个参数 Win 上需要 level("floating"/"normal") 才能稳定切换。
-    w.setAlwaysOnTop(next, next ? "floating" : "normal");
-  }
-  _lyric_state_save(_lyric_state);
-  logInfo("lyricState", "toggled alwaysOnTop", `next=${next}`);
-  rebuildTrayMenu();
-  _notifyLyricWindow("shell:lyricStateChanged",
-    { alwaysOnTop: next, lockDrag: _lyric_state.lockDrag, bounds: _lyric_state.bounds });
-}
-function _toggleLyricLockDrag() {
-  const next = !_lyric_state.lockDrag;
-  _lyric_state.lockDrag = next;
-  _lyric_state_save(_lyric_state);
-  logInfo("lyricState", "toggled lockDrag", `next=${next}`);
-  rebuildTrayMenu();
-  _notifyLyricWindow("shell:lyricStateChanged",
-    { alwaysOnTop: _lyric_state.alwaysOnTop, lockDrag: next, bounds: _lyric_state.bounds });
-}
-function _lockLyricCurrentBounds() {
-  // 把当前 bounds 强制写盘(用户改位置后想立刻确认,不必等 250ms debounce)
-  const w = childWindows.get("lyric");
-  if (!w || w.isDestroyed()) return;
-  const b = w.getBounds();
-  _lyric_state.bounds = { x: b.x, y: b.y, w: b.width, h: b.height };
-  _lyric_state_save(_lyric_state);
-  logInfo("lyricState", "locked bounds", `bounds=${JSON.stringify(_lyric_state.bounds)}`);
-}
-// P3.4(2026-10-03)歌词窗单/双行 toggle — 1 单行紧凑 / 2 双行(active + 下一行预览)
-// 枚举非布尔(落雪范式),只认 1/2,其他值兜底 1。被托盘 radio + IPC 共用。
-function _setLyricLines(value) {
-  const v = (Number(value) === 2) ? 2 : 1;
-  if (v === _lyric_state.lines) return;
-  _lyric_state.lines = v;
-  _lyric_state_save(_lyric_state);
-  logInfo("lyricState", "set lines", `lines=${v}`);
-  // P2.5+26 经验:radio 状态变化后必 rebuildTrayMenu,否则菜单 radio 永远显旧态
-  rebuildTrayMenu();
-  _notifyLyricWindow("shell:lyricStateChanged",
-    { alwaysOnTop: _lyric_state.alwaysOnTop, lockDrag: _lyric_state.lockDrag,
-      bounds: _lyric_state.bounds, opacity: _lyric_state.opacity,
-      scale: _lyric_state.scale, lines: v });
-}
-function _closeLyricWindow() {
-  const w = childWindows.get("lyric");
-  if (!w || w.isDestroyed()) return;
-  // 子窗 close handler 仅 hide(_createChildWindow 已配),用户视角等同最小化
-  try { w.close(); } catch (_) {}
-}
+// 2026-10-05:openMusicWindow / openLyricWindow / openEqWindow 整段删除。
+//   music / lyric / eq 模块已归档,对应子窗不再提供。
+//   整段移除 — 不保留 stub,tray 菜单项也已删除,函数无人调用。
 
-// P3.5(2026-10-04)music 10 段 EQ 广播 — 推 EQ 状态变化到所有 BrowserWindow。
-// MusicView 主窗 / LyricOnlyView 歌词窗 / 独立 EQ 窗都共享同一 _eq_state,
-// 任一处改 → 主进程广播 → 其余两处 mirror 同步。
-// 与 _notifyLyricWindow(单 lyric 窗)不同:本 loop 全部 BrowserWindow,
-//   含主 web / 主窗 + 子窗。
-function _notifyEqWindows(channel, payload) {
-  for (const w of BrowserWindow.getAllWindows()) {
-    if (w && !w.isDestroyed() && !w.webContents.isDestroyed()) {
-      try { w.webContents.send(channel, payload); } catch (_) {}
-    }
-  }
-}
-// P3.5 单段 gain 调整 helper(idx 0..9, dB -12..+12,容错 clamp)。
-// 任何 gain 改动 → preset 改 "custom"(落雪范式:用户改任意段即脱离预置)。
-function _setEqGain(idx, dB) {
-  const i = Number(idx);
-  if (!Number.isInteger(i) || i < 0 || i > 9) return { ok: false, err: "invalid idx" };
-  const v = _clampNumber(dB, -12, 12, _eq_state.gains[i]);
-  if (v === _eq_state.gains[i] && _eq_state.preset !== "custom") {
-    // 值没变但 preset 已是 custom,不广播(避免无变化噪声)
-    return { ok: true, gains: _eq_state.gains.slice(), preset: _eq_state.preset };
-  }
-  _eq_state.gains[i] = v;
-  _eq_state.preset = "custom";
-  _eq_state_save(_eq_state);
-  logInfo("eqState", "set gain", `idx=${i} dB=${v}`);
-  _notifyEqWindows("shell:eqStateChanged", {
-    enabled: _eq_state.enabled,
-    preset: _eq_state.preset,
-    gains: _eq_state.gains.slice(),
-  });
-  return { ok: true, gains: _eq_state.gains.slice(), preset: _eq_state.preset };
-}
-// P3.5 预置应用 helper。未知 preset 拒绝(白名单 EQ_PRESETS.keys())。
-function _setEqPreset(name) {
-  if (!Object.prototype.hasOwnProperty.call(EQ_PRESETS, name)) {
-    return { ok: false, err: `unknown preset: ${name}` };
-  }
-  _eq_state.preset = name;
-  _eq_state.gains = EQ_PRESETS[name].slice();
-  _eq_state_save(_eq_state);
-  logInfo("eqState", "set preset", `preset=${name}`);
-  _notifyEqWindows("shell:eqStateChanged", {
-    enabled: _eq_state.enabled,
-    preset: _eq_state.preset,
-    gains: _eq_state.gains.slice(),
-  });
-  return { ok: true, preset: _eq_state.preset, gains: _eq_state.gains.slice() };
-}
-// P3.5 主开关 helper。enabled=false 时 masterGain=1 直通(每段 gain=0),
-//   enabled=true 时 masterGain=0.5 防削顶(在 renderer EqEngine.apply 决定)。
-function _setEqEnabled(b) {
-  const v = b === true;
-  if (v === _eq_state.enabled) return { ok: true, enabled: v };
-  _eq_state.enabled = v;
-  _eq_state_save(_eq_state);
-  logInfo("eqState", "set enabled", `enabled=${v}`);
-  _notifyEqWindows("shell:eqStateChanged", {
-    enabled: _eq_state.enabled,
-    preset: _eq_state.preset,
-    gains: _eq_state.gains.slice(),
-  });
-  return { ok: true, enabled: v };
-}
-// P3.5 重置 helper = 应用 flat 预置 + 主开关保持不变(用户可单独切主开关)
-function _resetEq() {
-  _eq_state.preset = "flat";
-  _eq_state.gains = EQ_PRESETS.flat.slice();
-  _eq_state_save(_eq_state);
-  logInfo("eqState", "reset to flat");
-  _notifyEqWindows("shell:eqStateChanged", {
-    enabled: _eq_state.enabled,
-    preset: _eq_state.preset,
-    gains: _eq_state.gains.slice(),
-  });
-  return { ok: true, preset: _eq_state.preset, gains: _eq_state.gains.slice() };
-}
+// 2026-10-05:openLyricWindow / openEqWindow / _notifyLyricWindow / _toggleLyricAlwaysOnTop /
+//   _toggleLyricLockDrag / _lockLyricCurrentBounds / _setLyricLines / _closeLyricWindow /
+//   _notifyEqWindows / _setEqGain / _setEqPreset / _setEqEnabled / _resetEq / _closeEqWindow
+//   整段删除 — lyrics/eq 模块已归档,函数无人调用。
 
-function openLyricWindow() {
-  startMusic();
-  const deadline = Date.now() + 3000;
-  const tick = () => {
-    const port = require("./port_config").readMusicPort();
-    if (port > 0) {
-      waitForPort(WEB_HOST, port, 1.0).then((ok) => {
-        if (ok) {
-          openInShell(`http://${WEB_HOST}:${port}/music-vue/lyric.html`, "lyric");
-        } else if (Date.now() < deadline) {
-          setTimeout(tick, 300);
-        } else {
-          logWarn("openLyricWindow", "music web not ready in 3s", `port=${port}`);
-          openInShell(WEB_URL, "main");
-        }
-      });
-      return;
-    }
-    if (Date.now() < deadline) {
-      setTimeout(tick, 300);
-    } else {
-      logWarn("openLyricWindow", "music port 0 after 3s", `port=${port}`);
-      openInShell(WEB_URL, "main");
-    }
-  };
-  tick();
-}
-// P3.5(2026-10-04)桌面 EQ 独立窗 — 镜像 openLyricWindow 模式,但不走 lyric child spec。
-// 走主 web 的 music-vue/eq.html 入口(vite build 多入口之一,P3.5 新增);
-// 装进独立 BrowserWindow(360×420,frame:false,transparent,skipTaskbar),
-// 通过 _eqWin 单例保持映射(下次开时复用已建窗)。
-function openEqWindow() {
-  // 与歌词独立窗共享 startMusic 探活(music 后端不跑起来 eq 路由不可用)
-  startMusic();
-  const deadline = Date.now() + 3000;
-  const tick = () => {
-    // 若窗已建好,直接复用
-    if (_eqWin && !_eqWin.isDestroyed()) { _eqWin.show(); _eqWin.focus(); return; }
-    const port = require("./port_config").readMusicPort();
-    if (port > 0) {
-      waitForPort(WEB_HOST, port, 1.0).then((ok) => {
-        if (!ok) {
-          if (Date.now() < deadline) { setTimeout(tick, 300); return; }
-          logWarn("openEqWindow", "music web not ready in 3s", `port=${port}`);
-          return;
-        }
-        const url = `http://${WEB_HOST}:${port}/music-vue/eq.html`;
-        _eqWin = new BrowserWindow({
-          width: 360, height: 420,
-          minWidth: 320, minHeight: 360,
-          frame: false, transparent: true,
-          alwaysOnTop: false,
-          skipTaskbar: true,
-          resizable: true,
-          backgroundColor: "#00000000",
-          title: "PrisirAI 桌面 EQ",
-          webPreferences: _commonWebPreferences(),
-        });
-        _eqWin.on("closed", () => { _eqWin = null; });
-        _eqWin.loadURL(url).catch((e) => logWarn("openEqWindow", "loadURL failed", `err=${e.message}`));
-      });
-      return;
-    }
-    if (Date.now() < deadline) {
-      setTimeout(tick, 300);
-    } else {
-      logWarn("openEqWindow", "music port 0 after 3s", `port=${port}`);
-    }
-  };
-  tick();
-}
-function _closeEqWindow() {
-  if (_eqWin && !_eqWin.isDestroyed()) { try { _eqWin.close(); } catch (_) {} }
-}
 function openCalendarWindow() {
   // 日历 走 prisiragent_web.py 的 /prisIragent/calendar 路由。
   // P2.5+14 起日历独立端口(同进程双端口 listen),从 port_config 读。
@@ -1123,38 +712,10 @@ function createTray() {
   ];
   const multiWindowSubmenu = [
     // P2.5+16(2026-09-22):每个子项独立 BrowserWindow,不再复用主窗口。
-    // P2.5+23(2026-10-03):4 个子项命名统一「PrisirAI xxx」,emoji 前缀 4 项全加(日程/工作流原本就有,语伴/音乐补)。
+    // 2026-10-05:music / lyric / eq 模块已归档,对应菜单项移除。保留语伴/日程/工作流。
     { label: "📞 语伴",   click: openCompanionWindow },
-    { label: "🎵 音乐",   click: openMusicWindow },
-    // P2.5+26(2026-10-03):🎤 桌面歌词改成 submenu — 打开 + 2 个 checkbox + 锁定位置 + 关闭
-    // P3.4(2026-10-03):加 ☝ 单行 / ☟ 双行 2 个 radio(group 必填,否则不互斥)
-    { label: "🎤 桌面歌词", submenu: [
-      { label: "打开歌词窗口", click: openLyricWindow },
-      { label: "始终在上", type: "checkbox", checked: _lyric_state.alwaysOnTop,
-        click: _toggleLyricAlwaysOnTop },
-      { label: "拖动已锁定", type: "checkbox", checked: _lyric_state.lockDrag,
-        click: _toggleLyricLockDrag },
-      { type: "separator" },
-      { label: "☝ 单行", type: "radio", checked: _lyric_state.lines === 1,
-        group: "lyricLines", click: () => _setLyricLines(1) },
-      { label: "☟ 双行", type: "radio", checked: _lyric_state.lines === 2,
-        group: "lyricLines", click: () => _setLyricLines(2) },
-      { type: "separator" },
-      { label: "📌 锁定当前位置", click: _lockLyricCurrentBounds },
-      { type: "separator" },
-      { label: "🚪 关闭歌词窗口", click: _closeLyricWindow },
-    ]},
     { label: "📅 日程",   click: openCalendarWindow },
     { label: "🔀 工作流", click: openWorkflowWindow },
-    // P3.5(2026-10-04)桌面 EQ 独立窗 — 360×420 透明,3 项 submenu (开/启/关闭)
-    // 双胞胎模板双改(createTray + buildTrayItems),与歌词窗 submenu 同款。
-    { label: "🎚 桌面 EQ", submenu: [
-      { label: "打开 EQ 窗口", click: openEqWindow },
-      { label: "EQ 开启", type: "checkbox", checked: _eq_state.enabled,
-        click: (item) => _setEqEnabled(item.checked) },
-      { type: "separator" },
-      { label: "🚪 关闭 EQ 窗口", click: _closeEqWindow },
-    ]},
     { type: "separator" },
     { label: "关闭所有子窗口", click: () => closeAllChildWindows() },
   ];
@@ -1214,35 +775,10 @@ function buildTrayItems() {
     { label: "隐藏 PrisirAI", click: () => { if (win) { win.hide(); } } },
   ];
   const multiWindowSubmenu = [
+    // 2026-10-05:music / lyric / eq 模块已归档,对应菜单项移除。保留语伴/日程/工作流。
     { label: "📞 语伴",   click: openCompanionWindow },
-    { label: "🎵 音乐",   click: openMusicWindow },
-    { label: "🎤 桌面歌词", submenu: [
-      { label: "打开歌词窗口", click: openLyricWindow },
-      { label: "始终在上", type: "checkbox", checked: _lyric_state.alwaysOnTop,
-        click: _toggleLyricAlwaysOnTop },
-      { label: "拖动已锁定", type: "checkbox", checked: _lyric_state.lockDrag,
-        click: _toggleLyricLockDrag },
-      { type: "separator" },
-      { label: "☝ 单行", type: "radio", checked: _lyric_state.lines === 1,
-        group: "lyricLines", click: () => _setLyricLines(1) },
-      { label: "☟ 双行", type: "radio", checked: _lyric_state.lines === 2,
-        group: "lyricLines", click: () => _setLyricLines(2) },
-      { type: "separator" },
-      { label: "📌 锁定当前位置", click: _lockLyricCurrentBounds },
-      { type: "separator" },
-      { label: "🚪 关闭歌词窗口", click: _closeLyricWindow },
-    ]},
     { label: "📅 日程",   click: openCalendarWindow },
     { label: "🔀 工作流", click: openWorkflowWindow },
-    // P3.5(2026-10-04)桌面 EQ 独立窗 — 360×420 透明,3 项 submenu (开/启/关闭)
-    // 双胞胎模板双改(createTray + buildTrayItems),与歌词窗 submenu 同款。
-    { label: "🎚 桌面 EQ", submenu: [
-      { label: "打开 EQ 窗口", click: openEqWindow },
-      { label: "EQ 开启", type: "checkbox", checked: _eq_state.enabled,
-        click: (item) => _setEqEnabled(item.checked) },
-      { type: "separator" },
-      { label: "🚪 关闭 EQ 窗口", click: _closeEqWindow },
-    ]},
     { type: "separator" },
     { label: "关闭所有子窗口", click: () => closeAllChildWindows() },
   ];
@@ -1289,163 +825,10 @@ ipcMain.handle("shell:info", () => ({
 ipcMain.handle("shell:toggle", () => toggleWindow());
 
 // P2.5+25(2026-10-03)桌面歌词独立窗 IPC — 白名单,渲染层只能问这两个。
-//  - shell:openLyric  → 唤起/复用歌词透明窗(music 子窗 MiniBar 🎤 按钮点击触发)
-//  - shell:closeLyric → 关闭歌词窗(歌词窗内双击触发,user gesture 后主动 close)
-ipcMain.handle("shell:openLyric", () => {
-  try { openLyricWindow(); return { ok: true }; }
-  catch (e) { logError("shell:openLyric", "err", `e=${e.message}`); return { ok: false, err: e.message }; }
-});
-ipcMain.handle("shell:closeLyric", () => {
-  try {
-    const w = childWindows.get("lyric");
-    if (w && !w.isDestroyed()) { w.close(); return { ok: true }; }
-    return { ok: false, err: "no lyric window" };
-  } catch (e) { logError("shell:closeLyric", "err", `e=${e.message}`); return { ok: false, err: e.message }; }
-});
-
-// P2.5+26(2026-10-03)歌词窗 alwaysOnTop / lockDrag / bounds IPC — 4 个新白名单。
-// shell:toggleLyricAlwaysOnTop → 切 _lyric_state.alwaysOnTop + w.setAlwaysOnTop + 重建托盘菜单 + 推 webContents
-// shell:toggleLyricLockDrag    → 切 _lyric_state.lockDrag + 推 webContents(CSS class 由渲染层自己处理)
-// shell:getLyricState          → 渲染层 bootstrap 拿初始态(避免重启后 lock 态对不上 UI)
-// shell:setLyricBounds         → 渲染层拖动结束主动落盘(用户主动 lock 位置时也走这里)
-ipcMain.handle("shell:toggleLyricAlwaysOnTop", () => {
-  try {
-    _toggleLyricAlwaysOnTop();
-    return { ok: true, alwaysOnTop: _lyric_state.alwaysOnTop };
-  } catch (e) {
-    logError("shell:toggleLyricAlwaysOnTop", "err", `e=${e.message}`);
-    return { ok: false, err: e.message };
-  }
-});
-ipcMain.handle("shell:toggleLyricLockDrag", () => {
-  try {
-    _toggleLyricLockDrag();
-    return { ok: true, lockDrag: _lyric_state.lockDrag };
-  } catch (e) {
-    logError("shell:toggleLyricLockDrag", "err", `e=${e.message}`);
-    return { ok: false, err: e.message };
-  }
-});
-ipcMain.handle("shell:getLyricState", () => {
-  // 返回当前态(渲染层 bootstrap 拉一次;之后 toggle 由 webContents.send 主动推)
-  return {
-    ok: true,
-    alwaysOnTop: _lyric_state.alwaysOnTop,
-    lockDrag: _lyric_state.lockDrag,
-    bounds: { ..._lyric_state.bounds },
-    opacity: _lyric_state.opacity,
-    scale: _lyric_state.scale,
-    // P3.4(2026-10-03)歌词窗单/双行 — 1 单行 / 2 双行
-    lines: _lyric_state.lines,
-  };
-});
-ipcMain.handle("shell:setLyricBounds", (_e, b) => {
-  try {
-    if (!b || typeof b !== "object") return { ok: false, err: "bounds must be object" };
-    const x = Number(b.x), y = Number(b.y), w = Number(b.w), h = Number(b.h);
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return { ok: false, err: "x/y must be finite" };
-    if (!Number.isFinite(w) || w < 480) return { ok: false, err: "w must be finite >=480" };
-    if (!Number.isFinite(h) || h < 240) return { ok: false, err: "h must be finite >=240" };
-    _lyric_state.bounds = { x, y, w, h };
-    _lyric_state_save(_lyric_state);
-    logInfo("lyricState", "bounds set via IPC", `bounds=${JSON.stringify(_lyric_state.bounds)}`);
-    return { ok: true, bounds: { ..._lyric_state.bounds } };
-  } catch (e) {
-    logError("shell:setLyricBounds", "err", `e=${e.message}`);
-    return { ok: false, err: e.message };
-  }
-});
-// P3.2(2026-10-03)歌词窗视觉调档 — opacity 滑杆 + scale 字号缩放
-// shell:setLyricOpacity → 设 _lyric_state.opacity + 持久化 + 推 lyric 子窗
-// shell:setLyricScale   → 设 _lyric_state.scale + 持久化 + 推 lyric 子窗
-ipcMain.handle("shell:setLyricOpacity", (_e, value) => {
-  try {
-    const v = _clampNumber(value, 0.3, 1.0, _lyric_state.opacity);
-    _lyric_state.opacity = v;
-    _lyric_state_save(_lyric_state);
-    logInfo("lyricState", "set opacity", `value=${v}`);
-    _notifyLyricWindow("shell:lyricStateChanged",
-      { alwaysOnTop: _lyric_state.alwaysOnTop, lockDrag: _lyric_state.lockDrag,
-        bounds: _lyric_state.bounds, opacity: v, scale: _lyric_state.scale });
-    return { ok: true, opacity: v };
-  } catch (e) {
-    logError("shell:setLyricOpacity", "err", `e=${e.message}`);
-    return { ok: false, err: e.message };
-  }
-});
-ipcMain.handle("shell:setLyricScale", (_e, value) => {
-  try {
-    const v = _clampNumber(value, 0.7, 1.6, _lyric_state.scale);
-    _lyric_state.scale = v;
-    _lyric_state_save(_lyric_state);
-    logInfo("lyricState", "set scale", `value=${v}`);
-    _notifyLyricWindow("shell:lyricStateChanged",
-      { alwaysOnTop: _lyric_state.alwaysOnTop, lockDrag: _lyric_state.lockDrag,
-        bounds: _lyric_state.bounds, opacity: _lyric_state.opacity, scale: v });
-    return { ok: true, scale: v };
-  } catch (e) {
-    logError("shell:setLyricScale", "err", `e=${e.message}`);
-    return { ok: false, err: e.message };
-  }
-});
-
-// P3.4(2026-10-03)歌词窗单/双行 toggle — 1 单行紧凑 / 2 双行(active + 下一行预览)
-// shell:setLyricLines → 设 _lyric_state.lines + 持久化 + 推 lyric 子窗 + rebuildTrayMenu
-ipcMain.handle("shell:setLyricLines", (_e, value) => {
-  try {
-    const v = (Number(value) === 2) ? 2 : 1;
-    if (v === _lyric_state.lines) return { ok: true, lines: _lyric_state.lines };
-    _lyric_state.lines = v;
-    _lyric_state_save(_lyric_state);
-    logInfo("lyricState", "set lines", `lines=${v}`);
-    _notifyLyricWindow("shell:lyricStateChanged",
-      { alwaysOnTop: _lyric_state.alwaysOnTop, lockDrag: _lyric_state.lockDrag,
-        bounds: _lyric_state.bounds, opacity: _lyric_state.opacity,
-        scale: _lyric_state.scale, lines: v });
-    // P2.5+26 经验:radio 状态变化后必 rebuildTrayMenu,否则菜单 radio 永远显旧态
-    if (typeof rebuildTrayMenu === "function") rebuildTrayMenu();
-    return { ok: true, lines: v };
-  } catch (e) {
-    logError("shell:setLyricLines", "err", `e=${e.message}`);
-    return { ok: false, err: e.message };
-  }
-});
-
-// P3.5(2026-10-04)music 10 段 EQ 均衡器 IPC — 6 个白名单。
-//  - shell:get-eq-state    → 渲染层 bootstrap 拉初始态(避免重启后 EQ 态对不上 UI)
-//  - shell:set-eq-gain     → 单段 gain 调整(0..9 idx, dB -12..+12 clamp)
-//  - shell:set-eq-preset   → 应用预置(白名单 EQ_PRESETS)
-//  - shell:set-eq-enabled  → 主开关
-//  - shell:reset-eq        → 重置为 flat(主开关保留)
-//  - shell:openEqWindow     → 托盘点击「🎚 桌面 EQ」走此处
-// 任何 helper 调用都广播 shell:eqStateChanged 给所有 BrowserWindow(MusicView / LyricOnlyView / 独立 EQ 窗),
-//   触发对方 store.attachBroadcast() 回调,UI mirror 同步。
-ipcMain.handle("shell:get-eq-state", () => ({
-  ok: true,
-  enabled: _eq_state.enabled,
-  preset: _eq_state.preset,
-  gains: _eq_state.gains.slice(),
-}));
-ipcMain.handle("shell:set-eq-gain", (_e, idx, dB) => {
-  try { return _setEqGain(idx, dB); }
-  catch (e) { logError("shell:set-eq-gain", "err", `e=${e.message}`); return { ok: false, err: e.message }; }
-});
-ipcMain.handle("shell:set-eq-preset", (_e, name) => {
-  try { return _setEqPreset(name); }
-  catch (e) { logError("shell:set-eq-preset", "err", `e=${e.message}`); return { ok: false, err: e.message }; }
-});
-ipcMain.handle("shell:set-eq-enabled", (_e, b) => {
-  try { return _setEqEnabled(b); }
-  catch (e) { logError("shell:set-eq-enabled", "err", `e=${e.message}`); return { ok: false, err: e.message }; }
-});
-ipcMain.handle("shell:reset-eq", () => {
-  try { return _resetEq(); }
-  catch (e) { logError("shell:reset-eq", "err", `e=${e.message}`); return { ok: false, err: e.message }; }
-});
-ipcMain.handle("shell:openEqWindow", () => {
-  try { openEqWindow(); return { ok: true }; }
-  catch (e) { logError("shell:openEqWindow", "err", `e=${e.message}`); return { ok: false, err: e.message }; }
-});
+// 2026-10-05:music / lyric / EQ IPC handlers 整段已归档(music web 后端被 git rm,
+//   preload.js 已删除暴露;这些 handler 即使注册也无调用方)。
+//   整段移除 — 不保留 stub,因为 preload 端不再 invoke,handler 永不触发。
+// 历史(2026-10-03 ~ 2026-10-04):11 个 lyric + 6 个 eq handlers 在 P2.5+25 / P2.5+26 / P3.2 / P3.4 / P3.5 ship。
 
 // v2.0 反馈卡:白名单 URL 走 shell.openExternal(系统浏览器)。
 // 只允许 https:// 且 babelspan.com 子域或主页。防止渲染层被 XSS 诱导打开恶意 URL。
@@ -1666,9 +1049,9 @@ if (!gotLock) {
 
   app.on("before-quit", () => {
     quitting = true; destroyAllChildWindows();
-    // P2.5+21(2026-10-03):杀语伴 / 音乐 子进程,避免残留占用端口。
+    // P2.5+21(2026-10-03):杀语伴子进程,避免残留占用端口。
+    // 2026-10-05:music 子进程已归档,musicProc.kill 块移除。
     if (companionProc) { try { companionProc.kill(); } catch (_) {} companionProc = null; }
-    if (musicProc) { try { musicProc.kill(); } catch (_) {} musicProc = null; }
     logInfo("app", "before-quit");
   });
   app.on("will-quit", () => {
@@ -1688,15 +1071,14 @@ if (!gotLock) {
 function killBackend() {
   if (webProc) { try { webProc.kill(); } catch {} webProc = null; }
   try {
-    // 清自己 workdir 下起的 prisiragent_web / prisiragent-music-web / PrisirAI.exe 后端
-    // (不动别人的/系统 python)。
-    // 历史 bug(2026-10-05):正则 `prisiragent_web` 只匹配主 web,漏掉 `prisiragent-music-web.py`,
-    //   托盘退出后 music 后端残留占 18803。
-    // 修复:用更宽的 `prisIragent[_-]?(web|music)` 覆盖两个 web 模块 + PrisirAI.exe。
+    // 清自己 workdir 下起的 prisiragent_web / PrisirAI.exe 后端(不动别人的/系统 python)。
+    // 2026-10-05:music 模块已归档,正则收紧到 prisiragent_web 单点 + PrisirAI.exe。
+    // 历史(2026-10-05 之前):曾用更宽的 `prisIragent[_-]?(web|music)` 覆盖两个 web 模块。
+    //   music 后端被 git rm 后不再可能残留 18803 上的 python,正则恢复成单点。
     spawn("powershell", ["-NoProfile", "-Command",
       "Get-CimInstance Win32_Process | Where-Object { " +
       "($_.Name -match '^(python|PrisirAI)\\.exe$') -and " +
-      "($_.CommandLine -match 'prisIragent[_-]?(web|music)|PrisirAI\\.exe.*--port') } | " +
+      "($_.CommandLine -match 'prisIragent_web|PrisirAI\\.exe.*--port') } | " +
       "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
     ], { detached: true, stdio: "ignore", windowsHide: true }).unref();
     logInfo("killBackend", "sweep issued");
