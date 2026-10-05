@@ -1688,12 +1688,15 @@ if (!gotLock) {
 function killBackend() {
   if (webProc) { try { webProc.kill(); } catch {} webProc = null; }
   try {
-    // 清自己 workdir 下起的 prisiragent_web/PrisirAI 后端(不动别人的/系统 python)。
-    // 用 CIM 过滤命令行含 prisiragent_web 或 PrisirAI.exe --port 的进程。
+    // 清自己 workdir 下起的 prisiragent_web / prisiragent-music-web / PrisirAI.exe 后端
+    // (不动别人的/系统 python)。
+    // 历史 bug(2026-10-05):正则 `prisiragent_web` 只匹配主 web,漏掉 `prisiragent-music-web.py`,
+    //   托盘退出后 music 后端残留占 18803。
+    // 修复:用更宽的 `prisIragent[_-]?(web|music)` 覆盖两个 web 模块 + PrisirAI.exe。
     spawn("powershell", ["-NoProfile", "-Command",
       "Get-CimInstance Win32_Process | Where-Object { " +
       "($_.Name -match '^(python|PrisirAI)\\.exe$') -and " +
-      "($_.CommandLine -match 'prisiragent_web|PrisirAI\\.exe.*--port') } | " +
+      "($_.CommandLine -match 'prisIragent[_-]?(web|music)|PrisirAI\\.exe.*--port') } | " +
       "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
     ], { detached: true, stdio: "ignore", windowsHide: true }).unref();
     logInfo("killBackend", "sweep issued");

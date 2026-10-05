@@ -234,12 +234,17 @@ const headerText = computed(() => {
     <div class="topbar">
       <div class="left">
         <!-- P2.5+29(2026-10-05):顶栏最左加 🔍 按钮 → 弹 SearchModal;
-             不污染 CSV 列表,modal 独立浮层;走 LX search action 5 源并行 fallback。 -->
+             不污染 CSV 列表,modal 独立浮层;走 LX search action 5 源并行 fallback。
+             N9.1 fix(2026-10-05):按钮加大 + 金边 + 高亮,避免跟右边 P3.7「仅本地」输入框混淆。
+             用户原话:「输入内容发现原来是在随机的 60 首歌名中找歌,而不是从网络获取」
+             = 把 P3.7 搜索框误当成 P2.5+29 弹层。两个入口隔开视觉距离 + 各自明确范围。 -->
         <button class="btn-search" @click="ui.openSearch()"
-                :title="player.onlineReady ? '5 源并行搜歌名/歌手(网易云/QQ/酷我/酷狗/咪咕)' : 'LX 在线源未就绪,搜索不可用'"
+                :title="player.onlineReady ? '🌐 在线搜歌(网易云/QQ/酷我/酷狗/咪咕 5 源并行)' : 'LX 在线源未就绪,搜索不可用'"
                 :disabled="!player.onlineReady">
-          🔍 搜歌
+          🔍 在线搜歌
         </button>
+        <!-- N9.1 fix:两个搜索入口之间的视觉分隔线 -->
+        <span class="topbar-sep" aria-hidden="true"></span>
         <span class="header">{{ headerText }}</span>
         <button class="btn-respin" @click="onRespin" :disabled="loading"
                 v-if="ui.tagFilters.length === 0">
@@ -250,10 +255,10 @@ const headerText = computed(() => {
           #{{ t }}
           <button class="x" @click="onTagClick(t)" :title="`取消 ${t}`">×</button>
         </span>
-        <!-- P3.7:搜索框 — 200ms debounce 后触发请求 -->
+        <!-- P3.7:搜索框 — 200ms debounce 后触发请求。N9.1 fix:placeholder 加「(仅本地 840 首)」明确范围。 -->
         <input type="search" class="search-input"
                :value="ui.searchInput" @input="onSearchInput"
-               placeholder="搜歌名/歌手" />
+               placeholder="本地过滤(仅 840 首)" />
         <!-- P3.7:chip+search 任一非空时显示「× 清空」一键还原 -->
         <button class="btn-clear"
                 v-if="ui.tagFilters.length > 0 || ui.searchInput"
@@ -349,9 +354,39 @@ const headerText = computed(() => {
   align-items: center;
 }
 .left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-/* P3.7(2026-10-04):顶栏搜索框 — 紧凑 160px,占位符「搜歌名/歌手」(落雪同款) */
+/* N9.1 fix(2026-10-05):🔍 在线搜歌按钮加大 + 金边 + hover 高亮,避免跟右边 P3.7 输入框混淆 */
+.btn-search {
+  padding: 5px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1.5px solid var(--gh-gold);
+  border-radius: 6px;
+  background: var(--gh-paper);
+  color: var(--gh-red);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-search:hover:not(:disabled) {
+  background: var(--gh-gold);
+  color: var(--gh-paper);
+  transform: translateY(-1px);
+}
+.btn-search:disabled {
+  border-color: var(--gh-gray-light);
+  color: var(--gh-gray);
+  cursor: not-allowed;
+}
+/* N9.1 fix:两个搜索入口之间的视觉分隔线 */
+.topbar-sep {
+  display: inline-block;
+  width: 1px;
+  height: 18px;
+  background: var(--gh-gray-light);
+  margin: 0 4px;
+}
+/* P3.7(2026-10-04):顶栏搜索框 — 紧凑 160px,N9.1 fix placeholder 加「仅 840 首」明确范围 */
 .search-input {
-  width: 160px;
+  width: 180px;
   padding: 3px 8px;
   font-size: 12px;
   border: 1px solid var(--gh-gray-light);
