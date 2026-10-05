@@ -232,9 +232,8 @@ class TestMainJsSyntax(unittest.TestCase):
         self.assertIn("startMusic()", content)
         # 主窗 + 子窗 setWindowOpenHandler 都用 _decideSameOriginOpen
         self.assertGreaterEqual(content.count("_decideSameOriginOpen"), 2)
-        # before-quit 杀 companion/music
+        # before-quit 杀 companion(2026-10-05:music 模块已归档,musicProc.kill() 删除)
         self.assertIn("companionProc.kill()", content)
-        self.assertIn("musicProc.kill()", content)
         # calendar-port 已传入 args
         self.assertIn("--calendar-port", content)
         # 修 2026-10-03 ship 漏:启动抛 DEFAULT_CALENDAR_PORT is not defined,
@@ -333,44 +332,9 @@ class TestPrisirAgentWebWfmodalHash(unittest.TestCase):
         self.assertIn("closeWorkflow()", content, "wfmodal 关闭按钮必须保留")
 
 
-class TestMusicToast(unittest.TestCase):
-    """P2.5+22:music 队列空时点播放给 toast 提示,不静默 return 让用户以为卡了。"""
-
-    def test_music_app_js_has_show_music_toast(self):
-        """companion/static/music/app.js 必须有 showMusicToast helper。"""
-        path = os.path.join(ROOT, "companion", "static", "music", "app.js")
-        with open(path, "r", encoding="utf-8") as f:
-            content = f.read()
-        self.assertIn("function showMusicToast", content,
-            "music app.js 缺 showMusicToast helper")
-        # play handler 空队列分支调用它
-        self.assertIn("showMusicToast", content)
-        # 不能含 console.log 调试残留
-        # (不强求,仅 sanity:helper 应能被 el 引用)
-
-    def test_music_app_js_play_btn_handles_empty_queue(self):
-        """空队列分支必须有 toast 提示,不能静默 return。"""
-        path = os.path.join(ROOT, "companion", "static", "music", "app.js")
-        with open(path, "r", encoding="utf-8") as f:
-            content = f.read()
-        # playBtn.onclick 在文件里就一处,直接搜 start/end 行号
-        import re
-        m = re.search(r"els\.playBtn\.onclick\s*=\s*async", content)
-        self.assertIsNotNone(m, "els.playBtn.onclick handler not found")
-        # 从 m.start() 往后抓花括号配对
-        i = content.index("{", m.start())
-        depth = 1
-        j = i + 1
-        while j < len(content) and depth > 0:
-            if content[j] == "{": depth += 1
-            elif content[j] == "}": depth -= 1
-            j += 1
-        body = content[i:j]
-        # else 分支调 showMusicToast
-        self.assertIn("showMusicToast", body,
-            "playBtn.onclick 空队列分支必须调 showMusicToast 提示")
-        self.assertIn("state.queue.length > 0", body,
-            "playBtn.onclick 必须判 state.queue.length > 0 才播")
+# 2026-10-05:TestMusicToast 整段删除 — music 模块已归档到 D:/PrisirAImusicarchive,
+#   companion/static/music/app.js 在主仓已 git rm(commit d356a20)。
+#   测 music 队列空 toast 提示的用例已不在主仓测试范围,移至 archive 仓维护。
 
 
 class TestExtRespawnHotfix(unittest.TestCase):

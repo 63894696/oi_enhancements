@@ -15431,7 +15431,7 @@ def main():
     # 用户设置走 port_config.read_port('web', DEFAULT_WEB_PORT);冲突后由
     # notify_port_changed 写回,下次 Tauri 壳启动读到新值。
     try:
-        from companion.music.port_config import (
+        from port_config import (  # 2026-10-05:music 归档,port_config 从 companion/music/ 救回主仓根
             DEFAULT_WEB_PORT as _DEFAULT_WEB_PORT,
             resolve_start_port,
             notify_port_changed,
@@ -15445,7 +15445,7 @@ def main():
         # env:PRISIRAGENT_CALENDAR_PORT。用户设置:HKCU calendar_port / ports.json['calendar']。
         # 默认:DEFAULT_CALENDAR_PORT = 18803。可用 --no-calendar-port(=0)禁用(测试态 / 单端口模式)。
         try:
-            from companion.music.port_config import (
+            from port_config import (
                 DEFAULT_CALENDAR_PORT as _DEFAULT_CALENDAR_PORT,
                 resolve_start_port as _resolve_cal,
             )
@@ -15550,7 +15550,7 @@ def main():
         _REAL_PORT = int(srv.server_address[1])
         if _REAL_PORT != int(_CONFIGURED_PORT):
             try:
-                from companion.music.port_config import notify_port_changed as _notify_pc
+                from port_config import notify_port_changed as _notify_pc
                 _notify_pc("web", int(_CONFIGURED_PORT), _REAL_PORT)
                 WEB_PORT = _REAL_PORT   # 让 /api/info 也返真端口,前端用真实连
             except Exception as _pc_w_err:  # noqa: BLE001
@@ -15580,7 +15580,7 @@ def main():
             if _REAL_CALENDAR_PORT != int(_CONFIGURED_CALENDAR_PORT):
                 # 跟主端口同款:configured vs actual 不一致时写回注册表
                 try:
-                    from companion.music.port_config import notify_port_changed as _notify_pc_cal
+                    from port_config import notify_port_changed as _notify_pc_cal
                     _notify_pc_cal("calendar", int(_CONFIGURED_CALENDAR_PORT), _REAL_CALENDAR_PORT)
                 except Exception as _pc_cal_err:  # noqa: BLE001
                     try:
