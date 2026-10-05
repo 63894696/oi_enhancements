@@ -676,6 +676,115 @@ class TestSubToFileGdstudio(unittest.TestCase):
         self.assertEqual(resolved, ["local.js", "huibq.js", "gdstudio.js"],
             msg=f"应去重为 3 个源文件;got {resolved!r}")
 
+    def test_resolve_source_files_with_oiapi(self):
+        """P2.5+28 Y+2:['wy', 'wy_gdstudio', 'wy_oiapi'] → ['huibq.js', 'gdstudio.js', 'oiapi.js'](三层)。"""
+        from lx_runtime_client import LxRuntimeClient
+        resolved = LxRuntimeClient._resolve_source_files(
+            ["local", "tx", "kw", "wy", "wy_gdstudio", "wy_oiapi", "kg", "mg"])
+        # 期望 4 个源文件:local.js + huibq.js + gdstudio.js + oiapi.js
+        self.assertEqual(resolved, ["local.js", "huibq.js", "gdstudio.js", "oiapi.js"],
+            msg=f"应去重为 4 个源文件(三层 wy 兜底);got {resolved!r}")
+
+
+class TestOiapiSourceLoads(unittest.TestCase):
+    """P2.5+28 Y+2 阶段(2026-10-05):oiapi.js 是 huibq + gdstudio 都失败时的第二兜底 LX 源。
+
+    走 oiapi.net/api/Music_163 公共反向代理 API,只支持 netease(wy)子源。
+    关键简化:oiapi 直接接 songId 参数,**不需要 search 函数**(比 gdstudio 短 20 行)。
+    静态审计:必须是 LX 协议源 + 声明 wy 子源 + 不混淆。
+    """
+
+    def setUp(self):
+        self.oiapi_path = Path(__file__).resolve().parent.parent / "companion" / "lx_runtime" / "oiapi.js"
+        if not self.oiapi_path.exists():
+            self.skipTest("oiapi.js 不存在")
+
+    def test_oiapi_is_readable(self):
+        """oiapi.js 必须可读且 < 120 行(更短)+ > 30 行(实际逻辑)。"""
+        src = self.oiapi_path.read_text(encoding="utf-8")
+        lines = src.count("\n")
+        self.assertLess(lines, 120,
+            msg=f"oiapi.js 应 < 120 行(更短,无 search);got {lines}")
+        self.assertGreater(lines, 30,
+            msg=f"oiapi.js 应 > 30 行(实际逻辑);got {lines}")
+
+    def test_oiapi_uses_lx_protocol(self):
+        """oiapi.js 必须遵循 LX EVENT_NAMES 协议(on + inited send)。"""
+        src = self.oiapi_path.read_text(encoding="utf-8")
+        self.assertIn("EVENT_NAMES", src,
+            msg="oiapi.js 应引用 LX EVENT_NAMES 协议")
+        self.assertIn("on(EVENT_NAMES.request", src,
+            msg="oiapi.js 应注册 request handler")
+        self.assertIn("send(EVENT_NAMES.inited", src,
+            msg="oiapi.js 应 emit inited 事件")
+
+    def test_oiapi_declares_wy_source(self):
+        """oiapi.js 必须声明 `wy`(netease)子源,作为 huibq+gdstudio 失败时的接盘者。"""
+        src = self.oiapi_path.read_text(encoding="utf-8")
+        # musicSources 对象里必含 wy 键
+        self.assertRegex(src, r"musicSources\s*=\s*\{[^}]*wy\s*:",
+            msg="oiapi.js musicSources 对象必含 wy 子源")
+
+    def test_oiapi_calls_oiapi_api(self):
+        """oiapi.js 必须走 oiapi.net 公共 API(不打其他平台)。"""
+        src = self.oiapi_path.read_text(encoding="utf-8")
+        self.assertIn("oiapi.net", src,
+            msg="oiapi.js 应走 oiapi.net 公共 API")
+        # 必须用 Music_163 endpoint
+        self.assertIn("Music_163", src,
+            msg="oiapi.js 应走 /api/Music_163 endpoint")
+
+    def test_oiapi_uses_lx_request_shim(self):
+        """oiapi.js 必须走 globalThis.lx.request(受 shim 保护),不直接 fetch。"""
+        src = self.oiapi_path.read_text(encoding="utf-8")
+        # 必须用 lx.request(走 shim 的 axios-callback wrapper)
+        self.assertIn("request(", src,
+            msg="oiapi.js 应调用 request(走 lx shim 的 HTTP wrapper)")
+        # 不应该直接 require fetch/axios/undici
+        import re
+        direct_fetch = re.search(r"\brequire\s*\(\s*['\"]node-fetch", src)
+        self.assertIsNone(direct_fetch,
+            msg="oiapi.js 不应直接 require node-fetch;应走 lx.request shim")
+        direct_axios = re.search(r"\brequire\s*\(\s*['\"]axios", src)
+        self.assertIsNone(direct_axios,
+            msg="oiapi.js 不应直接 require axios;应走 lx.request shim")
+
+    def test_oiapi_no_search_function(self):
+        """oiapi.js 关键简化:不应有 search 函数(直接 id → mp3)。"""
+        src = self.oiapi_path.read_text(encoding="utf-8")
+        import re
+        # 不应有 searchNeteaseId / search 函数(与 gdstudio 差别)
+        self.assertNotRegex(src, r"function\s+search\w*\s*\(",
+            msg="oiapi.js 不应有 search 函数(直接 id → mp3,比 gdstudio 短 20 行)")
+        # 但必须有 songmid / id 取值逻辑
+        self.assertRegex(src, r"songmid\s*\|",
+            msg="oiapi.js 必须从 musicInfo 提取 songmid 或 id")
+
+
+class TestSubToFileOiapi(unittest.TestCase):
+    """P2.5+28 Y+2 阶段(2026-10-05):SUB_TO_FILE 必含 wy_oiapi 映射。"""
+
+    def test_sub_to_file_includes_oiapi(self):
+        """SUB_TO_FILE 必须含 'wy_oiapi' → 'oiapi.js' 映射。"""
+        from lx_runtime_client import LxRuntimeClient
+        self.assertIn("wy_oiapi", LxRuntimeClient.SUB_TO_FILE,
+            msg=f"SUB_TO_FILE 必须含 wy_oiapi 映射;got {list(LxRuntimeClient.SUB_TO_FILE.keys())!r}")
+        self.assertEqual(LxRuntimeClient.SUB_TO_FILE["wy_oiapi"], "oiapi.js",
+            msg=f"wy_oiapi 应映射到 oiapi.js;got {LxRuntimeClient.SUB_TO_FILE['wy_oiapi']!r}")
+
+    def test_default_sources_includes_wy_oiapi_fallback(self):
+        """DEFAULT_SOURCES 必含 'wy_oiapi',在 'wy_gdstudio' 之后(三层 fallback)。"""
+        from music.player import OnlineSearch
+        sources = OnlineSearch.DEFAULT_SOURCES
+        self.assertIn("wy_oiapi", sources,
+            msg=f"DEFAULT_SOURCES 必含 'wy_oiapi'(huibq+gdstudio 失败时第二兜底);got {sources!r}")
+        # wy_oiapi 应在 wy_gdstudio 之后(顺序兜底:huibq → gdstudio → oiapi)
+        self.assertGreater(sources.index("wy_oiapi"), sources.index("wy_gdstudio"),
+            msg=f"wy_oiapi 应在 wy_gdstudio 之后(huibq → gdstudio → oiapi);got {sources!r}")
+        # wy_oiapi 应在 wy 之后
+        self.assertGreater(sources.index("wy_oiapi"), sources.index("wy"),
+            msg=f"wy_oiapi 应在 wy 之后;got {sources!r}")
+
 
 # P2.5+28 A 阶段(2026-10-04):删除 TestApiStateSeedFallback 整组(is_seed_fallback 字段已删)
 # 新增 TestApiStatePlayableField(playable + last_err 新字段)+ TestApiStreamNoSeedHeader

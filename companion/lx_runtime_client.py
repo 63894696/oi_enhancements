@@ -29,11 +29,13 @@ class LxRuntimeClient:
     多线程用 _lock 串行化 stdin/stdout。
     """
 
-    # P2.5+28 Y+1 阶段(2026-10-05):LX sub-source 名 → 源文件名映射。
+    # P2.5+28 Y+2 阶段(2026-10-05):LX sub-source 名 → 源文件名映射。
     # - 'local' 子源只能由 local.js 提供(完全不调外网,沿用 P3.10b 0 上传红线)
     # - 'tx/kw/wy/kg/mg' 由 huibq.js 主供(onrender.com 公共服务,首次成功后重复请求被限流)
-    # - 'wy_gdstudio' 由 gdstudio.js 提供,仅声明 `wy` 子源 → huibq wy 失败抛错时自动接盘
+    # - 'wy_gdstudio' 由 gdstudio.js 提供,仅声明 `wy` 子源 → huibq wy 失败抛错时第一兜底
     #   (music-api.gdstudio.xyz 公共反向代理 API,只支持 netease;主流中文歌 90%+ 命中)
+    # - 'wy_oiapi' 由 oiapi.js 提供,仅声明 `wy` 子源 → huibq/gdstudio 都失败时第二兜底
+    #   (oiapi.net 公共反向代理 API,只支持 netease;三层冗余保稳)
     # - mock 兼容老测试
     SUB_TO_FILE = {
         "local": "local.js",
@@ -43,6 +45,7 @@ class LxRuntimeClient:
         "kg": "huibq.js",
         "mg": "huibq.js",
         "wy_gdstudio": "gdstudio.js",
+        "wy_oiapi": "oiapi.js",
         "mock": "mock.js",
     }
 

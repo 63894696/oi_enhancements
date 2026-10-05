@@ -210,9 +210,10 @@ class OnlineSearch:
     # DEFAULT_SOURCES 是 LX sub-source 名(给 dispatcher 派单用,不是文件名):
     #   - 'local' → local.js(本地 mp3 占位 fallback)
     #   - 'tx'/'kw'/'wy'/'kg'/'mg' → huibq.js 内的 5 子源
-    #   - 'wy_gdstudio' → gdstudio.js 内的 wy 子源(huibq wy 失败时接盘)
-    # LxRuntimeClient 启动时按需把 huibq.js + gdstudio.js 装进 Node 子进程。
-    DEFAULT_SOURCES = ["local", "tx", "kw", "wy", "wy_gdstudio", "kg", "mg"]
+    #   - 'wy_gdstudio' → gdstudio.js 内的 wy 子源(huibq wy 失败时第一兜底)
+    #   - 'wy_oiapi' → oiapi.js 内的 wy 子源(huibq+gdstudio 都失败时第二兜底)
+    # LxRuntimeClient 启动时按需把 huibq.js + gdstudio.js + oiapi.js 装进 Node 子进程。
+    DEFAULT_SOURCES = ["local", "tx", "kw", "wy", "wy_gdstudio", "wy_oiapi", "kg", "mg"]
 
     def __init__(self, sources: Optional[List[str]] = None):
         # 2026-10-04:默认 local-only(0 外网请求,0 上传)
