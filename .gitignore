@@ -312,3 +312,6 @@ companion/lx_runtime/ikun.js
 # SQLite WAL/SHM 文件(防本地训练数据快照泄露)
 prisirmp/prisirmp.db-shm
 prisirmp/prisirmp.db-wal
+
+# Electron 临时 app 文件(2026-10-05 music 归档时已不需,Electron 启动会重新生成)
+companion/_tmp_lx/
