@@ -71,16 +71,30 @@ async function doSearch(q: string) {
   lastErr.value = ''
   try {
     const r = await api(`/api/search?q=${encodeURIComponent(trimmed)}&limit=${DEFAULT_LIMIT}`)
-    if (r && r.ok && Array.isArray(r.results)) {
-      results.value = r.results as SearchResult[]
+    // P2.5+29 fix(2026-10-05):后端现在透传 r.ok / r.err。3 路分支:
+    //   - r.ok=true 且 results.length>0 → 正常显示结果
+    //   - r.ok=true 但 results=[]       → 「5 源都返空」(网络/版权问题,见 r.err)
+    //   - r.ok=false                     → 后端明示失败(原 P2.5+29 silent fall-through 已修)
+    const okFlag = !!(r && r.ok)
+    const resultsArr = (r && Array.isArray(r.results)) ? (r.results as SearchResult[]) : []
+    const sourcesHit = (r && Array.isArray(r.sources_hit)) ? r.sources_hit : []
+    const errMsg = (r && r.err) || ''
+    if (okFlag && resultsArr.length > 0) {
+      results.value = resultsArr
       searchStore.recordQuery(trimmed)
       searchStore.setLastResults(results.value)
       activeIdx.value = results.value.length > 0 ? 0 : -1
+      lastErr.value = ''
     } else {
       results.value = []
       activeIdx.value = -1
-      lastErr.value = (r && r.err) || '搜索失败'
-      ui.pushToast('warn', lastErr.value || '搜索')
+      // 优先用后端 err;若 err 为空 + sources_hit=[] → 5 源都没命中(限流/版权/区域屏蔽)
+      const detailed = errMsg
+        || (sourcesHit.length === 0
+             ? '5 源都没命中(可能限流 / 区域屏蔽 / 关键词太冷门)'
+             : `命中的源 ${sourcesHit.join(',')} 也无结果`)
+      lastErr.value = detailed
+      ui.pushToast('warn', `「${trimmed}」无结果:${detailed}`)
     }
   } catch (e) {
     results.value = []
@@ -140,9 +154,21 @@ function onKeyDown(e: KeyboardEvent) {
     if (results.value.length === 0) return
     activeIdx.value = activeIdx.value <= 0 ? results.value.length - 1 : activeIdx.value - 1
   } else if (e.key === 'Enter') {
+    // P2.5+29 fix(2026-10-05):Enter 不仅在「有结果 + 高亮行」时播歌,
+    // 也支持「无结果」时立即重跑当前 query(强制重发,不走 300ms debounce)。
+    // 旧版 Enter 在空 results 时静默 no-op,用户感受「按回车啥都不干」。
     e.preventDefault()
     if (activeIdx.value >= 0 && activeIdx.value < results.value.length) {
       void onPickSong(results.value[activeIdx.value])
+      return
+    }
+    const trimmed = query.value.trim()
+    if (trimmed) {
+      if (debounceTimer != null) {
+        window.clearTimeout(debounceTimer)
+        debounceTimer = null
+      }
+      void doSearch(trimmed)
     }
   }
 }
@@ -284,7 +310,7 @@ onBeforeUnmount(() => {
 
         <div class="modal-footer">
           <span class="tip">
-            <kbd>↑</kbd><kbd>↓</kbd> 选择 · <kbd>Enter</kbd> 播放 · <kbd>Esc</kbd> 关闭
+            <kbd>↑</kbd><kbd>↓</kbd> 选择 · <kbd>Enter</kbd> 播放或重搜 · <kbd>Esc</kbd> 关闭
           </span>
           <span class="tip" v-if="searchStore.entries && searchStore.total">
             已搜过 {{ searchStore.total }} 首(本地缓存)

@@ -159,7 +159,9 @@ class TestOnlineSearchMulti(unittest.TestCase):
         self.search._client = fake
 
     def test_search_multi_merges_sources(self):
-        r = self.search.search_multi("陈奕迅", limit=10)
+        # P2.5+29 fix(2026-10-05):search_multi 现在是 async def(aiohttp 上下文兼容);
+        # 测试同步驱动用 asyncio.run。
+        r = asyncio.run(self.search.search_multi("陈奕迅", limit=10))
         self.assertTrue(r["ok"])
         # wy 2 + mg 0 = 2 个(无去重场景)
         # 注意 songmid 跨源不复用(wy_111 vs kw_333),merge 后应有 3 条
@@ -188,15 +190,26 @@ class TestOnlineSearchMulti(unittest.TestCase):
                 ],
             },
         })
-        r = self.search.search_multi("晴天", limit=10)
+        r = asyncio.run(self.search.search_multi("晴天", limit=10))
         self.assertTrue(r["ok"])
         self.assertEqual(r["count"], 1)
         self.assertEqual(r["items"][0]["songmid"], "wy_444")
 
     def test_search_multi_empty(self):
-        r = self.search.search_multi("", limit=10)
+        r = asyncio.run(self.search.search_multi("", limit=10))
         self.assertFalse(r["ok"])
         self.assertIn("empty", r["err"])
+
+    def test_search_multi_works_inside_running_loop(self):
+        """P2.5+29 fix(2026-10-05):旧版 def 同步 + 内部 asyncio.run → 在 aiohttp loop
+        内调用会 RuntimeError。新版 async def + 直接 await gather → 在 running loop 内也能跑。
+        测试方法:在嵌套 loop 内 await search_multi,模拟 aiohttp 上下文。
+        """
+        async def _call():
+            return await self.search.search_multi("陈奕迅", limit=10)
+        r = asyncio.run(_call())
+        self.assertTrue(r["ok"])
+        self.assertGreaterEqual(r["count"], 2)
 
 
 # ============================================================

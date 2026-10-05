@@ -265,8 +265,10 @@ class TestMusicViewChipSearch(unittest.TestCase):
         c = _read(SRC / "views" / "MusicView.vue")
         self.assertIn('type="search"', c)
         self.assertIn('class="search-input"', c)
-        # placeholder 搜歌名/歌手
-        self.assertIn("搜歌名/歌手", c)
+        # P2.5+29 hotfix(2026-10-05):placeholder 改为「本地过滤(仅 840 首)」明示范围,
+        # 跟顶栏 🔍 在线搜弹 modal 形成「本地 vs 在线」视觉/文字双重 cue。
+        self.assertIn("本地过滤", c)
+        self.assertIn("840", c)
 
     def test_musicview_has_clear_all_button(self):
         c = _read(SRC / "views" / "MusicView.vue")

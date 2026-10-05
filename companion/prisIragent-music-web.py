@@ -397,17 +397,23 @@ async def api_search(req: web.Request) -> web.Response:
     except (ValueError, TypeError):
         limit = 20
     try:
-        r = APP.online.search_multi(q, limit=limit)
+        r = await APP.online.search_multi(q, limit=limit)
     except Exception as e:  # noqa: BLE001
         return _err(f"search failed: {type(e).__name__}: {e}")
     items = r.get("items", []) if isinstance(r, dict) else []
     sources_hit = r.get("sources_hit", []) if isinstance(r, dict) else []
+    # 历史 bug(2026-10-05):r.ok=False 时前端拿到 ok:true count:0,但实际 5 源全 fail,
+    # silent fall-through 把 error 吞了。现在透传 r.ok / r.err,前端能 show「5 源都没跑通」。
+    inner_ok = r.get("ok", False) if isinstance(r, dict) else False
+    inner_err = r.get("err", "") if isinstance(r, dict) else ""
     if items:
         await _save_search_cache(q, items)
     return _ok(
         q=q,
+        ok=inner_ok,
         count=len(items),
         sources_hit=sources_hit,
+        err=inner_err,
         results=items,
     )
 

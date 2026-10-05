@@ -354,11 +354,18 @@ class OnlineSearch:
         items = self._normalize_search(source, resp.get("result") if "result" in resp else resp.get("data"))
         return {"ok": True, "items": items, "source": source}
 
-    def search_multi(self, keywords: str, limit: int = 20,
-                     sources: Optional[List[str]] = None) -> Dict[str, Any]:
+    async def search_multi(self, keywords: str, limit: int = 20,
+                           sources: Optional[List[str]] = None) -> Dict[str, Any]:
         """P2.5+29(2026-10-05):5 源并行 fallback 搜 keywords。
 
         沿用 get_url_multi 范式 + asyncio.gather 并发跑多个 sub-source → merge → 去重 → 限 limit 条。
+
+        历史 bug(2026-10-05):旧版本 def 同步 + 内部 asyncio.run(_gather())。
+        api_search 在 aiohttp 上下文中调 → aiohttp loop 已在跑 → asyncio.run() 抛
+        RuntimeError → except 吞掉 → 返 {ok:False, err:"gather fail"} → 前端拿到 ok:true
+        count:0 但实际 5 源全 fail(silent fall-through 坑)。
+        修复:async def + 直接 asyncio.gather + run_in_executor 子进程阻塞 IO。
+        api_search 也要 await 才行(已同步更新)。
 
         Returns: {"ok": bool, "items"?: [...], "sources_hit"?: [str], "err"?: str}
 
@@ -372,17 +379,14 @@ class OnlineSearch:
         if not srcs:
             return {"ok": False, "err": "no sources configured"}
 
+        loop = asyncio.get_event_loop()
+
         async def _run_one(src: str) -> Dict[str, Any]:
-            # 在线程池里跑 sync call — Node 子进程是阻塞式
-            loop = asyncio.get_event_loop()
+            # Node 子进程 call() 是阻塞式(走 stdin/stdout 同步管道),放到 default executor
             return await loop.run_in_executor(None, self.search, src, kw, limit)
 
-        async def _gather() -> List[Dict[str, Any]]:
-            tasks = [_run_one(s) for s in srcs]
-            return await asyncio.gather(*tasks, return_exceptions=False)
-
         try:
-            results = asyncio.run(_gather())
+            results = await asyncio.gather(*[_run_one(s) for s in srcs], return_exceptions=False)
         except Exception as e:  # noqa: BLE001
             return {"ok": False, "err": f"gather fail: {type(e).__name__}: {e}"}
 
