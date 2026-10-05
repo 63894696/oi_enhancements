@@ -290,6 +290,146 @@ async def api_songs_respin(req: web.Request) -> web.Response:
 
 
 # ============================================================
+# P2.5+29(2026-10-05):在线搜歌 + _search_cache.json 持久化
+# ============================================================
+# P2.5+29 search cache — 写盘路径(沿用 _COMPANION_DIR 写程序同级;非 userData,
+# 避免权限坑;复用 music-web 进程 restart 自然 load 回来)
+SEARCH_CACHE_DIR = _COMPANION_DIR / "cache"
+SEARCH_CACHE_FILE = SEARCH_CACHE_DIR / "_search_cache.json"
+SEARCH_CACHE_LOCK = asyncio.Lock()  # 写盘串行化(防多并发 race)
+SEARCH_CACHE_LIMIT_ENTRIES = 2000   # entries 上限(防 0 上传红线外的写盘爆炸)
+SEARCH_CACHE_LIMIT_QUERIES = 50     # 最近 N 条 query 历史
+
+
+def _load_search_cache_sync() -> Dict[str, Any]:
+    """同步版 load cache — 启动时调一次。"""
+    if not SEARCH_CACHE_FILE.exists():
+        return {"version": 1, "updated_at_iso": "", "entries": {}, "queries": []}
+    try:
+        with open(SEARCH_CACHE_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            return {"version": 1, "updated_at_iso": "", "entries": {}, "queries": []}
+        data.setdefault("version", 1)
+        data.setdefault("entries", {})
+        data.setdefault("queries", [])
+        if not isinstance(data["entries"], dict):
+            data["entries"] = {}
+        if not isinstance(data["queries"], list):
+            data["queries"] = []
+        return data
+    except Exception as e:  # noqa: BLE001
+        log.warning("[search_cache] load failed: %s", e)
+        return {"version": 1, "updated_at_iso": "", "entries": {}, "queries": []}
+
+
+def _save_search_cache_sync(cache: Dict[str, Any]) -> None:
+    """同步版 save — 在 lock 内调。"""
+    try:
+        SEARCH_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        with open(SEARCH_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(cache, f, ensure_ascii=False, indent=2)
+    except Exception as e:  # noqa: BLE001
+        log.warning("[search_cache] save failed: %s", e)
+
+
+async def _save_search_cache(q: str, results: List[Dict[str, Any]]) -> None:
+    """P2.5+29(2026-10-05):写 _search_cache.json(增量,去重 by songmid)。
+
+    结构:
+      {
+        "version": 1,
+        "updated_at_iso": "2026-10-05T...",
+        "entries": { songmid: {songmid, songname, singer, album, duration, source, q, ts} },
+        "queries": [q1, q2, ...]   # 最近 50 条
+      }
+    """
+    async with SEARCH_CACHE_LOCK:
+        cache = _load_search_cache_sync()
+        q_norm = (q or "").strip()
+        # 增量写 entries
+        for item in results:
+            mid = item.get("songmid")
+            if not mid:
+                continue
+            entry = {
+                "songmid": mid,
+                "songname": item.get("songname", ""),
+                "singer": item.get("singer", ""),
+                "album": item.get("album", ""),
+                "duration": int(item.get("duration") or 0),
+                "source": item.get("source", ""),
+                "q": q_norm,
+                "ts": int(time.time() * 1000),
+            }
+            cache["entries"][mid] = entry
+        # 截断 entries 上限
+        if len(cache["entries"]) > SEARCH_CACHE_LIMIT_ENTRIES:
+            # LRU 删最旧
+            sorted_items = sorted(cache["entries"].items(),
+                                 key=lambda kv: kv[1].get("ts", 0))
+            to_drop = len(cache["entries"]) - SEARCH_CACHE_LIMIT_ENTRIES
+            for k, _ in sorted_items[:to_drop]:
+                cache["entries"].pop(k, None)
+        # 更新 queries(去重 + 限长)
+        if q_norm:
+            cache["queries"] = [q_norm] + [x for x in cache["queries"] if x != q_norm]
+            cache["queries"] = cache["queries"][:SEARCH_CACHE_LIMIT_QUERIES]
+        # updated_at_iso
+        import datetime
+        cache["updated_at_iso"] = datetime.datetime.utcnow().isoformat() + "Z"
+        _save_search_cache_sync(cache)
+
+
+async def api_search(req: web.Request) -> web.Response:
+    """GET /api/search?q=孤勇者&limit=20
+    P2.5+29(2026-10-05):5 源并行 fallback 搜歌,返标准化结果 + 写 _search_cache.json。
+
+    P3.10b 红线:keywords 是纯文本 query,不传音频内容。
+    """
+    if not APP.online:
+        return _err("online not initialized")
+    q = (req.query.get("q") or "").strip()
+    if not q:
+        return _err("missing q")
+    try:
+        limit = max(1, min(50, int(req.query.get("limit", "20"))))
+    except (ValueError, TypeError):
+        limit = 20
+    try:
+        r = APP.online.search_multi(q, limit=limit)
+    except Exception as e:  # noqa: BLE001
+        return _err(f"search failed: {type(e).__name__}: {e}")
+    items = r.get("items", []) if isinstance(r, dict) else []
+    sources_hit = r.get("sources_hit", []) if isinstance(r, dict) else []
+    if items:
+        await _save_search_cache(q, items)
+    return _ok(
+        q=q,
+        count=len(items),
+        sources_hit=sources_hit,
+        results=items,
+    )
+
+
+async def api_search_cache(req: web.Request) -> web.Response:
+    """GET /api/search/cache — 返历史搜过歌 + 最近 50 query。
+
+    P2.5+29:启动时已经 load 一次到内存(给 /api/search 增量写回用);前端 mount
+    SearchModal 时拉这一份做历史展示。
+    """
+    cache = _load_search_cache_sync()
+    return _ok(
+        cache={
+            "version": cache.get("version", 1),
+            "updated_at_iso": cache.get("updated_at_iso", ""),
+            "entries": cache.get("entries", {}),
+            "queries": cache.get("queries", []),
+        }
+    )
+
+
+# ============================================================
 # N9(2026-10-04)AI 歌单推荐
 # ============================================================
 async def api_recommend(req: web.Request) -> web.Response:
@@ -890,6 +1030,9 @@ def build_app() -> web.Application:
     app.router.add_get("/api/recommend", api_recommend)
     # P2.5+24(2026-10-03):预取下一首 URL
     app.router.add_get("/api/songs/preload", api_songs_preload)
+    # P2.5+29(2026-10-05):在线搜歌 + _search_cache.json 持久化
+    app.router.add_get("/api/search", api_search)
+    app.router.add_get("/api/search/cache", api_search_cache)
     app.router.add_get("/api/stream/{track_id}", api_stream)
     app.router.add_post("/api/cmd", api_cmd)
     # P3.3(2026-10-03):长按收藏菜单 — 2 个新路由

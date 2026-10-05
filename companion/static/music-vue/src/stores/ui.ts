@@ -5,6 +5,8 @@
 // P3.7(2026-10-04):tagFilter → tagFilters: string[] (chip 多选 OR 合并) +
 //   searchInput + searchQuery (200ms debounce 实时搜索 title/artist)。
 //   tagFilter/setTag 保留为单值便捷别名(其它调用方无破坏)。
+// P2.5+29(2026-10-05):searchModalVisible + openSearch/closeSearch(SearchModal 浮层)。
+//                   0 上传:仅 query 关键词外发,音频不上传(沿用 P3.10b 红线)。
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { api } from '@/services/api'
@@ -44,6 +46,9 @@ export const useUiStore = defineStore('ui', () => {
   // P3.5(2026-10-04):EQ 抽屉显示状态(独立 EQ 窗与 LyricOnlyView 各自持久化,
   // MusicView 抽屉只是会话级 toggle)
   const showEqPanel = ref(false)
+  // P2.5+29(2026-10-05):SearchModal 浮层显示状态(只挂 MusicView 主窗,
+  //   LyricOnlyView / EqWindowView 不挂 modal,避免跨 BrowserWindow 状态串扰)。
+  const searchModalVisible = ref(false)
   let toastId = 0
 
   function pushToast(type: ToastMsg['type'], text: string, ttlMs = 2400) {
@@ -132,10 +137,19 @@ export const useUiStore = defineStore('ui', () => {
     showEqPanel.value = !showEqPanel.value
   }
 
+  // P2.5+29(2026-10-05):SearchModal 开关 — 顶栏 🔍 按钮触发 openSearch,modal 关闭调 closeSearch。
+  function openSearch() {
+    searchModalVisible.value = true
+  }
+  function closeSearch() {
+    searchModalVisible.value = false
+  }
+
   return {
     viewMode, tagFilter, tagFilters, searchInput, searchQuery, toasts, showEqPanel,
+    searchModalVisible,
     pushToast, pushListToast, bootstrap, respinPool,
     setTag, toggleTag, clearTags, setSearch, clearAllFilters,
-    toggleEqPanel,
+    toggleEqPanel, openSearch, closeSearch,
   }
 })

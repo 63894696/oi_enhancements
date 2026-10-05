@@ -283,6 +283,129 @@ class OnlineSearch:
             log.info("[online] %s fail: %s, try next", src, r.get("err"))
         return {"ok": False, "err": f"all sources failed: {last_err}"}
 
+    def _normalize_search(self, source: str, raw: Any) -> List[Dict[str, Any]]:
+        """P2.5+29(2026-10-05):LX search action 响应 → 统一 {songmid, songname, singer, album, duration, source}。
+
+        LX framework 两种回包形态:
+          - source.js 直接 return [{songname, ...}],        → rpc.result is array
+          - source.js 返 {ok:True, data:[{songname, ...}]}, → rpc.data is array
+        两种都兼容。
+        """
+        items: List[Dict[str, Any]] = []
+        if isinstance(raw, list):
+            items = raw
+        elif isinstance(raw, dict):
+            if isinstance(raw.get("data"), list):
+                items = raw["data"]
+            elif isinstance(raw.get("list"), list):
+                items = raw["list"]
+        if not items:
+            return []
+        norm: List[Dict[str, Any]] = []
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            # songmid 必填,缺则丢弃
+            mid = it.get("songmid") or it.get("id") or it.get("hash")
+            if mid is None:
+                continue
+            norm.append({
+                "source": it.get("source") or source,
+                "songmid": str(mid) if not str(mid).startswith(f"{source}_") else str(mid),
+                "songname": it.get("songname") or it.get("name") or it.get("title") or "",
+                "singer": it.get("singer") or it.get("artist") or "",
+                "album": it.get("album") or it.get("albumName") or "",
+                "duration": int(it.get("duration") or it.get("interval") or 0),
+            })
+        # songmid 前缀补齐(LX 范式 "{source}_{id}"),跨源去重
+        seen = set()
+        out: List[Dict[str, Any]] = []
+        for item in norm:
+            mid = item["songmid"]
+            if not mid.startswith(f"{item['source']}_"):
+                mid = f"{item['source']}_{mid}"
+                item["songmid"] = mid
+            if mid in seen:
+                continue
+            seen.add(mid)
+            out.append(item)
+        return out
+
+    def search(self, source: str, keywords: str, limit: int = 20) -> Dict[str, Any]:
+        """P2.5+29(2026-10-05):单源 search action 调 lx_runtime。
+
+        Returns: {"ok": bool, "items"?: [{songmid, songname, singer, album, duration, source}],
+                          "source"?: str, "err"?: str}
+
+        P3.10b 红线:keywords 是纯文本,不传音频内容。
+        """
+        cli = self._ensure()
+        if not cli:
+            return {"ok": False, "err": "lx_runtime client not available"}
+        if not keywords or not keywords.strip():
+            return {"ok": False, "err": "empty keywords"}
+        try:
+            resp = cli.call(action="search", source=source,
+                            info={"keywords": keywords.strip(), "limit": max(1, min(50, int(limit) or 20))})
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "err": f"{type(e).__name__}: {e}"}
+        if not resp.get("ok"):
+            return {"ok": False, "err": resp.get("err", "lx_runtime returned not-ok"), "source": source}
+        items = self._normalize_search(source, resp.get("result") if "result" in resp else resp.get("data"))
+        return {"ok": True, "items": items, "source": source}
+
+    def search_multi(self, keywords: str, limit: int = 20,
+                     sources: Optional[List[str]] = None) -> Dict[str, Any]:
+        """P2.5+29(2026-10-05):5 源并行 fallback 搜 keywords。
+
+        沿用 get_url_multi 范式 + asyncio.gather 并发跑多个 sub-source → merge → 去重 → 限 limit 条。
+
+        Returns: {"ok": bool, "items"?: [...], "sources_hit"?: [str], "err"?: str}
+
+        P3.10b 红线:keywords 是纯文本 query,不传音频内容。
+        """
+        kw = (keywords or "").strip()
+        if not kw:
+            return {"ok": False, "err": "empty keywords"}
+        # 默认排除 local(本地没有搜索能力) — 沿用 LX SEARCH 范式:ik 公开 http API 5 源
+        srcs = sources or [s for s in self._sources if s != "local"]
+        if not srcs:
+            return {"ok": False, "err": "no sources configured"}
+
+        async def _run_one(src: str) -> Dict[str, Any]:
+            # 在线程池里跑 sync call — Node 子进程是阻塞式
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, self.search, src, kw, limit)
+
+        async def _gather() -> List[Dict[str, Any]]:
+            tasks = [_run_one(s) for s in srcs]
+            return await asyncio.gather(*tasks, return_exceptions=False)
+
+        try:
+            results = asyncio.run(_gather())
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "err": f"gather fail: {type(e).__name__}: {e}"}
+
+        merged: List[Dict[str, Any]] = []
+        seen = set()
+        sources_hit: List[str] = []
+        for src, r in zip(srcs, results):
+            if not isinstance(r, dict) or not r.get("ok"):
+                log.info("[online.search] %s fail: %s", src, r.get("err") if isinstance(r, dict) else r)
+                continue
+            sources_hit.append(src)
+            for item in r.get("items", []):
+                mid = item.get("songmid", "")
+                if not mid or mid in seen:
+                    continue
+                seen.add(mid)
+                merged.append(item)
+                if len(merged) >= limit:
+                    break
+            if len(merged) >= limit:
+                break
+        return {"ok": True, "items": merged, "sources_hit": sources_hit, "count": len(merged)}
+
     def list_sources(self) -> List[str]:
         return list(self._sources)
 

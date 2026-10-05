@@ -276,6 +276,17 @@ export const usePlayerStore = defineStore('player', () => {
     return song
   }
 
+  // P2.5+29(2026-10-05):SearchModal 直接传 IMusicItem(songmid/title/artist)
+  //   → 不走 /api/songs 查 CSV;store 薄包装 svc.playSong。
+  async function playSongItem(item: IMusicItem) {
+    await svc.playSong(item)
+  }
+
+  // P2.5+29(2026-10-05):暴露 PlayerService audio 引用给 MusicView(useSpectrum 注册用)。
+  function getAudioElement(): HTMLAudioElement {
+    return svc.getAudioElement()
+  }
+
   async function toggle() {
     await svc.toggle()
   }
@@ -307,7 +318,7 @@ export const usePlayerStore = defineStore('player', () => {
     progress, bufferedPct,
     // actions
     bootstrap, refreshFavorite, toggleFavorite, refreshLyric,
-    playById, toggle, playNext, playPrev, seek, setVolume,
+    playById, playSongItem, getAudioElement, toggle, playNext, playPrev, seek, setVolume,
     // P3.3(2026-10-03):长按收藏菜单 action
     listFavorites, removeFavorite,
     // P3.6(2026-10-04):N8 下载完成桌面通知 toast action

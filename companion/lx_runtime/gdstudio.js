@@ -18,7 +18,7 @@ const musicSources = {
   wy: {
     name: '网易云(gdstudio兜底)',
     type: 'music',
-    actions: ['musicUrl'],
+    actions: ['musicUrl', 'search'],
     qualitys: ['128k', '320k'],
   },
 };
@@ -50,6 +50,24 @@ async function searchNeteaseId(title, artist) {
   return String(first.id);
 }
 
+// P2.5+29(2026-10-05):批量搜 — LX search action;`count=N` 拿 N 条候选
+async function batchSearch(keywords, limit) {
+  const cnt = Math.max(1, Math.min(50, limit ?? 20));
+  const url = `${API_URL}?types=search&source=netease&name=${encodeURIComponent(keywords)}&keyword=${encodeURIComponent(keywords)}&count=${cnt}`;
+  const data = await httpGet(url);
+  if (!Array.isArray(data) || data.length === 0) return [];
+  return data
+    .filter(item => item && item.id)
+    .map(item => ({
+      source: 'wy',
+      songmid: `wy_${item.id}`,
+      songname: item.title || item.name || '',
+      singer: item.artist || item.singer || '',
+      album: item.album || item.albumName || '',
+      duration: Number(item.interval || item.duration || 0),
+    }));
+}
+
 async function getNeteaseUrl(songId, quality) {
   // quality → br:128k=128000, 320k=320000
   const br = quality === '320k' ? 320000 : 128000;
@@ -79,6 +97,15 @@ on(EVENT_NAMES.request, ({ action, source, info }) => {
     return handleMusicUrl(source, info.musicInfo, info.type || '320k')
       .then(data => Promise.resolve(data))
       .catch(err => Promise.reject(new Error(`gdstudio[${source}]: ${err.message || err}`)));
+  }
+  // P2.5+29(2026-10-05):LX search action 接入;仅 wy 子源
+  if (action === 'search') {
+    if (source !== 'wy') return Promise.reject(new Error(`gdstudio: search source='${source}' not supported (only wy)`));
+    const kw = (info && (info.keywords || info.keyword || info.query)) || '';
+    if (!kw) return Promise.resolve([]);
+    return batchSearch(kw, info.limit)
+      .then(data => Promise.resolve(data))
+      .catch(err => Promise.reject(new Error(`gdstudio[${source} search]: ${err.message || err}`)));
   }
   return Promise.reject(new Error(`gdstudio: action='${action}' not supported`));
 });

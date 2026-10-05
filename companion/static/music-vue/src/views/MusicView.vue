@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // MusicView.vue — P2.5+24(2026-10-03) → P3.5(2026-10-04)EQ 抽屉 → P3.6(2026-10-04)下载完成 toast + 歌单行右键
-//                  → P3.8(2026-10-04)MusicView 主区右侧 16 段 spectrum bar → N9(2026-10-04)AI 推荐区。
+//                  → P3.8(2026-10-04)MusicView 主区右侧 16 段 spectrum bar → N9(2026-10-04)AI 推荐区
+//                  → P2.5+29(2026-10-05)顶栏 🔍 按钮 → 弹 SearchModal(5 源并行 fallback 在线搜歌)。
 // 主视图:顶栏 + AI 推荐区 + tags + 歌单列表 + 大封面 + 歌词 + 队列 + 频谱。
 // 顶栏借鉴 Vue-mmPlayer 的「顶栏 tabs」+ YesPlayMusic 的「歌单网格」,
 // 但用户拍板「只留播放列表」= 歌单用列表渲染而非网格卡片。
@@ -23,6 +24,7 @@ import EQPanel from '@/components/EQPanel.vue'
 import PopupMenu from '@/components/PopupMenu.vue'
 import SpectrumBars from '@/components/SpectrumBars.vue'
 import RecommendPanel from '@/components/RecommendPanel.vue'
+import SearchModal from '@/components/SearchModal.vue'
 import { useDownloadToast } from '@/composables/useDownloadToast'
 import { useSpectrum, registerSpectrumAudio } from '@/composables/useSpectrum'
 import type { MenuItem } from '@/components/PopupMenu.vue'
@@ -208,7 +210,7 @@ async function onCtxSelect(item: MenuItem) {
 onMounted(() => {
   // P3.8:把 player audio 暴露给 useSpectrum,pause 时强制 0 输出
   try {
-    const a = player.getAudioElement?.()
+    const a = player.getAudioElement()
     if (a) registerSpectrumAudio(a)
   } catch (_) { /* 防御:player.getAudioElement 不存在时静默 */ }
   void loadSongs()
@@ -231,6 +233,13 @@ const headerText = computed(() => {
          顶栏 .left 加搜索框 + 多 chip 显示 + 「× 清空」一键还原 -->
     <div class="topbar">
       <div class="left">
+        <!-- P2.5+29(2026-10-05):顶栏最左加 🔍 按钮 → 弹 SearchModal;
+             不污染 CSV 列表,modal 独立浮层;走 LX search action 5 源并行 fallback。 -->
+        <button class="btn-search" @click="ui.openSearch()"
+                :title="player.onlineReady ? '5 源并行搜歌名/歌手(网易云/QQ/酷我/酷狗/咪咕)' : 'LX 在线源未就绪,搜索不可用'"
+                :disabled="!player.onlineReady">
+          🔍 搜歌
+        </button>
         <span class="header">{{ headerText }}</span>
         <button class="btn-respin" @click="onRespin" :disabled="loading"
                 v-if="ui.tagFilters.length === 0">
@@ -321,6 +330,9 @@ const headerText = computed(() => {
     <PopupMenu :x="ctxX" :y="ctxY" :visible="ctxVisible"
                :items="ctxSong ? ctxItemsFor(ctxSong) : []"
                @select="onCtxSelect" @close="closeCtx" />
+
+    <!-- P2.5+29(2026-10-05):🔍 搜歌浮层 — 5 源并行 fallback,候选切换时不污染 CSV 列表 -->
+    <SearchModal :visible="ui.searchModalVisible" @close="ui.closeSearch()" />
   </div>
 </template>
 
