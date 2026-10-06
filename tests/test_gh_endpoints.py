@@ -226,8 +226,9 @@ def test_capability_registered():
 def test_fetcher_registered():
     """web_fetch 的 _FETCHERS 含 gh_api(触发 fetch() 让 lazy register 执行)。"""
     from prisir_work import web_fetch as _wf
-    # 触发 lazy register:web_fetch 在 _FETCHERS 为空时自动注册默认 5 个 fetcher
+    # 清空 + 触发 lazy register:web_fetch 在 _FETCHERS 为空时自动注册 7 个 fetcher
     # 用一个 invalid URL 触发一次 fetch(),内部会先 register 再 fail
+    _wf._FETCHERS.clear()
     try:
         _wf.fetch("about:blank", options={"no_cache": True, "timeout": 0.1})
     except Exception:

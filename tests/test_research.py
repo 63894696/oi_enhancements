@@ -11,6 +11,7 @@ sys.path.insert(0, str(REPO_ROOT))
 from prisir_work import research as research_module  # noqa: E402
 from prisir_work.research import plan_queries, research as research_fn  # noqa: E402
 from prisir_work import capability, endpoints  # noqa: E402
+from prisir_work import handlers  # noqa: E402,F401  # 注册 system.health/wallet/team 等 capability
 
 
 def test_plan_default():

@@ -10,6 +10,7 @@ plan → search ×N → fetch top URLs → LLM 合成,带 [n] 编号引用。
 from __future__ import annotations
 
 import logging
+import re
 import time
 from typing import Any, Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed

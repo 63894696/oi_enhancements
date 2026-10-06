@@ -17,6 +17,7 @@ from pathlib import Path
 REPO = Path(r"C:\Users\Administrator\oi_enhancements")
 sys.path.insert(0, str(REPO))
 
+import prisir_case_compat  # noqa: E402,F401  # 大小写兼容:prisIragent_web ↔ prisiragent_web
 import prisiragent_web as W  # noqa: E402
 
 CAT = "出行/通勤"

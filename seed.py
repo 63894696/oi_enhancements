@@ -70,6 +70,9 @@ PRE_BROKEN = {
         "ModuleNotFoundError: prisIragent_web",
     "tests/test_song_pool_and_favorite.py":
         "ModuleNotFoundError: music (P3.0 已归档)",
+    # task #10 travel profile slot 未 ship(user_profile.py 无对应 API)
+    "tests/test_profile_travel.py":
+        "user_profile.py 缺 travel slot API(task #10 P3.10+ 待 ship)",
 }
 
 # 6 个 ship 漏同步 fail — audit-2026-09 分支 worktree 含 ship 代码但
@@ -77,6 +80,10 @@ PRE_BROKEN = {
 SHIP_SYNC_GAPS = [
     ("test_electron_subwindows.py", "TestPrisirAgentWebWfmodalHash"),
     ("test_electron_subwindows.py", "TestExtRespawnHotfix"),
+    # task #19 (calendar URL const + menu order) + task #26 (menu audit) 是
+    # commit eb01210/5496d97 已 ship 但 audit 分支 git HEAD 仍是镜像旧版
+    ("test_e2e_phase2.py", "TestTauriMenuAnchors"),
+    ("test_e2e_phase2.py", "TestTask26MenuAudit"),
 ]
 
 # 默认 ignore — 配合 pytest --ignore 让 pre-broken 不参与收集

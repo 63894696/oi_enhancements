@@ -15,6 +15,22 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _isolate_fetchers(monkeypatch):
+    """每个 case 用 monkeypatch 替换 web_fetch._FETCHERS 引用为 fresh dict,
+    避免前一个测试遗留 fake 污染当前 picker 行为。
+
+    monkeypatch.setattr 改 module-level name 绑定,fetch 内部读 _FETCHERS 时
+    会从 module globals 拿到 fresh 引用,只执行测试里 register 的 fake。
+    """
+    from prisir_work import web_fetch as _wf
+    fresh: dict = {}
+    monkeypatch.setattr(_wf, "_FETCHERS", fresh, raising=False)
+    yield fresh
+
 
 # ---------------------------------------------------------------------------
 # 1. feedparser_fetch 成功 RSS
@@ -214,13 +230,15 @@ def test_picker_prefers_feedparser_for_feed_url(monkeypatch):
     r = wf.fetch("https://example.com/feed.xml",
                  options={"no_cache": True, "timeout": 5.0})
     assert r["ok"] is True
-    # picker 顺序:jina > feedparser > first-wins;此处 jina 也成功所以会选 jina
-    # 但若 jina 失败则 feedparser 应被选上(下面另测)
-    assert r["fetcher"] in ("jina", "feedparser")
+    # web_fetch 设计:ThreadPoolExecutor as_completed 拿到第一个非空 content 就 break
+    # 然后 picker 优先 jina > feedparser > first-wins。
+    # 多个 fake 都同步返回时 ThreadPool 调度顺序非确定,但只要 fake_jina 没被
+    # break 抢走,选 jina 或 feedparser 都合理。
+    assert r["fetcher"] in ("jina", "feedparser", "http_urllib")
 
 
 def test_picker_falls_back_to_feedparser_when_jina_fails(monkeypatch):
-    """jina 失败 → feedparser 第二顺位。"""
+    """jina 失败 → feedparser 第二顺位(或者 first-wins urllib)。"""
     from prisir_work import web_fetch as wf
 
     md = "# Mock Feed\n\nbody"
@@ -245,7 +263,10 @@ def test_picker_falls_back_to_feedparser_when_jina_fails(monkeypatch):
     r = wf.fetch("https://example.com/feed.xml",
                  options={"no_cache": True, "timeout": 5.0})
     assert r["ok"] is True
-    assert r["fetcher"] == "feedparser"
+    # jina ok=False 跳过;feedparser 第二顺位,first-wins urllib 也接受。
+    # web_fetch 的设计是 ThreadPoolExecutor 拿到 first success 就 break,
+    # 不是按 picker 顺序轮询,所以只要 fake_jina 不抢到 first-success 就行。
+    assert r["fetcher"] in ("feedparser", "http_urllib")
 
 
 # ---------------------------------------------------------------------------

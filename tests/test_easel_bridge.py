@@ -57,8 +57,8 @@ def test_publisher_list_all():
     pubs = list_publishers()
     names = {p["name"] for p in pubs}
     assert names == {"wechat-oa", "xhs", "bilibili",
-                     "douyin", "zhihu", "wechat-channels"}, names
-    assert len(_REGISTRY) == 6
+                     "douyin", "youtube", "wechat-channels", "zhihu"}, names
+    assert len(_REGISTRY) == 7
     print(f"✓ publisher.list → {len(pubs)} platforms")
 
 

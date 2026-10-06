@@ -20,6 +20,7 @@ from pathlib import Path
 REPO = Path(r"C:\Users\Administrator\oi_enhancements")
 sys.path.insert(0, str(REPO))
 
+import prisir_case_compat  # noqa: E402,F401  # 大小写兼容
 import solutions_learner as SL  # noqa: E402
 import prisiragent_web as W  # noqa: E402
 

@@ -16,6 +16,22 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _isolate_fetchers(monkeypatch):
+    """每个 case 用 monkeypatch 替换 web_fetch._FETCHERS 引用为 fresh dict,
+    避免前一个测试遗留 fake 污染当前 picker 行为。
+
+    monkeypatch.setattr 改 module-level name 绑定,fetch 内部读 _FETCHERS 时
+    会从 module globals 拿到 fresh 引用,只执行测试里 register 的 fake。
+    """
+    from prisir_work import web_fetch as _wf
+    fresh: dict = {}
+    monkeypatch.setattr(_wf, "_FETCHERS", fresh, raising=False)
+    yield fresh
+
 
 # ---------------------------------------------------------------------------
 # 1. jina_fetch 4 路
@@ -276,7 +292,7 @@ def test_jina_search_provider_registers_when_env(monkeypatch, tmp_path):
                  "snippet": "snip 1"},
             ],
         )
-        r = ws.search("hi", limit=3)
+        r = ws.search("hi", limit=3, providers=["jina_search"], timeout=60.0)
         assert r, "search() 应至少返 1 条结果"
         assert any("jina_search" in (it.get("sources") or [])
                    for it in r), f"结果里没有 jina_search 来源: {r}"
