@@ -268,6 +268,11 @@ def _projects_load():
 # ============================================================
 _EXT_BRIDGE_LOCK = _threading.RLock()
 _EXT_PROCS = {}            # ext_id -> {"proc": Popen, "home": str, "pending": {req_id: (event, box)}, "last_alive_at": float, "crash_count": int, "reader_thread": Thread, "enabled": bool}
+# P2.5+21(2026-10-03)hotfix:task-runner 进死循环 — `_ext_spawn` 每次都把
+# crash_count 重置为 0,reader_loop L441 判定永远 <=3 → 永远 respawn。
+# 临时用 _ext_respawn_total 累计「总 respawn 次数」,**独立**于 crash_count,
+# 不被 `_ext_spawn` 重置,>5 强制停。完整修法在 task_f48e99a4 chip。
+_ext_respawn_total: dict[str, int] = {}
 _EXT_LOG_HOOKS = {}        # ext_id -> list[callable](主进程日志钩子,留接口)
 _EXT_INJECT_QUEUE = []     # ui.inject notification 缓冲(主进程同步消费)
 # P2.5+B-3(2026-09-21)run 进度内存队列:run_id → list[payload](按到达顺序 append,带自增 seq)。
@@ -439,6 +444,23 @@ def _ext_reader_loop(ext_id: str):
             ev.set()
             st2["pending"].pop(rid, None)
         if st2["crash_count"] <= 3 and st2.get("enabled", True):
+            # P2.5+21 hotfix (revised 2026-10-03):task-runner 进程起后立即死 → 无 restart 死循环。
+            # 一刀切:task-runner 死了不再 respawn,用户主动调用 run_task 等接口走
+            # _ext_rpc_call lazy-spawn(P3j T24 ship)单独启,启完正常用,死了也尊重用户选择不再启。
+            # 累计 respawn 次数独立 crash_count(后者每次 spawn reset 0),>5 兜底。
+            _ext_respawn_total[ext_id] = _ext_respawn_total.get(ext_id, 0) + 1
+            if ext_id == "task-runner":
+                try:
+                    _LOGGER.warning("[ext-bridge] %s auto-respawn DISABLED (one-shot). Use run_task to start on demand.", ext_id)
+                except Exception:
+                    pass
+                return
+            if _ext_respawn_total[ext_id] > 5:
+                try:
+                    _LOGGER.warning("[ext-bridge] %s respawn >5 times (total), STOP. crash_count was reset by _ext_spawn, see chip task_f48e99a4.", ext_id)
+                except Exception:
+                    pass
+                return  # 不再 respawn
             delay = min(2 ** st2["crash_count"], 30)
             _threading.Timer(delay, _ext_spawn, args=[ext_id]).start()
             try:
@@ -5891,7 +5913,6 @@ window.__PRISIR_FORUM_URL__ = "__PRISIR_FORUM_URL_PLACEHOLDER__";
   <button class="topbtn" id="doc-btn" onclick="toggleDocPanel()" data-i18n="doc_panel" data-i18n-title="doc_panel_title">📑 文档</button>
   <button class="topbtn" onclick="openKeys()" data-i18n="model_key">🔑 模型 Key</button>
   <button class="topbtn" id="topbtnCompanion" onclick="openCompanion()" data-i18n-title="companion_title" title="语伴(语音/文字轻量对话,可派发到主面板)">📞 语伴</button>
-  <button class="topbtn" id="topbtnWorkflow" onclick="openWorkflow()" data-i18n-title="workflow_title" title="工作流编排(拖拽 DAG + 重试 + 运行历史)">🔀 工作流</button>
   <button class="topbtn" id="topbtnExt" onclick="openExtensions()" data-i18n-title="extensions_title" title="扩展(资源检索 / 技能市场 / 已装扩展管理)">🧩 扩展</button>
   <button class="topbtn" onclick="newSession()" data-i18n="new_session">+ 新会话</button>
 </div>
@@ -8398,6 +8419,20 @@ let _wfRunsCollapsed = false;
 let _wfNodeEditing = null;
 let _wfExtListCache = null;   // 节点编辑时动态 ext 下拉缓存
 
+// P2.5+21(2026-10-03):Electron 壳的「🔀 工作流」子窗加载 URL 形如 `${WEB_URL}#wfmodal`。
+// fragment 不会进 HTTP 请求,后端只返主页 HTML;这里监听 hashchange + DOMContentLoaded
+// 触发 openWorkflow(),否则子窗会显示主 web 首页,wfmodal 永远 display:none。
+window.addEventListener('hashchange', () => {
+  if (location.hash === '#wfmodal' && !window.__wfModalOpen) {
+    openWorkflow();
+  }
+});
+if (location.hash === '#wfmodal') {
+  document.addEventListener('DOMContentLoaded', () => {
+    if (!window.__wfModalOpen) openWorkflow();
+  }, { once: true });
+}
+
 async function openWorkflow() {
   // P2.5+19 分支 1:装包后 Tauri 壳注入 → 弹独立 workflow-window(独立窗体验)
   if (typeof window !== 'undefined' && window.__TAURI_INTERNALS__
@@ -8410,6 +8445,9 @@ async function openWorkflow() {
       console.warn('[openWorkflow] tauri invoke err, fallback to in-modal:', e);
     }
   }
+  // P2.5+21(2026-10-03):幂等标记 — hashchange + 按钮 双触发防双开。
+  if (window.__wfModalOpen) return;
+  window.__wfModalOpen = true;
   // 分支 2:开发模式(Electron 壳 / 浏览器)→ 主窗 wfmodal 全屏打开
   document.getElementById('wfmodal').classList.add('open');
   await wfRenderTaskList();
@@ -8451,6 +8489,16 @@ function closeWorkflow() {
   document.getElementById('wfmodal').classList.remove('open');
   document.getElementById('wf-node-modal').classList.remove('open');
   document.getElementById('wf-tpl-modal').classList.remove('open');
+  // P2.5+21(2026-10-03):清幂等标记,允许下次 hashchange/按钮重开。
+  window.__wfModalOpen = false;
+  // P2.5+22(2026-10-03):清 URL hash,避免按浏览器返回/前进 或 URL 复制粘贴
+  // 时再次触发 hashchange 重复开 modal。history.replaceState 不留历史记录,
+  // 用户体验 =「关掉就回主对话」。
+  try {
+    if (location.hash === '#wfmodal') {
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+  } catch (_) {}
   // P2.5+B-3(2026-09-21)关 modal 不杀任务 — 后端 run 继续跑,前端只停轮询
   wfStopProgressPoll();
 }
@@ -14894,21 +14942,22 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _handle_calendar_timeline(self, qs):
-        """GET /prisIragent/api/calendar/timeline?days=14 → TodayView JSON.
+        """GET /prisIragent/api/calendar/timeline?days=30 → TodayView JSON.
 
         TodayView 来自 prisIr_calendar.agent_ops.reader.get_today_view。
         user_profile 走 user_profile.load_travel_profile()(无画像则空 dict)。
+        P2.5+22(2026-10-03):默认 30 天(从 14 升),按用户拍板。
         """
         store = self._get_calendar_store()
         if store is None:
             self._json({"error": "calendar store unavailable"}, 503)
             return
         try:
-            days_str = (qs.get("days") or ["14"])[0]
-            days = int(days_str) if days_str.isdigit() else 14
+            days_str = (qs.get("days") or ["30"])[0]
+            days = int(days_str) if days_str.isdigit() else 30
             days = max(1, min(days, 60))  # 限 1..60 天
         except (ValueError, IndexError):
-            days = 14
+            days = 30
         try:
             import asyncio as _aio
             from datetime import datetime as _dt, timezone as _tz
@@ -14923,7 +14972,7 @@ class Handler(BaseHTTPRequestHandler):
                 days=days,
             ))
             payload = view.to_dict()
-            # 兼容 task #6:前端读 14 天,这里把 scope 报告出去。
+            # 兼容 task #6:前端读 30 天,这里把 scope 报告出去(P2.5+22 从 14 升)。
             payload["requested_days"] = days
             self._json(payload)
         except Exception as e:  # noqa: BLE001
@@ -15145,18 +15194,19 @@ class Handler(BaseHTTPRequestHandler):
     def _handle_calendar_scan(self, body: dict):
         """POST /prisIragent/api/calendar/scan → TravelBufferAgent.scan_and_protect。
 
-        body: {"days": 14}(可选)。返回 ScanReport.to_dict()。
+        body: {"days": 30}(可选)。返回 ScanReport.to_dict()。
+        P2.5+22(2026-10-03):默认 30 天(从 14 升),与 timeline 对齐。
         """
         store = self._get_calendar_store()
         if store is None:
             self._json({"error": "calendar store unavailable"}, 503)
             return
         try:
-            days_str = (body.get("days") if isinstance(body, dict) else None) or 14
-            days = int(days_str) if str(days_str).isdigit() else 14
+            days_str = (body.get("days") if isinstance(body, dict) else None) or 30
+            days = int(days_str) if str(days_str).isdigit() else 30
             days = max(1, min(days, 60))
         except (ValueError, TypeError):
-            days = 14
+            days = 30
         try:
             import asyncio as _aio
             from prisIr_calendar.agent_ops.travel_buffer import (  # noqa: PLC0415
@@ -15381,7 +15431,7 @@ def main():
     # 用户设置走 port_config.read_port('web', DEFAULT_WEB_PORT);冲突后由
     # notify_port_changed 写回,下次 Tauri 壳启动读到新值。
     try:
-        from companion.music.port_config import (
+        from port_config import (  # 2026-10-05:music 归档,port_config 从 companion/music/ 救回主仓根
             DEFAULT_WEB_PORT as _DEFAULT_WEB_PORT,
             resolve_start_port,
             notify_port_changed,
@@ -15395,7 +15445,7 @@ def main():
         # env:PRISIRAGENT_CALENDAR_PORT。用户设置:HKCU calendar_port / ports.json['calendar']。
         # 默认:DEFAULT_CALENDAR_PORT = 18803。可用 --no-calendar-port(=0)禁用(测试态 / 单端口模式)。
         try:
-            from companion.music.port_config import (
+            from port_config import (
                 DEFAULT_CALENDAR_PORT as _DEFAULT_CALENDAR_PORT,
                 resolve_start_port as _resolve_cal,
             )
@@ -15500,7 +15550,7 @@ def main():
         _REAL_PORT = int(srv.server_address[1])
         if _REAL_PORT != int(_CONFIGURED_PORT):
             try:
-                from companion.music.port_config import notify_port_changed as _notify_pc
+                from port_config import notify_port_changed as _notify_pc
                 _notify_pc("web", int(_CONFIGURED_PORT), _REAL_PORT)
                 WEB_PORT = _REAL_PORT   # 让 /api/info 也返真端口,前端用真实连
             except Exception as _pc_w_err:  # noqa: BLE001
@@ -15530,7 +15580,7 @@ def main():
             if _REAL_CALENDAR_PORT != int(_CONFIGURED_CALENDAR_PORT):
                 # 跟主端口同款:configured vs actual 不一致时写回注册表
                 try:
-                    from companion.music.port_config import notify_port_changed as _notify_pc_cal
+                    from port_config import notify_port_changed as _notify_pc_cal
                     _notify_pc_cal("calendar", int(_CONFIGURED_CALENDAR_PORT), _REAL_CALENDAR_PORT)
                 except Exception as _pc_cal_err:  # noqa: BLE001
                     try:
