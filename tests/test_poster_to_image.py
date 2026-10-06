@@ -24,12 +24,17 @@ sys.path.insert(0, str(ROOT))
 
 # 跟 Phase C 测试同款 stub — 不拖整个大链路
 sys.modules["prisiragent_cli"] = mock.MagicMock(name="prisiragent_cli")
-sys.modules["prisiragent_web"] = mock.MagicMock(name="prisiragent_web")
-sys.modules["prisiragent_web"]._ext_rpc_call = mock.MagicMock(name="_ext_rpc_call")
 
 from prisir_work import capability as cap_mod  # noqa: E402
 from prisir_work import endpoints as ep_mod     # noqa: E402
 from prisir_work import poster_to_image_capability as p2i  # noqa: E402,F401
+# 注意:不要 here import video_creator — session 里其他 test 跑过它,
+# 提前 import 会让 sys.modules["prisir_work.video_creator"] 缓存真模块,
+# test_5 的 mock.patch.dict(..., None) 会被 Python cache 短路 → handler
+# 拿到真模块 + creator.ready=False → 报 image_gen_not_ready。
+# 删去后 test_5 唯一一次 import video_creator 的尝试就落在 mock.patch.dict 里,
+# sys.modules=None → handler 内 `from . import video_creator` 抛 ImportError
+# → 走 video_creator_unavailable 分支。
 
 
 # ── 1. 注册 ──────────────────────────────────────────────────────
@@ -88,13 +93,40 @@ def test_4_handler_missing_prompt():
 
 
 # ── 4. video_creator 模块 import 失败 ──────────────────────────
-def test_5_handler_video_creator_unavailable():
-    # poster_to_image_capability 里 `from . import video_creator as vc` — patch 源
-    # 但 . 是相对 import,需 patch `prisir_work.video_creator`
-    with mock.patch.dict(sys.modules, {"prisir_work.video_creator": None}):
+def test_5_handler_video_creator_unavailable(monkeypatch):
+    # poster_to_image_capability handler 用 _resolve_video_creator() 解析
+    # video_creator 模块,优先查 sys.modules["prisir_work.video_creator"]。
+    # 把 sys.modules 里这一项换成「任何 attribute 都抛 ImportError」的 boom,
+    # handler 调 vc.get(...) 时 boom.__getattr__("get") 抛 ImportError,
+    # 被外层 try 捕获 → 返回 video_creator_unavailable 分支。
+    #
+    # 注意:之前 `from . import video_creator as vc` 走 Python importlib
+    # 内部 SourceFileLoader,绕过 sys.modules[None/boom] 仍返回真模块 ——
+    # 这是 Python 设计如此。改为 sys.modules 优先路径后,sys.modules 污染
+    # 能生效(handler 第 160 行有详细注释)。
+    import importlib
+
+    class _BoomModule:
+        """任何 attribute access 都抛 ImportError — 模拟 module 不可用。"""
+        def __getattr__(self, name):
+            raise ImportError(f"_BoomModule: simulated video_creator unavailable (attr={name})")
+        def __bool__(self):
+            return True
+
+    boom = _BoomModule()
+    saved = sys.modules.get("prisir_work.video_creator")
+    sys.modules["prisir_work.video_creator"] = boom
+    importlib.invalidate_caches()
+    try:
         payload, status = ep_mod._REGISTRY["/image-gen/from_poster_prompt"]["handler"](
             {"prompt_zh": "主体:奶茶", "output": "C:/tmp/x.png"}
         )
+    finally:
+        if saved is not None:
+            sys.modules["prisir_work.video_creator"] = saved
+        else:
+            sys.modules.pop("prisir_work.video_creator", None)
+        importlib.invalidate_caches()
     assert status == 200
     assert payload["ok"] is False
     assert "video_creator_unavailable" in payload["error"], f"got {payload}"

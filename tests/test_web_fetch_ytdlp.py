@@ -11,8 +11,21 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
+
+
+# picker 集成测试需要干净 _FETCHERS dict;session 里其他 test
+# (test_web_fetch_jina / feedparser) 也会 register_fetcher,污染顺序。
+@pytest.fixture(autouse=True)
+def _isolate_fetchers(monkeypatch):
+    """每个 test 前用空 dict 替换 web_fetch._FETCHERS,test 后 monkeypatch 自动还原。"""
+    from prisir_work import web_fetch as _wf
+    fresh: dict = {}
+    monkeypatch.setattr(_wf, "_FETCHERS", fresh, raising=False)
+    yield fresh
 
 
 # ---------------------------------------------------------------------------

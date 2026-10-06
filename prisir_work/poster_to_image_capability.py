@@ -22,10 +22,32 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
 log = logging.getLogger("prisir_work.poster_to_image_capability")
+
+
+# 模块级 import video_creator + 保留相对引用备用 —
+# 让 sys.modules 污染能拦到:测试里若 sys.modules["prisir_work.video_creator"]
+# 被换成 boom 对象,_resolve_video_creator 优先走 sys.modules 检查就能拿到 boom。
+# (原方案用 `from . import video_creator as vc` 在函数体内每次执行,
+# Python importlib 走 SourceFileLoader 绕过 sys.modules[None/boom] 检查,
+# 仍返回真模块 → 测试无法模拟不可用。)
+try:
+    from . import video_creator as _video_creator_module  # type: ignore
+except Exception:  # noqa: BLE001
+    _video_creator_module = None  # 让 _resolve_video_creator 走 sys.modules fallback
+
+
+def _resolve_video_creator():
+    """解析 video_creator 模块 — 优先 sys.modules(可被测试污染),
+    再回退到模块级相对引用。"""
+    cached = sys.modules.get("prisir_work.video_creator")
+    if cached is not None:
+        return cached
+    return _video_creator_module
 
 __all__ = [
     "register_all",
@@ -157,13 +179,18 @@ def _make_handler(cap_id: str):
         combined = _combine_prompt(prompt_zh, prompt_en, lang)
 
         # 调 video_creator.ImageGenCreator
+        # 用 _resolve_video_creator 替代 `from . import video_creator as vc` —
+        # 后者在函数体内每次执行,Python importlib 走 SourceFileLoader 绕过
+        # sys.modules[None] / sys.modules[boom] 仍能加载真模块,导致测试无法
+        # 模拟不可用分支。sys.modules 优先路径让测试能注入 boom/MagicMock。
         try:
-            from . import video_creator as vc  # noqa: PLC0415
+            vc = _resolve_video_creator()
+            if vc is None:
+                raise ImportError("video_creator module-level import failed")
+            creator = vc.get("image-gen")
         except Exception as e:  # noqa: BLE001
             return ({"ok": False, "error": f"video_creator_unavailable: {e}",
                      "image_path": ""}, 200)
-
-        creator = vc.get("image-gen")
         if creator is None:
             return ({"ok": False, "error": "image_gen_creator_not_registered",
                      "image_path": ""}, 200)

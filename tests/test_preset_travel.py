@@ -14,20 +14,43 @@
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO = Path(r"C:\Users\Administrator\oi_enhancements")
 sys.path.insert(0, str(REPO))
 
 import prisir_case_compat  # noqa: E402,F401  # 大小写兼容:prisIragent_web ↔ prisiragent_web
-import prisiragent_web as W  # noqa: E402
 
 CAT = "出行/通勤"
+
+
+def _get_W():
+    """懒 import prisiragent_web — 必须在 conftest cleanup 之后调用,
+    避免被 pollution file(test_poster_capabilities 等)在 sys.modules 里
+    设的 MagicMock 锁住 module-level 引用。
+    """
+    import prisiragent_web as W
+    return W
+
+
+W = _get_W()  # 默认首跑
+
+
+@pytest.fixture(autouse=True)
+def _refresh_W():
+    """每个 test 前重新拿 W,避免 pollution file 后 MagicMock 锁住引用。"""
+    global W
+    W = _get_W()
+    yield
 
 
 # ---------------------------------------------------------------------------
 # 工具
 # ---------------------------------------------------------------------------
 def _kw_for(cat: str) -> tuple[str, ...]:
-    for ptype, kws in W._PRESET_KEYWORDS:
+    # 每次取最新 W(避免 MagicMock 锁死)
+    w = _get_W()
+    for ptype, kws in w._PRESET_KEYWORDS:
         if ptype == cat:
             return kws
     raise AssertionError(f"类别 {cat} 未注册到 _PRESET_KEYWORDS")
