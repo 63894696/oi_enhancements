@@ -178,3 +178,4 @@
 - [Nextcloud 云盘 Phase A ship](nextcloud-bridge-status-phase-a-shipped.md) — 2026-10-07;bearer SDK 第 6 用户(累计);**OCS extraHeaders inline helper**(SDK 边界决策第 2 个 inline,共享 SDK Bearer 失败语义);OAuth dance 简化(用户手填 token);15 扩展联合回归 58 passed + 2 skipped;扩展家族 12 领域(+云盘);SDK 投资 114 行 6 用户 + 2 inline helpers
 - [Outline 知识库 Phase A ship](outline-bridge-status-phase-a-shipped.md) — bearer SDK httpPostJson 抽取触发(SDK 第 5 API)+ Plausible 重构零扩展代码改动
 - [BookStack wiki Phase A ship](bookstack-bridge-status-phase-a-shipped.md) — bearer SDK 第 8 用户 + 首个纯 REST + Bearer(零 SDK 边界跨越)
+- [Firefly III 理财 Phase A ship](firefly-iii-bridge-status-phase-a-shipped.md) — bearer SDK 第 9 用户 + 跨入理财域 + JSON:API envelope 扁平化

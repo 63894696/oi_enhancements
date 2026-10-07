@@ -1,0 +1,29 @@
+{
+  "name": "firefly-iii-bridge-status",
+  "displayName": "Firefly III 自托管理财(只读, Bearer PAT)",
+  "version": "0.1.0",
+  "description": "Phase A 只读扩展:通过 Firefly III REST API (http://127.0.0.1:8080/api/v1)读取系统版本、当前用户、账户列表。鉴权用 Authorization: Bearer <personal_access_token>(RFC 6750 标准,Firefly III Profile → OAuth → Personal Access Tokens)。**Phase C SDK bearer-client.js 第 9 个用户 + 跨入个人理财领域**(前 8 用户跨 7 类:媒体/漫画/代码/CI/分析/云/知识/wiki)。JSON:API envelope 自动扁平化(data.attributes → 直接展开)。仅读 GET /api/v1/about /api/v1/about/user /api/v1/accounts,**绝对不**触碰 POST/PUT/DELETE 任何 mutating 接口。0 上传/外传,100% 本地,符合 P3.10b 红线。",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:firefly.health",
+    "ai.invoke.command:firefly.user",
+    "ai.invoke.command:firefly.accounts",
+    "ui.inject.notification"
+  ],
+  "prisIrFeatures": [
+    "read-only",
+    "requires-local-server",
+    "requires-credentials"
+  ],
+  "prisIrPlatforms": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}
