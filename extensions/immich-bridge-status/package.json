@@ -1,0 +1,31 @@
+{
+  "name": "immich-bridge-status",
+  "displayName": "Immich 照片库(只读,x-api-key)",
+  "version": "0.1.0",
+  "description": "Phase A 只读扩展:通过 Immich REST API (127.0.0.1:2283/api)读取照片 / 相册 / 健康状态。鉴权用 x-api-key 自定义头(与 Komga X-API-Key 同模式)。仅读 /api/server/ping /api/server/version /api/albums /api/assets,**绝对不**触碰上传 / 创建相册 / 删除 / 任何 mutating 接口。**Phase C SDK mode='apiKey' 第二次复用跨入照片领域**(前 Komga 漫画),验证 SDK 的「任意 apiKey header」真落地。0 上传/外传,100% 本地,符合 P3.10b 红线。",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:immich.health",
+    "ai.invoke.command:immich.albums",
+    "ai.invoke.command:immich.assets",
+    "ui.inject.notification"
+  ],
+  "prisIrFeatures": [
+    "read-only",
+    "requires-local-server",
+    "requires-credentials",
+    "custom-header-auth",
+    "media-library"
+  ],
+  "prisIrPlatforms": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}
