@@ -1,0 +1,30 @@
+{
+  "name": "miniflux-bridge-status",
+  "displayName": "Miniflux RSS(只读,X-Auth-Token)",
+  "version": "0.1.0",
+  "description": "Phase A 只读扩展:通过 Miniflux REST API (127.0.0.1:8080/v1)读取 RSS 订阅 / 条目 / 健康状态。鉴权用 X-Auth-Token 自定义头(不是 Authorization Bearer)。仅读 /v1/me /v1/feeds /v1/entries,**绝对不**触碰书签 / 阅读状态 / 订阅 / 任何 mutating 接口。**Phase C SDK 第二次复用 custom-auth-client.js 的 mode='custom'**(前一个:Komga mode='apiKey')——验证 SDK 的三模式透传设计真实落地。0 上传/外传,100% 本地,符合 P3.10b 红线。",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:miniflux.health",
+    "ai.invoke.command:miniflux.feeds",
+    "ai.invoke.command:miniflux.entries",
+    "ui.inject.notification"
+  ],
+  "prisIrFeatures": [
+    "read-only",
+    "requires-local-server",
+    "requires-credentials",
+    "custom-header-auth"
+  ],
+  "prisIrPlatforms": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}
