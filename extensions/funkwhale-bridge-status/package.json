@@ -1,0 +1,31 @@
+{
+  "name": "funkwhale-bridge-status",
+  "displayName": "Funkwhale 当前播放(只读, Subsonic 协议)",
+  "version": "0.1.0",
+  "description": "Phase A 只读扩展:通过 Funkwhale 的 Subsonic 兼容 API(默认 127.0.0.1:5000,Funkwhale Docker 默认端口)读取当前播放 / 系统状态。鉴权用 md5+salt salted token — 借鉴原则 5「Token≠密码」优秀范例(截获单次 token 不能重放)。仅读 /rest/ping.view /rest/getNowPlaying.view /rest/getLicense.view,**绝对不**触碰播放控制 / 下载 / scrobble 等 mutating 接口。Funkwhale 是联邦音乐平台,Subsonic 路径加 .view 后缀(OpenSubsonic 规范)。**Phase C SDK 第三次复用**(Navidrome / LMS / Funkwhale / Ampache 共用 subsonic-client.js)。0 上传/外传,100% 本地,符合 P3.10b 红线。",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:funkwhale.health",
+    "ai.invoke.command:funkwhale.now-playing",
+    "ai.invoke.command:funkwhale.license",
+    "ui.inject.notification"
+  ],
+  "prisIrFeatures": [
+    "read-only",
+    "requires-local-server",
+    "requires-credentials",
+    "subsonic-protocol",
+    "federation-aware"
+  ],
+  "prisIrPlatforms": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}
