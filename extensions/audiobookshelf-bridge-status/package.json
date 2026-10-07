@@ -1,0 +1,30 @@
+{
+  "name": "audiobookshelf-bridge-status",
+  "displayName": "Audiobookshelf 当前播放(只读,Bearer token)",
+  "version": "0.1.0",
+  "description": "Phase A 只读扩展:通过 Audiobookshelf 的 REST API(默认 127.0.0.1:8181)读取当前播放状态、libraries 列表、healthcheck。鉴权用 Bearer token(用户 API token,从主壳「用户 → API Token」生成)。仅读 anonymous /ping /healthcheck + Bearer-auth /api/me /api/libraries /api/sessions,**绝对不**触碰流接口 /api/items/*/play 等写/播放控制,符合 P3.10b 0 上传红线 + 用户隐私阈值(0 外传,100% 本地)。Audiobookshelf 是 listening(有声书)管理先驱,本地 REST API,Bearer token。",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:audiobookshelf.health",
+    "ai.invoke.command:audiobookshelf.libraries",
+    "ai.invoke.command:audiobookshelf.sessions",
+    "ui.inject.notification"
+  ],
+  "prisIrFeatures": [
+    "read-only",
+    "requires-local-server",
+    "requires-credentials",
+    "bearer-token-auth"
+  ],
+  "prisIrPlatforms": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}

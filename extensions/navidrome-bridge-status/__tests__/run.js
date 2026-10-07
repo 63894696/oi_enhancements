@@ -6,12 +6,15 @@
  *   node extensions/navidrome-bridge-status/__tests__/run.js --e2e   # 加 mock server 端到端
  *
  * 测试策略:
- *   - 默认 8 单测用 vm sandbox 注入 SDK stub,测试不可达 / Subsonic 失败 / token 派生
- *   - 加 --e2e 起一个临时 mock Subsonic HTTP server,验证 /ping /getNowPlaying /getLicense
+ *   - 默认 7 单测用 vm sandbox 注入 SDK stub,验证扩展薄壳 + SDK 鉴权派生
+ *   - 加 --e2e 起临时 mock Subsonic HTTP server,验证 /ping /getNowPlaying /getLicense
  *
  * Subsonic 鉴权特性:
- *   - 服务端每次派新 salt,客户端 md5(pass+salt) 算新 token
- *   - 测试 mock server 用 'demo' 密码 + 'demoSalt' 计算 token demoToken=md5('demodemoSalt')
+ *   - 客户端每次派新 salt,服务端用客户端发的 salt 算 md5(pass+salt) 验 token
+ *   - 测试 mock server 用 'demo' 密码 + 客户端发的盐 (任何 salt 都接受) 重算验证
+ *
+ * Phase C(2026-10-07):Navidrome 重构为薄壳,Subsonic 协议细节移到 _scaffold/subsonic-client.js。
+ * 测试主测扩展薄壳(env 注入 + 命令实现),SDK 单元被独立测。
  */
 'use strict';
 
@@ -27,10 +30,6 @@ const SRC = fs.readFileSync(INDEX_JS, 'utf8');
 const E2E = process.argv.includes('--e2e');
 
 // ── mock Subsonic HTTP server ────────────────────────────────
-// Subsonic 协议: 客户端用 salt+pass 算 token = md5(password + salt),
-//                salt 是**客户端生成**(每次新随机)并随请求发到服务端,服务端验证
-//                md5(pass+server'd salt) == token。
-// 这里为了模拟真实行为,我们接受任何 salt,但用客户端发的 salt 来重新算 token 验证。
 const DEMO_USER = 'admin';
 const DEMO_PASS = 'demo';
 
@@ -43,7 +42,6 @@ function startMockServer() {
       const t = url.searchParams.get('t');
       const s = url.searchParams.get('s');
 
-      // 鉴权:用客户端发的 salt 计算期望 token,比较客户端发的 token
       if (u !== DEMO_USER || !s || !t) {
         res.end(JSON.stringify({
           'subsonic-response': {
@@ -121,16 +119,21 @@ function loadModule(extraEnv = {}) {
       async start() {}
     },
   };
+  // vm sandbox 内 require 用 module.createRequire(从 EXT_DIR 的 filename 锚)
+  // 这样 '../_scaffold/subsonic-client' 自然走对的相对路径
+  const { createRequire } = require('module');
+  const realRequire = createRequire(INDEX_JS);
   const requireFn = (id) => {
     if (id === '@prisir/extension-sdk') return sdkStub;
-    try { return require(id); } catch (e) { throw e; }
+    try { return realRequire(id); } catch (e) { throw e; }
   };
+  const stubProcess = { env: { ...process.env, ...extraEnv } };
   const sandbox = {
     module: captured,
     exports: captured.exports,
     require: requireFn,
     console,
-    process,
+    process: stubProcess,
     Buffer,
     setTimeout,
     clearTimeout,
@@ -139,8 +142,6 @@ function loadModule(extraEnv = {}) {
     http,
     crypto,
   };
-  // override env on the sandbox's process copy
-  sandbox.process.env = { ...process.env, ...extraEnv };
   sandbox.global = sandbox;
   vm.createContext(sandbox);
   vm.runInContext(SRC, sandbox);
@@ -165,33 +166,31 @@ function assertEq(a, b, msg = '') {
 function assertTrue(v, msg = '') { if (!v) throw new Error(msg || 'expected truthy'); }
 
 (async () => {
-  console.log('\n[Phase A 只读扩展单测] navidrome-bridge-status\n');
+  console.log('\n[Phase A 只读扩展单测] navidrome-bridge-status(Phase C SDK 重构版)\n');
 
-  // 1. env 默认值
-  t('ndBaseUrl 默认 + env override 切', () => {
+  // 1. ndConfig 默认 + env override
+  t('ndConfig 默认 + env override 切', () => {
     const m1 = loadModule({});
-    assertEq(m1.ndBaseUrl(), 'http://127.0.0.1:4533');
-    const m2 = loadModule({ PRISIR_NAVIDROME_URL: 'http://nd.local:9000' });
-    assertEq(m2.ndBaseUrl(), 'http://nd.local:9000');
+    const c1 = m1.ndConfig();
+    assertEq(c1.baseUrl(), 'http://127.0.0.1:4533');
+    assertEq(c1.user(), '');
+    assertEq(c1.password(), '');
+    const m2 = loadModule({
+      PRISIR_NAVIDROME_URL: 'http://nd.local:9000',
+      PRISIR_NAVIDROME_USER: 'u',
+      PRISIR_NAVIDROME_PASS: 'p',
+      PRISIR_NAVIDROME_CLIENT: 'test',
+      PRISIR_NAVIDROME_API_V: '1.16.0',
+    });
+    const c2 = m2.ndConfig();
+    assertEq(c2.baseUrl(), 'http://nd.local:9000');
+    assertEq(c2.user(), 'u');
+    assertEq(c2.password(), 'p');
+    assertEq(c2.client(), 'test');
+    assertEq(c2.apiV(), '1.16.0');
   });
 
-  // 2. token 派生 md5(password + salt)
-  t('makeToken → md5(password + salt)', () => {
-    const m = loadModule({});
-    const { salt, token } = m.makeToken('helloworld');
-    assertEq(salt.length >= 12, true, 'salt too short');
-    assertEq(token, crypto.createHash('md5').update('helloworld' + salt).digest('hex'));
-  });
-
-  // 3. fetchNowPlaying 无 creds → ok=false + last_error 含 'no credentials'
-  await ta('fetchNowPlaying 无 creds → ok=false + last_error 含 no credentials', async () => {
-    const m = loadModule({});
-    const r = await m.fetchNowPlaying();
-    assertEq(r.ok, false);
-    assertTrue(/no credentials/i.test(r.last_error), `last_error 不对: ${r.last_error}`);
-  });
-
-  // 4. probeHealth 无 creds → alive=false + last_error
+  // 2. probeHealth 无 creds → alive=false + last_error
   await ta('probeHealth 无 creds → alive=false + last_error', async () => {
     const m = loadModule({});
     const r = await m.probeHealth();
@@ -200,50 +199,58 @@ function assertTrue(v, msg = '') { if (!v) throw new Error(msg || 'expected trut
     assertTrue(/no credentials/i.test(r.last_error), `last_error 不对: ${r.last_error}`);
   });
 
-  // 5. httpGetSubsonic endpoint 不可达 → ok=false
-  await ta('httpGetSubsonic 不可达 → ok=false + status=0', async () => {
+  // 3. fetchNowPlaying 无 creds → ok=false
+  await ta('fetchNowPlaying 无 creds → ok=false + last_error 含 no credentials', async () => {
+    const m = loadModule({});
+    const r = await m.fetchNowPlaying();
+    assertEq(r.ok, false);
+    assertTrue(/no credentials/i.test(r.last_error), `last_error 不对: ${r.last_error}`);
+  });
+
+  // 4. fetchLicense 无 creds → ok=false
+  await ta('fetchLicense 无 creds → ok=false + last_error', async () => {
+    const m = loadModule({});
+    const r = await m.fetchLicense();
+    assertEq(r.ok, false);
+    assertTrue(/no credentials/i.test(r.last_error), `last_error 不对: ${r.last_error}`);
+  });
+
+  // 5. probeHealth 不可达 → ok=false + status=0
+  await ta('probeHealth 不可达 → alive=false + ECONNREFUSED', async () => {
     const m = loadModule({
       PRISIR_NAVIDROME_URL: 'http://127.0.0.1:1',
       PRISIR_NAVIDROME_PASS: 'demo',
     });
-    const r = await m.httpGetSubsonic({ password: 'demo', endpoint: 'ping' });
+    const r = await m.probeHealth();
     assertEq(r.ok, false);
-    assertTrue(/ECONNREFUSED|connect|timeout/i.test(r.error || ''), `error 不对: ${r.error}`);
+    assertTrue(/ECONNREFUSED|connect|timeout/i.test(r.last_error || ''), `last_error 不对: ${r.last_error}`);
   });
 
-  // 6. parseSubsonic status='failed' → ok=false + last_error 含 code/msg
-  t('parseSubsonic status=failed → ok=false + code 40', () => {
-    const m = loadModule({});
-    const p = m.parseSubsonic({
-      ok: true,
-      status: 200,
-      body: '',
-      parsed: { 'subsonic-response': { status: 'failed', error: { code: 40, message: 'Wrong username' } } },
-      url: '',
-      endpoint: 'ping',
+  // 6. SDK makeToken → md5(password + salt)
+  t('SDK makeToken → md5(password + salt) 直通', () => {
+    const sdk = require(path.resolve(__dirname, '..', '..', '_scaffold', 'subsonic-client.js'));
+    const { salt, token } = sdk.makeToken('helloworld');
+    assertEq(salt.length >= 12, true, 'salt too short');
+    assertEq(token, crypto.createHash('md5').update('helloworld' + salt).digest('hex'));
+  });
+
+  // 7. SDK parseSubsonic status=failed + missing envelope
+  t('SDK parseSubsonic 三层失败语义', () => {
+    const sdk = require(path.resolve(__dirname, '..', '..', '_scaffold', 'subsonic-client.js'));
+    const p1 = sdk.parseSubsonic({
+      ok: true, status: 200, body: '', parsed: { 'subsonic-response': { status: 'failed', error: { code: 40, message: 'Wrong username' } } }, url: '', endpoint: 'ping',
     });
-    assertEq(p.ok, false);
-    assertTrue(p.last_error.includes('code=40'), `last_error 漏 code: ${p.last_error}`);
-    assertTrue(p.last_error.includes('Wrong username'), `last_error 漏 msg: ${p.last_error}`);
-  });
+    assertEq(p1.ok, false);
+    assertTrue(p1.last_error.includes('code=40'));
+    assertTrue(p1.last_error.includes('Wrong username'));
 
-  // 7. parseSubsonic missing root envelope → ok=false
-  t('parseSubsonic missing root envelope → ok=false', () => {
-    const m = loadModule({});
-    const p = m.parseSubsonic({
-      ok: true, status: 200, body: '', parsed: { foo: 'bar' }, url: '', endpoint: 'ping',
-    });
-    assertEq(p.ok, false);
-    assertTrue(/missing root envelope/i.test(p.last_error), `last_error 不对: ${p.last_error}`);
-  });
+    const p2 = sdk.parseSubsonic({ ok: true, status: 200, body: '', parsed: { foo: 'bar' }, url: '', endpoint: 'ping' });
+    assertEq(p2.ok, false);
+    assertTrue(/missing root envelope/i.test(p2.last_error));
 
-  // 8. fetchLicense 无 creds → ok=false + last_error 含 'no credentials'
-  await ta('fetchLicense 无 creds → ok=false + last_error', async () => {
-    const m = loadModule({});
-    // 显式无 password + 无 token,直接调 httpGetSubsonic 验证 no-credentials 早退
-    const r = await m.httpGetSubsonic({ password: undefined, preToken: '', preSalt: '', endpoint: 'getLicense' });
-    assertEq(r.ok, false);
-    assertTrue(/no credentials/i.test(r.error || ''), `error 不对: ${r.error}`);
+    const p3 = sdk.parseSubsonic({ ok: false, status: 200, body: '', parsed: null, url: '', endpoint: 'ping' });
+    assertEq(p3.ok, false);
+    assertTrue(/non-JSON|missing/i.test(p3.last_error));
   });
 
   // ── E2E(mock Subsonic server 模拟 Navidrome)──────────────
@@ -258,16 +265,13 @@ function assertTrue(v, msg = '') { if (!v) throw new Error(msg || 'expected trut
     });
 
     try {
-      // DEBUG: print first request result
-      console.error('  DEBUG ndBaseUrl=', m.ndBaseUrl(), 'ndUser=', m.ndUser(), 'ndPass=', m.ndPass() ? '***' : '(empty)');
       await ta('E2E probeHealth → alive + latency < 500ms', async () => {
         const r = await m.probeHealth();
-        if (!r.ok) throw new Error(`probeHealth returned ${JSON.stringify(r)}`);
         assertEq(r.ok, true);
         assertEq(r.alive, true);
         assertTrue(r.latency_ms < 500, `latency ${r.latency_ms}ms too high`);
         assertEq(r.http_status, 200);
-      }).catch(e => { console.error('  DEBUG probeHealth:', e.message); throw e; });
+      });
 
       await ta('E2E fetchNowPlaying → 1 entry (Apocalypse / twenty one pilots)', async () => {
         const r = await m.fetchNowPlaying();

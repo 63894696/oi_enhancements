@@ -5,24 +5,20 @@
  *
  * 数据来源: Navidrome 的 Subsonic 兼容 API(默认 127.0.0.1:4533)。
  * 鉴权: Subsonic v1.13.0+ 强制 salted token — `token = md5(password + salt)`,
- *       每次请求服务端派新 salt + 客户端用 password+盐新算 token。**这是 v2 对比
+ *       每次请求客户端派新 salt + 服务端用本次盐算 token 比对。**这是 v2 对比
  * 研究借鉴点 5「Token≠密码」的优秀范例**: 截获一个 token 无法跨端点重放
- * (因为 salt 是新的, 而且服务端验证不存 hash), 远比「一次鉴权 + 长 token」安全。
+ * (因为下次 salt 是新的,服务端不存 hash)。
+ *
+ * **Phase C 统一媒体 SDK(2026-10-07)**:Subsonic 协议已沉淀到
+ * extensions/_scaffold/subsonic-client.js,本扩展只做「薄壳」— 注入 env 字段、
+ * 拼装命令注册、把 nowPlaying entry 映射成 PrisirAI 友好字段。
  *
  * 命令(L0 风险, 纯只读):
  *   navidrome.health       {}      → { ok, alive, nd_url, latency_ms, status, last_error }
  *   navidrome.now-playing  {}      → { ok, alive, now_playing: [...entries], last_error }
  *   navidrome.license      {}      → { ok, alive, valid, email, licenseExpires, last_error }
  *
- * 实现: Node crypto.md5 + http.get + JSON 解析。Subsonic 响应包在
- * { 'subsonic-response': { status, ... } }, 与 LX 的 flat / YesPlayMusic 的 data 都不同。
- *
- * 设计取舍(沿用 LX 5 步法):
- *   - 失败语义优先: 不抛异常, 返 { ok: false, alive: false, last_error: ... }
- *   - 失败语义双层: HTTP 失败 vs Subsonic.status='failed' vs Subsonic.error.message
- *   - 不缓存(每次 invoke 现取, Navidrome 切歌立即生效)
- *   - Phase A 范围: **严格只读**, **绝不**触碰 jukeboxControl/set/clear/play/stop/skip
- *     / setGain / getDownload / stream 等任何写/下载/流接口
+ * **绝不**触碰 jukeboxControl/set/clear/play/stop/skip / setGain / getDownload / stream
  *
  * env 配置(由主对话 / 用户在主壳 web.py 配置覆盖, 不入 git):
  *   PRISIR_NAVIDROME_URL     默认 http://127.0.0.1:4533
@@ -33,150 +29,34 @@
  *   PRISIR_NAVIDROME_API_V   默认 '1.16.1'(Subsonic v 参数,服务端校验 major+minor)
  */
 
-const http = require('http');
-const crypto = require('crypto');
 const { PrisIrExt } = require('@prisir/extension-sdk');
+const { makeConfig, httpGetSubsonic, parseSubsonic, mapNowPlayingEntry, flattenNowPlaying } = require('../_scaffold/subsonic-client');
 
-// ── 配置(env 优先) ────────────────────────────────────────────
-function ndBaseUrl() {
-  return process.env.PRISIR_NAVIDROME_URL || 'http://127.0.0.1:4533';
-}
-function ndUser() {
-  return process.env.PRISIR_NAVIDROME_USER || '';
-}
-function ndPass() {
-  return process.env.PRISIR_NAVIDROME_PASS || '';
-}
-function ndPrecomputedToken() {
-  return process.env.PRISIR_NAVIDROME_TOKEN || '';
-}
-function ndClient() {
-  return process.env.PRISIR_NAVIDROME_CLIENT || 'prisirai';
-}
-function ndApiV() {
-  return process.env.PRISIR_NAVIDROME_API_V || '1.16.1';
-}
-
-const ND_TIMEOUT_MS = 1500;
-
-// ── Subsonic 鉴权:token = md5(password + salt) ─────────────────
-// **借鉴原则 5「Token≠密码」**:每次请求服务端派新 salt,客户端用 password+新盐算新 token;
-// 截获单次 token 不能跨端点重放。
-function randomSalt(n = 12) {
-  return crypto.randomBytes(n).toString('hex');
-}
-function md5Hex(s) {
-  return crypto.createHash('md5').update(s).digest('hex');
-}
-function makeToken(password) {
-  const salt = randomSalt();
-  const token = md5Hex(password + salt);
-  return { salt, token };
-}
-
-// ── 通用 GET helper(JSON,带 Subsonic 鉴权) ────────────────────
-// opts:
-//   - preToken / preSalt: 已派好的 token + salt(若用户 PRISIR_NAVIDROME_TOKEN 直接提供)
-//   - password:           用户的明文密码(本次切空才需要,且不传 e2e mock 测试)
-//   - endpoint:           '/ping' '/getNowPlaying' '/getLicense' 等
-function httpGetSubsonic({ password, preToken, preSalt, endpoint }) {
-  return new Promise((resolve) => {
-    let salt = preSalt;
-    let token = preToken;
-    if (!token) {
-      if (!password) {
-        return resolve({
-          ok: false, status: 0, body: '', parsed: null, url: '',
-          error: 'no credentials — set PRISIR_NAVIDROME_PASS or PRISIR_NAVIDROME_TOKEN',
-        });
-      }
-      const t = makeToken(password);
-      salt = t.salt;
-      token = t.token;
-    }
-    const qs = [
-      `u=${encodeURIComponent(ndUser())}`,
-      `t=${encodeURIComponent(token)}`,
-      `s=${encodeURIComponent(salt)}`,
-      `v=${encodeURIComponent(ndApiV())}`,
-      `c=${encodeURIComponent(ndClient())}`,
-      'f=json',
-    ].join('&');
-    const url = `${ndBaseUrl()}/rest/${endpoint}?${qs}`;
-    const req = http.get(url, { timeout: ND_TIMEOUT_MS }, (res) => {
-      let buf = '';
-      res.setEncoding('utf8');
-      res.on('data', (c) => { buf += c; });
-      res.on('end', () => {
-        const ct = String(res.headers['content-type'] || '');
-        let parsed = null;
-        if (ct.includes('application/json') || buf.trim().startsWith('{')) {
-          try { parsed = JSON.parse(buf); } catch {}
-        }
-        resolve({
-          ok: res.statusCode >= 200 && res.statusCode < 300,
-          status: res.statusCode,
-          body: buf,
-          parsed,
-          url,
-          endpoint,
-        });
-      });
-    });
-    req.on('timeout', () => { req.destroy(new Error('timeout')); });
-    req.on('error', (e) => resolve({
-      ok: false, status: 0, body: '', parsed: null, url, endpoint, error: e.message,
-    }));
+// ── env 字段注入(扩展自己的字段名空间) ──
+function ndConfig() {
+  return makeConfig({
+    baseUrl: process.env.PRISIR_NAVIDROME_URL || 'http://127.0.0.1:4533',
+    user: process.env.PRISIR_NAVIDROME_USER || '',
+    password: process.env.PRISIR_NAVIDROME_PASS || '',
+    preToken: process.env.PRISIR_NAVIDROME_TOKEN || '',
+    client: process.env.PRISIR_NAVIDROME_CLIENT || 'prisirai',
+    apiV: process.env.PRISIR_NAVIDROME_API_V || '1.16.1',
   });
 }
 
-// ── Subsonic 失败语义检测(HTTP OK 但 status='failed') ─────────
-function parseSubsonic(r) {
-  if (!r.parsed) {
-    return {
-      ok: false, alive: false,
-      last_error: `Subsonic ${r.endpoint} HTTP ${r.status} non-JSON: ${r.body.slice(0, 80)}`,
-    };
-  }
-  const root = r.parsed['subsonic-response'];
-  if (!root) {
-    return {
-      ok: false, alive: false,
-      last_error: `Subsonic ${r.endpoint} missing root envelope`,
-    };
-  }
-  if (root.status === 'failed') {
-    const err = root.error || {};
-    return {
-      ok: false, alive: true,  // sibling: server alive but logical error
-      last_error: `Subsonic ${r.endpoint} status=failed code=${err.code || '?'} msg=${err.message || '?'}`,
-    };
-  }
-  if (root.status !== 'ok') {
-    return {
-      ok: false, alive: true,
-      last_error: `Subsonic ${r.endpoint} unknown status: ${root.status || '(empty)'}`,
-    };
-  }
-  return { ok: true, alive: true, body: root, last_error: '' };
-}
-
 // ── /ping 健康检查 ──────────────────────────────────────────────
-// Subsonic ping 返回空 subsonic-response(只 status='ok'),用于纯探活
 async function probeHealth() {
+  const cfg = ndConfig();
   const t0 = Date.now();
-  // ping 不需要 auth(Navidrome 默认允许 unauthenticated /ping),
-  // 但带 token 走更标准路径
   const r = await httpGetSubsonic({
-    password: ndPass() || undefined,
-    preToken: ndPrecomputedToken() || undefined,
+    config: cfg,
     endpoint: 'ping',
   });
   const dt = Date.now() - t0;
   if (!r.ok) {
     return {
       ok: false, alive: false,
-      nd_url: ndBaseUrl(), latency_ms: dt, http_status: r.status,
+      nd_url: cfg.baseUrl(), latency_ms: dt, http_status: r.status,
       last_error: r.error || `HTTP ${r.status}`,
     };
   }
@@ -184,27 +64,21 @@ async function probeHealth() {
   if (!p.ok) {
     return {
       ok: false, alive: p.alive,
-      nd_url: ndBaseUrl(), latency_ms: dt, http_status: r.status,
+      nd_url: cfg.baseUrl(), latency_ms: dt, http_status: r.status,
       last_error: p.last_error,
     };
   }
   return {
     ok: true, alive: true,
-    nd_url: ndBaseUrl(), latency_ms: dt, http_status: r.status,
+    nd_url: cfg.baseUrl(), latency_ms: dt, http_status: r.status,
     last_error: '',
   };
 }
 
 // ── /getNowPlaying 解析当前播放条目 ────────────────────────────
-// Subsonic 返回 nowPlaying entry: { id, title, album, artist, genre, year,
-//   track, minutes, seconds, bitRate, suffix, contentType, isDir, coverArt
-//   , playerId, username, minutesAgo, ... }
 async function fetchNowPlaying() {
-  const r = await httpGetSubsonic({
-    password: ndPass() || undefined,
-    preToken: ndPrecomputedToken() || undefined,
-    endpoint: 'getNowPlaying',
-  });
+  const cfg = ndConfig();
+  const r = await httpGetSubsonic({ config: cfg, endpoint: 'getNowPlaying' });
   if (!r.ok) {
     return {
       ok: false, alive: false,
@@ -213,37 +87,17 @@ async function fetchNowPlaying() {
   }
   const p = parseSubsonic(r);
   if (!p.ok) return { ok: false, alive: p.alive, last_error: p.last_error };
-  const entries = Array.isArray(p.body.nowPlaying && p.body.nowPlaying.entry)
-    ? p.body.nowPlaying.entry
-    : (p.body.nowPlaying && p.body.nowPlaying.entry
-        ? [p.body.nowPlaying.entry]
-        : []);
   return {
     ok: true, alive: true,
-    now_playing: entries.map((e) => ({
-      username: String(e.username || ''),
-      title: String(e.title || ''),
-      artist: String(e.artist || ''),
-      album: String(e.album || ''),
-      genre: String(e.genre || ''),
-      year: e.year ? Number(e.year) : null,
-      minutesAgo: e.minutesAgo != null ? Number(e.minutesAgo) : null,
-      playerId: Number(e.playerId || 0),
-      id: String(e.id || ''),
-      contentType: String(e.contentType || ''),
-      bitRate: e.bitRate ? Number(e.bitRate) : null,
-    })),
+    now_playing: flattenNowPlaying(p.body).map(mapNowPlayingEntry),
     last_error: '',
   };
 }
 
 // ── /getLicense 解析 license 信息(纯探活 + server 信息) ─────────
 async function fetchLicense() {
-  const r = await httpGetSubsonic({
-    password: ndPass() || undefined,
-    preToken: ndPrecomputedToken() || undefined,
-    endpoint: 'getLicense',
-  });
+  const cfg = ndConfig();
+  const r = await httpGetSubsonic({ config: cfg, endpoint: 'getLicense' });
   if (!r.ok) {
     return {
       ok: false, alive: false,
@@ -280,8 +134,6 @@ ext.start().catch((e) => { console.error(e.message); process.exit(1); });
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     probeHealth, fetchNowPlaying, fetchLicense,
-    ndBaseUrl, ndUser, ndPass, ndPrecomputedToken, ndClient, ndApiV,
-    makeToken, randomSalt, md5Hex,
-    httpGetSubsonic, parseSubsonic,
+    ndConfig,
   };
 }
