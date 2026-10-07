@@ -1,0 +1,30 @@
+{
+  "name": "vaultwarden-bridge-status",
+  "displayName": "Vaultwarden 自托管密码管理器(只读, OAuth2 client_credentials)",
+  "version": "0.1.0",
+  "description": "Phase A 只读扩展:通过 Vaultwarden (Bitwarden 兼容) REST API (http://127.0.0.1)读取系统时间、当前 profile、文件夹、密码项元数据。鉴权分两步:Step1 POST /identity/connect/token (form-urlencoded, OAuth2 client_credentials grant) 颁发 JWT (expires_in=3600s);Step2 用 access_token 走 Authorization: Bearer 调 /api/accounts/profile /api/folders /api/ciphers。**Phase C SDK bearer-client.js 第 11 个用户 + 跨入凭据/安全域**(前 10 用户跨 9 类)。inline fetchAccessToken() OAuth2 client_credentials 工厂 30 行(不改 SDK 抽象),后续 Confluence Cloud / GitLab OAuth2 可复用。GET /alive 是公开探活端点(无需 token)。仅读 GET,**绝对不**触碰 POST/PUT/DELETE 任何 mutating 接口(rotate-user-account-keys / ciphers 批量删除 路径极危险)。0 上传/外传,100% 本地,符合 P3.10b 红线。",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:vault.health",
+    "ai.invoke.command:vault.profile",
+    "ai.invoke.command:vault.folders",
+    "ai.invoke.command:vault.ciphers",
+    "ui.inject.notification"
+  ],
+  "prisIrFeatures": [
+    "read-only",
+    "requires-local-server",
+    "requires-credentials"
+  ],
+  "prisIrPlatforms": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}
