@@ -1,0 +1,29 @@
+{
+  "name": "bookstack-bridge-status",
+  "displayName": "BookStack 自托管 wiki(只读, Bearer token)",
+  "version": "0.1.0",
+  "description": "Phase A 只读扩展:通过 BookStack REST API (http://127.0.0.1/api)读取书架 / 书籍列表。鉴权用 Authorization: Bearer <token_id>:<token_secret>(RFC 6750 标准,BookStack user profile → API Tokens)。**Phase C SDK bearer-client.js 第 8 个用户 + 首个纯 REST + Bearer 扩展**(Outline 是 RPC-style POST,BookStack 是真 REST GET),完美适配 SDK httpGet,零边界跨越。仅读 GET /api/books /api/shelves,**绝对不**触碰 POST / PUT / DELETE 任何 mutating 接口。0 上传/外传,100% 本地,符合 P3.10b 红线。",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:bookstack.health",
+    "ai.invoke.command:bookstack.shelves",
+    "ai.invoke.command:bookstack.books",
+    "ui.inject.notification"
+  ],
+  "prisIrFeatures": [
+    "read-only",
+    "requires-local-server",
+    "requires-credentials"
+  ],
+  "prisIrPlatforms": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}
