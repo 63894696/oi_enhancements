@@ -1,0 +1,29 @@
+{
+  "name": "gitea-bridge-status",
+  "displayName": "Gitea 代码托管(只读, Bearer token)",
+  "version": "0.1.0",
+  "description": "Phase A 只读扩展:通过 Gitea REST API (127.0.0.1:3000/api/v1)读取仓库列表、组织列表、健康状态。鉴权用 Authorization: Bearer <access-token>(RFC 6750 标准,Gitea User Settings → Applications 生成)。**Phase C SDK bearer-client.js 第三个用户触发抽取**(前 Audiobookshelf + Kavita)。仅读 /api/v1/version /api/v1/repos/search /api/v1/orgs,**绝对不**触碰 POST /user/repos / DELETE /api/v1/repos/{owner}/{repo} 任何 mutating 接口。0 上传/外传,100% 本地,符合 P3.10b 红线。",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:gitea.health",
+    "ai.invoke.command:gitea.repos",
+    "ai.invoke.command:gitea.orgs",
+    "ui.inject.notification"
+  ],
+  "prisIrFeatures": [
+    "read-only",
+    "requires-local-server",
+    "requires-credentials"
+  ],
+  "prisIrPlatforms": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}
