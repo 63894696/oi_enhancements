@@ -15,6 +15,17 @@
     "ai.invoke.command:calibre.tags.list",
     "ui.inject.notification"
   ],
+  "prisIrFeatures": [
+    "read-only",
+    "local-file-access",
+    "sqlite-readonly",
+    "like-fuzzy-search"
+  ],
+  "prisIrPlatforms": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
   "dependencies": {
     "@prisir/extension-sdk": "file:../sdk"
   }

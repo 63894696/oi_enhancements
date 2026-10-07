@@ -13,6 +13,15 @@
     "ai.invoke.command:lx.health",
     "ui.inject.notification"
   ],
+  "prisIrFeatures": [
+    "read-only",
+    "requires-local-server"
+  ],
+  "prisIrPlatforms": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
   "dependencies": {
     "@prisir/extension-sdk": "file:../sdk"
   }

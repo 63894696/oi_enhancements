@@ -14,6 +14,17 @@
     "ai.invoke.command:siyuan.block.get",
     "ui.inject.notification"
   ],
+  "prisIrFeatures": [
+    "read-only",
+    "local-file-access",
+    "sqlite-readonly",
+    "fts5-search"
+  ],
+  "prisIrPlatforms": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
   "dependencies": {
     "@prisir/extension-sdk": "file:../sdk"
   }

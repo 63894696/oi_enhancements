@@ -13,6 +13,17 @@
     "ai.invoke.command:navidrome.license",
     "ui.inject.notification"
   ],
+  "prisIrFeatures": [
+    "read-only",
+    "requires-local-server",
+    "requires-credentials",
+    "subsonic-protocol"
+  ],
+  "prisIrPlatforms": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
   "dependencies": {
     "@prisir/extension-sdk": "file:../sdk"
   }

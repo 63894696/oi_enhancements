@@ -44,6 +44,11 @@ if (fs.existsSync(target)) {
 fs.mkdirSync(target, { recursive: true });
 
 // ── package.json ──
+// manifest schema 字段(详见 docs/extension-spec.md §3):
+//   prisIrPermissions  L0/L1/L2 权限列表,主进程按风险等级弹卡
+//   prisIrFeatures     ['read-only', 'needs-native', 'requires-local-server', ...]
+//                      用于商店筛选 / AI inventory 决定能否本类操作
+//   prisIrPlatforms    ['win32', 'darwin', 'linux']  跨平台支持(空数组 = 不声明 = 主进程默认 win32)
 const pkg = {
   name: extId,
   displayName,
@@ -57,6 +62,8 @@ const pkg = {
     'ai.invoke.command:hello.world',
     'ui.inject.card',
   ],
+  prisIrFeatures: [],
+  prisIrPlatforms: [],
   dependencies: {
     '@prisir/extension-sdk': 'file:../sdk',
   },
