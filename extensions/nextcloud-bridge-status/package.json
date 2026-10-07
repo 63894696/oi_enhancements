@@ -1,0 +1,29 @@
+{
+  "name": "nextcloud-bridge-status",
+  "displayName": "Nextcloud 云盘(只读, OAuth2 Bearer)",
+  "version": "0.1.0",
+  "description": "Phase A 只读扩展:通过 Nextcloud OCS API v1 + Files Sharing API v1 (127.0.0.1:80)读取用户列表、分享列表、健康检查。鉴权用 Authorization: Bearer <oauth2-access-token>(RFC 6750 标准,OAuth2 流程签发)。**Phase C SDK bearer-client.js 第 6 个用户(累计)**。OCS API 需 OCS-APIRequest: true 自定义头,**Nextcloud 扩展 inline 30 行 httpGetOcS helper**(类似 Plausible httpPostJson 模式,SDK 边界决策)。仅读 /ocs/v1.php/cloud/users /ocs/v2.php/.../shares,**绝对不**触碰 POST /shares / DELETE /shares/{id} 任何 mutating 接口。0 上传/外传,100% 本地,符合 P3.10b 红线。",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:nextcloud.health",
+    "ai.invoke.command:nextcloud.users",
+    "ai.invoke.command:nextcloud.shares",
+    "ui.inject.notification"
+  ],
+  "prisIrFeatures": [
+    "read-only",
+    "requires-local-server",
+    "requires-credentials"
+  ],
+  "prisIrPlatforms": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}
