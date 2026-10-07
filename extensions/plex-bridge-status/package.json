@@ -1,0 +1,31 @@
+{
+  "name": "plex-bridge-status",
+  "displayName": "Plex 媒体服务器(只读,X-Plex-Token)",
+  "version": "0.1.0",
+  "description": "Phase A 只读扩展:通过 Plex Media Server REST API (127.0.0.1:32400/web)读取媒体库 / 健康状态。鉴权用 X-Plex-Token 自定义头(不是 Bearer)。仅读 /identity /library/sections /library/recentlyAdded,**绝对不**触碰播放控制 / 标记已看 / 扫描 / 任何 mutating 接口。**Phase C SDK 第三次复用 custom-auth-client.js mode='custom'**(前 Miniflux + Komga)— 验证 SDK 的「任意自定义 header + token」真落地。0 上传/外传,100% 本地,符合 P3.10b 红线。",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:plex.health",
+    "ai.invoke.command:plex.libraries",
+    "ai.invoke.command:plex.recent",
+    "ui.inject.notification"
+  ],
+  "prisIrFeatures": [
+    "read-only",
+    "requires-local-server",
+    "requires-credentials",
+    "custom-header-auth",
+    "media-server"
+  ],
+  "prisIrPlatforms": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}
