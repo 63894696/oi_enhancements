@@ -1,0 +1,29 @@
+{
+  "name": "plausible-bridge-status",
+  "displayName": "Plausible Analytics 自托管(只读, Bearer API key)",
+  "version": "0.1.0",
+  "description": "Phase A 只读扩展:通过 Plausible Stats API v2 + Sites API v1 (127.0.0.1:8000/api)读取站点列表、健康状态、聚合 stats。鉴权用 Authorization: Bearer <api-key>(RFC 6750 标准,Plausible User → API Keys 生成)。**Phase C SDK bearer-client.js 第 5 个用户(累计)**。Stats API v2 是 POST + JSON body(SDK 当前只 httpGet),**Plausible 扩展 inline 30 行 httpPostJson helper**,sites/health GET 端点走 SDK。这是 SDK 边界决策:GET 通用 SDK 复用,POST 罕见 inline 避免 SDK 膨胀。仅读 /api/v1/sites /api/v2/query,**绝对不**触碰 POST /api/v1/sites 创建站点 / DELETE 任何 mutating 接口。0 上传/外传,100% 本地,符合 P3.10b 红线。",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:plausible.health",
+    "ai.invoke.command:plausible.sites",
+    "ai.invoke.command:plausible.summary",
+    "ui.inject.notification"
+  ],
+  "prisIrFeatures": [
+    "read-only",
+    "requires-local-server",
+    "requires-credentials"
+  ],
+  "prisIrPlatforms": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}
