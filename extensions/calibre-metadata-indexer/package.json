@@ -1,0 +1,21 @@
+{
+  "name": "calibre-metadata-indexer",
+  "displayName": "Calibre metadata.db 索引(只读)",
+  "version": "0.1.0",
+  "description": "Phase A 只读扩展:直接读 Calibre metadata.db SQLite 库(books / authors / books_authors_link / data_tags / books_tags_link),暴露 5 个 L0 命令:健康检查 / 列书 / 模糊搜索 / 列作者 / 列 tags。SQLite readonly mode 打开(file:...?mode=ro),绝不写 metadata.db。100% 本地 + 0 上传,符合 P3.10b 红线。",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:calibre.health",
+    "ai.invoke.command:calibre.books.list",
+    "ai.invoke.command:calibre.books.search",
+    "ai.invoke.command:calibre.authors.list",
+    "ai.invoke.command:calibre.tags.list",
+    "ui.inject.notification"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}
