@@ -1,0 +1,30 @@
+{
+  "name": "habitica-bridge-status",
+  "displayName": "Habitica 自托管习惯/任务/打卡(只读, x-api-user + x-api-key)",
+  "version": "0.1.0",
+  "description": "Phase A 只读扩展:通过 Habitica REST API (http://127.0.0.1:3000/api/v3)读取系统状态、当前用户、4 类任务(habit/daily/todo/reward)、标签。鉴权用 x-api-user + x-api-key + x-client 三个自定义头(2025-07 起 x-client 强制,Habitica 防止冒充第三方)。**Phase C SDK custom-auth-client.js 第 6 个用户 + 跨入习惯/任务域**(前 5 用户跨 5 类)。SDK mode='custom' 抽象 1 对头,我们 inline 注入额外 2 头 — SDK 抽象保持不变(不触边界)。envelope {success, data, notifications} 扁平。仅读 GET,**绝对不**触碰 POST /tasks/{id}/score / PUT / DELETE 任何 mutating 接口;**绝对不**触碰 /groups/party/chat 社交。0 上传/外传,100% 本地,符合 P3.10b 红线。任务文本截断 200 字符防敏感/超大文本外发。",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:habitica.health",
+    "ai.invoke.command:habitica.user",
+    "ai.invoke.command:habitica.tasks",
+    "ai.invoke.command:habitica.tags",
+    "ui.inject.notification"
+  ],
+  "prisIrFeatures": [
+    "read-only",
+    "requires-local-server",
+    "requires-credentials"
+  ],
+  "prisIrPlatforms": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}

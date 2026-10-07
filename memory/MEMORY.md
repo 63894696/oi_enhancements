@@ -182,3 +182,4 @@
 - [Mealie 食谱 Phase A ship](mealie-bridge-status-phase-a-shipped.md) — bearer SDK 第 10 用户 + 跨入料理域 + SDK 早退语义统一
 - [Vaultwarden 密码管理器 Phase A ship](vaultwarden-bridge-status-phase-a-shipped.md) — bearer SDK 第 11 用户 + 跨入凭据域 + OAuth2 client_credentials 工厂
 - [Linkwarden 书签/稍后读 Phase A ship](linkwarden-bridge-status-phase-a-shipped.md) — bearer SDK 第 12 用户 + 跨入书签域 + 单层 Bearer JWT(RFC 6750)+ sandbox URL/URLSearchParams globals 注入坑
+- [Habitica 习惯/任务/打卡 Phase A ship](habitica-bridge-status-phase-a-shipped.md) — custom-auth SDK 第 6 用户 + 跨入习惯域 + 双自定义头(x-api-user+x-api-key)+ x-client 常量 2025-07 强制
