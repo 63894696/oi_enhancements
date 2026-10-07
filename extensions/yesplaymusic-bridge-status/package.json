@@ -1,0 +1,19 @@
+{
+  "name": "yesplaymusic-bridge-status",
+  "displayName": "YesPlayMusic 当前播放(只读)",
+  "version": "0.1.0",
+  "description": "Phase A 只读扩展:通过 YesPlayMusic 的 Open API(默认 127.0.0.1:27232,需用户在「设置 → 实验性功能 → 启用本地 API」手动开启)读取当前歌曲状态。仅调 anonymous 开放的只读 endpoint(/status /current-track /playlist),**绝对不**触碰播放控制接口(/player/play /pause /next /prev /seek),符合 P3.10b 0 上传红线 + 用户隐私阈值(0 外传,100% 本地)。YesPlayMusic 的本地 API 设计借鉴了 LX,但 JSON 用 data 包裹(非 flat)。",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:yesplaymusic.health",
+    "ai.invoke.command:yesplaymusic.status",
+    "ai.invoke.command:yesplaymusic.current-track",
+    "ui.inject.notification"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}
