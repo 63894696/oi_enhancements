@@ -1,0 +1,29 @@
+{
+  "name": "drone-bridge-status",
+  "displayName": "Drone CI 持续集成(只读, Bearer token)",
+  "version": "0.1.0",
+  "description": "Phase A 只读扩展:通过 Drone CI REST API (127.0.0.1:8080/api)读取仓库列表、构建状态、健康检查。鉴权用 Authorization: Bearer <user-token>(RFC 6750 标准,Drone User Profile → User Token 生成)。**Phase C SDK bearer-client.js 第四个用户(跨域从媒体 → CI/CD,前 Audiobookshelf/Kavita/Gitea)**。仅读 /api/user /api/user/repos /api/user/feed,**绝对不**触碰 POST /api/repos 创建仓库 / POST /api/builds 触发构建 / DELETE 任何 mutating 接口。0 上传/外传,100% 本地,符合 P3.10b 红线。",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:drone.health",
+    "ai.invoke.command:drone.repos",
+    "ai.invoke.command:drone.recent_builds",
+    "ui.inject.notification"
+  ],
+  "prisIrFeatures": [
+    "read-only",
+    "requires-local-server",
+    "requires-credentials"
+  ],
+  "prisIrPlatforms": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}
