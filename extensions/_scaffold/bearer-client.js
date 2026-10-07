@@ -96,7 +96,59 @@ function httpGet(args) {
   });
 }
 
-// ── API 4:describeAuth(供 L0 命令输出 auth 描述)─────────
+// ── API 4:httpPostJson(POST + JSON body,2026-10-07 由 Plausible+Outline 触发抽取)──
+function httpPostJson(args) {
+  const cfg = args && args.config;
+  const path = String((args && args.path) || '/');
+  const body = args && args.body ? JSON.stringify(args.body) : '{}';
+  return new Promise((resolve) => {
+    if (!cfg || typeof cfg.baseUrl_ !== 'function') {
+      return resolve({ ok: false, status: 0, body: '', parsed: null, url: '', error: 'no config' });
+    }
+    const token = cfg.token_();
+    if (!token) {
+      return resolve({
+        ok: false, status: 0, body: '', parsed: null, url: '',
+        error: `no credentials — set Bearer token`,
+      });
+    }
+    const url = `${cfg.baseUrl_()}${path}`;
+    let parsed_url;
+    try { parsed_url = new URL(url); } catch (e) {
+      return resolve({ ok: false, status: 0, body: '', parsed: null, url, error: `bad URL: ${e.message}` });
+    }
+    const headers = {
+      ...bearerHeader(token),
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(body),
+    };
+    const req = http.request(url, { method: 'POST', timeout: cfg.timeoutMs_(), headers }, (res) => {
+      let buf = '';
+      res.setEncoding('utf8');
+      res.on('data', (c) => { buf += c; });
+      res.on('end', () => {
+        let parsed = null;
+        try { parsed = JSON.parse(buf); } catch {}
+        resolve({
+          ok: res.statusCode >= 200 && res.statusCode < 300,
+          status: res.statusCode,
+          body: buf,
+          parsed,
+          url,
+          ...(res.statusCode >= 400 ? { error: `HTTP ${res.statusCode}` } : {}),
+        });
+      });
+    });
+    req.on('timeout', () => { req.destroy(new Error('timeout')); });
+    req.on('error', (e) => resolve({
+      ok: false, status: 0, body: '', parsed: null, url, error: e.message,
+    }));
+    req.write(body);
+    req.end();
+  });
+}
+
+// ── API 5:describeAuth(供 L0 命令输出 auth 描述)─────────
 function describeAuth(cfg) {
   if (!cfg || typeof cfg.baseUrl_ !== 'function') return { mode: 'bearer', has_token: false, base_url: '' };
   return {
@@ -110,5 +162,6 @@ module.exports = {
   bearerHeader,
   makeConfig,
   httpGet,
+  httpPostJson,
   describeAuth,
 };

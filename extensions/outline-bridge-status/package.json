@@ -1,0 +1,29 @@
+{
+  "name": "outline-bridge-status",
+  "displayName": "Outline 知识库(只读, Bearer API key)",
+  "version": "0.1.0",
+  "description": "Phase A 只读扩展:通过 Outline REST API (127.0.0.1:3000/api)读取当前用户、collections、文档列表。鉴权用 Authorization: Bearer ol_api_<key>(RFC 6750 标准,Outline Settings → API & Apps 生成)。**Phase C SDK bearer-client.js 第 7 个用户 + httpPostJson 抽进 SDK 触发**(Plausible 第 2 个 inline POST 凑数)。仅读 /api/auth.info /api/collections.list /api/documents.list,**绝对不**触碰 POST /api/documents.create / DELETE /api/documents.delete / PUT /api/documents.update 任何 mutating 接口。0 上传/外传,100% 本地,符合 P3.10b 红线。",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:outline.health",
+    "ai.invoke.command:outline.collections",
+    "ai.invoke.command:outline.documents",
+    "ui.inject.notification"
+  ],
+  "prisIrFeatures": [
+    "read-only",
+    "requires-local-server",
+    "requires-credentials"
+  ],
+  "prisIrPlatforms": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}

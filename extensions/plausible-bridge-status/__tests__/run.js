@@ -190,15 +190,20 @@ function assertTrue(v, msg = '') { if (!v) throw new Error(msg || 'expected trut
     assertTrue(/ECONNREFUSED|connect|timeout/i.test(r.last_error || ''), `last_error 不对: ${r.last_error}`);
   });
 
-  // 7. SDK 复用验证 + POST inline helper 直测
-  await ta('SDK httpGet 复用验证 + inline httpPostJson 缺 token 早退', async () => {
+  // 7. SDK 复用验证 + httpPostJson SDK 抽取后直接调 SDK
+  await ta('SDK 复用(httpGet + httpPostJson 抽进 SDK)+ SDK 缺 token 早退', async () => {
     const sdk = require('../../_scaffold/bearer-client.js');
     const cfg = sdk.makeConfig({ baseUrl: 'http://x:8000', token: '' });
+    // SDK 5 API 全用上
+    assertEq(typeof sdk.httpGet, 'function');
+    assertEq(typeof sdk.httpPostJson, 'function', 'httpPostJson 必须抽进 SDK');
+    assertEq(typeof sdk.makeConfig, 'function');
+    assertEq(typeof sdk.bearerHeader, 'function');
+    assertEq(typeof sdk.describeAuth, 'function');
     const r1 = await sdk.httpGet({ config: cfg, path: '/api/v1/sites' });
     assertEq(r1.ok, false);
     assertTrue(/no credentials/i.test(r1.error));
-    const m = loadModule({ PRISIR_PLAUSIBLE_API_KEY: '' });
-    const r2 = await m.httpPostJson({ config: cfg, path: '/api/v2/query', body: {} });
+    const r2 = await sdk.httpPostJson({ config: cfg, path: '/api/v2/query', body: {} });
     assertEq(r2.ok, false);
     assertTrue(/no credentials/i.test(r2.error));
   });

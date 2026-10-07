@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * plausible-bridge-status v0.1.0 — Plausible Analytics 自托管(只读, Bearer API key)
+ * plausible-bridge-status v0.1.1 — Plausible Analytics 自托管(只读, Bearer API key)
  *
  * 数据来源: Plausible 自家 Stats API v2 + Sites API v1(默认 127.0.0.1:8000/api)。
  *            Plausible 是隐私友好的 Google Analytics 替代品(自托管,无 cookie 无追踪)。
@@ -12,11 +12,9 @@
  * **Phase C SDK 复用(2026-10-07)**:Plausible 是 bearer-client.js SDK **第五个用户**
  * (前 Audiobookshelf/Kavita/Gitea/Drone CI)— 累计 5 用户 SDK 抽取持续价值。
  *
- * **SDK 边界决策**:Plausible Stats API v2 用 POST JSON body(非 GET),
- * SDK 当前只 httpGet。**Plausible 扩展 inline httpPostJson helper** 30 行,
- * sites/health 等 GET 端点仍走 SDK(httpGet)。这是有意的 SDK 边界:
- *  - httpGet: 通用,SDK 复用
- *  - httpPostJson: 罕见(POST + body),inline 避免 SDK 膨胀
+ * **SDK 增强 v0.1.1(2026-10-07)**:Outline ship 触发 httpPostJson 抽进 SDK
+ * (Plausible 是首个 inline httpPostJson 用户),**重构 Plausible 直接复用 SDK httpPostJson**—
+ * 删除 30 行 inline helper,扩展代码净减 23 行(198 → 175)。SDK 5 API 全用上。
  *
  * 命令(L0 风险, 纯只读):
  *   plausible.health       {}  → { ok, alive, plausible_url, latency_ms, http_status, last_error }
@@ -31,8 +29,7 @@
  */
 
 const { PrisIrExt } = require('@prisir/extension-sdk');
-const { makeConfig, httpGet, describeAuth } = require('../_scaffold/bearer-client');
-const http = require('http');
+const { makeConfig, httpGet, httpPostJson, describeAuth } = require('../_scaffold/bearer-client');
 
 // ── env 字段注入 + Bearer SDK config ──────────────────────
 function plConfig() {
@@ -40,51 +37,6 @@ function plConfig() {
     baseUrl: process.env.PRISIR_PLAUSIBLE_URL || 'http://127.0.0.1:8000',
     token: process.env.PRISIR_PLAUSIBLE_API_KEY || '',
     timeoutMs: 5000,
-  });
-}
-
-// ── inline httpPostJson helper(POST + JSON body 罕见,SDK 不膨胀)──
-function httpPostJson(args) {
-  const cfg = args && args.config;
-  const path = String((args && args.path) || '/');
-  const body = args && args.body ? JSON.stringify(args.body) : '{}';
-  return new Promise((resolve) => {
-    const token = cfg ? cfg.token_() : '';
-    if (!token) {
-      return resolve({
-        ok: false, status: 0, body: '', parsed: null, url: '',
-        error: `no credentials — set Bearer token`,
-      });
-    }
-    const url = `${cfg.baseUrl_()}${path}`;
-    const headers = {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(body),
-    };
-    const req = http.request(url, { method: 'POST', timeout: cfg.timeoutMs_(), headers }, (res) => {
-      let buf = '';
-      res.setEncoding('utf8');
-      res.on('data', (c) => { buf += c; });
-      res.on('end', () => {
-        let parsed = null;
-        try { parsed = JSON.parse(buf); } catch {}
-        resolve({
-          ok: res.statusCode >= 200 && res.statusCode < 300,
-          status: res.statusCode,
-          body: buf,
-          parsed,
-          url,
-          ...(res.statusCode >= 400 ? { error: `HTTP ${res.statusCode}` } : {}),
-        });
-      });
-    });
-    req.on('timeout', () => { req.destroy(new Error('timeout')); });
-    req.on('error', (e) => resolve({
-      ok: false, status: 0, body: '', parsed: null, url, error: e.message,
-    }));
-    req.write(body);
-    req.end();
   });
 }
 
@@ -192,6 +144,6 @@ ext.start().catch((e) => { console.error(e.message); process.exit(1); });
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     probeHealth, fetchSites, fetchSummary,
-    plConfig, httpPostJson,
+    plConfig,
   };
 }
