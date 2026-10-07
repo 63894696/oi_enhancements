@@ -1,0 +1,29 @@
+{
+  "name": "mealie-bridge-status",
+  "displayName": "Mealie 自托管食谱(只读, Bearer JWT/API token)",
+  "version": "0.1.0",
+  "description": "Phase A 只读扩展:通过 Mealie REST API (http://127.0.0.1:9000/api)读取系统版本、当前用户、食谱分页列表。鉴权用 Authorization: Bearer <long_lived_api_token | JWT>(RFC 6750 标准,Mealie User Profile → API Tokens;或短期 JWT 由 POST /api/auth/token 颁发)。**Phase C SDK bearer-client.js 第 10 个用户 + 跨入食谱/料理域**(前 9 用户跨 8 类:媒体/漫画/书/代码/CI/分析/云/wiki/知识/理财)。GET /api/app/about 是公开探活端点(不要求 token);GET /api/users/self /api/recipes 需 Bearer。仅读 GET,**绝对不**触碰 POST / PUT / DELETE 任何 mutating 接口。0 上传/外传,100% 本地,符合 P3.10b 红线。",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:mealie.health",
+    "ai.invoke.command:mealie.user",
+    "ai.invoke.command:mealie.recipes",
+    "ui.inject.notification"
+  ],
+  "prisIrFeatures": [
+    "read-only",
+    "requires-local-server",
+    "requires-credentials"
+  ],
+  "prisIrPlatforms": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}

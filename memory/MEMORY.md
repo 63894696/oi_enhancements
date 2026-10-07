@@ -179,3 +179,4 @@
 - [Outline 知识库 Phase A ship](outline-bridge-status-phase-a-shipped.md) — bearer SDK httpPostJson 抽取触发(SDK 第 5 API)+ Plausible 重构零扩展代码改动
 - [BookStack wiki Phase A ship](bookstack-bridge-status-phase-a-shipped.md) — bearer SDK 第 8 用户 + 首个纯 REST + Bearer(零 SDK 边界跨越)
 - [Firefly III 理财 Phase A ship](firefly-iii-bridge-status-phase-a-shipped.md) — bearer SDK 第 9 用户 + 跨入理财域 + JSON:API envelope 扁平化
+- [Mealie 食谱 Phase A ship](mealie-bridge-status-phase-a-shipped.md) — bearer SDK 第 10 用户 + 跨入料理域 + SDK 早退语义统一
