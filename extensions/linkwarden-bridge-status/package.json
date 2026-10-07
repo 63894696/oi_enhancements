@@ -1,0 +1,30 @@
+{
+  "name": "linkwarden-bridge-status",
+  "displayName": "Linkwarden 自托管书签/稍后读(只读, Bearer JWT)",
+  "version": "0.1.0",
+  "description": "Phase A 只读扩展:通过 Linkwarden REST API (http://127.0.0.1:3000/api/v1)读取系统配置、用户列表、collections、links。鉴权用 Authorization: Bearer <jwt>(RFC 6750,JWT 格式,Linkwarden Settings → API Tokens 创建)。**Phase C SDK bearer-client.js 第 12 个用户 + 跨入书签/稍后读域**(前 11 用户跨 10 类)。单层 Bearer 模式(无 OAuth dance / 无 refresh token),与 Vaultwarden OAuth2 不同。GET /api/v1/config 是公开探活端点(无需 token);GET /api/v1/users /collections /links 需 Bearer。仅读 GET,**绝对不**触碰 POST /api/v1/links / PUT / DELETE 任何 mutating 接口;**绝对不**触碰 POST /api/v1/tokens(签发新 token 是高风险操作)。0 上传/外传,100% 本地,符合 P3.10b 红线。",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:linkwarden.health",
+    "ai.invoke.command:linkwarden.user",
+    "ai.invoke.command:linkwarden.collections",
+    "ai.invoke.command:linkwarden.links",
+    "ui.inject.notification"
+  ],
+  "prisIrFeatures": [
+    "read-only",
+    "requires-local-server",
+    "requires-credentials"
+  ],
+  "prisIrPlatforms": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}

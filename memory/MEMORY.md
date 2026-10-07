@@ -181,3 +181,4 @@
 - [Firefly III 理财 Phase A ship](firefly-iii-bridge-status-phase-a-shipped.md) — bearer SDK 第 9 用户 + 跨入理财域 + JSON:API envelope 扁平化
 - [Mealie 食谱 Phase A ship](mealie-bridge-status-phase-a-shipped.md) — bearer SDK 第 10 用户 + 跨入料理域 + SDK 早退语义统一
 - [Vaultwarden 密码管理器 Phase A ship](vaultwarden-bridge-status-phase-a-shipped.md) — bearer SDK 第 11 用户 + 跨入凭据域 + OAuth2 client_credentials 工厂
+- [Linkwarden 书签/稍后读 Phase A ship](linkwarden-bridge-status-phase-a-shipped.md) — bearer SDK 第 12 用户 + 跨入书签域 + 单层 Bearer JWT(RFC 6750)+ sandbox URL/URLSearchParams globals 注入坑
