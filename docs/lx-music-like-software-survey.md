@@ -1,39 +1,72 @@
-# 类 LX Music 本地开放 API 软件横向调研 — 2026-10-07
+# 类 LX Music 本地开放 API 软件横向调研 — 2026-10-07 (修订 v2)
 
 > **背景**:LX Music Desktop Phase A 只读扩展已 ship([[lx-music-bridge-phase-a-shipped]],commit 475f452)。用户问:
 > 「搜索一下 GITHUB 都有什么热门软件,类似落雪音乐提供开放本地 API 功能,我们可以把这样的软件都接入扩展。」
 >
-> 调研范围:**全品类横向扫(超广)**。交付物:**Markdown 调研报告**。
-> 关键约束(沿用 P3.10b 0 上传红线):所有候选必须支持纯本地运行,**不强制付费云账号**;Phase A 接入后不缓存用户行为数据上传任何外部服务。
+> **v2 修订**(2026-10-07):按用户反馈**两重过滤**:
+> 1. **无 API / 无 agent 可操作功能** 的项目删
+> 2. **与 PrisirAI 已有能力重复** 的项目删
+>
+> 关键约束(沿用 P3.10b 0 上传红线):所有保留候选必须支持纯本地运行,**不强制付费云账号**;Phase A 接入后不缓存用户行为数据上传任何外部服务。
 
 ---
 
-## 0. 调研方法
+## 0. v2 修订:双重过滤总览
 
-1. **12 个类别横向扫描**(音乐/视频/电子书/RSS/笔记/截图翻译/媒体中心/剪贴板/密码/扩展机制/终端MCP/启动器)
-2. 每个类别 1 个 Explore agent 独立调研,带源数据校验(GitHub API + raw 文件 curl)
-3. 派单优先级由 Plan agent 综合:接入难度 × 用户装机量 × 风险红线
-4. 所有候选与 [P3.10b 0 上传红线](p3-10-bubble-cancelled-privacy.md) 比对
+### 过滤规则
+
+| 规则 | 判定 |
+|------|------|
+| R-1 | 项目**无任何 HTTP/IPC/stdio/CLI 接口**,或接口非为 agent 设计(只用于开发者手动) → **删** |
+| R-2 | 与 PrisirAI **已 ship 能力**(扩展 inventory + skills 工作台 + Agent-Reach 14 平台 + jina-reader/yt-dlp/feedparser/gh CLI + 截图存档 + obsidian context graph + task-runner + MCP 客户端) **重叠**,且新扩展不会带来增量价值 → **删** |
+
+### PrisirAI 已 ship 的等价能力清单(作为 R-2 判定基准)
+
+| 已 ship 能力 | 来源 | 等价候选类别 |
+|--------------|------|--------------|
+| 截图 + OCR | `handraw-style` / `free-for-dev` / `extension.captureVisibleTab` / `prisir-screenshot-search` | 截图/OCR |
+| 网页/文章抓取 | `jina-reader-prisir` / `feedparser-prisir` / `ytdlp-prisir` / `gh-prisir` / `prisIr-agent-reach` 14 平台 | RSS/媒体 publish |
+| 公众号/小红书/B站发布 | `prisir-publisher-module` P3j T10 | 媒体 publish |
+| 视频创作 6 creator + follow-ups + extensions | `prisir-video-creation` / `prisIr-agent-video-followups` / `prisIr-video-extensions` | 视频 |
+| Agent 意图 → 工具调用 | `prisIr-agent-main-chat-hook` T16 | 启动器 |
+| Skills 工作台 run_loop + tool_use + MCP 客户端 | `prisIr-skills-workbench-phase-2` | 终端/MCP |
+| Task runner + 工作流编排 | `phase-b1-task-runner-shipped` / `phase-b3-task-queue-shipped` | 终端 |
+| Calendar + todo + pomodoro | `priSIR-p258-schedule-extractor-shipped` | 启动器 |
+| 本地 LLM 推理 | `colibri-phase-a-shipped` OLMoE-1B-7B | 启动器 |
+| Desktop toast 通知 | `p3-10-toast-shipped` | 启动器 |
+| 多平台 API Key 配置 | `prisIr-media-keys` | 媒体 |
+| 本地文件名搜索 | `prisir-findex-engine` | 启动器 |
+| 本地内容搜索(FTS5) | `prisir-fcontent-engine` | 笔记/电子书 |
+| Obsidian vault 索引图 | `prisIr-obsidian-context-graph-design` | 笔记 |
+| N9 音乐 AI 推荐(纯本地)| `n9-music-ai-recommend-shipped` | 音乐(与 LX 互补,非重复)|
+
+### 12 类别 → 6 类别删减结果
+
+| 类别 | 删减结果 | 依据 |
+|------|----------|------|
+| 截图/OCR/翻译 | ❌ **整类删除** | 已被 `handraw-style` + `free-for-dev` + `captureVisibleTab` + `screenshot-search` 覆盖 |
+| 剪贴板/输入法 | ❌ **整类删除** | 触碰隐私(P3.10b 红线)+ PrisirAI 主对话不读剪贴板内容 |
+| 密码/Auth | ❌ **整类删除** | 主密码红线 + Phase A 设计原则是「不触碰 secret」 |
+| 启动器/效率工具 | ❌ **整类删除** | 11 个候选全无 agent 可操作 API(只是配置文件/manifest 扫描);PrisirAI 意图路由 + 任务编排已覆盖 |
+| 终端/MCP | ❌ **整类删除** | skills 工作台 run_loop + MCP 客户端已 ship,不需要逐个终端写扩展 |
+| 扩展机制/OpenAPI 横向对比 | ❌ **整类删除**(元认知)| 已整合进「通用 5 步法」章节,不重复 |
+
+**保留 6 类别**:音乐 / 视频 / 电子书 / RSS / 笔记 / 媒体中心
 
 ---
 
-## 1. 派单优先级总表
+## 1. 派单优先级总表(修订版)
 
 | 排名 | 类别 | 优先级 | Phase A 落地 Top 1 | 关键依据 |
 |------|------|--------|---------------------|----------|
 | 1 | 音乐客户端 | **P0** | LX Music Desktop(已 ship)| 127.0.0.1:23330 anonymous |
-| 2 | 截图/OCR/翻译 | **P0** | Pot-desktop + LunaTranslator | 端口默认开,免账号 |
-| 3 | 笔记/知识库 | **P0** | SiYuan + Logseq | 直接读 SQLite/Markdown,无 IPC |
-| 4 | 启动器/效率工具 | **P0** | uTools | 中国大陆装机量最大,plugin.json 结构化 |
-| 5 | 媒体中心 | **P1** | Navidrome(Subsonic 协议) | 通用协议,Jellyfin/Emby 兼容 |
-| 6 | 电子书 | **P1** | Komga + TaleBook | /api/v1 公开,JWT 可选 |
-| 7 | 终端/MCP | **P1** | wezterm + tmux + DesktopCommanderMCP | 本地 unix socket / stdio |
-| 8 | 视频播放器 | **P2** | mpv unix socket + Kodi JSON-RPC | 默认不开,需用户启用 |
-| 9 | RSS/播客 | **P2** | Fluent Reader + Miniflux | REST API 标准但需 token |
-| 10 | 剪贴板/输入法 | **P2** | CopyQ + fcitx5 D-Bus | Linux 桌面为主 |
-| 11 | 密码/Auth | **P3** | KeePassXC(只读 metadata)| 触碰主密码红线,跳过 |
+| 2 | 笔记/知识库 | **P0** | SiYuan + Joplin + Obsidian | 直接读 SQLite/Markdown,无 IPC |
+| 3 | 媒体中心 | **P1** | Navidrome(Subsonic 协议)| 通用协议,Jellyfin/Emby 兼容 |
+| 4 | 电子书 | **P1** | Komga + TaleBook | /api/v1 公开,JWT 可选 |
+| 5 | RSS/播客 | **P2** | Miniflux | REST API 标准,自托管标准 |
+| 6 | 视频播放器 | **P2** | mpv unix socket + Kodi JSON-RPC | 默认不开,需用户启用 |
 
-**Phase A 立即 ship 的 Top 5**(已确定可行):LX Music ✅ + Pot-desktop + uTools 插件扫描 + Navidrome + SiYuan
+**Phase A 立即 ship 的 Top 5**:LX ✅(已 ship)+ SiYuan + Navidrome + Joplin + mpv
 
 ---
 
@@ -44,9 +77,11 @@
 | 项目 | 端口 | Auth | 数据 | 状态 |
 |------|------|------|------|------|
 | **LX Music Desktop** ✅ 已 ship | 127.0.0.1:23330 | 无 | /status /lyric | Phase A 只读完成 |
-| YesPlayMusic P1 | 127.0.0.1:27232 | 无 | /status /lyric /player | 已支持播放控制,需用户开启 |
-| MusicFree P3 | 无本地端口 | - | 仅插件 | 配置扫描型,需读本地数据 |
-| FeelUOwn P2 | 127.0.0.1:23333 | token | 播放控制 | CLI 播放器,Python 原生 |
+| **FeelUOwn** P2 | 127.0.0.1:23333 | token | 播放控制 | CLI 播放器,Python 原生 |
+
+**删减依据**:
+- ❌ **YesPlayMusic** 删 — API 与 LX 几乎完全重叠(/status /lyric /player),新增无 agent 操作增量
+- ❌ **MusicFree** 删 — 无本地端口,只是插件容器,不属于「提供本地 API 的软件」
 
 **接入参考**:`extensions/lx-music-bridge-status/` 已 ship,8 单测 + 3 E2E + Python wrapper,实测 `name=万神纪 singer=三无Marblue、双笙、易言、樊棋 status=paused`。
 
@@ -54,30 +89,19 @@
 - ⚠️ **mutating endpoint 红线**:绝不动 /play /pause /next /prev /seek。Phase A 已规避,Phase B 必须用户逐条勾。
 - ✅ 0 上传红线:已通过(纯本地 127.0.0.1)
 
-### 2.2 截图/OCR/翻译 — **P0**
+---
 
-| 项目 | 端口 | 数据 | 风险 |
-|------|------|------|------|
-| **Pot-desktop** P0 | 配置:8712 可改 | 翻译历史 / API 配置 | 默认 **关** Open API |
-| **LunaTranslator(开源版)** P0 | 端口未公开 | OCR/翻译 hook | 主程序内置 hook,无 IPC |
-| owocr P1 | CLI 无端口 | OCR 命令行输出 | 需 spawn 子进程 |
-
-**接入策略**:扫描 `~/.config/pot-desktop/config.json` 读用户偏好的翻译服务,**不**远程调用任何翻译 API(0 上传)。
-
-**风险点**:
-- 🔴 **翻译 API 外传红线**:扫描用户配置时,不要展示 / 调用需要 Key 的翻译服务,只读 metadata。
-- ⚠️ Pot-desktop 默认 Open API 关闭,需先引导用户开启(`设置 → 开发者 → 启用 HTTP API`)。
-- ✅ owocr 全本地可作 Phase A 验证(读 stdout OCR 结果,1 extension `ocr.recognize`)。
-
-### 2.3 笔记/知识库 — **P0**
+### 2.2 笔记/知识库 — **P0**
 
 | 项目 | 数据路径 | API | Phase A |
 |------|----------|-----|---------|
-| **SiYuan** | `~/.siyuan/data/` SQLite | `/api/*` + API token | 读 SQLite + Markdown |
-| **Logseq** | `~/logseq/graphs/<name>/` Markdown | 无 API | 读 Markdown frontmatter |
-| **Joplin** | `~/.config/joplin-desktop/` SQLite | Web Clipper 端口 41184 | 读 SQLite + WebDAV |
-| **Obsidian** | 用户自选 vault | 无 API,DataLoom/LazyVim 等扩展 | 读 vault 文件 + `.obsidian/` |
-| **TriliumNext** | `~/.local/share/trilium-notes/` SQLite + ETAPI | ETAPI 8758 + token | 读 SQLite / ETAPI |
+| **SiYuan** ✅ | `~/.siyuan/data/` SQLite | `/api/*` + API token | 读 SQLite + Markdown |
+| **Joplin** ✅ | `~/.config/joplin-desktop/` SQLite | Web Clipper 端口 41184 | 读 SQLite + WebDAV |
+| **Obsidian** ✅ | 用户自选 vault | 无 API,但已有 `prisIr-obsidian-context-graph-design` 设计 | 读 vault + `.obsidian/` |
+
+**删减依据**:
+- ❌ **Logseq** 删 — 与 Obsidian 高度重叠(都是 markdown vault),Obsidian vault 通用支持已覆盖
+- ❌ **TriliumNext** 删 — 与 Obsidian/SiYuan/Joplin 重叠,且用户基数远小
 
 **接入策略**:Phase A 写「笔记检索 + 反向链接」 extension,**直接读本地文件/SQLite**,不调任何笔记软件的 API(快 + 0 上传)。
 
@@ -85,41 +109,20 @@
 - ✅ 0 上传天然合规(都是本地文件读)
 - ⚠️ Obsidian vault 大小差异极大(几 KB ~ 几 GB),Phase A 只索引 frontmatter + 标签,不全文 FTS。
 - ✅ SiYuan SQLite 已知 schema(参考 [[prisir-memory-fts5-recon]] 已勘察过的 OIMemory 思路)。
+- ✅ Joplin Web Clipper 端口 41184 默认开,API 完整文档。
 
-### 2.4 启动器/效率工具 — **P0**
+---
 
-| 项目 | 协议 | 接入难度 | Phase A 可行性 |
-|------|------|----------|----------------|
-| **uTools** ✅ | Electron IPC + plugin.json | 中 | 扫 plugin.json5 + preload 直读 utools.dbStorage |
-| Flow Launcher P1 | JSON-RPC over Pipe + NuGet SDK | 中-高 | 写 DLL-only plugin host 入主进程反射 |
-| Albert P1 | C++ Extension + InputHistory | 中 | Linux-only,但 metadata.json 离线枚举 |
-| Wox P1 | stdio JSON-RPC | 高 | store-plugin.json 公开,主进程协议需反编译 |
-| Cerebro P2 | Electron IPC channel='message' | 高 | 需走 Chrome DevTools Protocol |
-| Rofi/Alfred/Raycast/Quicker/Launchy/Pop Launcher | 闭源或无协议 | 低 | 仅配置快照,Phase A 不深度集成 |
-
-**Top 1 理由**:uTools 中国大陆装机量最大(数千万级),`plugin.json5` schema 已确认:
-```json5
-{
-  logo, preload, main, name, version, pluginName,
-  features: [{ code, explain, cmds[], exclude?, main? }],
-  platform: ['win32','darwin','linux']
-}
-```
-PrisirAI 可扫描用户全部 uTools 插件 manifest,拼装成「工作流动作索引」注入主对话。
-
-**风险点**:
-- ✅ 0 上传天然合规
-- ⚠️ uTools 主程序闭源,无法跨进程访问未注册为插件的内部状态
-- ⚠️ utools.* API 在 preload 中可用,扩展本身只能读 manifest,**不能**伪造 plugin 调 utools IPC
-
-### 2.5 媒体中心 — **P1**
+### 2.3 媒体中心 — **P1**
 
 | 项目 | 协议 | Auth | 接入 |
 |------|------|------|------|
 | **Navidrome** ✅ | Subsonic REST /rest/ping | token + salt(MD5) | navidrome.scan / navidrome.now_playing |
-| **Jellyfin** ✅ | /System/InfoPublic | API Key | jellyfin.system / jellyfin.sessions |
-| **Emby** ✅ | /emby/System/Info | API Key | emby.system |
-| Audiobookshelf P1 | /api/* | Bearer token | audiobookshelf.libraries |
+| **Audiobookshelf** ✅ | /api/* | Bearer token | audiobookshelf.libraries |
+
+**删减依据**:
+- ❌ **Jellyfin** 删 — 与 Navidrome API 设计重叠(都是媒体库扫描 + 播放),且 Subsonic 协议已被 Navidrome / Audiobookshelf 兼容
+- ❌ **Emby** 删 — 同上
 
 **Top 1 理由**:**Subsonic 协议**(Navidrome/Audiobookshelf 兼容)是音乐客户端的事实标准,跟 LX Music 有天然协同价值(本地音乐源元数据 + 歌词 + 推荐)。
 
@@ -134,50 +137,59 @@ curl 'http://localhost:4533/rest/ping?u=admin&t=md5(salt+password)&s=salt&v=1.16
 - ⚠️ API Key 必须用户主动填(写 userData 配置文件,不进 git)
 - ✅ 媒体库 metadata 全本地(Subsonic 协议设计就是 home server 用)
 
-### 2.6 电子书 — **P1**
+---
+
+### 2.4 电子书 — **P1**
 
 | 项目 | 端口 | Auth | 数据 |
 |------|------|------|------|
 | **Komga** ✅ | 8080(可改)| JWT 可选 | /api/v1/series |
 | **TaleBook(Calibre-web fork)** ✅ | 8085 | login session | /api/book/* |
-| Calibre P1 | 无原生 API | - | 直读 metadata.db |
-| Koodo P1 | 无 | - | 直读本地库 |
-| BookLore P2 | 8086 | JWT | /api/v1/books |
+
+**删减依据**:
+- ❌ **Calibre** 删 — 无原生 API,但 `prisir-fcontent-engine` 已支持读 SQLite(FTS5),Calibre 库 metadata.db 直接被 fcontent 覆盖
+- ❌ **Koodo** 删 — 与 Calibre 同,纯本地 SQLite
+- ❌ **BookLore** 删 — 与 Komga 重叠度极高,装机量远小
 
 **Top 1 理由**:Komga / TaleBook 都默认启 HTTP,**匿名访问部分 metadata**(读 library / book 列表不需要 token,只需读 metadata)。
 
 **风险点**:
 - ⚠️ Komga 默认不允许匿名 book 阅读,但 series/series-detail 是开放的
-- ⚠️ Calibre 直读 metadata.db 最快(SQLite),但要确认没 lock 冲突
+- ⚠️ Calibre 直读 metadata.db 最快(SQLite),但要确认没 lock 冲突 → 已用 fcontent 通用解决
 
-### 2.7 终端/MCP — **P1**
+---
 
-| 项目 | 协议 | Phase A |
-|------|------|---------|
-| **wezterm** | unix socket `$XDG_RUNTIME_DIR/wezterm/wezterm-gui-*` | wezterm.list_panes / wezterm.get_text |
-| **tmux** | unix socket `/tmp/tmux-*/default` | tmux capture-pane stdout 解析 |
-| **kitty** | unix socket `$KITTY_LISTEN_ON` | kitty @ ls / @ get-text |
-| **DesktopCommanderMCP** | stdio JSON-RPC(MCP) | 已有 MCP,Phase A 直接复用 |
-| **tmux-mcp** | stdio JSON-RPC(MCP) | 同上 |
-| **tabby-mcp-server** | stdio JSON-RPC(MCP) | 同上 |
+### 2.5 RSS/播客 — **P2**
 
-**Top 1 理由**:MCP 协议已成为事实标准,PrisirAI 已支持 MCP 客户端(参考 [[prisIr-agent-main-chat-hook]] T16-A/B/C/D)。终端控制扩展 **复用 MCP 客户端**,零额外协议层。
+| 项目 | 端口 | Auth | 数据 |
+|------|------|------|------|
+| **Miniflux** ✅ | 8080 | username + password | /v1/entries |
+
+**删减依据**:
+- ❌ **Fluent Reader** 删 — 无对外 API(只读 localStorage),不在「提供本地 API 的软件」定义内
+- ❌ **FreshRSS / TTRSS / CommaFeed** 删 — RSS 抓取已被 `feedparser-prisir` + `jina-reader-prisir` 覆盖,这些软件 web 端 UI 与 feedparser 解析无 agent 操作增量
+
+**Top 1 理由**:Miniflux 是 **自托管 RSS 事实标准**(UI/API 分离),REST API 文档完善,**且本地无重复**(jina/feedparser 是通用 URL 启发式,Miniflux 是用户的本地 RSS 库)。
 
 **风险点**:
-- 🔴 **shell.exec 红线**:终端命令执行权是最高风险权限,Phase A 只暴露 `cmd.capture_output`(只读 stdout),**不**注册 `cmd.exec`(写权限)
-- ⚠️ 终端扩展必须依赖用户显式开关,默认关闭
-- ✅ 0 上传天然合规(本地 socket)
+- ⚠️ RSS API **必须 auth**,跟 LX / mpv 不同 — Phase A 接入流程多一步:引导用户生成 API Token
+- 🔴 **不要存 user 密码**:只存 user 提供的 API token,且提示「API token ≠ 密码,撤销不影响主账号」
+- ✅ 0 上传天然合规
 
-### 2.8 视频播放器 — **P2**
+---
+
+### 2.6 视频播放器 — **P2**
 
 | 项目 | 协议 | 默认端口 | Auth | Phase A |
 |------|------|----------|------|---------|
 | **mpv** ✅ | unix socket | /tmp/mpv-socket-* | 无 | mpv.get_property / get_time_pos |
 | **Kodi** ✅ | JSON-RPC TCP | 9090 | 无 | kodi.player.getactiveplayers |
-| **VLC** P2 | HTTP /requests/status | 8080(默认关) | 无 | vlc.status |
-| **Celluloid(GNOME MPV)** P2 | mpv 协议兼容 | - | - | 同 mpv |
-| **MPC-HC** P2 | WebAPI | 13579(默认关) | - | mpc.status |
-| **playerctl** P1 | D-Bus | org.mpris.MediaPlayer2.* | - | playerctl.metadata |
+
+**删减依据**:
+- ❌ **VLC** 删 — HTTP /requests/status 默认端口 8080 默认关,接入价值低
+- ❌ **Celluloid** 删 — 是 GNOME MPV 前端,API 完全继承 mpv,无独立增量
+- ❌ **MPC-HC** 删 — WebAPI 13579 默认关 + Windows 限定,且与视频创作模块重叠
+- ❌ **playerctl** 删 — MPRIS 是 Linux D-Bus 平台限定,mpv 已用 unix socket 覆盖
 
 **Top 1 理由**:mpv unix socket 是 Linux 桌面事实标准,**默认无 auth**,挂载 `~/.config/mpv/socket` 即可。
 
@@ -185,66 +197,6 @@ curl 'http://localhost:4533/rest/ping?u=admin&t=md5(salt+password)&s=salt&v=1.16
 - ⚠️ mpv 默认不开 socket,需用户 `mpv --input-ipc-server=/tmp/mpv-socket-$$` 或配置 `input.conf`
 - 🔴 **mutating endpoint 红线**:Phase A 只注册 `mpv.get_property`,**不**注册 `mpv.set_property` / `mpv.command` (loadfile / quit)
 - ✅ Kodi JSON-RPC 默认端口 9090 暴露,**局域网零 auth** — 提示用户改绑定 127.0.0.1
-
-### 2.9 RSS/播客 — **P2**
-
-| 项目 | 端口 | Auth | 数据 |
-|------|------|------|------|
-| **Fluent Reader** | 无 | - | 读 localStorage(electron appdata) |
-| **Miniflux** ✅ | 8080 | username + password | /v1/entries |
-| **FreshRSS** ✅ | 80/443 | session cookie | /api/?t=... |
-| **TTRSS** ✅ | 80/443 | session cookie | /api/ |
-| **CommaFeed** ✅ | 8082 | session cookie | /rest/feed/all |
-
-**Top 1 理由**:Miniflux 是 **自托管 RSS 事实标准**(UI/API 分离),REST API 文档完善。
-
-**风险点**:
-- ⚠️ RSS API **必须 auth**,跟 LX / mpv 不同 — Phase A 接入流程多一步:引导用户生成 API Token
-- 🔴 **不要存 user 密码**:只存 user 提供的 API token,且提示「API token ≠ 密码,撤销不影响主账号」
-- ✅ 0 上传天然合规
-
-### 2.10 剪贴板/输入法 — **P2**
-
-| 项目 | 协议 | 平台 | Phase A |
-|------|------|------|---------|
-| **CopyQ** ✅ | D-Bus / stdin | Linux/Win/macOS | copyq.get / copyq.size |
-| **clipper** P2 | FIFO file `~/.cache/clipper` | Linux/macOS | 读 FIFO |
-| **fcitx5** P1 | D-Bus `org.fcitx.Fcitx5` | Linux | fcitx5.GetCurrentIM |
-| **ibus** P2 | D-Bus `org.freedesktop.IBus` | Linux | ibus.GetCurrentIM |
-| **RIME** P1 | 文件 + D-Bus | Linux/Win/macOS | 读 `~/.config/ibus/rime/` |
-
-**Top 1 理由**:CopyQ 跨平台,clipboard 历史可读,SPI 简单。
-
-**风险点**:
-- 🔴 **剪贴板内容是用户隐私**:扫描历史时,**绝不**把剪贴板内容发送任何外部服务
-- ⚠️ D-Bus 主要在 Linux,Win/macOS 用户需 CopyQ 命令行 fallback
-- ✅ 0 上传天然合规(本地文件 / D-Bus)
-
-### 2.11 密码/Auth — **P3** (不推荐)
-
-| 项目 | 协议 | Phase A 接入难度 |
-|------|------|------------------|
-| KeePassXC | CLI + JSON(YubiKey 可选) | 中(只读 metadata,不读 entry)|
-| Bitwarden | REST API + token | 中(用户主动开) |
-| 1Password | CLI `op` | 中(订阅) |
-| pass(gpg) | git + gpg | 低 |
-
-**结论**:**Phase A 跳过密码管理器**。原因:
-- 🔴 **触碰主密码 = 触碰红线** — Phase A 设计原则是「只读 metadata,绝不触碰 secret」
-- ⚠️ KeePassXC 数据库主密码 1 try = 永久锁定(Argon2)
-- ✅ 未来 Phase B+ 可考虑「密码元数据生成建议」(强度检测),但不读实际 secret
-
-### 2.12 扩展机制/OpenAPI 横向对比 — 元认知
-
-| 模式 | 代表 | 接入难度 | 0 上传 | 跨平台 |
-|------|------|----------|--------|--------|
-| **LX 模式(本地 HTTP 端口)** | LX / Navidrome / Pot-desktop | 极低 | ✅ | 跨 |
-| **IDE 扩展 API** | VSCode / JetBrains | 中-高 | ✅(本地 socket)| 跨 |
-| **OS 级 IPC** | DBus(linux) / Apple Events(mac) | 中 | ✅ | 平台限定 |
-| **OpenAPI 远程** | Many SaaS | 低(curl) | ❌(上传) | 跨(但不合规) |
-| **stdio JSON-RPC(MCP)** | DesktopCommander / tmux-mcp | 低(SDK 现成)| ✅ | 跨 |
-
-**结论**:PrisirAI 扩展生态 = **LX 模式 + MCP 模式** 双轨。前者覆盖「本地独立软件」(音乐/视频/笔记/媒体中心),后者覆盖「终端/工具调用」。
 
 ---
 
@@ -307,8 +259,8 @@ tests/test_<name>.py                     # Python pytest wrapper(默认 skip, en
 ### Phase A — 「读 metadata,不动状态」(2026-10 起,持续)
 
 - ✅ LX Music Desktop(已 ship,commit 475f452)
-- 🎯 **下一个 ship**:Pot-desktop 翻译服务扫描器(只读 user 偏好,不调任何翻译 API)
-- 🎯 **候选**:uTools plugin.json 扫描器 / SiYuan vault 索引 / Navidrome now playing
+- 🎯 **下一个 ship**:SiYuan vault frontmatter 索引器(SQLite + Markdown 直接读)
+- 🎯 **候选**:Navidrome now playing(Subsonic 协议)/ Joplin SQLite 检索 / mpv unix socket / Obsidian vault(复用 context-graph 设计)
 - **统一原则**:**只读** + **纯本地** + **0 上传** + **失败语义优先**
 
 ### Phase B — 「写但限于用户工作流」(待用户拍板)
@@ -341,32 +293,70 @@ tests/test_<name>.py                     # Python pytest wrapper(默认 skip, en
 
 ---
 
-## 6. 文件清单
+## 6. 最终 ship 清单与 Phase A 优先级
+
+### 6.1 6 类别 11 个保留项目
+
+| 类别 | 项目 | Phase A 优先级 | 状态 |
+|------|------|----------------|------|
+| 音乐 | LX Music Desktop | 🎯 P0 | ✅ 已 ship |
+| 音乐 | FeelUOwn | P2 | 候选 |
+| 笔记 | SiYuan | 🎯 P0 | **下一个 ship** |
+| 笔记 | Joplin | P1 | 候选 |
+| 笔记 | Obsidian | P1 | 候选(复用 context-graph 设计)|
+| 媒体 | Navidrome | P1 | 候选 |
+| 媒体 | Audiobookshelf | P2 | 候选 |
+| 电子书 | Komga | P1 | 候选 |
+| 电子书 | TaleBook | P2 | 候选 |
+| RSS | Miniflux | P2 | 候选 |
+| 视频 | mpv | P1 | 候选 |
+| 视频 | Kodi | P2 | 候选 |
+
+### 6.2 Phase A 落地建议(Top 5 ship 顺序)
+
+1. 🎯 **SiYuan**(下一个 ship)— SQLite + Markdown vault,与 Obsidian context-graph 设计协同
+2. 🎯 **Navidrome** — Subsonic 协议标准,与 LX 音乐 metadata 协同
+3. 🎯 **Joplin** — SQLite + WebDAV,本地 + sync 兼顾
+4. 🎯 **mpv** — Linux 桌面事实标准 unix socket
+5. 🎯 **Obsidian** — vault frontmatter,已有 context-graph 设计可复用
+
+---
+
+## 7. 文件清单
 
 | 路径 | 状态 | 说明 |
 |------|------|------|
 | `extensions/lx-music-bridge-status/` | ✅ ship | Phase A 模板 |
-| `extensions/pot-desktop-config-scanner/` | 🎯 下一步 | 翻译服务配置扫描(只读) |
-| `extensions/utools-plugin-indexer/` | 🎯 候选 | uTools plugin.json 聚合 |
-| `extensions/siyuan-vault-indexer/` | 🎯 候选 | SiYuan vault frontmatter + tag 索引 |
-| `extensions/navidrome-now-playing/` | 🎯 候选 | Subsonic 协议接入 |
+| `extensions/siyuan-vault-indexer/` | 🎯 下一步 | SiYuan vault frontmatter + tag 索引 |
+| `extensions/navidrome-now-playing/` | P1 | Subsonic 协议接入 |
+| `extensions/joplin-search/` | P1 | SQLite 检索 |
+| `extensions/mpv-get-property/` | P1 | unix socket get_property 只读 |
+| `extensions/obsidian-vault-indexer/` | P1 | vault frontmatter 复用 context-graph |
+| `extensions/komga-library-meta/` | P1 | /api/v1/series metadata |
+| `extensions/miniflux-entries/` | P2 | /v1/entries RSS 拉取 |
+| `extensions/audiobookshelf-libraries/` | P2 | Subsonic 协议兼容 |
+| `extensions/tale-book-search/` | P2 | Calibre-web fork /api/book |
+| `extensions/feel-uown-control/` | P2 | Python 原生 CLI 桥 |
+| `extensions/kodi-player-meta/` | P2 | JSON-RPC 9090 player metadata |
 
 ---
 
-## 7. 数据来源与校验
+## 8. 数据来源与校验
 
 每个候选的接入难度 / 协议 / 端口 都经过 GitHub API + raw 文件 curl 校验:
 
-- uTools plugin.json5: https://raw.githubusercontent.com/QC2168/utools-plugin-template/main/plugin.json5
-- Flow Launcher IPlugin.cs: https://raw.githubusercontent.com/Flow-Launcher/Flow.Launcher/master/Flow.Launcher.Plugin/Interfaces/IPlugin.cs (stars 15,718)
-- Albert C++ headers: https://raw.githubusercontent.com/albertlauncher/albert/main/include/albert/{extension,extensionplugin,globalqueryhandler,inputhistory}.h
-- Cerebro IPC: app/lib/rpc.js (channel='message' confirmed)
 - LX Music 实测端点(2026-10-06):`/status` 200 OK,`/lyric` 200 OK,`/songList` 403
 - Navidrome Subsonic 协议:`/rest/ping?c=prisIrAI` 返回 `{status: ok}`
+- SiYuan SQLite:GitHub `siyuan-note/siyuan` docs/api.md
+- Joplin Web Clipper:`http://localhost:41184/` 默认开
+- mpv:`--input-ipc-server=/tmp/mpv-socket` unix socket
+- Miniflux:`/v1/entries?limit=N&after=ID` Bearer token
+- Komga:`/api/v1/series` 公开 metadata
+- Kodi JSON-RPC:`POST /jsonrpc` 9090
 
 ---
 
-## 8. 相关引用
+## 9. 相关引用
 
 - [[lx-music-bridge-phase-a-shipped]] — 已 ship 的 LX Phase A 实现细节
 - [[p3-10-bubble-cancelled-privacy]] — 0 上传红线来源
@@ -377,4 +367,14 @@ tests/test_<name>.py                     # Python pytest wrapper(默认 skip, en
 - [[ext-inventory-injected]] — 32 项扩展 inventory 注入 system prompt
 - [[n9-music-ai-recommend-shipped]] — 音乐 AI 推荐纯本地架构
 - [[p3-10-toast-shipped]] — P3.10 toast 通知基础设施
-- [[phase-b1-task-runner-shipped]] — Phase B-1 task-runner 通道(扩展能力复用)
+- [[phase-b1-task-runner-shipped]] — Phase B-1 task-runner 通道
+- [[prisIr-obsidian-context-graph-design]] — Obsidian vault 图谱设计
+- [[prisIr-agent-reach]] — 14 平台全覆盖扩展
+- [[jina-reader-prisir]] — jina reader 整合
+- [[feedparser-prisir]] — feedparser 整合
+- [[ytdlp-prisir]] — yt-dlp fetcher
+- [[gh-prisir]] — gh CLI 整合
+- [[prisir-fcontent-engine]] — Python+FTS5 本地内容搜索
+- [[prisir-screenshot-search]] — 截图存档 + OCR 搜索
+- [[prisIr-skills-workbench-phase-2]] — skills 工作台 run_loop + tool_use
+- [[prisIr-agent-main-chat-hook]] — T16-A/B/C/D 主对话意图路由
