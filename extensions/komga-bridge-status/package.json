@@ -1,0 +1,30 @@
+{
+  "name": "komga-bridge-status",
+  "displayName": "Komga 漫画库(只读,X-API-Key + Basic Auth)",
+  "version": "0.1.0",
+  "description": "Phase A 只读扩展:通过 Komga REST API (127.0.0.1:25600/api/v1)读取漫画库 / 系列 / 健康状态。鉴权支持 X-API-Key(自 1.12.0+)或 HTTP Basic Auth(Authorization: Basic base64)—— SDK 自动二选一。仅读 /actuator/health /api/v1/libraries /api/v1/series,**绝对不**触碰书签 / 阅读进度 / 扫描 / 删除 / 任何 mutating 接口。**Phase C 第三次 SDK 抽取**:复用 _scaffold/custom-auth-client.js(Komga 首个受益,未来 Miniflux / Plex / Jellyfin 同 SDK)。0 上传/外传,100% 本地,符合 P3.10b 红线。",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:komga.health",
+    "ai.invoke.command:komga.libraries",
+    "ai.invoke.command:komga.series",
+    "ui.inject.notification"
+  ],
+  "prisIrFeatures": [
+    "read-only",
+    "requires-local-server",
+    "requires-credentials",
+    "custom-header-auth"
+  ],
+  "prisIrPlatforms": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}
