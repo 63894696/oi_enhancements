@@ -1,0 +1,19 @@
+{
+  "name": "lx-music-bridge-status",
+  "displayName": "落雪音乐当前播放(只读)",
+  "version": "0.1.0",
+  "description": "Phase A 只读扩展:通过 LX Music Desktop 的 Open API (默认 127.0.0.1:23330) 读取当前歌曲状态、歌词、并把当前行实时推送给主对话。仅调 /status + /lyric 两个 anonymous 开放的 endpoint,**绝对不**触碰播放控制接口,符合 P3.10b 0 上传红线 + 用户隐私阈值(0 外传,100% 本地)。",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:lx.status",
+    "ai.invoke.command:lx.lyric",
+    "ai.invoke.command:lx.health",
+    "ui.inject.notification"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}
