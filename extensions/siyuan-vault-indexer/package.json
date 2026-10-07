@@ -1,0 +1,20 @@
+{
+  "name": "siyuan-vault-indexer",
+  "displayName": "思源笔记 vault 索引(只读)",
+  "version": "0.1.0",
+  "description": "Phase A 只读扩展:直接读 SiYuan SQLite 索引库 (~/.siyuan/<workspace>/temp/siyuan.db 的 blocks + blocks_fts5 表),暴露 4 个 L0 命令:健康检查 / 列出 notebook / FTS5 全文搜索 / 按 ID 拿 block。不调 SiYuan kernel API,不写任何 block,**绝对不**触碰 SiYuan 写操作,符合 P3.10b 0 上传红线(本地 SQLite read-only)。SiYuan 启动时 temp/siyuan.db 从 .sy JSON 重建,所以读 db 不需要 sync 冲突锁。",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:siyuan.health",
+    "ai.invoke.command:siyuan.notebooks",
+    "ai.invoke.command:siyuan.search",
+    "ai.invoke.command:siyuan.block.get",
+    "ui.inject.notification"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}
