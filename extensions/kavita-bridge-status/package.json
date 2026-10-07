@@ -1,0 +1,30 @@
+{
+  "name": "kavita-bridge-status",
+  "displayName": "Kavita 漫画/书库(只读, Bearer API key)",
+  "version": "0.1.0",
+  "description": "Phase A 只读扩展:通过 Kavita REST API (127.0.0.1:5000/api)读取漫画/电子书库、健康状态、series 列表。鉴权用 Authorization: Bearer <JWT-api-key>(用户在 Kavita User Settings → API Keys 生成,与 Audiobookshelf 同模式但未抽 SDK — Audiobookshelf 单案例不够 SDK 化阈值)。仅读 /api/Server/ping /api/Library/libraries /api/Series,**绝对不**触碰 /api/Reader/progress /mark-read /mark-unread /series DELETE /Library scan 任何 mutating 接口。0 上传/外传,100% 本地,符合 P3.10b 红线。",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:kavita.health",
+    "ai.invoke.command:kavita.libraries",
+    "ai.invoke.command:kavita.series",
+    "ui.inject.notification"
+  ],
+  "prisIrFeatures": [
+    "read-only",
+    "requires-local-server",
+    "requires-credentials",
+    "media-library"
+  ],
+  "prisIrPlatforms": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}
