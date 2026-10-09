@@ -184,3 +184,4 @@
 - [Linkwarden 书签/稍后读 Phase A ship](linkwarden-bridge-status-phase-a-shipped.md) — bearer SDK 第 12 用户 + 跨入书签域 + 单层 Bearer JWT(RFC 6750)+ sandbox URL/URLSearchParams globals 注入坑
 - [Habitica 习惯/任务/打卡 Phase A ship](habitica-bridge-status-phase-a-shipped.md) — custom-auth SDK 第 6 用户 + 跨入习惯域 + 双自定义头(x-api-user+x-api-key)+ x-client 常量 2025-07 强制
 - [Paperless-ngx 文档管理 Phase A ship](paperless-bridge-status-phase-a-shipped.md) — custom-auth SDK 第 7 用户 + 跨入文档域 + DRF 分页循环跟随 + thumb 二进制 inline(SDK utf8 body 失真坑)
+- [ArtCraft 不 ship 决策](artcraft-skip-decision.md) — storyteller/artcraft(10K★Rust IDE)云端 SaaS + API gated + License NOASSERTION,与 P3.10b 隐私红线冲突
