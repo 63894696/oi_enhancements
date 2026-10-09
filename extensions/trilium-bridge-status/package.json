@@ -1,0 +1,29 @@
+{
+  "name": "trilium-bridge-status",
+  "displayName": "Trilium Notes 自托管层级笔记(只读, Bearer ETAPI)",
+  "version": "0.1.0",
+  "description": "Phase A 只读扩展:通过 Trilium ETAPI (http://127.0.0.1:8080/etapi)读取 app-info(版本)、笔记列表、单 note 元数据。鉴权用 Authorization: Bearer <token>(RFC 6750,Trilium Options → ETAPI → Add Token 生成)。**Phase C SDK bearer-client.js 第 13 个用户 + 跨入笔记/层级知识域**。envelope 直接对象/数组(无信封,与 SiYuan 一致)。**P0 安全约束(产品级)**:仅白名单 GET(/app-info、/notes、/notes/{id}),**绝不**触碰 /notes/{id}/export(ZIP 含附件,高风险)/import/backup/branches POST。**Phase A 不抓 content 字段**(笔记可能含密码/API key/医疗/日记) — 用户可勾选扩展 opt-in(默认关)。AGPL-3.0 客户端 HTTP 集成不触发传染。0 上传/外传,100% 本地,符合 P3.10b 红线。",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:trilium.health",
+    "ai.invoke.command:trilium.notes",
+    "ai.invoke.command:trilium.note",
+    "ui.inject.notification"
+  ],
+  "prisIrFeatures": [
+    "read-only",
+    "requires-local-server",
+    "requires-credentials"
+  ],
+  "prisIrPlatforms": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}
