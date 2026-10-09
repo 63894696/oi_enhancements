@@ -1,0 +1,29 @@
+{
+  "name": "hedgedoc-bridge-status",
+  "displayName": "HedgeDoc 协同 Markdown(只读, Bearer Token)",
+  "version": "0.1.0",
+  "description": "Phase A 只读扩展:通过 HedgeDoc REST API v2 (http://127.0.0.1:3000/api/v2)读取 notes 列/搜索与当前用户。鉴权用 Authorization: Bearer <api_token>(v2.x ApiTokenGuard,Profile → API tokens 生成)。**Phase C SDK bearer-client.js 第 14 个用户 + 跨入协同笔记/Markdown 域**(与 SiYuan/Trilium 形成笔记三件套:个人/层级/协同)。**envelope 兼容直数组 v1.x + {data} v2.x**。**P0 安全约束(产品级)**:仅白名单 GET(/、/api/v2/notes、/api/v2/user),**绝不**触碰 /api/v2/notes/{id}/content(笔记正文,可能含密码/API key/凭据/医疗)+ 不接 v1.x session cookie(避免 inline dance)。**Phase A 不抓 content 字段**。AGPL-3.0 客户端 HTTP 集成不触发传染(见 [[agpl-ship-boundary]] 三条红线 + 进程级隔离)。0 上传/外传,100% 本地,符合 P3.10b 红线。",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:hedgedoc.health",
+    "ai.invoke.command:hedgedoc.notes",
+    "ai.invoke.command:hedgedoc.user",
+    "ui.inject.notification"
+  ],
+  "prisIrFeatures": [
+    "read-only",
+    "requires-local-server",
+    "requires-credentials"
+  ],
+  "prisIrPlatforms": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}

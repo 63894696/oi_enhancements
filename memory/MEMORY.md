@@ -187,3 +187,4 @@
 - [ArtCraft 不 ship 决策](artcraft-skip-decision.md) — storyteller/artcraft(10K★Rust IDE)云端 SaaS + API gated + License NOASSERTION,与 P3.10b 隐私红线冲突
 - [Trilium Notes 层级笔记 Phase A ship](trilium-bridge-status-phase-a-shipped.md) — bearer SDK 第 13 用户 + 跨入笔记/层级知识域 + Bearer ETAPI(RFC 6750)+ 加密 note 标记 is_protected + 0 content 抓取产品级 P0
 - [AGPL ship 边界判断](agpl-ship-boundary.md) — 客户端代理安全 / 服务端 fork 强传染 / 三条红线 + 派单/侦察 SOP 增量 + 15 个已 ship AGPL 扩展 0 例外
+- [HedgeDoc 协同 Markdown Phase A ship](hedgedoc-bridge-status-phase-a-shipped.md) — bearer SDK 第 14 用户 + 跨入协同笔记/Markdown 域 + 根 HTML 探活(无 /api/status)+ 笔记三件套(SiYuan/Trilium/HedgeDoc)
