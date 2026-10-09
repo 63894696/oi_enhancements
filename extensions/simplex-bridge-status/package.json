@@ -1,0 +1,30 @@
+{
+  "name": "simplex-bridge-status",
+  "displayName": "SimpleX 跨设备 E2E 通信 metadata(只读, Bearer Token)",
+  "version": "0.1.0",
+  "description": "Phase A 只读扩展:通过 SimpleX Chat CLI 6.x (http://127.0.0.1:5225)读取 contacts/chats/groups metadata。鉴权用 Authorization: Bearer <token>(SimpleX CLI --api-token 参数)。**Phase C SDK bearer-client.js 第 15 个用户 + 跨入跨设备/E2E 通信域**(填补 26 个扩展 0 通信域空白)。envelope unwrap {result} / {resp}。**P0 安全约束(产品级)**:仅白名单 POST(/v3/contacts、/v3/chats、/v3/groups)+ GET /,**绝不**抓 text/formattedText/file 字段(可能含密码/医疗/私密)— 类比 Trilium/HedgeDoc content_included=false。**0 私钥读**(只调 HTTP,不读 ~/.simplex/文件系统)+ 127.0.0.1 强约束。借鉴原则 5「Token≠密码」最低档 3/10(本地 token 只绑 127.0.0.1,无吊销机制)。AGPL-3.0 客户端 HTTP 集成不触发传染(见 [[agpl-ship-boundary]] 三条红线 + 进程级隔离)。0 上传/外传,100% 本地,符合 P3.10b 红线。",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:simplex.health",
+    "ai.invoke.command:simplex.contacts",
+    "ai.invoke.command:simplex.chats",
+    "ai.invoke.command:simplex.groups",
+    "ui.inject.notification"
+  ],
+  "prisIrFeatures": [
+    "read-only",
+    "requires-local-server",
+    "requires-credentials"
+  ],
+  "prisIrPlatforms": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}
