@@ -191,3 +191,4 @@
 - [Rheinmetall/* skip 决策](rheinmetall-skip-decision.md) — onboardapi(嵌入式 SDK + 自定义 EULA)+ tacticalapi(战场态势感知 + 0 客群)均不 ship;WebSearch 误判更正:侦察 GitHub URL 直接 curl GitHub API
 - [扩展 ship 筛选标准](extension-ship-filter.md) — 2026-10-10 用户拍板:无 agent 操作 API 不 ship + 密信/含漏洞产品暂不 ship
 - [SimpleX 跨设备 E2E 通信 Phase A ship](simplex-bridge-status-phase-a-shipped.md) — bearer SDK 第 15 用户 + 跨入跨设备/E2E 通信第 16 类域 + 0 content 抓取 + 进程级隔离
+- [Rheinmetall 通信模块抽取侦察结论](rheinmetall-modulerecon-decision.md) — 无可抽取模块给密信(SimpleX 协议)做优化;设计哲学互斥(有服务端 vs 无中心 E2E)+ EULA 严禁衍生 + 出口管制风险
