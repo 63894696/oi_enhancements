@@ -1,0 +1,30 @@
+{
+  "name": "paperless-bridge-status",
+  "displayName": "Paperless-ngx 自托管文档管理(只读, Token auth)",
+  "version": "0.1.0",
+  "description": "Phase A 只读扩展:通过 Paperless-ngx REST API (http://127.0.0.1:8000/api/)读取探活、文档列表、标签、缩略图。鉴权用 Authorization: Token <api_token>(Django REST Framework TokenAuthentication,Web UI → My Profile → API Token 生成)。**Phase C SDK custom-auth-client.js 第 7 个用户 + 跨入文档管理域**(全新域)。DRF envelope {count, next, previous, all, results} — 内置分页循环跟随 next URL(跳过 all 数组省内存,max_pages 默认 5 防 OOM)。仅读 GET,**绝对不**触碰 POST/PUT/PATCH/DELETE;**绝对不**触碰 POST /api/documents/post_document/(上传入口)。thumb 端点返 base64 PNG,Phase A 默认不缓存,前端直连。0 上传/外传,100% 本地,符合 P3.10b 红线(用户文档可能含合同/账单/医疗)。",
+  "author": "PrisirAI 官方",
+  "main": "index.js",
+  "type": "commonjs",
+  "license": "MIT",
+  "prisIrPermissions": [
+    "ai.invoke.command:paperless.health",
+    "ai.invoke.command:paperless.documents",
+    "ai.invoke.command:paperless.tags",
+    "ai.invoke.command:paperless.thumb",
+    "ui.inject.notification"
+  ],
+  "prisIrFeatures": [
+    "read-only",
+    "requires-local-server",
+    "requires-credentials"
+  ],
+  "prisIrPlatforms": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "dependencies": {
+    "@prisir/extension-sdk": "file:../sdk"
+  }
+}
