@@ -135,7 +135,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "prisir_ime_tsf"
+name = "prisiragent_ime"
 version = "0.7.0"
 dependencies = [
  "ort",

@@ -164,6 +164,19 @@ impl PinyinBuffer {
         if chosen.is_empty() { None } else { Some(chosen) }
     }
 
+    /// 空格上屏前,用整句结果替换空格实际会选中的那条候选(2026-11-01)。
+    /// 击键时不跑整句(中间态半成品会抖动候选),只在此刻替换一次;
+    /// 整句与现候选相同时自然无变化,权重保持原值。
+    pub fn prefer_smart_sentence(&mut self, sent: &str) {
+        if self.candidates.is_empty() {
+            return;
+        }
+        let idx = (self.row_offset + self.selected).min(self.candidates.len() - 1);
+        if self.candidates[idx].word != sent {
+            self.candidates[idx].word = sent.to_string();
+        }
+    }
+
     /// ESC — 清空缓冲区与候选,无上屏。
     pub fn on_escape(&mut self) {
         self.reset();

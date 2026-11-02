@@ -878,28 +878,14 @@ impl ITfKeyEventSink_Impl for TsfInputProcessor_Impl {
                 state.pinyin.on_char(ch);
                 #[cfg(feature = "dllentry_log")]
                 let t0 = std::time::Instant::now();
-                let mut cands = state.pinyin.query_candidates(h);
+                let cands = state.pinyin.query_candidates(h);
                 #[cfg(feature = "dllentry_log")]
-                let t_query = t0.elapsed();
-                // smart_sentence(2026-09-01 接入): 多音节拼音先跑整句,命中则把整句
-                // 提为候选#1(空格/数字1 直接上屏整句),逐词候选顺移为其后。整句未命中
-                // 或权重不高于逐词首候选时保持原列表,避免把词级首选顶掉。
-                #[cfg(feature = "dllentry_log")]
-                let t1 = std::time::Instant::now();
-                let sent = state.pinyin.smart_sentence(h);
-                #[cfg(feature = "dllentry_log")]
-                {
-                    let t_smart = t1.elapsed();
-                    crate::com_class_factory::log_dll_entry(&format!(
-                        "OnKeyDown timing: query={:?} smart={:?} buf='{}'", t_query, t_smart, state.pinyin.buf));
-                }
-                if let Some(sent) = sent {
-                    let top_w = cands.first().map(|c| c.weight).unwrap_or(0);
-                    let sent_w = top_w.saturating_add(1);
-                    if !cands.iter().any(|c| c.word == sent) {
-                        cands.insert(0, crate::keystroke::Candidate::new(sent, sent_w));
-                    }
-                }
+                crate::com_class_factory::log_dll_entry(&format!(
+                    "OnKeyDown timing: query={:?} buf='{}'", t0.elapsed(), state.pinyin.buf));
+                // 2026-11-01: 击键时不再跑 smart_sentence / 插整句候选。
+                // 原因:整句 DP 在中间态会返回半成品(zhonghuarenmingongh→中华人名哦),
+                // 旧逻辑以 top_w+1 硬插 #1,把正确的词级首选挤到 #2 → 候选抖动。
+                // 整句改到「空格上屏时」跑一次(0x20 分支),成句能力保留、列表稳定。
                 state.pinyin.set_candidates(cands);
                 display = state.pinyin.buf.clone();
                 cand_words = state.pinyin.page_slice().iter().map(|c| c.word.clone()).collect();
@@ -1460,18 +1446,11 @@ impl TsfInputProcessor {
                     let h = state.engine_handle();
                     #[cfg(feature = "dllentry_log")]
                     let t0 = std::time::Instant::now();
-                    let mut cands = state.pinyin.query_candidates(h);
-                    // 退格重查同样融合 smart_sentence 整句首选(与字母键路径一致)。
-                    let sent = state.pinyin.smart_sentence(h);
+                    let cands = state.pinyin.query_candidates(h);
                     #[cfg(feature = "dllentry_log")]
                     crate::com_class_factory::log_dll_entry(&format!(
                         "Backspace: buf='{}' query={:?} cands={}", state.pinyin.buf, t0.elapsed(), cands.len()));
-                    if let Some(sent) = sent {
-                        let top_w = cands.first().map(|c| c.weight).unwrap_or(0);
-                        if !cands.iter().any(|c| c.word == sent) {
-                            cands.insert(0, crate::keystroke::Candidate::new(sent, top_w.saturating_add(1)));
-                        }
-                    }
+                    // 2026-11-01: 退格与字母键一致,击键不再跑/插 smart_sentence。
                     state.pinyin.set_candidates(cands);
                     SpecialResult::Handled
                 } else {
@@ -1484,6 +1463,11 @@ impl TsfInputProcessor {
                     SpecialResult::Passthrough
                 } else {
                     let h = state.engine_handle();
+                    // 2026-11-01: 整句只在空格上屏时跑一次。
+                    // 只替换空格实际会选中的那条候选,其余不动;query 已含整词时自然无变化。
+                    if let Some(sent) = state.pinyin.smart_sentence(h) {
+                        state.pinyin.prefer_smart_sentence(&sent);
+                    }
                     let buf_snap = state.pinyin.buf.clone(); // on_space 会 reset,先快照 buf 供 learn
                     match state.pinyin.on_space() {
                         Some(t) => {

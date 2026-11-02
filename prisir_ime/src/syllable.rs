@@ -40,8 +40,66 @@ impl Syllables {
     }
 
     /// 拼音切分:连续拼音串 → 有效音节序列。"nihao" -> ["ni","hao"]。
-    /// 无法匹配处跳过单字符(对齐 Python)。
+    ///
+    /// 2026-11-01 修复:原实现是纯贪心最长匹配 + 匹配不上就跳单字符,
+    /// 遇到「前音节以 n/ng 结尾、后音节以 g 开头」的边界会吃掉后音节的声母 g,
+    /// 再把残留的 "ong" 当成音节 "o",尾巴 "ng" 被静默丢弃。
+    /// 例:mingong(民工) 被切成 ["ming","o"],rengong(人工) 被切成 ["reng","o"],
+    /// 拼出的 key 不存在于词库,导致整句识别退化成逐词瞎拼。
+    ///
+    /// 现在先尝试「完整消费」的回溯切分;整串无法完整切分时(简拼/混拼输入),
+    /// 才退回原来的贪心跳字符行为,保持旧语义不变。
     pub fn segment(&self, input: &str) -> Vec<String> {
+        if let Some(v) = self.segment_full(input) {
+            return v;
+        }
+        self.segment_greedy(input)
+    }
+
+    /// 带回溯的完整切分:要求整串被音节表恰好消费完,否则返回 None。
+    /// can[i] = 从第 i 字节起能否完整切分;先反向 DP 求可达性,再正向重建。
+    fn segment_full(&self, input: &str) -> Option<Vec<String>> {
+        let bytes = input.as_bytes();
+        let n = bytes.len();
+        if n == 0 {
+            return Some(Vec::new());
+        }
+        let mut can = vec![false; n + 1];
+        can[n] = true;
+        for i in (0..n).rev() {
+            for key in &self.ordered {
+                let kb = key.as_bytes();
+                if i + kb.len() <= n && &bytes[i..i + kb.len()] == kb && can[i + kb.len()] {
+                    can[i] = true;
+                    break;
+                }
+            }
+        }
+        if !can[0] {
+            return None;
+        }
+        let mut out = Vec::new();
+        let mut i = 0;
+        while i < n {
+            let mut advanced = false;
+            for key in &self.ordered {
+                let kb = key.as_bytes();
+                if i + kb.len() <= n && &bytes[i..i + kb.len()] == kb && can[i + kb.len()] {
+                    out.push(key.to_string());
+                    i += kb.len();
+                    advanced = true;
+                    break;
+                }
+            }
+            if !advanced {
+                return None; // 理论不可达(can[0] 已保证),保险起见退回贪心
+            }
+        }
+        Some(out)
+    }
+
+    /// 旧行为:贪心最长匹配,匹配不上跳单字符。保留给简拼/混拼输入。
+    fn segment_greedy(&self, input: &str) -> Vec<String> {
         let bytes = input.as_bytes();
         let mut result = Vec::new();
         let mut i = 0;
