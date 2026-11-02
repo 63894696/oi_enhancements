@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>探囊 · 本机内容搜索 · Prisir</title>
+<style>
+  :root{
+    --gh-paper:#f6f1e7; --gh-paper-2:#efe8da; --gh-surface:#fbf8f1;
+    --gh-ink:#2f3a34; --gh-ink-soft:#5b6a61; --gh-ink-faint:#8a968e; --gh-line:#d8cfbc;
+    --gh-green:#6c7c72; --gh-green-deep:#4a5c52; --gh-seal:#b23a30;
+    --gh-radius:10px; --gh-shadow:0 1px 3px rgba(74,92,82,.12);
+    --gh-font:'Segoe UI','Microsoft YaHei',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{font-family:var(--gh-font);color:var(--gh-ink);margin:0;
+    background:var(--gh-paper) url('/prisiragent/assets/guohua_bg_wide.png') center bottom/cover fixed no-repeat;}
+  .wrap{max-width:860px;margin:0 auto;padding:20px 18px 60px;}
+  #brand{display:flex;align-items:center;gap:10px;padding:6px 2px 18px;}
+  #brand img{width:30px;height:30px;border-radius:7px;box-shadow:var(--gh-shadow);}
+  #brand .name{font-size:18px;font-weight:600;color:var(--gh-green-deep);}
+  #brand .sub{font-size:12px;color:var(--gh-ink-faint);margin-left:2px;}
+  .card{background:rgba(251,248,241,.92);backdrop-filter:blur(6px);border:1px solid var(--gh-line);
+    border-radius:var(--gh-radius);box-shadow:var(--gh-shadow);padding:18px;margin-bottom:16px;}
+  .searchrow{display:flex;gap:10px;}
+  #q{flex:1;padding:12px 14px;font-size:15px;border:1px solid var(--gh-line);border-radius:9px;
+    background:var(--gh-surface);color:var(--gh-ink);outline:none;}
+  #q:focus{border-color:var(--gh-green-deep);}
+  .btn{padding:11px 20px;font-size:14px;border-radius:9px;border:1px solid var(--gh-line);
+    background:var(--gh-green-deep);color:#fbf6ec;cursor:pointer;white-space:nowrap;}
+  .btn.ghost{background:var(--gh-surface);color:var(--gh-green-deep);}
+  .btn.seal{background:var(--gh-surface);color:var(--gh-seal);border-color:var(--gh-line);}
+  .btn:hover{filter:brightness(1.05);}
+  .btn:disabled{opacity:.5;cursor:not-allowed;}
+  #statusline{font-size:12.5px;color:var(--gh-ink-soft);margin-top:10px;min-height:18px;}
+  #statusline b{color:var(--gh-green-deep);}
+  .bar{height:6px;background:var(--gh-paper-2);border-radius:4px;overflow:hidden;margin-top:10px;display:none;}
+  .bar>i{display:block;height:100%;background:var(--gh-green);width:0;transition:width .3s;}
+  .hit{display:flex;flex-direction:column;gap:4px;padding:12px 4px;border-bottom:1px solid var(--gh-line);}
+  .hit:last-child{border-bottom:none;}
+  .hit .row{display:flex;align-items:center;gap:12px;}
+  .hit .ic{font-size:18px;width:26px;text-align:center;flex:none;}
+  .hit .meta{flex:1;min-width:0;}
+  .hit .nm{font-size:14px;color:var(--gh-ink);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .hit .dir{font-size:12px;color:var(--gh-ink-faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .hit .mt{font-size:11.5px;color:var(--gh-ink-faint);flex:none;width:90px;text-align:right;}
+  .hit .snip{font-size:12.5px;color:var(--gh-ink-soft);line-height:1.6;padding:2px 0 0 38px;
+    word-break:break-all;}
+  .hit .snip b{color:var(--gh-seal);font-weight:600;}
+  #empty{padding:40px 0;text-align:center;color:var(--gh-ink-faint);font-size:13.5px;display:none;}
+  #more{padding:14px 0;text-align:center;color:var(--gh-green-deep);font-size:12.5px;cursor:pointer;
+    border-top:1px dashed var(--gh-line);margin-top:6px;}
+  #more:hover{color:var(--gh-seal);}
+  .ctl{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+  .hint{font-size:12px;color:var(--gh-ink-faint);margin-top:8px;line-height:1.6;}
+  #rootsInput{flex:1;min-width:260px;padding:10px 12px;font-size:13px;border:1px solid var(--gh-line);
+    border-radius:8px;background:var(--gh-surface);color:var(--gh-ink);outline:none;}
+  #rootsInput:focus{border-color:var(--gh-green-deep);}
+  .ocrbox{margin-top:10px;padding:10px 12px;border:1px dashed var(--gh-line);border-radius:8px;
+    background:var(--gh-paper-2);font-size:12px;color:var(--gh-ink-soft);line-height:1.6;}
+  /* M3.31 git 安装权限闸(沿用主页面风格) */
+  #gitinstallgate { position:fixed; inset:0; background:rgba(47,58,52,.4); display:none; z-index:108;
+    align-items:center; justify-content:center; }
+  #gitinstallgate.open { display:flex; }
+  #gitinstallgate .card { background:#fff; border-radius:14px; padding:24px; width:480px; max-width:92vw;
+    max-height:88vh; overflow-y:auto; box-shadow:0 12px 40px rgba(0,0,0,.25); }
+  #gitinstallgate h3 { font-size:16px; color:#2E7D32; margin-bottom:8px; }
+  #gitinstallgate .sub { font-size:12.5px; color:#333; margin-bottom:10px; line-height:1.55; }
+  #gitinstallgate ul { font-size:12.5px; color:#333; margin:0 0 8px 0; padding-left:22px; line-height:1.7; }
+  #gitinstallgate ul code { font-family:monospace; background:#f5f5f5; padding:1px 5px; border-radius:3px;
+    font-size:12px; color:#2E7D32; }
+  #gitinstallgate .row { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; flex-wrap:wrap; }
+
+  /* M3.32 Phase 2(2026-09-16):Office 渲染器装机权限闸 */
+  #officeinstallgate { position:fixed; inset:0; background:rgba(47,58,52,.4); display:none; z-index:108;
+    align-items:center; justify-content:center; }
+  #officeinstallgate.open { display:flex; }
+  #officeinstallgate .card { background:var(--gh-paper); border-radius:14px; padding:24px; width:520px; max-width:92vw;
+    max-height:88vh; overflow-y:auto; box-shadow:0 12px 40px rgba(0,0,0,.25); }
+  #officeinstallgate h3 { font-size:16px; color:var(--gh-green-deep); margin-bottom:8px; }
+  #officeinstallgate .sub { font-size:12.5px; color:var(--gh-ink); margin-bottom:10px; line-height:1.55; }
+  #officeinstallgate .oig-status { font-size:12px; color:var(--gh-ink-soft); background:var(--gh-surface);
+    border:1px solid var(--gh-line); border-radius:6px; padding:6px 10px; margin:6px 0 10px;
+    font-family:monospace; line-height:1.55; }
+  #officeinstallgate .oig-status.ok { color:#1a6b1a; border-color:#b4d8b4; background:#f0f9f0; }
+  #officeinstallgate ul { font-size:12.5px; color:var(--gh-ink); margin:0 0 8px 0; padding-left:22px; line-height:1.7; }
+  #officeinstallgate ul code { font-family:monospace; background:var(--gh-surface); padding:1px 5px; border-radius:3px;
+    font-size:12px; color:var(--gh-green-deep); }
+  #officeinstallgate .row { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; flex-wrap:wrap; }
+  .dt-item .op.imported { background:#e0e8f0; color:#2d4e6e; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="brand">
+    <img src="/prisiragent/assets/prisir-flame-48.png" alt="">
+    <span class="name">探囊</span>
+    <span class="sub">本机内容搜索 · 按正文找文件 · 独立可选模块 · 只存分词结果不出本机</span>
+  </div>
+
+  <div class="card">
+    <div class="searchrow">
+      <input id="q" placeholder="文件正文里的关键词,如:季度报告、revenue、市场份额…" autocomplete="off">
+      <button class="btn" id="searchBtn">搜索</button>
+    </div>
+    <div id="statusline"></div>
+    <div class="bar" id="bar"><i id="barfill"></i></div>
+  </div>
+
+  <div class="card" id="ctlcard">
+    <div class="ctl">
+      <input id="rootsInput" placeholder="授权目录(多个用 ; 分隔),如:C:\Users\me\Documents;D:\资料">
+      <button class="btn ghost" id="enableBtn">开启内容搜索</button>
+      <button class="btn seal" id="disableBtn" style="display:none">关闭并清空索引</button>
+    </div>
+    <div class="hint">内容搜索是独立可选模块:只索引你<strong>显式授权</strong>的目录(不做全盘),会读文件正文但
+      <strong>只存分词结果、不存原文、不出本机</strong>。支持 docx / pdf / pptx / txt / md / 代码等;每文件截断 512KB。
+      首次索引约需数分钟,期间可继续搜索已索引部分。</div>
+    <div class="ocrbox" id="ocrbox">🖼 图片文字识别(OCR)<span id="ocrstat">检测中…</span>
+      <label id="ocrchkrow" style="display:none;margin-left:8px;user-select:none;">
+        <input type="checkbox" id="ocrchk"> 开启图片文字识别(本次索引)</label>
+      <div id="ocrhint" style="margin-top:4px;"></div></div>
+    <div class="ocrbox" id="shotbox" style="border-style:solid;">
+      📷 截图存档目录:<code id="shotdir" style="font-size:11px;word-break:break-all;">…</code>
+      <div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <button class="btn ghost" id="shotAuthBtn" style="padding:6px 12px;font-size:12px;">一键授权并开启(含OCR)</button>
+        <span id="shotstat" style="font-size:11.5px;color:var(--gh-ink-faint);"></span>
+      </div>
+      <div style="margin-top:4px;">网页「存档此屏」的截图统一存到这里;授权+开 OCR 后,截图里的文字即可被搜到并回原页。</div>
+    </div>
+  </div>
+
+  <div class="card" id="results">
+    <div id="empty">输入文件正文里的关键词开始搜索</div>
+    <div id="list"></div>
+    <div id="more" style="display:none"></div>
+  </div>
+</div>
+<script>
+const $=s=>document.querySelector(s);
+function esc(s){const d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML;}
+async function api(path,opts){const r=await fetch('/prisiragent/api'+path,opts);return r.json();}
+function fmtTime(t){if(!t)return'';const d=new Date(t*1000);const p=x=>String(x).padStart(2,'0');
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes());}
+function icon(path){const ext=(path.split('.').pop()||'').toLowerCase();
+  const m={pdf:'📕',docx:'📘',pptx:'📙',md:'📄',txt:'📄',py:'🐍',js:'📜',json:'🧾',html:'🌐'};
+  return m[ext]||'📄';}
+function base(p){return p.split(/[\\/]/).pop();}
+function dirp(p){const i=Math.max(p.lastIndexOf('\\'),p.lastIndexOf('/'));return i>0?p.slice(0,i):p;}
+
+let curQ='',curOffset=0,curTotal=0,loading=false,building=false,pollTimer=null;
+const PAGE=30;
+
+async function refreshStatus(){
+  const st=await api('/fcontent/status');
+  const sl=$('#statusline');
+  // OCR 能力区:真探测(装了 rapidocr 则可用)
+  const ocrbox=$('#ocrstat'), ocrhint=$('#ocrhint'), ocrrow=$('#ocrchkrow');
+  if(st.ocr && st.ocr.available){
+    ocrbox.innerHTML='<b style="color:var(--gh-green-deep)">可用</b>';
+    ocrrow.style.display='';
+    ocrhint.textContent=st.ocr_on
+      ? '本次索引已开启图片文字识别。'
+      : '勾选后,开启内容搜索时会同时识别授权目录里的图片文字(.png/.jpg 等);置信度低的识别行会被自动丢弃。';
+  }else{
+    ocrbox.innerHTML='<b style="color:var(--gh-seal)">未启用</b>';
+    ocrrow.style.display='none';
+    ocrhint.textContent=(st.ocr&&st.ocr.hint)?st.ocr.hint:'OCR 模块未安装。';
+  }
+  if(st.ready===false){sl.innerHTML='内容搜索模块未就绪(未加载)。';$('#enableBtn').disabled=true;return;}
+  $('#enableBtn').disabled=false;
+  if(st.building){
+    building=true;
+    $('#bar').style.display='block';
+    sl.innerHTML='内容索引建立中… 已扫描 <b>'+(st.scanned||0).toLocaleString()+'</b> 个文件';
+    $('#enableBtn').style.display='none';$('#disableBtn').style.display='none';
+    schedulePoll();
+  }else if(st.enabled){
+    building=false;$('#bar').style.display='none';
+    $('#enableBtn').style.display='none';$('#disableBtn').style.display='';
+    sl.innerHTML='已索引 <b>'+(st.indexed_count||0).toLocaleString()+'</b> 个文件 · 上次扫描 '+
+      (st.last_scan?fmtTime(st.last_scan):'—')+' · 授权目录 '+(st.roots||[]).length+' 个';
+  }else{
+    building=false;$('#bar').style.display='none';
+    $('#enableBtn').style.display='';$('#disableBtn').style.display='none';
+    sl.innerHTML='内容搜索未开启。';
+  }
+}
+function schedulePoll(){if(pollTimer)return;
+  pollTimer=setInterval(async()=>{await refreshStatus();if(!building){clearInterval(pollTimer);pollTimer=null;}},1500);}
+
+async function doSearch(){
+  curQ=$('#q').value.trim(); curOffset=0; curTotal=0;
+  $('#list').innerHTML=''; $('#more').style.display='none';
+  await loadMore(true);
+}
+function renderHit(h,list){
+  const div=document.createElement('div');div.className='hit';
+  const snipHtml=esc(h.snippet||'').replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+  const ocrTag=h.is_ocr?'<span style="font-size:11px;color:var(--gh-seal);border:1px solid var(--gh-line);border-radius:4px;padding:0 4px;margin-left:6px;">🖼图片文字</span>':'';
+  div.innerHTML='<div class="row">'+
+    '<div class="ic">'+icon(h.path)+'</div>'+
+    '<div class="meta"><div class="nm"></div><div class="dir"></div></div>'+
+    '<div class="mt">'+fmtTime(h.mtime)+'</div></div>'+
+    (h.snippet?'<div class="snip">…'+snipHtml+'…</div>':'')+
+    '<div class="shotact" style="padding:4px 0 0 38px;display:none;gap:8px;"></div>';
+  div.querySelector('.nm').textContent=base(h.path);
+  div.querySelector('.nm').insertAdjacentHTML('beforeend',ocrTag);
+  div.querySelector('.dir').textContent=dirp(h.path);
+  div.title=h.path;
+  // 截图存档命中:加「🖼看图」(本地大图)+「↩回原页」(page_url,简单版)
+  if(h.shot){
+    const act=div.querySelector('.shotact');act.style.display='flex';
+    const btnStyle='font-size:12px;padding:3px 10px;border:1px solid var(--gh-line);border-radius:6px;'+
+      'background:var(--gh-surface);color:var(--gh-green-deep);cursor:pointer;text-decoration:none;display:inline-block;';
+    const view=document.createElement('a');view.textContent='🖼 看图';view.style.cssText=btnStyle;
+    view.href='/prisiragent/api/fcontent/shot_image?path='+encodeURIComponent(h.path);view.target='_blank';
+    act.appendChild(view);
+    if(h.shot.page_url){
+      const back=document.createElement('a');back.textContent='↩ 回原页';back.style.cssText=btnStyle;
+      back.href=h.shot.page_url;back.target='_blank';back.title=h.shot.page_url;
+      act.appendChild(back);
+    }
+    // 「🌐 翻译此图」:点哪张译哪张,原位翻译(产物 *.translated.png,原图不动)。
+    // 带模式(叠加/抹字)+方向(自动/横排/竖排)+目标语言选择,照用户拍板:抹字版正式化、方向可选。
+    const tr=document.createElement('button');tr.textContent='🌐 翻译此图';tr.style.cssText=btnStyle;
+    tr.onclick=async(ev)=>{
+      ev.preventDefault();
+      // 参数选择:模式 + 方向 + 目标语言(简单 prompt,免做弹窗组件)
+      const mode=(window.prompt('翻译模式:overlay=叠加盖字 / erase=真抹字(默认 erase)','erase')||'erase').trim();
+      const direction=(window.prompt('排版方向:auto=自动 / h=横排 / v=竖排(默认 auto)','auto')||'auto').trim();
+      const dst=(window.prompt('目标语言:zh=中文 / ja=日文 / en=英文(默认 zh)','zh')||'zh').trim();
+      tr.disabled=true;tr.textContent='⏳ 翻译中…';
+      try{
+        const r=await api('/fcontent/overlay_translate',{method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({path:h.path,mode:mode,direction:direction,dst:dst})});
+        if(r.ok===false){tr.textContent='✗ '+(r.hint||r.error||'失败');tr.disabled=false;return;}
+        tr.textContent='✓ 已翻译,看产物';
+        // 产物已入库(目录授权+ocr_on时),替换「看图」为看产物,并补一个看原图
+        view.href='/prisiragent/api/fcontent/shot_image?path='+encodeURIComponent(r.out);
+        const orig=document.createElement('a');orig.textContent='🖼 原图';orig.style.cssText=btnStyle;
+        orig.href='/prisiragent/api/fcontent/shot_image?path='+encodeURIComponent(h.path);orig.target='_blank';
+        if(!act.querySelector('.origlnk')){orig.className='origlnk';act.appendChild(orig);}
+      }catch(e){tr.textContent='✗ 出错';tr.disabled=false;}
+    };
+    act.appendChild(tr);
+  }
+  list.appendChild(div);
+}
+async function loadMore(first){
+  if(loading)return; loading=true;
+  const r=await api('/fcontent/search?q='+encodeURIComponent(curQ)+'&limit='+PAGE+'&offset='+curOffset);
+  loading=false;
+  const list=$('#list');
+  if(r.enabled===false){$('#empty').style.display='block';
+    $('#empty').textContent='内容搜索未开启,请先点上方「开启内容搜索」并授权目录。';return;}
+  const hits=r.hits||[]; const rt=(r.total===undefined?0:r.total);
+  curTotal=rt;
+  const more = (curOffset+hits.length < curTotal);
+  if(first && !hits.length){$('#empty').style.display='block';
+    $('#empty').textContent=curQ?('没有正文含「'+curQ+'」的文件'):'输入文件正文里的关键词开始搜索';
+    return;}
+  $('#empty').style.display='none';
+  for(const h of hits)renderHit(h,list);
+  curOffset+=hits.length;
+  const moreEl=$('#more');
+  if(more){moreEl.style.display='block';
+    moreEl.textContent='已显示 '+curOffset+' 条 / 共 '+curTotal.toLocaleString()+' 条 · 点击加载更多';}
+  else{moreEl.style.display= hits.length? 'block':'none';
+    if(hits.length)moreEl.textContent='共 '+curOffset.toLocaleString()+' 条,已全部显示';}
+}
+$('#more').onclick=()=>loadMore(false);
+$('#searchBtn').onclick=doSearch;
+$('#q').addEventListener('keydown',e=>{if(e.key==='Enter')doSearch();});
+$('#enableBtn').onclick=async()=>{
+  const raw=$('#rootsInput').value.trim();
+  const roots=raw.split(';').map(s=>s.trim()).filter(Boolean);
+  if(!roots.length){alert('请先填授权目录(内容索引逐目录授权,不做全盘)。');return;}
+  const ocrOn=$('#ocrchkrow').style.display!=='none' && $('#ocrchk').checked;
+  const est='将对 '+roots.length+' 个授权目录建内容索引:\n'+roots.join('\n')+
+    (ocrOn?'\n\n已勾选「图片文字识别」:授权目录里的 .png/.jpg 等图片也会做 OCR(较慢,置信度低的识别行自动丢弃)。':'')+
+    '\n\n会读文件正文,但只存分词结果、不存原文、不出本机。确定开启?';
+  if(!confirm(est))return;
+  $('#enableBtn').disabled=true;
+  const r=await api('/fcontent/enable',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({roots:roots, ocr:ocrOn})});
+  $('#enableBtn').disabled=false;
+  if(r.ok===false){alert(r.hint||r.error||'开启失败');return;}
+  await refreshStatus();
+};
+$('#disableBtn').onclick=async()=>{
+  if(!confirm('确定关闭内容搜索并清空索引?'))return;
+  await api('/fcontent/disable',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  $('#list').innerHTML='';await refreshStatus();
+};
+refreshStatus();
+
+// ---- 截图存档目录:显示 + 一键授权(含 OCR) ----
+let SHOT_DIR='';
+async function refreshShotDir(){
+  try{
+    const r=await api('/fcontent/shots');
+    SHOT_DIR=r.shot_dir||'';
+    $('#shotdir').textContent=SHOT_DIR||'(未取到)';
+    const st=await api('/fcontent/status');
+    const roots=(st.roots||[]).map(s=>s.replace(/[\\/]+$/,'').toLowerCase());
+    const sd=(SHOT_DIR||'').replace(/[\\/]+$/,'').toLowerCase();
+    const covered=sd && roots.some(r=>sd===r||sd.startsWith(r+'\\')||sd.startsWith(r+'/'));
+    $('#shotAuthBtn').style.display=(covered&&st.ocr_on)?'none':'';
+    $('#shotstat').textContent=(covered&&st.ocr_on)
+      ? '✅ 已授权并开启 OCR,新截图会自动识别入库。'
+      : (covered?'已授权目录,但 OCR 未开——重新开启时请勾选「图片文字识别」。':'未授权——点左侧一键授权并开启。');
+  }catch(e){$('#shotdir').textContent='(取目录失败)'}
+}
+$('#shotAuthBtn').onclick=async()=>{
+  if(!SHOT_DIR){alert('未取到截图目录。');return;}
+  const st=await api('/fcontent/status');
+  const roots=(st.roots||[]).slice();
+  const sd=SHOT_DIR.replace(/[\\/]+$/,'');
+  if(!roots.map(r=>r.replace(/[\\/]+$/,'').toLowerCase()).includes(sd.toLowerCase()))roots.push(SHOT_DIR);
+  if(!confirm('将把截图存档目录加入授权并开启内容搜索(含图片 OCR):\n'+roots.join('\n')+'\n\n确定?'))return;
+  $('#shotAuthBtn').disabled=true;
+  const r=await api('/fcontent/enable',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({roots:roots, ocr:true})});
+  $('#shotAuthBtn').disabled=false;
+  if(r.ok===false){alert(r.hint||r.error||'开启失败');return;}
+  await refreshStatus();await refreshShotDir();
+};
+refreshShotDir();
+</script>
+
+<!-- 文档右栏(2026-09-16 B 路线):只读预览 + 时间线 + dirty 检测。
+     - 时间线:复用会话库 chat tool_call,提取 write_file/edit_file/rollback 三类,按时倒序。
+     - dirty 检测:每 5s 拉 /api/file_stat,与本地缓存 size+mtime 比对;变了 → 弹 dirty + reload 按钮。
+     - 关窗询问:有 dirty 未处理时 beforeunload 弹原生 confirm。 -->
+<script>
+"use strict";
+window.__docState = {
+  open: false,
+  tab: "timeline",          // timeline / preview
+  currentPath: null,        // 相对路径(空=无选择)
+  currentStat: null,        // {size, mtime}
+  currentDirty: false,      // 外置改动未处理
+  currentStatTimer: null,
+  timeline: [],             // [{op:"write"|"edit"|"rollback", path, ts, sid, extra}, ...]
+  sessionsIndex: [],        // [{sid, ts, ...}, ...]
+  dirtyGlobal: false,       // 任一打开文件 dirty → beforeunload 拦
+};
+
+function toggleDocPanel() {
+  const p = document.getElementById("doc-panel");
+  window.__docState.open = !window.__docState.open;
+  p.classList.toggle("open", window.__docState.open);
+  p.style.display = window.__docState.open ? "flex" : "none";
+  if (window.__docState.open) {
+    docSwitchTab(window.__docState.tab);
+    if (window.__docState.tab === "timeline") docRefreshTimeline();
+    else if (window.__docState.tab === "preview" && window.__docState.currentPath) docLoadPreview(window.__docState.currentPath);
+  }
+}
+
+function docSwitchTab(tab) {
+  window.__docState.tab = tab;
+  const tlv = document.getElementById("doc-timeline-view");
+  const prv = document.getElementById("doc-preview-view");
+  const drv = document.getElementById("doc-diff-view");
+  const skv = document.getElementById("doc-skills-view");
+  const tlb = document.getElementById("doc-tab-timeline");
+  const prb = document.getElementById("doc-tab-preview");
+  const drb = document.getElementById("doc-tab-diff");
+  const skb = document.getElementById("doc-tab-skills");
+  const show = (el, on) => { if (el) el.style.display = on ? "" : "none"; };
+  const act = (el, on) => { if (!el) return; el.classList.toggle("active", !!on); };
+  if (tab === "timeline") {
+    show(tlv, true); show(prv, false); show(drv, false); show(skv, false);
+    act(tlb, true); act(prb, false); act(drb, false); act(skb, false);
+    docRefreshTimeline();
+  } else if (tab === "preview") {
+    show(tlv, false); show(prv, true); show(drv, false); show(skv, false);
+    act(tlb, false); act(prb, true); act(drb, false); act(skb, false);
+    if (window.__docState.currentPath) docLoadPreview(window.__docState.currentPath);
+    else document.getElementById("doc-preview-path").textContent =
+      (window.i18n && window.i18n.doc_no_file) || "未选文件";
+  } else if (tab === "diff") {
+    show(tlv, false); show(prv, false); show(drv, true); show(skv, false);
+    act(tlb, false); act(prb, false); act(drb, true); act(skb, false);
+    if (window.__docState.currentPath) docLoadDiffVersions(window.__docState.currentPath);
+    else document.getElementById("doc-diff-path").textContent =
+      (window.i18n && window.i18n.doc_no_file) || "未选文件";
+  } else if (tab === "skills") {
+    // M3.33 #65:skill 面板
+    show(tlv, false); show(prv, false); show(drv, false); show(skv, true);
+    act(tlb, false); act(prb, false); act(drb, false); act(skb, true);
+    skillRefresh();
+  }
+}
+
+function docEscapeHtml(s) {
+  return (s || "").replace(/[&<>"']/g, c =>
+    ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c]);
+}
+
+// 时间线:复用现有 chat 会话库接口
+async function docRefreshTimeline() {
+  const body = document.getElementById("doc-timeline-body");
+  const count = document.getElementById("doc-timeline-count");
+  if (!body || !count) return;
+  body.innerHTML = '<div style="padding:12px;color:var(--gh-ink-soft)">⏳ ...</div>';
+  try {
+    // 后端已预解析 path 并按时倒序(2026-09-16 B 路线)
+    const r = await fetch("/prisiragent/api/file_changes");
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.err || "fetch failed");
+    const ops = j.ops || [];
+    window.__docState.timeline = ops;
+    count.textContent = ops.length
+      ? `共 ${ops.length} 次文件改动`
+      : ((window.i18n && window.i18n.doc_timeline_empty) || "本对话尚未改动任何文件");
+    if (!ops.length) { body.innerHTML = ""; return; }
+    body.innerHTML = ops.map((o, i) => {
+      const when = o.ts ? new Date(o.ts * 1000).toLocaleString() : "?";
+      const opClass = o.op === "write" ? "write" : (o.op === "edit" ? "edit" : (o.op === "imported" ? "imported" : "rollback"));
+      const titlePrefix = o.op === "imported" ? "📥 imported from git — " : "";
+      return `<div class="dt-item" data-idx="${i}" onclick="docOpenFromTimeline(${i})">
+        <div class="path">${docEscapeHtml(o.path)}</div>
+        <div class="meta"><span class="op ${opClass}">${o.op}</span>${docEscapeHtml(titlePrefix + (o.title || (o.sid || "").slice(0,8)))} · ${when}</div>
+      </div>`;
+    }).join("");
+  } catch (e) {
+    body.innerHTML = '<div style="padding:12px;color:#a04040">' + docEscapeHtml(String(e)) + '</div>';
+  }
+}
+
+function docOpenFromTimeline(i) {
+  const op = (window.__docState.timeline || [])[i];
+  if (!op) return;
+  document.querySelectorAll("#doc-timeline-body .dt-item").forEach(el => el.classList.remove("active"));
+  const el = document.querySelector(`#doc-timeline-body .dt-item[data-idx="${i}"]`);
+  if (el) el.classList.add("active");
+  docSwitchTab("preview");
+  docLoadPreview(op.path);
+}
+
+// 只读预览
+async function docLoadPreview(relPath) {
+  const pathLbl = document.getElementById("doc-preview-path");
+  const body = document.getElementById("doc-preview-body");
+  const sel = document.getElementById("doc-version-select");
+  const rbk = document.getElementById("doc-rollback");
+  const dirty = document.getElementById("doc-dirty-badge");
+  const reload = document.getElementById("doc-reload");
+  if (!relPath) {
+    pathLbl.textContent = (window.i18n && window.i18n.doc_no_file) || "未选文件";
+    _docPreviewWriteText(""); sel.innerHTML = '<option value="current">' + ((window.i18n && window.i18n.doc_current) || "当前版本") + '</option>';
+    rbk.style.display = "none"; dirty.style.display = "none"; reload.style.display = "none";
+    return;
+  }
+  window.__docState.currentPath = relPath;
+  pathLbl.textContent = relPath;
+  _docPreviewWriteText("⏳ ..."); sel.innerHTML = ""; rbk.style.display = "none";
+  // 1) 拉版本列表
+  try {
+    const r = await fetch("/prisiragent/api/file_versions?path=" + encodeURIComponent(relPath));
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.err || "list failed");
+    sel.innerHTML = '<option value="current">' + ((window.i18n && window.i18n.doc_current) || "当前版本") + '</option>';
+    (j.versions || []).forEach(v => {
+      const when = new Date(v.ts * 1000).toLocaleString();
+      const sz = v.size || 0;
+      const tag = `${when} (${v.tool || "?"}, ${sz}B)`;
+      const op = document.createElement("option");
+      op.value = v.version_id; op.textContent = tag;
+      sel.appendChild(op);
+    });
+  } catch (e) {
+    _docPreviewWriteText("list versions err: " + e.message);
+  }
+  // 2) 拉当前版本内容
+  try {
+    const r = await fetch("/prisiragent/api/file?path=" + encodeURIComponent(relPath));
+    // M3.32 Phase 2(2026-09-16):415 = Office mime + LO 未装,弹装机闸
+    if (r.status === 415) {
+      let j415 = {};
+      try { j415 = await r.json(); } catch (e) {}
+      _docPreviewWriteText("📄 Office 文件需要 LibreOffice 渲染 — " + (j415.err || "") + "\n\n正在弹出装机指引…");
+      if (typeof officeinstallgateShow === "function") {
+        officeinstallgateShow(j415.hint || ("需要装 LibreOffice 才能预览 " + relPath.split('/').pop()));
+      }
+      return;
+    }
+    if (!r.ok) { _docPreviewWriteText("(file not in workdir or not found)"); return; }
+    // M3.31 GUI 多媒体扩展(2026-09-16):按 Content-Type 分派渲染(图片/PDF/音视频/HTML 跳过读全文)
+    // M3.31.11(2026-09-16):HTML 加 iframe sandbox,不需要拉全文(浏览器自己渲染)
+    const ctype = (r.headers.get("Content-Type") || "").toLowerCase();
+    const isMedia = /^(image|audio|video)\//.test(ctype) || ctype === 'application/pdf'
+      || ctype === 'text/html' || ctype === 'application/xhtml+xml';
+    if (isMedia) {
+      _docPreviewRender(null, ctype);
+    } else {
+      _docPreviewRender(await r.text(), ctype);
+    }
+  } catch (e) {
+    _docPreviewWriteText("load err: " + e.message);
+  }
+  // 3) 取 stat 进 dirty 检测
+  try {
+    const r = await fetch("/prisiragent/api/file_stat?path=" + encodeURIComponent(relPath));
+    const j = await r.json();
+    if (j.ok) {
+      window.__docState.currentStat = { size: j.size || 0, mtime: j.mtime || 0, exists: j.exists };
+      window.__docState.currentDirty = false;
+      dirty.style.display = "none"; reload.style.display = "none";
+    }
+  } catch (e) {}
+  // 4) 起轮询
+  if (window.__docState.currentStatTimer) clearInterval(window.__docState.currentStatTimer);
+  window.__docState.currentStatTimer = setInterval(docPollStat, 5000);
+  window.__docState.dirtyGlobal = false;
+}
+// === M3.27 文件版本对比(diff tab,second def)===
+async function docLoadDiffVersions(relPath) {
+  const pathLbl = document.getElementById("doc-diff-path");
+  const selA = document.getElementById("doc-diff-select-a");
+  const selB = document.getElementById("doc-diff-select-b");
+  if (!selA || !selB) return;
+  if (!relPath) {
+    pathLbl.textContent = (window.i18n && window.i18n.doc_no_file) || "未选文件";
+    selA.innerHTML = '<option value="">—</option>';
+    selB.innerHTML = '<option value="">—</option>';
+    document.getElementById("doc-diff-body").innerHTML = "";
+    document.getElementById("doc-diff-stats").textContent = "";
+    return;
+  }
+  window.__docState.currentPath = relPath;
+  pathLbl.textContent = relPath;
+  selA.innerHTML = '<option value="">—</option>';
+  selB.innerHTML = '<option value="">—</option>';
+  try {
+    const r = await fetch("/prisiragent/api/file_versions?path=" + encodeURIComponent(relPath));
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.err || "list failed");
+    const vs = j.versions || [];
+    window.__docState.versions = vs;
+    vs.slice().reverse().forEach(v => {
+      const when = new Date(v.ts * 1000).toLocaleString();
+      const sz = v.size || 0;
+      const tag = `${when} (${v.tool || "?"}, ${sz}B)`;
+      [selA, selB].forEach(s => {
+        const op = document.createElement("option");
+        op.value = v.version_id; op.textContent = tag;
+        s.appendChild(op);
+      });
+    });
+    if (vs.length >= 2) {
+      selA.value = vs[vs.length - 1].version_id;
+      selB.value = vs[0].version_id;
+      window.__docState.diffA = selA.value;
+      window.__docState.diffB = selB.value;
+    } else if (vs.length === 1) {
+      selA.value = selB.value = vs[0].version_id;
+      window.__docState.diffA = window.__docState.diffB = vs[0].version_id;
+    } else {
+      window.__docState.diffA = window.__docState.diffB = "";
+    }
+    document.getElementById("doc-diff-body").innerHTML = "";
+    document.getElementById("doc-diff-stats").textContent = "";
+  } catch (e) {
+    document.getElementById("doc-diff-body").textContent = "list versions err: " + e.message;
+  }
+}
+async function docLoadDiff() {
+  const selA = document.getElementById("doc-diff-select-a");
+  const selB = document.getElementById("doc-diff-select-b");
+  const body = document.getElementById("doc-diff-body");
+  const stats = document.getElementById("doc-diff-stats");
+  const path = window.__docState.currentPath;
+  if (!path) { body.innerHTML = ""; return; }
+  const tsA = selA.value || ""; const tsB = selB.value || "";
+  window.__docState.diffA = tsA; window.__docState.diffB = tsB;
+  body.innerHTML = "⏳ ...";
+  stats.textContent = "";
+  if (!tsA || !tsB) { body.innerHTML = "请选 A、B 两个版本"; return; }
+  if (tsA === tsB) { body.innerHTML = "A、B 是同一版本,无差异"; stats.textContent = ""; return; }
+  try {
+    const url = "/prisiragent/api/file_diff?path=" + encodeURIComponent(path)
+              + "&ts_a=" + encodeURIComponent(tsA) + "&ts_b=" + encodeURIComponent(tsB);
+    const r = await fetch(url);
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.err || "diff failed");
+    const diffText = j.diff || "";
+    if (!diffText) {
+      body.innerHTML = "<div style='color:var(--gh-ink-soft)'>两个版本内容相同</div>";
+      stats.textContent = "+0 -0";
+      return;
+    }
+    // 自实现红绿 split(不依赖 hljs — cdn 可能异步或被代理挡)
+    // 行级分类: @@/+/-(内容) → hljs-meta; + → hljs-addition; - → hljs-deletion;
+    // 其它(背景行无前缀)按原色。
+    const lines = diffText.split("\n");
+    const parts = lines.map(ln => {
+      const esc = docEscapeHtml(ln);
+      if (ln.startsWith("+++") || ln.startsWith("---") || ln.startsWith("@@")) {
+        return '<span class="hljs-meta">' + esc + '</span>';
+      }
+      if (ln.startsWith("+")) return '<span class="hljs-addition">' + esc + '</span>';
+      if (ln.startsWith("-")) return '<span class="hljs-deletion">' + esc + '</span>';
+      return esc;
+    });
+    body.innerHTML = '<pre><code class="language-diff">' + parts.join("\n") + '</code></pre>';
+    stats.textContent = "+" + (j.added || 0) + " -" + (j.removed || 0);
+  } catch (e) {
+    body.innerHTML = "diff err: " + docEscapeHtml(e.message);
+  }
+}
+
+async function docSelectVersion(vid) {
+  const body = document.getElementById("doc-preview-body");
+  const rbk = document.getElementById("doc-rollback");
+  const path = window.__docState.currentPath;
+  if (!path) return;
+  if (vid === "current") {
+    // 重读当前文件
+    try {
+      const r = await fetch("/prisiragent/api/file?path=" + encodeURIComponent(path));
+      _docPreviewWriteText(r.ok ? await r.text() : "(not found)");
+    } catch (e) { _docPreviewWriteText("err: " + e.message); }
+    rbk.style.display = "none";
+    return;
+  }
+  _docPreviewWriteText("⏳ ..."); rbk.style.display = "";
+  try {
+    const r = await fetch("/prisiragent/api/file_preview?path=" + encodeURIComponent(path) + "&ts=" + encodeURIComponent(vid));
+    const j = await r.json();
+    if (!j.ok) { _docPreviewWriteText("preview err: " + j.err); return; }
+    _docPreviewWriteText(j.content || "");
+  } catch (e) {
+    _docPreviewWriteText("err: " + e.message);
+  }
+}
+
+async function docRollback() {
+  const sel = document.getElementById("doc-version-select");
+  const vid = sel.value;
+  const path = window.__docState.currentPath;
+  if (!vid || vid === "current") return;
+  if (!confirm("回滚 " + path + " 到选中版本?\n(回滚前会自动备份当前内容,可再次回滚找回)")) return;
+  try {
+    const r = await fetch("/prisiragent/api/file_restore", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ path: path, ts: vid }),
+    });
+    const j = await r.json();
+    if (!j.ok) { alert("回滚失败: " + (j.err || j.msg || "未知")); return; }
+    alert("已回滚: " + j.msg);
+    docLoadPreview(path);  // 重载 + 刷新 stat
+    docRefreshTimeline();
+  } catch (e) {
+    alert("err: " + e.message);
+  }
+}
+
+// M3.33 #65:skill 面板函数(被 docSwitchTab('skills') 触发)
+async function skillRefresh() {
+  const body = document.getElementById("doc-skills-body");
+  const count = document.getElementById("doc-skills-count");
+  if (!body || !count) return;
+  body.innerHTML = '<div style="padding:14px;color:var(--gh-ink-soft)">⏳ 加载中…</div>';
+  count.textContent = "加载中…";
+  try {
+    const r = await fetch("/prisiragent/api/skill_list?refresh=1");
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.err || "fetch failed");
+    const items = j.skills || [];
+    count.textContent = "📦 已装 skill: " + items.length;
+    if (items.length === 0) {
+      body.innerHTML = '<div style="padding:14px;color:var(--gh-ink-soft)">还没有 skill。点右上角「+」新建一个,或 /api/skill_install 装已有。</div>';
+      return;
+    }
+    body.innerHTML = items.map(skillCardHtml).join("");
+  } catch (e) {
+    body.innerHTML = '<div style="padding:14px;color:#c62828">err: ' + docEscapeHtml(e.message) + '</div>';
+  }
+}
+function skillCardHtml(s) {
+  const triggers = (s.triggers || []).join(" · ");
+  const req = s.requirements || "(无)";
+  const lic = s.license ? ' · ' + s.license : "";
+  return '' +
+    '<div class="skill-card">' +
+      '<div class="skill-card-head">' +
+        '<span class="skill-name">' + docEscapeHtml(s.name) + '</span>' +
+        '<span class="skill-lic">' + docEscapeHtml(lic) + '</span>' +
+      '</div>' +
+      '<div class="skill-desc">' + docEscapeHtml(s.description || "") + '</div>' +
+      '<div class="skill-trig">🏷 ' + docEscapeHtml(triggers || "(未填 triggers)") + '</div>' +
+      '<div class="skill-req">📋 ' + docEscapeHtml(req) + '</div>' +
+      '<div class="skill-dir">📁 ' + docEscapeHtml(s.dir || "") + '</div>' +
+      '<div class="skill-actions">' +
+        '<button class="topbtn" data-act="view" data-name="' + docEscapeHtml(s.name) + '">查看 SKILL.md</button>' +
+        '<button class="topbtn" data-act="run-check" data-name="' + docEscapeHtml(s.name) + '">跑 check</button>' +
+        '<button class="topbtn" data-act="run-stub" data-name="' + docEscapeHtml(s.name) + '">跑 generate(stub)</button>' +
+        '<button class="topbtn skill-uninstall" data-act="uninstall" data-name="' + docEscapeHtml(s.name) + '">卸载</button>' +
+      '</div>' +
+    '</div>';
+}
+async function skillShow(name) {
+  try {
+    const r = await fetch("/prisiragent/api/skill_show?name=" + encodeURIComponent(name));
+    if (!r.ok) { alert("skill_show 失败: HTTP " + r.status); return; }
+    const j = await r.json();
+    if (!j.ok) { alert("err: " + j.err); return; }
+    document.getElementById("skillview-title").textContent = "📜 " + j.name + " — SKILL.md";
+    document.getElementById("skillview-meta").textContent = "dir=" + j.dir + "  ·  scripts=" + (j.scripts || []).join(",") + "  ·  license=" + (j.license || "");
+    document.getElementById("skillview-body").textContent = j.body || "(无 body)";
+    document.getElementById("skillview").style.display = "flex";
+  } catch (e) {
+    alert("err: " + e.message);
+  }
+}
+async function skillRun(name, script, args) {
+  const out = document.getElementById("doc-skills-output");
+  const title = document.getElementById("doc-skills-output-title");
+  const pre = document.getElementById("doc-skills-output-pre");
+  title.textContent = "▶ " + name + " · scripts/" + script + (args && args.length ? " " + args.join(" ") : "");
+  pre.textContent = "⏳ 跑中…(最长 60s)";
+  out.style.display = "block";
+  try {
+    const r = await fetch("/prisiragent/api/skill_run", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ name: name, script: script, args: args || [] }),
+    });
+    const j = await r.json();
+    let txt = "";
+    if (j.ok) {
+      txt = "[ok] exit=" + (j.code || 0) + "\n";
+      if (j.stdout) txt += "── stdout ──\n" + j.stdout + "\n";
+      if (j.stderr) txt += "── stderr ──\n" + j.stderr + "\n";
+    } else {
+      txt = "[fail] " + (j.err || ("HTTP " + r.status)) + "\n";
+      if (j.stdout) txt += "stdout: " + j.stdout + "\n";
+      if (j.stderr) txt += "stderr: " + j.stderr + "\n";
+    }
+    pre.textContent = txt;
+  } catch (e) {
+    pre.textContent = "[exception] " + e.message;
+  }
+}
+async function skillUninstall(name) {
+  if (!confirm("确认卸载 skill '" + name + "'?\n这会删除 ~/.prisir/skills/" + name + "/ 目录。")) return;
+  try {
+    const r = await fetch("/prisiragent/api/skill_uninstall", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ name: name, target: "user" }),
+    });
+    const j = await r.json();
+    if (!j.ok) { alert("卸载失败: " + (j.err || "")); return; }
+    skillRefresh();
+  } catch (e) {
+    alert("err: " + e.message);
+  }
+}
+async function skillNewSubmit() {
+  const name = document.getElementById("skillnew-name").value.trim();
+  const desc = document.getElementById("skillnew-desc").value.trim();
+  const trig = document.getElementById("skillnew-triggers").value.trim();
+  const req = document.getElementById("skillnew-req").value.trim();
+  const tpl = document.getElementById("skillnew-tpl").value;
+  if (!name || !desc) { alert("name 和 description 必填"); return; }
+  try {
+    const r = await fetch("/prisiragent/api/skill_new", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        name: name, description: desc, triggers: trig ? trig.split(/[,,]/) : [],
+        provider: "stub", requirements: req || "none", template: tpl,
+      }),
+    });
+    const j = await r.json();
+    if (!j.ok) { alert("新建失败: " + (j.err || ("HTTP " + r.status))); return; }
+    document.getElementById("skillnew").style.display = "none";
+    skillRefresh();
+  } catch (e) {
+    alert("err: " + e.message);
+  }
+}
+function skillNew() {
+  document.getElementById("skillnew-name").value = "";
+  document.getElementById("skillnew-desc").value = "";
+  document.getElementById("skillnew-triggers").value = "";
+  document.getElementById("skillnew-req").value = "";
+  document.getElementById("skillnew-dst").textContent = "<workdir>/skills/<name>/";
+  document.getElementById("skillnew").style.display = "flex";
+}
+function skillInit() {
+  // 事件代理:doc-skills-body 内按钮分发
+  const body = document.getElementById("doc-skills-body");
+  if (body && !body._skillBound) {
+    body._skillBound = true;
+    body.addEventListener("click", (ev) => {
+      const btn = ev.target.closest("button[data-act]");
+      if (!btn) return;
+      const act = btn.getAttribute("data-act");
+      const name = btn.getAttribute("data-name");
+      if (act === "view") skillShow(name);
+      else if (act === "run-check") skillRun(name, "check", []);
+      else if (act === "run-stub") {
+        if (!confirm("本期 generate.py 默认 stub(不需 GPU);真跑需要装好对应服务。继续?")) return;
+        skillRun(name, "generate", ["--help"]);
+      } else if (act === "uninstall") skillUninstall(name);
+    });
+  }
+  // skillview / skillnew 模态事件绑定(幂等)
+  const sv = document.getElementById("skillview");
+  if (sv && !sv._svBound) {
+    sv._svBound = true;
+    document.getElementById("skillview-close").onclick = () => { sv.style.display = "none"; };
+  }
+  const sn = document.getElementById("skillnew");
+  if (sn && !sn._snBound) {
+    sn._snBound = true;
+    document.getElementById("skillnew-close").onclick = () => { sn.style.display = "none"; };
+    document.getElementById("skillnew-cancel").onclick = () => { sn.style.display = "none"; };
+    document.getElementById("skillnew-ok").onclick = skillNewSubmit;
+  }
+}
+
+// dirty 轮询:每 5s 比对 stat
+async function docPollStat() {
+  const path = window.__docState.currentPath;
+  const stat = window.__docState.currentStat;
+  if (!path || !stat) return;
+  const dirty = document.getElementById("doc-dirty-badge");
+  const reload = document.getElementById("doc-reload");
+  try {
+    const r = await fetch("/prisiragent/api/file_stat?path=" + encodeURIComponent(path));
+    const j = await r.json();
+    if (!j.ok) return;
+    const ns = j.size || 0, nm = j.mtime || 0;
+    if (ns !== stat.size || nm !== stat.mtime) {
+      if (!window.__docState.currentDirty) {
+        window.__docState.currentDirty = true;
+        window.__docState.dirtyGlobal = true;
+        dirty.style.display = "";
+        reload.style.display = "";
+        document.title = "⚠ " + document.title;
+      }
+    }
+  } catch (e) {}
+}
+
+async function docReload() {
+  const path = window.__docState.currentPath;
+  if (!path) return;
+  window.__docState.dirtyGlobal = false;
+  document.title = document.title.replace(/^⚠ /, "");
+  docLoadPreview(path);
+}
+
+// 关窗询问
+window.addEventListener("beforeunload", (e) => {
+  if (window.__docState.dirtyGlobal) {
+    e.preventDefault(); e.returnValue = "";
+    return "";
+  }
+});
+
+// 顶栏按钮同步显隐(若隐藏文档面板)
+document.addEventListener("DOMContentLoaded", () => {
+  // 无需特殊初始化;按钮点击 toggleDocPanel
+  gitGateInit();
+  officeinstallgateInit();  // M3.32 Phase 2 — 注册事件监听(不主动弹,等 docLoadPreview 415 触发)
+});
+
+/* ===== M3.31 git 安装权限闸(只在用户主动 reload 时 fetch,不做 polling) ===== */
+let _gitGateShown = false;  // 前端本会话内存标记,防止重复 fetch
+async function gitGateInit() {
+  if (_gitGateShown) return;
+  try {
+    const r = await fetch("/prisiragent/api/git_detect");
+    const j = await r.json();
+    if (!j.ok) return;                // 后端失败不打扰
+    if (j.detected) return;           // 已装 git,不弹
+    if (j.gate_shown) return;         // 用户本会话已选「暂不启用」,不骚扰
+    const gate = document.getElementById("gitinstallgate");
+    if (!gate) return;
+    _gitGateShown = true;
+    gate.classList.add("open");
+    document.getElementById("gitinstallgate-open").onclick = async () => {
+      window.open("https://git-scm.com/downloads", "_blank", "noopener");
+      try { await fetch("/prisiragent/api/git_gate_ack", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ choice: "yes" }) }); } catch (e) {}
+      gate.classList.remove("open");
+    };
+    document.getElementById("gitinstallgate-skip").onclick = async () => {
+      try { await fetch("/prisiragent/api/git_gate_ack", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ choice: "no" }) }); } catch (e) {}
+      gate.classList.remove("open");
+    };
+  } catch (e) {
+    // 网络异常静默吞掉,不影响主流程
+  }
+}
+</script>
+<!-- M3.31:git 安装权限闸 -->
+<div id="gitinstallgate">
+  <div class="card">
+    <h3>📦 检测到外部版本管理兼容功能需要 git</h3>
+    <div class="sub">本机未检测到 git 命令。启用该功能需要先安装:</div>
+    <ul>
+      <li>Windows: Git for Windows(<a href="https://git-scm.com/downloads" target="_blank" rel="noopener">git-scm.com/downloads</a>)</li>
+      <li>macOS: <code>brew install git</code></li>
+      <li>Linux: 包管理器安装(apt / dnf / pacman 等)</li>
+    </ul>
+    <div class="row">
+      <button class="topbtn primary" id="gitinstallgate-open">打开下载页</button>
+      <button class="topbtn" id="gitinstallgate-skip">暂不启用</button>
+    </div>
+  </div>
+</div>
+<!-- M3.32 Phase 2(2026-09-16):Office 渲染器装机权限闸(只推 LO,纯本地) -->
+<div id="officeinstallgate">
+  <div class="card">
+    <h3>📄 Office 文件预览需要 LibreOffice</h3>
+    <div class="sub">本机未检测到 LibreOffice。预览 docx/xlsx/pptx 文件需先安装:</div>
+    <div class="oig-status" id="officeinstallgate-status">检测中...</div>
+    <ul>
+      <li>LibreOffice(完全本地、样式保真度高,纯离线):<a href="https://www.libreoffice.org/download" target="_blank" rel="noopener">libreoffice.org/download</a>(约 1GB,装完重启本服务即可)</li>
+    </ul>
+    <div class="sub" style="margin-top:8px;font-size:12px;color:var(--gh-ink-faint)">我们只调本地已装的 soffice.com,不会联网下载任何东西。</div>
+    <div class="row">
+      <button class="topbtn" id="officeinstallgate-recheck">重新检测</button>
+      <button class="topbtn primary" id="officeinstallgate-open">装 LibreOffice</button>
+      <button class="topbtn" id="officeinstallgate-skip">暂不启用</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>
