@@ -315,3 +315,7 @@ prisirmp/prisirmp.db-wal
 
 # Electron 临时 app 文件(2026-10-05 music 归档时已不需,Electron 启动会重新生成)
 companion/_tmp_lx/
+
+# WorkBuddy 本地工作目录与种子缓存
+.workbuddy/
+.seed-cache.json
